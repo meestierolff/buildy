@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { MapPin, Calendar, Navigation, Plus } from "lucide-react";
+import { MapPin, Calendar, Navigation, Plus, Compass, Globe } from "lucide-react";
 import { format } from "date-fns";
 import { nl } from "date-fns/locale";
 
@@ -35,7 +35,6 @@ const Index = () => {
         .limit(20);
 
       if (data) {
-        // Get step counts
         const tripsWithCounts = await Promise.all(
           data.map(async (trip: any) => {
             const [{ count }, { data: profileData }] = await Promise.all([
@@ -59,24 +58,35 @@ const Index = () => {
   return (
     <div className="min-h-screen">
       {/* Hero */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-primary/10 via-background to-accent/10 py-20 md:py-32">
-        <div className="container text-center">
-          <h1 className="text-4xl md:text-6xl font-bold mb-4 tracking-tight">
-            Jouw reizen, <span className="text-primary">prachtig vastgelegd</span>
+      <section className="relative overflow-hidden py-24 md:py-36">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/90 to-primary/70" />
+        <div className="absolute inset-0 opacity-10" style={{
+          backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")"
+        }} />
+        <div className="container relative text-center">
+          <div className="flex justify-center mb-6">
+            <div className="bg-accent/20 backdrop-blur-sm rounded-full p-3">
+              <Globe className="h-8 w-8 text-accent" />
+            </div>
+          </div>
+          <h1 className="text-4xl md:text-6xl font-bold mb-4 tracking-tight text-primary-foreground">
+            <span className="italic text-gradient-gold">Ontdek</span> de wereld,{" "}
+            <br className="hidden md:block" />
+            deel je avontuur.
           </h1>
-          <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
-            Leg elke stap van je avontuur vast met foto's, verhalen en een interactieve routekaart.
+          <p className="text-lg md:text-xl text-primary-foreground/80 max-w-2xl mx-auto mb-8">
+            Leg elke stap van je reis vast met foto's, verhalen en een interactieve routekaart.
           </p>
           {user ? (
             <Link to="/trips/new">
-              <Button size="lg" className="gap-2 text-base">
+              <Button size="lg" className="gap-2 text-base bg-accent text-accent-foreground hover:bg-accent/90 shadow-lg shadow-accent/25">
                 <Plus className="h-5 w-5" /> Start een nieuwe trip
               </Button>
             </Link>
           ) : (
             <Link to="/auth">
-              <Button size="lg" className="gap-2 text-base">
-                Aan de slag
+              <Button size="lg" className="gap-2 text-base bg-accent text-accent-foreground hover:bg-accent/90 shadow-lg shadow-accent/25">
+                <Compass className="h-5 w-5" /> Aan de slag
               </Button>
             </Link>
           )}
@@ -114,7 +124,7 @@ const Index = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {trips.map((trip) => (
               <Link key={trip.id} to={`/trip/${trip.id}`}>
-                <Card className="overflow-hidden hover:shadow-lg transition-shadow group cursor-pointer">
+                <Card className="overflow-hidden hover:shadow-lg transition-all group cursor-pointer border-border/50 hover:border-accent/30">
                   <div className="h-48 bg-gradient-to-br from-primary/20 to-accent/20 relative overflow-hidden">
                     {trip.cover_image_url && (
                       <img
@@ -123,10 +133,15 @@ const Index = () => {
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       />
                     )}
+                    {!trip.cover_image_url && (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Compass className="h-12 w-12 text-primary/30" />
+                      </div>
+                    )}
                     {trip.countries && trip.countries.length > 0 && (
                       <div className="absolute bottom-2 left-2 flex gap-1">
                         {trip.countries.map((c) => (
-                          <span key={c} className="bg-card/80 backdrop-blur-sm text-xs px-2 py-0.5 rounded-full">
+                          <span key={c} className="bg-card/80 backdrop-blur-sm text-xs px-2 py-0.5 rounded-full font-medium">
                             {c}
                           </span>
                         ))}

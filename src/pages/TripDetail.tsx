@@ -5,11 +5,22 @@ import { useAuth } from "@/hooks/useAuth";
 import TripMap from "@/components/TripMap";
 import StepTimeline from "@/components/StepTimeline";
 import AddStepDialog from "@/components/AddStepDialog";
+import EditStepDialog from "@/components/EditStepDialog";
 import { Button } from "@/components/ui/button";
 import { Calendar, MapPin, Navigation, Plus, BookOpen, Share2 } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
 import { nl } from "date-fns/locale";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const TripDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -19,6 +30,8 @@ const TripDetail = () => {
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAddStep, setShowAddStep] = useState(false);
+  const [editingStep, setEditingStep] = useState<any>(null);
+  const [deletingStepId, setDeletingStepId] = useState<string | null>(null);
 
   const isOwner = user && trip?.user_id === user.id;
 
@@ -48,7 +61,6 @@ const TripDetail = () => {
       .order("step_order", { ascending: true });
 
     if (stepsData) {
-      // Get likes and comments counts
       const enriched = await Promise.all(
         stepsData.map(async (step) => {
           const [{ count: likeCount }, { count: commentCount }] = await Promise.all([
@@ -109,6 +121,18 @@ const TripDetail = () => {
     );
   };
 
+  const handleDelete = async () => {
+    if (!deletingStepId) return;
+    const { error } = await supabase.from("steps").delete().eq("id", deletingStepId);
+    if (error) {
+      toast.error("Kon stap niet verwijderen: " + error.message);
+    } else {
+      toast.success("Stap verwijderd");
+      fetchTrip();
+    }
+    setDeletingStepId(null);
+  };
+
   const handleShare = () => {
     navigator.clipboard.writeText(window.location.href);
     toast.success("Link gekopieerd!");
@@ -117,7 +141,7 @@ const TripDetail = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[80vh]">
-        <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
+        <div className="animate-spin h-8 w-8 border-2 border-accent border-t-transparent rounded-full" />
       </div>
     );
   }
@@ -139,20 +163,19 @@ const TripDetail = () => {
       {/* Left: Timeline */}
       <div className="lg:w-[480px] w-full overflow-y-auto border-r bg-background">
         {/* Trip header */}
-        <div className="p-6 border-b">
+        <div className="p-6 border-b bg-gradient-to-br from-primary/5 to-accent/5">
           <div className="flex items-center gap-2 mb-1">
             {trip.countries?.map((c: string) => (
-              <span key={c} className="text-xs bg-secondary px-2 py-0.5 rounded-full">{c}</span>
+              <span key={c} className="text-xs bg-accent/15 text-accent-foreground px-2.5 py-0.5 rounded-full font-medium">{c}</span>
             ))}
           </div>
           <h1 className="text-2xl font-bold mb-1">{trip.title}</h1>
           {trip.profile && (
-            <Link to={`/profile/${trip.user_id}`} className="text-sm text-muted-foreground hover:text-primary">
+            <Link to={`/profile/${trip.user_id}`} className="text-sm text-muted-foreground hover:text-accent transition-colors">
               door {trip.profile.display_name}
             </Link>
           )}
 
-          {/* Stats */}
           <div className="flex items-center gap-4 mt-3 text-sm text-muted-foreground">
             {days && (
               <span className="flex items-center gap-1">
@@ -164,7 +187,6 @@ const TripDetail = () => {
             </span>
           </div>
 
-          {/* Actions */}
           <div className="flex gap-2 mt-4">
             {isOwner && (
               <Button size="sm" onClick={() => setShowAddStep(true)} className="gap-1.5">
@@ -194,6 +216,9 @@ const TripDetail = () => {
             activeStepId={activeStepId}
             onStepClick={setActiveStepId}
             onLike={handleLike}
+            onEdit={setEditingStep}
+            onDelete={setDeletingStepId}
+            isOwner={!!isOwner}
           />
         )}
       </div>
@@ -215,6 +240,33 @@ const TripDetail = () => {
           onAdded={fetchTrip}
         />
       )}
+
+      {/* Edit Step Dialog */}
+      {editingStep && (
+        <EditStepDialog
+          step={editingStep}
+          onClose={() => setEditingStep(null)}
+          onUpdated={fetchTrip}
+        />
+      )}
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deletingStepId} onOpenChange={() => setDeletingStepId(null)}>
+        <AlertDialogContent className="z-[1000]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Stap verwijderen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Dit kan niet ongedaan worden gemaakt. Alle foto's en reacties bij deze stap worden ook verwijderd.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Verwijderen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
