@@ -42,6 +42,15 @@ const TripMap = ({ steps, activeStepId, onMarkerClick }: TripMapProps) => {
   const validSteps = steps.filter((s) => s.latitude && s.longitude);
   const positions = validSteps.map((s) => [s.latitude!, s.longitude!] as L.LatLngTuple);
 
+  const defaultIcon = new L.Icon({
+    iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
+    iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
+    shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    shadowSize: [41, 41],
+  });
+
   const activeIcon = new L.Icon({
     iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png",
     iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png",
@@ -70,7 +79,7 @@ const TripMap = ({ steps, activeStepId, onMarkerClick }: TripMapProps) => {
         <Marker
           key={step.id}
           position={[step.latitude!, step.longitude!]}
-          icon={step.id === activeStepId ? activeIcon : undefined}
+          icon={step.id === activeStepId ? activeIcon : defaultIcon}
           eventHandlers={{
             click: () => onMarkerClick?.(step.id),
           }}
