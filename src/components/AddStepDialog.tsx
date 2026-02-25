@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Upload, X } from "lucide-react";
+import { Upload, X, Search } from "lucide-react";
 
 interface AddStepDialogProps {
   tripId: string;
@@ -26,6 +26,7 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
   const [stepDate, setStepDate] = useState(new Date().toISOString().split("T")[0]);
   const [travelHours, setTravelHours] = useState("");
   const [files, setFiles] = useState<File[]>([]);
+  const [geocoding, setGeocoding] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -37,12 +38,42 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const geocodeLocation = async () => {
+    if (!locationName.trim()) return;
+    setGeocoding(true);
+    try {
+      const query = country ? `${locationName}, ${country}` : locationName;
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`
+      );
+      const data = await res.json();
+      if (data.length > 0) {
+        setLatitude(data[0].lat);
+        setLongitude(data[0].lon);
+        if (!country && data[0].display_name) {
+          const parts = data[0].display_name.split(", ");
+          setCountry(parts[parts.length - 1]);
+        }
+        toast.success("Locatie gevonden!");
+      } else {
+        toast.error("Locatie niet gevonden");
+      }
+    } catch {
+      toast.error("Kon locatie niet opzoeken");
+    }
+    setGeocoding(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
     setLoading(true);
 
-    // Create step
+    // Auto-geocode if no coordinates
+    if (!latitude && !longitude && locationName) {
+      await geocodeLocation();
+    }
+
     const { data: step, error } = await supabase
       .from("steps")
       .insert({
@@ -95,14 +126,19 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto z-[1000]">
         <DialogHeader>
           <DialogTitle>Stap toevoegen</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <Label>Locatie *</Label>
-            <Input value={locationName} onChange={(e) => setLocationName(e.target.value)} required placeholder="Bijv. Oslo" />
+            <div className="flex gap-2">
+              <Input value={locationName} onChange={(e) => setLocationName(e.target.value)} required placeholder="Bijv. Oslo" />
+              <Button type="button" variant="outline" size="icon" onClick={geocodeLocation} disabled={geocoding || !locationName.trim()} title="Zoek coördinaten">
+                <Search className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           <div>
             <Label>Land</Label>
@@ -118,6 +154,9 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
               <Input value={longitude} onChange={(e) => setLongitude(e.target.value)} placeholder="10.7522" type="number" step="any" />
             </div>
           </div>
+          {latitude && longitude && (
+            <p className="text-xs text-muted-foreground">📍 {parseFloat(latitude).toFixed(4)}, {parseFloat(longitude).toFixed(4)}</p>
+          )}
           <div>
             <Label>Datum *</Label>
             <Input type="date" value={stepDate} onChange={(e) => setStepDate(e.target.value)} required />

@@ -1,4 +1,10 @@
 @tailwind base;
+
+/* Ensure dialogs render above Leaflet map */
+.leaflet-container {
+  z-index: 0 !important;
+}
+
 @tailwind components;
 @tailwind utilities;
 
