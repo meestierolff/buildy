@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
-import { MapPin } from "lucide-react";
+import { Compass } from "lucide-react";
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -45,12 +45,16 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center p-4 relative">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/90 to-primary/70" />
+      <div className="absolute inset-0 opacity-5" style={{
+        backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")"
+      }} />
+      <Card className="w-full max-w-md relative z-10 shadow-2xl">
         <CardHeader className="text-center">
           <div className="flex items-center justify-center gap-2 mb-2">
-            <MapPin className="h-8 w-8 text-primary" />
-            <span className="text-2xl font-bold font-sans text-primary">TripLog</span>
+            <Compass className="h-8 w-8 text-accent" />
+            <span className="text-2xl font-bold font-sans text-accent">TripLog</span>
           </div>
           <CardTitle className="text-2xl">{isLogin ? "Welkom terug" : "Account aanmaken"}</CardTitle>
           <CardDescription>
@@ -82,7 +86,7 @@ const Auth = () => {
               required
               minLength={6}
             />
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full bg-accent text-accent-foreground hover:bg-accent/90" disabled={loading}>
               {loading ? "Even wachten..." : isLogin ? "Inloggen" : "Registreren"}
             </Button>
           </form>
@@ -90,7 +94,7 @@ const Auth = () => {
             {isLogin ? "Nog geen account? " : "Al een account? "}
             <button
               onClick={() => setIsLogin(!isLogin)}
-              className="text-primary hover:underline font-medium"
+              className="text-accent hover:underline font-medium"
             >
               {isLogin ? "Registreer" : "Inloggen"}
             </button>

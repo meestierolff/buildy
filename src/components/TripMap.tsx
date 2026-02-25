@@ -65,7 +65,7 @@ const TripMap = ({ steps, activeStepId, onMarkerClick }: TripMapProps) => {
       center={positions[0] || [52.37, 4.89]}
       zoom={5}
       className="h-full w-full"
-      style={{ background: "hsl(220 25% 12%)" }}
+      style={{ background: "hsl(160 30% 8%)" }}
     >
       <TileLayer
         attribution='&copy; <a href="https://carto.com/">CARTO</a>'
@@ -73,7 +73,7 @@ const TripMap = ({ steps, activeStepId, onMarkerClick }: TripMapProps) => {
       />
       <FitBounds steps={validSteps} />
       {positions.length > 1 && (
-        <Polyline positions={positions} color="hsl(198, 80%, 50%)" weight={3} opacity={0.7} />
+        <Polyline positions={positions} color="hsl(38, 85%, 55%)" weight={3} opacity={0.8} />
       )}
       {validSteps.map((step) => (
         <Marker

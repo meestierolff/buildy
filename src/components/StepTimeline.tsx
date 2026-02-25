@@ -1,7 +1,8 @@
 import { useRef, useEffect } from "react";
 import { format } from "date-fns";
 import { nl } from "date-fns/locale";
-import { MapPin, Clock, Heart, MessageCircle } from "lucide-react";
+import { MapPin, Clock, Heart, MessageCircle, Pencil, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface StepMedia {
   id: string;
@@ -29,9 +30,12 @@ interface StepTimelineProps {
   activeStepId: string | null;
   onStepClick: (stepId: string) => void;
   onLike?: (stepId: string) => void;
+  onEdit?: (step: Step) => void;
+  onDelete?: (stepId: string) => void;
+  isOwner?: boolean;
 }
 
-const StepTimeline = ({ steps, activeStepId, onStepClick, onLike }: StepTimelineProps) => {
+const StepTimeline = ({ steps, activeStepId, onStepClick, onLike, onEdit, onDelete, isOwner }: StepTimelineProps) => {
   const refs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
@@ -43,7 +47,7 @@ const StepTimeline = ({ steps, activeStepId, onStepClick, onLike }: StepTimeline
   return (
     <div className="relative py-6 px-4">
       {/* Vertical line */}
-      <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-border" />
+      <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gradient-to-b from-primary/40 via-accent/30 to-primary/10" />
 
       {steps.map((step, i) => (
         <div key={step.id}>
@@ -64,24 +68,46 @@ const StepTimeline = ({ steps, activeStepId, onStepClick, onLike }: StepTimeline
           >
             {/* Dot */}
             <div
-              className={`absolute left-[-1px] top-2 w-3 h-3 rounded-full border-2 ${
+              className={`absolute left-[-1px] top-2 w-3.5 h-3.5 rounded-full border-2 transition-all ${
                 activeStepId === step.id
-                  ? "bg-primary border-primary"
-                  : "bg-card border-muted-foreground"
+                  ? "bg-accent border-accent shadow-md shadow-accent/30"
+                  : "bg-card border-primary/50"
               }`}
             />
 
             {/* Content card */}
             <div
               className={`bg-card rounded-xl p-4 shadow-sm border transition-all ${
-                activeStepId === step.id ? "ring-2 ring-primary/50 shadow-md" : "hover:shadow-md"
+                activeStepId === step.id ? "ring-2 ring-accent/40 shadow-lg" : "hover:shadow-md"
               }`}
             >
-              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                <span>{format(new Date(step.step_date), "d MMMM yyyy", { locale: nl })}</span>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-muted-foreground">
+                  {format(new Date(step.step_date), "d MMMM yyyy", { locale: nl })}
+                </span>
+                {isOwner && (
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-primary"
+                      onClick={(e) => { e.stopPropagation(); onEdit?.(step); }}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      onClick={(e) => { e.stopPropagation(); onDelete?.(step.id); }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                )}
               </div>
               <h3 className="font-semibold text-lg flex items-center gap-1.5 font-sans">
-                <MapPin className="h-4 w-4 text-primary flex-shrink-0" />
+                <MapPin className="h-4 w-4 text-accent flex-shrink-0" />
                 {step.location_name}
                 {step.country && <span className="text-muted-foreground text-sm font-normal">, {step.country}</span>}
               </h3>
