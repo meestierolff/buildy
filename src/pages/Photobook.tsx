@@ -14,7 +14,7 @@ const Photobook = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetch = async () => {
+    const fetchData = async () => {
       if (!id) return;
 
       const { data: tripData } = await supabase.from("trips").select("*").eq("id", id).single();
@@ -29,51 +29,151 @@ const Photobook = () => {
       setSteps(stepsData || []);
       setLoading(false);
     };
-    fetch();
+    fetchData();
   }, [id]);
 
   if (loading) {
-    return <div className="flex items-center justify-center min-h-[60vh]"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
   }
 
-  // Build pages: cover + step pages
+  // Build pages: cover + step pages (each step can have multiple pages if many photos)
   const pages: React.ReactNode[] = [];
 
   // Cover page
   pages.push(
     <div key="cover" className="flex flex-col items-center justify-center h-full bg-gradient-to-br from-primary/10 to-accent/10 p-12 text-center">
-      <h1 className="text-4xl md:text-5xl font-bold mb-4">{trip?.title}</h1>
-      {trip?.start_date && (
+      <div className="mb-6 text-6xl">🌍</div>
+      <h1 className="text-4xl md:text-5xl font-bold mb-4 font-serif">{trip?.title}</h1>
+      {trip?.start_date && trip?.end_date && (
+        <p className="text-lg text-muted-foreground">
+          {format(new Date(trip.start_date), "d MMMM yyyy", { locale: nl })} — {format(new Date(trip.end_date), "d MMMM yyyy", { locale: nl })}
+        </p>
+      )}
+      {trip?.start_date && !trip?.end_date && (
         <p className="text-lg text-muted-foreground">
           {format(new Date(trip.start_date), "MMMM yyyy", { locale: nl })}
         </p>
       )}
       {trip?.countries?.length > 0 && (
-        <p className="text-muted-foreground mt-2">{trip.countries.join(" · ")}</p>
+        <p className="text-muted-foreground mt-3 text-lg">{trip.countries.join(" · ")}</p>
+      )}
+      {trip?.description && (
+        <p className="text-sm text-muted-foreground mt-4 max-w-md italic">{trip.description}</p>
       )}
     </div>
   );
 
-  // Step pages
+  // Step pages - beautiful layout with photos and text
   steps.forEach((step) => {
-    pages.push(
-      <div key={step.id} className="h-full p-8 md:p-12 flex flex-col">
-        <h2 className="text-2xl font-bold mb-1">{step.location_name}</h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          {format(new Date(step.step_date), "d MMMM yyyy", { locale: nl })}
-        </p>
-        {step.step_media?.length > 0 && (
-          <div className="grid grid-cols-2 gap-2 mb-4 flex-1 min-h-0">
-            {step.step_media.slice(0, 4).map((m: any) => (
-              <img key={m.id} src={m.media_url} alt="" className="rounded-lg object-cover w-full h-full" />
+    const photos = step.step_media?.filter((m: any) => m.media_type !== "video") || [];
+    const hasDescription = !!step.description;
+
+    if (photos.length === 0 && hasDescription) {
+      // Text-only page
+      pages.push(
+        <div key={step.id} className="h-full flex flex-col justify-center p-10 md:p-16">
+          <div className="mb-4">
+            <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">
+              {format(new Date(step.step_date), "d MMMM yyyy", { locale: nl })}
+            </p>
+            <h2 className="text-3xl font-bold font-serif">{step.location_name}</h2>
+            {step.country && <p className="text-sm text-muted-foreground">{step.country}</p>}
+          </div>
+          <p className="text-base leading-relaxed text-foreground/80 italic whitespace-pre-line">
+            "{step.description}"
+          </p>
+        </div>
+      );
+    } else if (photos.length === 1) {
+      // Single hero photo with text overlay
+      pages.push(
+        <div key={step.id} className="h-full relative">
+          <img src={photos[0].media_url} alt="" className="w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+          <div className="absolute bottom-0 left-0 right-0 p-8 text-white">
+            <p className="text-xs uppercase tracking-widest opacity-70 mb-1">
+              {format(new Date(step.step_date), "d MMMM yyyy", { locale: nl })}
+            </p>
+            <h2 className="text-3xl font-bold font-serif mb-1">{step.location_name}</h2>
+            {step.country && <p className="text-sm opacity-70 mb-2">{step.country}</p>}
+            {hasDescription && (
+              <p className="text-sm leading-relaxed opacity-90 max-w-lg italic">"{step.description}"</p>
+            )}
+          </div>
+        </div>
+      );
+    } else if (photos.length === 2) {
+      // Two photos side by side with text below
+      pages.push(
+        <div key={step.id} className="h-full flex flex-col">
+          <div className="flex-1 grid grid-cols-2 gap-1 min-h-0">
+            {photos.map((m: any) => (
+              <img key={m.id} src={m.media_url} alt="" className="w-full h-full object-cover" />
             ))}
           </div>
-        )}
-        {step.description && (
-          <p className="text-sm leading-relaxed text-foreground/80 italic">{step.description}</p>
-        )}
-      </div>
-    );
+          <div className="p-6">
+            <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">
+              {format(new Date(step.step_date), "d MMMM yyyy", { locale: nl })}
+            </p>
+            <h2 className="text-2xl font-bold font-serif">{step.location_name}</h2>
+            {step.country && <p className="text-sm text-muted-foreground">{step.country}</p>}
+            {hasDescription && (
+              <p className="text-sm leading-relaxed text-foreground/80 mt-2 italic">"{step.description}"</p>
+            )}
+          </div>
+        </div>
+      );
+    } else if (photos.length >= 3) {
+      // Grid layout: 1 large + 2 small, then text
+      pages.push(
+        <div key={step.id} className="h-full flex flex-col">
+          <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-1 min-h-0">
+            <img src={photos[0].media_url} alt="" className="w-full h-full object-cover row-span-2" />
+            <img src={photos[1].media_url} alt="" className="w-full h-full object-cover" />
+            {photos[2] ? (
+              <div className="relative">
+                <img src={photos[2].media_url} alt="" className="w-full h-full object-cover" />
+                {photos.length > 3 && (
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                    <span className="text-white text-lg font-bold">+{photos.length - 3}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div />
+            )}
+          </div>
+          <div className="p-6">
+            <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">
+              {format(new Date(step.step_date), "d MMMM yyyy", { locale: nl })}
+            </p>
+            <h2 className="text-2xl font-bold font-serif">{step.location_name}</h2>
+            {step.country && <p className="text-sm text-muted-foreground">{step.country}</p>}
+            {hasDescription && (
+              <p className="text-sm leading-relaxed text-foreground/80 mt-2 italic">"{step.description}"</p>
+            )}
+          </div>
+        </div>
+      );
+
+      // If more than 4 photos, add extra gallery pages
+      if (photos.length > 4) {
+        for (let i = 3; i < photos.length; i += 4) {
+          const batch = photos.slice(i, i + 4);
+          pages.push(
+            <div key={`${step.id}-extra-${i}`} className="h-full grid grid-cols-2 gap-1">
+              {batch.map((m: any) => (
+                <img key={m.id} src={m.media_url} alt="" className="w-full h-full object-cover" />
+              ))}
+            </div>
+          );
+        }
+      }
+    }
   });
 
   return (
