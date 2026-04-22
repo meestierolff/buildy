@@ -5,10 +5,22 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+
+const PROJECT_TYPES = [
+  "Volledige renovatie",
+  "Keuken",
+  "Badkamer",
+  "Aanbouw",
+  "Zolder",
+  "Tuin",
+  "Nieuwbouw",
+  "Anders",
+];
 
 const NewTrip = () => {
   const { user } = useAuth();
@@ -16,9 +28,10 @@ const NewTrip = () => {
   const [loading, setLoading] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [projectType, setProjectType] = useState<string>("");
+  const [address, setAddress] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [countries, setCountries] = useState("");
   const [isPublic, setIsPublic] = useState(true);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -32,18 +45,20 @@ const NewTrip = () => {
         user_id: user.id,
         title,
         description: description || null,
+        project_type: projectType || null,
+        address: address || null,
         start_date: startDate || null,
         end_date: endDate || null,
-        countries: countries ? countries.split(",").map((c) => c.trim()) : [],
+        countries: [],
         is_public: isPublic,
       })
       .select()
       .single();
 
     if (error) {
-      toast.error("Kon trip niet aanmaken: " + error.message);
+      toast.error("Kon project niet aanmaken: " + error.message);
     } else {
-      toast.success("Trip aangemaakt!");
+      toast.success("Project aangemaakt!");
       navigate(`/trip/${data.id}`);
     }
     setLoading(false);
@@ -53,17 +68,35 @@ const NewTrip = () => {
     <div className="container max-w-2xl py-12">
       <Card>
         <CardHeader>
-          <CardTitle>Nieuwe Trip</CardTitle>
+          <CardTitle>Nieuw verbouwingsproject</CardTitle>
+          <CardDescription>Leg de basis voor je verbouwingslogboek.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <Label htmlFor="title">Titel *</Label>
-              <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} required placeholder="Bijv. Scandinavië Roadtrip 2026" />
+              <Label htmlFor="title">Projectnaam *</Label>
+              <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} required placeholder="Bijv. Verbouwing droomhuis 2026" />
+            </div>
+            <div>
+              <Label htmlFor="type">Type project</Label>
+              <Select value={projectType} onValueChange={setProjectType}>
+                <SelectTrigger id="type">
+                  <SelectValue placeholder="Kies een type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PROJECT_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="address">Adres</Label>
+              <Input id="address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Bijv. Hoofdstraat 12, Utrecht" />
             </div>
             <div>
               <Label htmlFor="description">Beschrijving</Label>
-              <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Waar gaat deze trip over?" />
+              <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Wat is het verhaal van dit project?" />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -71,20 +104,16 @@ const NewTrip = () => {
                 <Input id="start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
               </div>
               <div>
-                <Label htmlFor="end">Einddatum</Label>
+                <Label htmlFor="end">Verwachte einddatum</Label>
                 <Input id="end" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
               </div>
             </div>
-            <div>
-              <Label htmlFor="countries">Landen (kommagescheiden)</Label>
-              <Input id="countries" value={countries} onChange={(e) => setCountries(e.target.value)} placeholder="Nederland, Duitsland, Denemarken" />
-            </div>
             <div className="flex items-center gap-3">
               <Switch id="public" checked={isPublic} onCheckedChange={setIsPublic} />
-              <Label htmlFor="public">Publiek zichtbaar</Label>
+              <Label htmlFor="public">Publiek zichtbaar (anderen kunnen volgen)</Label>
             </div>
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Aanmaken..." : "Trip aanmaken"}
+            <Button type="submit" className="w-full bg-accent text-accent-foreground hover:bg-accent/90" disabled={loading}>
+              {loading ? "Aanmaken..." : "Project starten"}
             </Button>
           </form>
         </CardContent>

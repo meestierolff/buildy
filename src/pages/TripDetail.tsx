@@ -2,14 +2,15 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import TripMap from "@/components/TripMap";
-import StepTimeline from "@/components/StepTimeline";
+import BlueprintTimeline from "@/components/BlueprintTimeline";
+import BlueprintBackground from "@/components/BlueprintBackground";
+import ProgressBar from "@/components/ProgressBar";
+import FollowButton from "@/components/FollowButton";
 import AddStepDialog from "@/components/AddStepDialog";
 import EditStepDialog from "@/components/EditStepDialog";
 import { Button } from "@/components/ui/button";
-import { Calendar, MapPin, Navigation, Plus, BookOpen, Share2 } from "lucide-react";
-import { format, differenceInDays } from "date-fns";
-import { nl } from "date-fns/locale";
+import { Calendar, MapPin, Plus, BookOpen, Share2, Hammer } from "lucide-react";
+import { differenceInDays } from "date-fns";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -27,7 +28,6 @@ const TripDetail = () => {
   const { user } = useAuth();
   const [trip, setTrip] = useState<any>(null);
   const [steps, setSteps] = useState<any[]>([]);
-  const [activeStepId, setActiveStepId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAddStep, setShowAddStep] = useState(false);
   const [editingStep, setEditingStep] = useState<any>(null);
@@ -102,7 +102,6 @@ const TripDetail = () => {
       toast.error("Log in om te liken");
       return;
     }
-
     const step = steps.find((s) => s.id === stepId);
     if (!step) return;
 
@@ -125,9 +124,9 @@ const TripDetail = () => {
     if (!deletingStepId) return;
     const { error } = await supabase.from("steps").delete().eq("id", deletingStepId);
     if (error) {
-      toast.error("Kon stap niet verwijderen: " + error.message);
+      toast.error("Kon update niet verwijderen: " + error.message);
     } else {
-      toast.success("Stap verwijderd");
+      toast.success("Update verwijderd");
       fetchTrip();
     }
     setDeletingStepId(null);
@@ -149,7 +148,7 @@ const TripDetail = () => {
   if (!trip) {
     return (
       <div className="container py-20 text-center">
-        <p className="text-muted-foreground">Trip niet gevonden.</p>
+        <p className="text-muted-foreground">Project niet gevonden.</p>
       </div>
     );
   }
@@ -159,80 +158,89 @@ const TripDetail = () => {
     : null;
 
   return (
-    <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)]">
-      {/* Left: Timeline */}
-      <div className="lg:w-[480px] w-full overflow-y-auto border-r bg-background">
-        {/* Trip header */}
-        <div className="p-6 border-b bg-gradient-to-br from-primary/5 to-accent/5">
-          <div className="flex items-center gap-2 mb-1">
-            {trip.countries?.map((c: string) => (
-              <span key={c} className="text-xs bg-accent/15 text-accent-foreground px-2.5 py-0.5 rounded-full font-medium">{c}</span>
-            ))}
-          </div>
-          <h1 className="text-2xl font-bold mb-1">{trip.title}</h1>
-          {trip.profile && (
-            <Link to={`/profile/${trip.user_id}`} className="text-sm text-muted-foreground hover:text-accent transition-colors">
-              door {trip.profile.display_name}
-            </Link>
-          )}
+    <div className="min-h-screen">
+      {/* Project header */}
+      <section className="relative bg-primary text-primary-foreground overflow-hidden">
+        <div className="absolute inset-0 blueprint-grid opacity-15" />
+        <div className="container relative py-10">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              {trip.project_type && (
+                <span className="inline-block text-[11px] font-bold uppercase tracking-widest bg-accent text-accent-foreground px-2.5 py-1 rounded-full mb-3">
+                  {trip.project_type}
+                </span>
+              )}
+              <h1 className="text-3xl md:text-4xl font-bold mb-2 leading-tight">{trip.title}</h1>
+              {trip.profile && (
+                <Link to={`/profile/${trip.user_id}`} className="text-sm text-primary-foreground/70 hover:text-accent">
+                  door {trip.profile.display_name}
+                </Link>
+              )}
+              <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-primary-foreground/80">
+                {trip.address && (
+                  <span className="flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5" /> {trip.address}
+                  </span>
+                )}
+                {days && (
+                  <span className="flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5" /> {days} dagen
+                  </span>
+                )}
+                <span className="flex items-center gap-1.5">
+                  <Hammer className="h-3.5 w-3.5" /> {steps.length} updates
+                </span>
+              </div>
+            </div>
 
-          <div className="flex items-center gap-4 mt-3 text-sm text-muted-foreground">
-            {days && (
-              <span className="flex items-center gap-1">
-                <Calendar className="h-3.5 w-3.5" /> {days} dagen
-              </span>
-            )}
-            <span className="flex items-center gap-1">
-              <MapPin className="h-3.5 w-3.5" /> {steps.length} stappen
-            </span>
+            <div className="flex flex-wrap gap-2">
+              {isOwner && (
+                <Button size="sm" onClick={() => setShowAddStep(true)} className="gap-1.5 bg-accent text-accent-foreground hover:bg-accent/90">
+                  <Plus className="h-4 w-4" /> Update toevoegen
+                </Button>
+              )}
+              {!isOwner && trip.is_public && (
+                <FollowButton projectId={trip.id} />
+              )}
+              <Button size="sm" variant="outline" onClick={handleShare} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
+                <Share2 className="h-4 w-4" /> Delen
+              </Button>
+              <Link to={`/trip/${id}/photobook`}>
+                <Button size="sm" variant="outline" className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
+                  <BookOpen className="h-4 w-4" /> Fotoboek
+                </Button>
+              </Link>
+            </div>
           </div>
 
-          <div className="flex gap-2 mt-4">
-            {isOwner && (
-              <Button size="sm" onClick={() => setShowAddStep(true)} className="gap-1.5">
-                <Plus className="h-4 w-4" /> Stap toevoegen
-              </Button>
-            )}
-            <Button size="sm" variant="outline" onClick={handleShare} className="gap-1.5">
-              <Share2 className="h-4 w-4" /> Delen
-            </Button>
-            <Link to={`/trip/${id}/photobook`}>
-              <Button size="sm" variant="outline" className="gap-1.5">
-                <BookOpen className="h-4 w-4" /> Fotoboek
-              </Button>
-            </Link>
+          <div className="mt-6 max-w-md">
+            <ProgressBar value={trip.progress_percentage ?? 0} />
           </div>
         </div>
+      </section>
 
-        {/* Steps */}
-        {steps.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground">
-            <Navigation className="h-10 w-10 mx-auto mb-3 opacity-40" />
-            <p>Nog geen stappen. {isOwner && "Voeg je eerste stap toe!"}</p>
-          </div>
-        ) : (
-          <StepTimeline
-            steps={steps}
-            activeStepId={activeStepId}
-            onStepClick={setActiveStepId}
-            onLike={handleLike}
-            onEdit={setEditingStep}
-            onDelete={setDeletingStepId}
-            isOwner={!!isOwner}
-          />
-        )}
-      </div>
+      {/* Timeline on blueprint */}
+      <section className="relative">
+        <BlueprintBackground />
+        <div className="container relative max-w-5xl">
+          {steps.length === 0 ? (
+            <div className="py-20 text-center text-muted-foreground">
+              <Hammer className="h-12 w-12 mx-auto mb-3 opacity-40" />
+              <p className="text-lg">Nog geen updates.</p>
+              {isOwner && <p className="text-sm mt-1">Voeg je eerste 'voor'-foto toe om te starten!</p>}
+            </div>
+          ) : (
+            <BlueprintTimeline
+              steps={steps}
+              onLike={handleLike}
+              onEdit={setEditingStep}
+              onDelete={setDeletingStepId}
+              isOwner={!!isOwner}
+            />
+          )}
+        </div>
+      </section>
 
-      {/* Right: Map */}
-      <div className="flex-1 relative">
-        <TripMap
-          steps={steps}
-          activeStepId={activeStepId}
-          onMarkerClick={setActiveStepId}
-        />
-      </div>
-
-      {/* Add Step Dialog */}
       {showAddStep && id && (
         <AddStepDialog
           tripId={id}
@@ -241,7 +249,6 @@ const TripDetail = () => {
         />
       )}
 
-      {/* Edit Step Dialog */}
       {editingStep && (
         <EditStepDialog
           step={editingStep}
@@ -250,13 +257,12 @@ const TripDetail = () => {
         />
       )}
 
-      {/* Delete confirmation */}
       <AlertDialog open={!!deletingStepId} onOpenChange={() => setDeletingStepId(null)}>
         <AlertDialogContent className="z-[1000]">
           <AlertDialogHeader>
-            <AlertDialogTitle>Stap verwijderen?</AlertDialogTitle>
+            <AlertDialogTitle>Update verwijderen?</AlertDialogTitle>
             <AlertDialogDescription>
-              Dit kan niet ongedaan worden gemaakt. Alle foto's en reacties bij deze stap worden ook verwijderd.
+              Dit kan niet ongedaan worden gemaakt. Alle foto's en reacties bij deze update worden ook verwijderd.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
