@@ -11,6 +11,7 @@ import NewTrip from "./pages/NewTrip";
 import TripDetail from "./pages/TripDetail";
 import Profile from "./pages/Profile";
 import Photobook from "./pages/Photobook";
+import Favorites from "./pages/Favorites";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -31,6 +32,7 @@ const App = () => (
                 <Route path="/trips/new" element={<NewTrip />} />
                 <Route path="/trip/:id" element={<TripDetail />} />
                 <Route path="/trip/:id/photobook" element={<Photobook />} />
+                <Route path="/favorieten" element={<Favorites />} />
                 <Route path="/profile/:userId" element={<Profile />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>

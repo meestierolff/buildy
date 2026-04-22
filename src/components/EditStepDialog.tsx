@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Search } from "lucide-react";
+import { PHASES } from "./AddStepDialog";
 
 interface EditStepDialogProps {
   step: any;
@@ -17,39 +19,10 @@ interface EditStepDialogProps {
 const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
   const [loading, setLoading] = useState(false);
   const [locationName, setLocationName] = useState(step.location_name);
-  const [country, setCountry] = useState(step.country || "");
-  const [latitude, setLatitude] = useState(step.latitude?.toString() || "");
-  const [longitude, setLongitude] = useState(step.longitude?.toString() || "");
+  const [phase, setPhase] = useState<string>(step.phase || "");
+  const [isMilestone, setIsMilestone] = useState<boolean>(!!step.is_milestone);
   const [description, setDescription] = useState(step.description || "");
   const [stepDate, setStepDate] = useState(step.step_date);
-  const [travelHours, setTravelHours] = useState(step.travel_hours?.toString() || "");
-  const [geocoding, setGeocoding] = useState(false);
-
-  const geocodeLocation = async () => {
-    if (!locationName.trim()) return;
-    setGeocoding(true);
-    try {
-      const query = country ? `${locationName}, ${country}` : locationName;
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`
-      );
-      const data = await res.json();
-      if (data.length > 0) {
-        setLatitude(data[0].lat);
-        setLongitude(data[0].lon);
-        if (!country && data[0].display_name) {
-          const parts = data[0].display_name.split(", ");
-          setCountry(parts[parts.length - 1]);
-        }
-        toast.success("Locatie gevonden!");
-      } else {
-        toast.error("Locatie niet gevonden");
-      }
-    } catch {
-      toast.error("Kon locatie niet opzoeken");
-    }
-    setGeocoding(false);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,19 +32,17 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
       .from("steps")
       .update({
         location_name: locationName,
-        country: country || null,
-        latitude: latitude ? parseFloat(latitude) : null,
-        longitude: longitude ? parseFloat(longitude) : null,
+        phase: phase || null,
+        is_milestone: isMilestone,
         description: description || null,
         step_date: stepDate,
-        travel_hours: travelHours ? parseFloat(travelHours) : null,
       })
       .eq("id", step.id);
 
     if (error) {
-      toast.error("Kon stap niet bijwerken: " + error.message);
+      toast.error("Kon update niet opslaan: " + error.message);
     } else {
-      toast.success("Stap bijgewerkt!");
+      toast.success("Update opgeslagen!");
       onUpdated();
       onClose();
     }
@@ -82,48 +53,41 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto z-[1000]">
         <DialogHeader>
-          <DialogTitle>Stap bewerken</DialogTitle>
+          <DialogTitle>Update bewerken</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label>Locatie *</Label>
-            <div className="flex gap-2">
-              <Input value={locationName} onChange={(e) => setLocationName(e.target.value)} required placeholder="Bijv. Oslo" />
-              <Button type="button" variant="outline" size="icon" onClick={geocodeLocation} disabled={geocoding || !locationName.trim()}>
-                <Search className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-          <div>
-            <Label>Land</Label>
-            <Input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Bijv. Noorwegen" />
+            <Label>Titel *</Label>
+            <Input value={locationName} onChange={(e) => setLocationName(e.target.value)} required />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Breedtegraad</Label>
-              <Input value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="59.9139" type="number" step="any" />
+              <Label>Fase</Label>
+              <Select value={phase} onValueChange={setPhase}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Kies fase" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PHASES.map((p) => (
+                    <SelectItem key={p} value={p}>{p}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
-              <Label>Lengtegraad</Label>
-              <Input value={longitude} onChange={(e) => setLongitude(e.target.value)} placeholder="10.7522" type="number" step="any" />
+              <Label>Datum *</Label>
+              <Input type="date" value={stepDate} onChange={(e) => setStepDate(e.target.value)} required />
             </div>
           </div>
-          {latitude && longitude && (
-            <p className="text-xs text-muted-foreground">📍 {parseFloat(latitude).toFixed(4)}, {parseFloat(longitude).toFixed(4)}</p>
-          )}
-          <div>
-            <Label>Datum *</Label>
-            <Input type="date" value={stepDate} onChange={(e) => setStepDate(e.target.value)} required />
-          </div>
-          <div>
-            <Label>Reistijd (uren)</Label>
-            <Input value={travelHours} onChange={(e) => setTravelHours(e.target.value)} placeholder="3.5" type="number" step="0.5" />
+          <div className="flex items-center gap-3 rounded-lg border p-3 bg-secondary/40">
+            <Switch id="milestone-edit" checked={isMilestone} onCheckedChange={setIsMilestone} />
+            <Label htmlFor="milestone-edit" className="cursor-pointer">Markeren als mijlpaal 🏗️</Label>
           </div>
           <div>
             <Label>Verhaal</Label>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Schrijf over deze dag..." rows={4} />
+            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} />
           </div>
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="w-full bg-accent text-accent-foreground hover:bg-accent/90" disabled={loading}>
             {loading ? "Opslaan..." : "Opslaan"}
           </Button>
         </form>

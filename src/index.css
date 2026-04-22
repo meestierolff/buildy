@@ -12,85 +12,81 @@
 
 @layer base {
   :root {
-    --background: 40 20% 97%;
-    --foreground: 160 30% 10%;
+    /* Buildy — Blueprint theme */
+    --background: 210 40% 96%;
+    --foreground: 215 50% 15%;
 
-    --card: 40 25% 99%;
-    --card-foreground: 160 30% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 215 50% 15%;
 
-    --popover: 40 25% 99%;
-    --popover-foreground: 160 30% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 50% 15%;
 
-    --primary: 160 45% 25%;
-    --primary-foreground: 40 30% 96%;
+    --primary: 215 65% 20%;
+    --primary-foreground: 210 40% 98%;
 
-    --secondary: 40 30% 92%;
-    --secondary-foreground: 160 30% 15%;
+    --secondary: 210 30% 92%;
+    --secondary-foreground: 215 50% 18%;
 
-    --muted: 40 15% 92%;
-    --muted-foreground: 160 10% 45%;
+    --muted: 210 25% 92%;
+    --muted-foreground: 215 15% 42%;
 
-    --accent: 38 85% 55%;
-    --accent-foreground: 160 40% 12%;
+    --accent: 22 90% 55%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 40 20% 86%;
-    --input: 40 20% 86%;
-    --ring: 160 45% 25%;
+    --border: 210 30% 86%;
+    --input: 210 30% 86%;
+    --ring: 22 90% 55%;
 
     --radius: 0.75rem;
 
-    --sidebar-background: 160 30% 8%;
-    --sidebar-foreground: 40 20% 92%;
-    --sidebar-primary: 38 85% 55%;
-    --sidebar-primary-foreground: 160 40% 12%;
-    --sidebar-accent: 160 25% 15%;
-    --sidebar-accent-foreground: 40 20% 92%;
-    --sidebar-border: 160 20% 18%;
-    --sidebar-ring: 38 85% 55%;
+    --sidebar-background: 215 65% 14%;
+    --sidebar-foreground: 210 30% 92%;
+    --sidebar-primary: 22 90% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 215 50% 20%;
+    --sidebar-accent-foreground: 210 30% 92%;
+    --sidebar-border: 215 40% 24%;
+    --sidebar-ring: 22 90% 55%;
 
-    --map-dark: 160 30% 8%;
+    --map-dark: 215 65% 14%;
+
+    /* Blueprint extras */
+    --blueprint-line: 215 60% 70%;
+    --blueprint-line-strong: 215 65% 35%;
   }
 
   .dark {
-    --background: 160 30% 6%;
-    --foreground: 40 20% 94%;
+    --background: 215 65% 8%;
+    --foreground: 210 30% 92%;
 
-    --card: 160 25% 10%;
-    --card-foreground: 40 20% 94%;
+    --card: 215 55% 12%;
+    --card-foreground: 210 30% 92%;
 
-    --popover: 160 25% 10%;
-    --popover-foreground: 40 20% 94%;
+    --popover: 215 55% 12%;
+    --popover-foreground: 210 30% 92%;
 
-    --primary: 38 85% 55%;
-    --primary-foreground: 160 40% 8%;
+    --primary: 22 90% 55%;
+    --primary-foreground: 215 65% 10%;
 
-    --secondary: 160 20% 14%;
-    --secondary-foreground: 40 20% 90%;
+    --secondary: 215 40% 18%;
+    --secondary-foreground: 210 30% 90%;
 
-    --muted: 160 20% 14%;
-    --muted-foreground: 40 15% 55%;
+    --muted: 215 40% 18%;
+    --muted-foreground: 210 20% 65%;
 
-    --accent: 38 85% 55%;
-    --accent-foreground: 160 40% 8%;
+    --accent: 22 90% 55%;
+    --accent-foreground: 215 65% 10%;
 
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 40 40% 98%;
+    --destructive-foreground: 210 30% 96%;
 
-    --border: 160 15% 18%;
-    --input: 160 15% 18%;
-    --ring: 38 85% 55%;
-
-    --sidebar-background: 160 30% 6%;
-    --sidebar-foreground: 40 20% 92%;
-    --sidebar-primary: 38 85% 55%;
-    --sidebar-primary-foreground: 160 40% 8%;
-    --sidebar-accent: 160 20% 12%;
-    --sidebar-accent-foreground: 40 20% 92%;
-    --sidebar-border: 160 15% 14%;
-    --sidebar-ring: 38 85% 55%;
+    --border: 215 30% 22%;
+    --input: 215 30% 22%;
+    --ring: 22 90% 55%;
   }
 }
 
@@ -112,6 +108,17 @@
 @layer utilities {
   .text-gradient-gold {
     @apply bg-clip-text text-transparent;
-    background-image: linear-gradient(135deg, hsl(38 85% 55%), hsl(45 90% 65%));
+    background-image: linear-gradient(135deg, hsl(22 90% 55%), hsl(35 95% 65%));
+  }
+
+  .blueprint-grid {
+    background-color: hsl(var(--background));
+    background-image:
+      linear-gradient(hsl(var(--blueprint-line) / 0.25) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--blueprint-line) / 0.25) 1px, transparent 1px),
+      linear-gradient(hsl(var(--blueprint-line) / 0.12) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--blueprint-line) / 0.12) 1px, transparent 1px);
+    background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+    background-position: -1px -1px, -1px -1px, -1px -1px, -1px -1px;
   }
 }
