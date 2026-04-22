@@ -46,6 +46,27 @@ export type Database = {
           },
         ]
       }
+      favorites: {
+        Row: {
+          created_at: string
+          id: string
+          project_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          project_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          project_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       likes: {
         Row: {
           created_at: string
@@ -149,9 +170,11 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          is_milestone: boolean
           latitude: number | null
           location_name: string
           longitude: number | null
+          phase: string | null
           step_date: string
           step_order: number
           travel_hours: number | null
@@ -164,9 +187,11 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          is_milestone?: boolean
           latitude?: number | null
           location_name: string
           longitude?: number | null
+          phase?: string | null
           step_date: string
           step_order?: number
           travel_hours?: number | null
@@ -179,9 +204,11 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          is_milestone?: boolean
           latitude?: number | null
           location_name?: string
           longitude?: number | null
+          phase?: string | null
           step_date?: string
           step_order?: number
           travel_hours?: number | null
@@ -201,6 +228,7 @@ export type Database = {
       }
       trips: {
         Row: {
+          address: string | null
           countries: string[] | null
           cover_image_url: string | null
           created_at: string
@@ -208,12 +236,15 @@ export type Database = {
           end_date: string | null
           id: string
           is_public: boolean
+          progress_percentage: number
+          project_type: string | null
           start_date: string | null
           title: string
           updated_at: string
           user_id: string
         }
         Insert: {
+          address?: string | null
           countries?: string[] | null
           cover_image_url?: string | null
           created_at?: string
@@ -221,12 +252,15 @@ export type Database = {
           end_date?: string | null
           id?: string
           is_public?: boolean
+          progress_percentage?: number
+          project_type?: string | null
           start_date?: string | null
           title: string
           updated_at?: string
           user_id: string
         }
         Update: {
+          address?: string | null
           countries?: string[] | null
           cover_image_url?: string | null
           created_at?: string
@@ -234,6 +268,8 @@ export type Database = {
           end_date?: string | null
           id?: string
           is_public?: boolean
+          progress_percentage?: number
+          project_type?: string | null
           start_date?: string | null
           title?: string
           updated_at?: string
