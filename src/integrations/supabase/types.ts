@@ -19,6 +19,8 @@ export type Database = {
           content: string
           created_at: string
           id: string
+          mentions: string[] | null
+          parent_id: string | null
           step_id: string
           user_id: string
         }
@@ -26,6 +28,8 @@ export type Database = {
           content: string
           created_at?: string
           id?: string
+          mentions?: string[] | null
+          parent_id?: string | null
           step_id: string
           user_id: string
         }
@@ -33,6 +37,8 @@ export type Database = {
           content?: string
           created_at?: string
           id?: string
+          mentions?: string[] | null
+          parent_id?: string | null
           step_id?: string
           user_id?: string
         }
@@ -47,6 +53,27 @@ export type Database = {
         ]
       }
       favorites: {
+        Row: {
+          created_at: string
+          id: string
+          project_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          project_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          project_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      follows: {
         Row: {
           created_at: string
           id: string
@@ -96,6 +123,42 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          id: string
+          message: string | null
+          project_id: string | null
+          read: boolean
+          step_id: string | null
+          type: string
+          user_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          message?: string | null
+          project_id?: string | null
+          read?: boolean
+          step_id?: string | null
+          type: string
+          user_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          message?: string | null
+          project_id?: string | null
+          read?: boolean
+          step_id?: string | null
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -103,6 +166,8 @@ export type Database = {
           created_at: string
           display_name: string
           id: string
+          location: string | null
+          onboarded: boolean
           updated_at: string
           user_id: string
         }
@@ -112,6 +177,8 @@ export type Database = {
           created_at?: string
           display_name?: string
           id?: string
+          location?: string | null
+          onboarded?: boolean
           updated_at?: string
           user_id: string
         }
@@ -121,7 +188,33 @@ export type Database = {
           created_at?: string
           display_name?: string
           id?: string
+          location?: string | null
+          onboarded?: boolean
           updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      reactions: {
+        Row: {
+          created_at: string
+          emoji: string
+          id: string
+          step_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          emoji: string
+          id?: string
+          step_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          emoji?: string
+          id?: string
+          step_id?: string
           user_id?: string
         }
         Relationships: []
@@ -169,12 +262,15 @@ export type Database = {
           country: string | null
           created_at: string
           description: string | null
+          floorplan_x: number | null
+          floorplan_y: number | null
           id: string
           is_milestone: boolean
           latitude: number | null
           location_name: string
           longitude: number | null
           phase: string | null
+          room: string | null
           step_date: string
           step_order: number
           travel_hours: number | null
@@ -186,12 +282,15 @@ export type Database = {
           country?: string | null
           created_at?: string
           description?: string | null
+          floorplan_x?: number | null
+          floorplan_y?: number | null
           id?: string
           is_milestone?: boolean
           latitude?: number | null
           location_name: string
           longitude?: number | null
           phase?: string | null
+          room?: string | null
           step_date: string
           step_order?: number
           travel_hours?: number | null
@@ -203,12 +302,15 @@ export type Database = {
           country?: string | null
           created_at?: string
           description?: string | null
+          floorplan_x?: number | null
+          floorplan_y?: number | null
           id?: string
           is_milestone?: boolean
           latitude?: number | null
           location_name?: string
           longitude?: number | null
           phase?: string | null
+          room?: string | null
           step_date?: string
           step_order?: number
           travel_hours?: number | null
@@ -234,6 +336,7 @@ export type Database = {
           created_at: string
           description: string | null
           end_date: string | null
+          floorplan_url: string | null
           id: string
           is_public: boolean
           progress_percentage: number
@@ -250,6 +353,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           end_date?: string | null
+          floorplan_url?: string | null
           id?: string
           is_public?: boolean
           progress_percentage?: number
@@ -266,6 +370,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           end_date?: string | null
+          floorplan_url?: string | null
           id?: string
           is_public?: boolean
           progress_percentage?: number
