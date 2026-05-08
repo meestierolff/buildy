@@ -165,5 +165,3 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) 
 };
 
 export default BlueprintTimeline;
-
-export default BlueprintTimeline;
