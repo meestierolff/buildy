@@ -8,8 +8,11 @@ import ProgressBar from "@/components/ProgressBar";
 import FollowButton from "@/components/FollowButton";
 import AddStepDialog from "@/components/AddStepDialog";
 import EditStepDialog from "@/components/EditStepDialog";
+import ProjectStats from "@/components/ProjectStats";
+import FloorplanView from "@/components/FloorplanView";
 import { Button } from "@/components/ui/button";
-import { Calendar, MapPin, Plus, BookOpen, Share2, Hammer } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Calendar, MapPin, Plus, BookOpen, Share2, Hammer, LayoutGrid, Map as MapIcon } from "lucide-react";
 import { differenceInDays } from "date-fns";
 import { toast } from "sonner";
 import {
@@ -153,9 +156,11 @@ const TripDetail = () => {
     );
   }
 
-  const days = trip.start_date && trip.end_date
-    ? differenceInDays(new Date(trip.end_date), new Date(trip.start_date)) + 1
+  const days = trip.start_date
+    ? differenceInDays(new Date(trip.end_date ?? new Date()), new Date(trip.start_date)) + 1
     : null;
+  const totalPhotos = steps.reduce((sum, s) => sum + (s.step_media?.length ?? 0), 0);
+  const milestones = steps.filter((s) => s.is_milestone).length;
 
   return (
     <div className="min-h-screen">
@@ -182,14 +187,6 @@ const TripDetail = () => {
                     <MapPin className="h-3.5 w-3.5" /> {trip.address}
                   </span>
                 )}
-                {days && (
-                  <span className="flex items-center gap-1.5">
-                    <Calendar className="h-3.5 w-3.5" /> {days} dagen
-                  </span>
-                )}
-                <span className="flex items-center gap-1.5">
-                  <Hammer className="h-3.5 w-3.5" /> {steps.length} updates
-                </span>
               </div>
             </div>
 
@@ -213,31 +210,56 @@ const TripDetail = () => {
             </div>
           </div>
 
-          <div className="mt-6 max-w-md">
+          <ProjectStats
+            totalUpdates={steps.length}
+            totalPhotos={totalPhotos}
+            daysActive={days}
+            milestones={milestones}
+          />
+
+          <div className="mt-4 max-w-md">
             <ProgressBar value={trip.progress_percentage ?? 0} />
           </div>
         </div>
       </section>
 
-      {/* Timeline on blueprint */}
+      {/* Tabs: timeline / floorplan */}
       <section className="relative">
         <BlueprintBackground />
         <div className="container relative max-w-5xl">
-          {steps.length === 0 ? (
-            <div className="py-20 text-center text-muted-foreground">
-              <Hammer className="h-12 w-12 mx-auto mb-3 opacity-40" />
-              <p className="text-lg">Nog geen updates.</p>
-              {isOwner && <p className="text-sm mt-1">Voeg je eerste 'voor'-foto toe om te starten!</p>}
-            </div>
-          ) : (
-            <BlueprintTimeline
-              steps={steps}
-              onLike={handleLike}
-              onEdit={setEditingStep}
-              onDelete={setDeletingStepId}
-              isOwner={!!isOwner}
-            />
-          )}
+          <Tabs defaultValue="timeline" className="pt-6">
+            <TabsList className="mb-2">
+              <TabsTrigger value="timeline" className="gap-1.5"><LayoutGrid className="h-3.5 w-3.5" /> Tijdlijn</TabsTrigger>
+              <TabsTrigger value="floorplan" className="gap-1.5"><MapIcon className="h-3.5 w-3.5" /> Plattegrond</TabsTrigger>
+            </TabsList>
+            <TabsContent value="timeline">
+              {steps.length === 0 ? (
+                <div className="py-20 text-center text-muted-foreground">
+                  <Hammer className="h-12 w-12 mx-auto mb-3 opacity-40" />
+                  <p className="text-lg">Nog geen updates.</p>
+                  {isOwner && <p className="text-sm mt-1">Voeg je eerste 'voor'-foto toe om te starten!</p>}
+                </div>
+              ) : (
+                <BlueprintTimeline
+                  steps={steps}
+                  onLike={handleLike}
+                  onEdit={setEditingStep}
+                  onDelete={setDeletingStepId}
+                  isOwner={!!isOwner}
+                />
+              )}
+            </TabsContent>
+            <TabsContent value="floorplan">
+              <FloorplanView
+                tripId={trip.id}
+                userId={trip.user_id}
+                isOwner={!!isOwner}
+                floorplanUrl={trip.floorplan_url}
+                steps={steps}
+                onChanged={fetchTrip}
+              />
+            </TabsContent>
+          </Tabs>
         </div>
       </section>
 
