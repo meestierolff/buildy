@@ -19,7 +19,7 @@ const FollowButton = ({ projectId, size = "sm", variant = "outline" }: FollowBut
   useEffect(() => {
     if (!user) return;
     supabase
-      .from("favorites")
+      .from("follows")
       .select("id")
       .eq("user_id", user.id)
       .eq("project_id", projectId)
@@ -36,13 +36,13 @@ const FollowButton = ({ projectId, size = "sm", variant = "outline" }: FollowBut
     }
     setLoading(true);
     if (following) {
-      await supabase.from("favorites").delete().eq("user_id", user.id).eq("project_id", projectId);
+      await supabase.from("follows").delete().eq("user_id", user.id).eq("project_id", projectId);
       setFollowing(false);
-      toast.success("Verwijderd uit favorieten");
+      toast.success("Niet meer gevolgd");
     } else {
-      await supabase.from("favorites").insert({ user_id: user.id, project_id: projectId });
+      await supabase.from("follows").insert({ user_id: user.id, project_id: projectId });
       setFollowing(true);
-      toast.success("Toegevoegd aan favorieten");
+      toast.success("Je volgt dit project nu");
     }
     setLoading(false);
   };

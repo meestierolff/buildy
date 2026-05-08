@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Hammer, Plus, LogOut, User, Heart, Compass } from "lucide-react";
+import NotificationBell from "@/components/NotificationBell";
+import OnboardingDialog from "@/components/OnboardingDialog";
 
 const Header = () => {
   const { user, signOut } = useAuth();
@@ -39,6 +41,7 @@ const Header = () => {
         <nav className="flex items-center gap-3">
           {user ? (
             <>
+              <NotificationBell />
               <Link to="/trips/new">
                 <Button size="sm" className="gap-1.5 bg-accent text-accent-foreground hover:bg-accent/90 shadow-md shadow-accent/30">
                   <Plus className="h-4 w-4" />
@@ -80,6 +83,7 @@ const Header = () => {
           )}
         </nav>
       </div>
+      {user && <OnboardingDialog />}
     </header>
   );
 };

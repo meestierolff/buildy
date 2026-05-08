@@ -1,7 +1,10 @@
+import { useState } from "react";
 import { Heart, MessageCircle, Pencil, Trash2, Hammer, Home, PaintRoller, Wrench, CheckCircle2, Sparkles, Sofa, Ruler } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { nl } from "date-fns/locale";
+import ReactionBar from "@/components/ReactionBar";
+import CommentsSheet from "@/components/CommentsSheet";
 
 interface StepMedia {
   id: string;
@@ -44,6 +47,9 @@ const phaseIcon = (phase: string | null) => {
 };
 
 const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) => {
+  const [openComments, setOpenComments] = useState<string | null>(null);
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const cc = (id: string, base: number) => commentCounts[id] ?? base;
   return (
     <div className="relative">
       {/* connector line */}
@@ -118,24 +124,38 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) 
                       </p>
                     )}
 
-                    <div className="flex items-center gap-4 mt-3 pt-2 border-t">
-                      <button
-                        onClick={() => onLike?.(step.id)}
-                        className={`flex items-center gap-1 text-xs transition-colors ${
-                          step.user_liked ? "text-accent" : "text-muted-foreground hover:text-accent"
-                        }`}
-                      >
-                        <Heart className={`h-3.5 w-3.5 ${step.user_liked ? "fill-current" : ""}`} />
-                        {step.like_count}
-                      </button>
-                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <MessageCircle className="h-3.5 w-3.5" />
-                        {step.comment_count}
-                      </span>
+                    <div className="mt-3 pt-2 border-t space-y-2">
+                      <ReactionBar stepId={step.id} />
+                      <div className="flex items-center gap-4">
+                        <button
+                          onClick={() => onLike?.(step.id)}
+                          className={`flex items-center gap-1 text-xs transition-colors ${
+                            step.user_liked ? "text-accent" : "text-muted-foreground hover:text-accent"
+                          }`}
+                        >
+                          <Heart className={`h-3.5 w-3.5 ${step.user_liked ? "fill-current" : ""}`} />
+                          {step.like_count}
+                        </button>
+                        <button
+                          onClick={() => setOpenComments(step.id)}
+                          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-accent transition-colors"
+                        >
+                          <MessageCircle className="h-3.5 w-3.5" />
+                          {cc(step.id, step.comment_count)}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
+              <CommentsSheet
+                stepId={step.id}
+                open={openComments === step.id}
+                onOpenChange={(o) => setOpenComments(o ? step.id : null)}
+                onCountChange={(d) =>
+                  setCommentCounts((p) => ({ ...p, [step.id]: cc(step.id, step.comment_count) + d }))
+                }
+              />
             </div>
           );
         })}
