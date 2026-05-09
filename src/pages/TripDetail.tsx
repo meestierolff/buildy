@@ -241,6 +241,7 @@ const TripDetail = () => {
             <TabsList className="mb-2">
               <TabsTrigger value="timeline" className="gap-1.5"><LayoutGrid className="h-3.5 w-3.5" /> Tijdlijn</TabsTrigger>
               <TabsTrigger value="floorplan" className="gap-1.5"><MapIcon className="h-3.5 w-3.5" /> Plattegrond</TabsTrigger>
+              <TabsTrigger value="photos" className="gap-1.5"><Images className="h-3.5 w-3.5" /> Alle foto's</TabsTrigger>
             </TabsList>
             <TabsContent value="timeline">
               {steps.length === 0 ? (
@@ -260,14 +261,21 @@ const TripDetail = () => {
               )}
             </TabsContent>
             <TabsContent value="floorplan">
-              <FloorplanView
-                tripId={trip.id}
-                userId={trip.user_id}
-                isOwner={!!isOwner}
-                floorplanUrl={trip.floorplan_url}
-                steps={steps}
-                onChanged={fetchTrip}
-              />
+              {trip.floorplan_url && steps.some((s) => s.floorplan_x != null) ? (
+                <FloorplanScrollView floorplanUrl={trip.floorplan_url} steps={steps} />
+              ) : (
+                <FloorplanView
+                  tripId={trip.id}
+                  userId={trip.user_id}
+                  isOwner={!!isOwner}
+                  floorplanUrl={trip.floorplan_url}
+                  steps={steps}
+                  onChanged={fetchTrip}
+                />
+              )}
+            </TabsContent>
+            <TabsContent value="photos">
+              <AllPhotosTab tripId={trip.id} steps={steps} />
             </TabsContent>
           </Tabs>
         </div>
