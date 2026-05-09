@@ -1,117 +1,116 @@
+## Buildy verbeterplan — feedbackronde
 
-
-## Buildy — Van TripLog naar Verbouwingslogboek
-
-We pivoteren TripLog naar **Buildy**: een logboek waarin mensen hun verbouwing stap-voor-stap vastleggen met foto's, verhalen en een visuele tijdlijn op een blauwdruk-stijl achtergrond. Aan het einde drukken ze een fotoboek af als herinnering.
+Op basis van je aantekeningen splitsen we het werk in **5 thema's**: voortgang, foto-overzicht, fotoboek-editor, bug-fixes rond fases & updates, en een nieuw plattegrond-scroll design. Branding (naam, ondertitel) parkeren we tot je de Google Drive-opties hebt gedeeld.
 
 ---
 
-### 1. Rebrand: TripLog → Buildy
+### 1. Voortgangspercentage — automatisch of handmatig
 
-- Nieuwe naam, logo en tagline ("Verbeter je huis, stap voor stap") in `Header.tsx`, `Auth.tsx`, `index.html`
-- Nieuw kleurenpalet geïnspireerd op de blauwdruk-screenshot:
-  - **Primary**: Diep blauwdruk-blauw (`hsl(215 65% 20%)`)
-  - **Accent**: Warm oranje voor voortgang/CTA's (`hsl(22 90% 55%)`)
-  - **Background**: Lichte blauwdruk-tint met subtiel grid-patroon (SVG)
-- Typografie behouden: DM Sans + Playfair Display
+Logica per project:
 
-### 2. Datamodel-aanpassingen (terminologie + nieuwe features)
+- **Geen einddatum ingevuld** → handmatig instelbaar via een slider (0–100%) op de projectpagina, zichtbaar voor de eigenaar.
+- **Einddatum ingevuld** → automatisch berekend op basis van tijd:
+  `((vandaag − startdatum) / (einddatum − startdatum)) × 100`, geclampt op 0–100.
+- Eigenaar kan altijd schakelen tussen "automatisch op tijd" en "handmatig" via een toggle naast de progressbar.
 
-We hergebruiken de bestaande tabellen maar geven ze een verbouwings-context. Geen breuk met bestaande data — alleen kolommen toevoegen en termen herlabelen in de UI.
+Technisch: kolom `progress_mode text default 'manual'` op `trips` (`'manual' | 'auto'`). `progress_percentage` blijft de bron-of-truth voor `manual`; bij `auto` rekent de frontend live uit op basis van datums.
 
-**Migraties:**
-- `trips` → in UI "Projecten" (verbouwingen). Nieuwe kolommen:
-  - `project_type` (text, bv. "Volledige renovatie", "Keuken", "Badkamer")
-  - `progress_percentage` (int, 0-100)
-  - `address` (text, optioneel)
-- `steps` → in UI "Stappen" / "Mijlpalen". Nieuwe kolommen:
-  - `phase` (text, bv. "Sloop", "Ruwbouw", "Afwerking")
-  - `is_milestone` (boolean) — voor de grote nodes op de blauwdruk
-- Nieuwe tabel: **`favorites`** (user_id, project_id, created_at) — voor het volgen/favorieten markeren van projecten van anderen, met RLS
+---
 
-### 3. Blauwdruk-tijdlijn (kernscherm)
+### 2. Foto-overzicht per project
 
-Nieuwe component `BlueprintTimeline.tsx` ter vervanging van de huidige `StepTimeline` op de projectpagina:
+Nieuwe **"Alle foto's"-tab** naast Tijdlijn / Plattegrond op de projectpagina:
+
+- Grid van álle uploads van het project (uit `step_media`, gesorteerd op datum desc).
+- Klik opent lightbox met swipe + caption (titel van de stap + datum).
+- "Spring naar update"-knop in lightbox.
+- Filter-chip per fase bovenaan.
+
+Daarnaast: huidige foto-thumbnails in stap-cards worden klikbaar → opent dezelfde lightbox.
+
+---
+
+### 3. Fotoboek los kunnen bewerken (Polarsteps-stijl)
+
+Nu spiegelt het fotoboek 1-op-1 de tijdlijn. We voegen een **fotoboek-editlaag** toe zonder de tijdlijn te raken:
+
+- Nieuwe tabel `photobook_settings` (per trip): `cover_title`, `cover_subtitle`, `chapter_overrides jsonb`.
+- Nieuwe tabel `photobook_excluded_media` (trip_id, media_id) → foto's verbergen alleen uit het boek.
+- Nieuwe tabel `photobook_excluded_steps` (trip_id, step_id) → updates uit boek laten.
+- In `Photobook.tsx` een **"Bewerk fotoboek"-modus**:
+  - Per foto een oog-icoontje (verberg in boek).
+  - Per hoofdstuk: titel overschrijven.
+  - Per update: hele update uit boek halen.
+  - Cover apart bewerkbaar (titel + ondertitel + cover-foto kiezen uit alle uploads).
+- Tijdlijn in de app blijft volledig intact.
+
+---
+
+### 4. Bugs & UX rond fases en updates
+
+**4a. Dropdown-menu fase werkt niet bij "nieuwe update" (alleen via typen)**
+- Oorzaak: Select binnen Dialog met z-index/portal-conflict. Fix: `SelectContent` expliciet met `position="popper"` en hogere `z-index` dan dialog (`z-[1100]`).
+
+**4b. Fase-opties uitbreiden + custom toevoegen**
+- Nieuwe defaultlijst: `Aankoop, Voorbereiding/Design, Sloop, Ruwbouw, Afbouw, Inrichting`.
+- Onderaan het dropdown een "+ Eigen fase toevoegen" optie → inline tekstveld.
+- Custom fases per project opslaan in `trips.custom_phases text[]`.
+- In overzicht: elke fase krijgt een kleur-token (lichte tint van primary/accent) → zichtbaar als linker-balk op stap-cards en als chip-achtergrond.
+
+**4c. Update bewerken — foto's toevoegen/verwijderen werkt niet**
+- `EditStepDialog` uitbreiden met dezelfde upload-component als `AddStepDialog` + lijst van bestaande media met verwijder-knop (delete uit `step_media` + storage).
+
+**4d. Fotoboek crasht/breekt bij veel foto's**
+- Lazy loading per pagina + `react-window`-style virtualisatie of pagina-lazy-render (alleen huidige + buur-pagina renderen).
+- Image-resize naar maxWidth 1600px in render (CSS), originelen blijven intact.
+
+---
+
+### 5. Nieuw design: plattegrond-bovenin met gekoppelde scroll
+
+Geïnspireerd op de Polarsteps wereldkaart-interactie:
 
 ```text
-   ┌─ START VERBOUWING ──┐
-   │  [icoon] Apr 5      │
-   └──────────┬──────────┘
-              │ (oranje connector-lijn)
-   ┌──────────┴──────────┐
-   │ [foto] [foto] [foto]│  ← stap-cards met foto-grid
-   │ SLOPEN BEGANE GROND │
-   └──────────┬──────────┘
-              ●  ← mijlpaal-bolletje
-              │
-   ┌──────────┴──────────┐
-   │ Stop 4: BADKAMER... │
-   └─────────────────────┘
+┌─────────────────────────────────┐
+│  [ PLATTEGROND – sticky top ]   │ ← 40% schermhoogte
+│   • pin update 3 (highlight)    │
+└─────────────────────────────────┘
+│  Update 3 — Sloop keuken        │ ← in viewport
+│  [foto's] [verhaal]             │
+├─────────────────────────────────┤
+│  Update 4 — Ruwbouw badkamer    │
+└─────────────────────────────────┘
 ```
 
-- Achtergrond: SVG blauwdruk-grid (lijnen + maatvoering-tekst als decoratie)
-- Connectoren tussen stappen in oranje
-- Mijlpalen krijgen ronde icoon-badges (huis, hamer, kraan, verf-roller via lucide-react)
-- Voortgangsbalk bovenaan project ("45% Complete")
-
-### 4. Bestaande features herlabelen
-
-- "Trip" → "Project" / "Verbouwing"
-- "Step" → "Stap" / "Update"
-- "Travel hours" → vervangen door "Fase" (sloop/ruwbouw/afwerking) en datum
-- Kaart-pagina (`TripMap`) wordt **optioneel verborgen**: voor één locatie (één huis) niet nuttig. We tonen alleen het adres + kleine statische map op de project-header. Kunnen we later eventueel weer aanzetten.
-
-### 5. Nieuwe feature: Volgen & Favorieten
-
-- "Volg dit project" knop op publieke project-pagina's (hartje-icoon)
-- Nieuwe pagina `/favorieten` — overzicht van projecten die je volgt
-- Tab op de homepage: "Ontdekken" (publieke projecten) vs "Mijn projecten" vs "Gevolgd"
-- Notificatie-badge op header bij nieuwe stappen in gevolgde projecten (telling, geen realtime push voor nu)
-
-### 6. Fotoboek aanpassen aan verbouwings-context
-
-- Cover: projectnaam + adres + start/eind-datum + "Voor → Na" framing
-- Hoofdstukken per **fase** (Sloop, Ruwbouw, Afwerking) i.p.v. losse dagen
-- "Voor & Na"-spread als laatste pagina (als gebruiker beide foto's heeft)
-- Stijl: cleane, magazine-achtige layout — past al goed bij huidige `Photobook.tsx`, alleen koppen en hoofdstuk-indeling herschrijven
-
-### 7. UX-verbeteringen meegenomen
-
-- Snelkoppeling "Foto toevoegen" knop direct op project-detail (bulk-upload met later splitsen in stappen)
-- Project-card op homepage toont: cover, voortgangsbalk, aantal stappen, aantal volgers
-- Lege staat bij nieuw project: "Voeg je eerste 'voor'-foto toe"
+- Plattegrond plakt bovenaan tijdens scrollen (sticky / 40vh).
+- IntersectionObserver op elke update-card → bijbehorende pin op de plattegrond licht op + plattegrond pant naar die pin.
+- Andersom: klik op een pin scrollt naar de update.
+- Werkt voor projecten **mét** plattegrond. Zonder plattegrond → fallback naar huidige BlueprintTimeline.
+- Geen kaart-view nodig (één locatie), dus dit vervangt de map-tab.
 
 ---
 
-### Technische details
+### Technische samenvatting
 
-**Bestanden om te maken:**
-- `src/components/BlueprintTimeline.tsx` — nieuwe tijdlijn met blauwdruk-achtergrond
-- `src/components/BlueprintBackground.tsx` — herbruikbare SVG grid (memoized)
-- `src/components/ProgressBar.tsx` — oranje voortgangsbalk
-- `src/components/FollowButton.tsx` — favoriet/volg-toggle
-- `src/pages/Discover.tsx` — publieke projecten ontdekken
-- `src/pages/Favorites.tsx` — gevolgde projecten
+**Nieuwe migraties:**
+- `ALTER TABLE trips ADD COLUMN progress_mode text DEFAULT 'manual'`
+- `ALTER TABLE trips ADD COLUMN custom_phases text[] DEFAULT '{}'`
+- `CREATE TABLE photobook_settings (trip_id uuid PK, cover_title text, cover_subtitle text, cover_media_id uuid, chapter_overrides jsonb)` + RLS (eigenaar-only schrijven, leesbaar als trip leesbaar is)
+- `CREATE TABLE photobook_excluded_media (trip_id uuid, media_id uuid, PK(trip_id, media_id))` + RLS
+- `CREATE TABLE photobook_excluded_steps (trip_id uuid, step_id uuid, PK(trip_id, step_id))` + RLS
 
-**Bestanden om te wijzigen:**
-- `index.html` — title naar "Buildy"
-- `src/index.css` — nieuw blauw/oranje palet
-- `tailwind.config.ts` — kleuren-tokens
-- `src/components/Header.tsx` — Buildy-branding + nav (Ontdekken, Mijn projecten, Gevolgd)
-- `src/pages/Index.tsx` — drie tabs, projectkaarten met voortgang
-- `src/pages/TripDetail.tsx` → hernoemen mentaal naar "ProjectDetail", BlueprintTimeline gebruiken
-- `src/pages/NewTrip.tsx` — formulier-velden (projecttype, adres)
-- `src/components/AddStepDialog.tsx` / `EditStepDialog.tsx` — fase-selector i.p.v. travel hours
-- `src/pages/Photobook.tsx` — hoofdstuk-indeling per fase
-- `src/App.tsx` — nieuwe routes
+**Nieuwe componenten:**
+- `ProgressControl.tsx` (auto/manual toggle + slider)
+- `AllPhotosTab.tsx` + `MediaLightbox.tsx`
+- `PhotobookEditorBar.tsx` + `PhotobookCoverEditor.tsx`
+- `FloorplanScrollView.tsx` (sticky plattegrond + observer-koppeling)
+- `PhaseSelect.tsx` (gedeelde component met custom-add + z-index fix)
 
-**Database-migratie:**
-- `ALTER TABLE trips ADD COLUMN project_type text, progress_percentage int DEFAULT 0, address text`
-- `ALTER TABLE steps ADD COLUMN phase text, is_milestone boolean DEFAULT false`
-- `CREATE TABLE favorites` met RLS (eigen favorieten lezen/schrijven, andermans niet zichtbaar)
+**Te wijzigen:**
+- `AddStepDialog.tsx`, `EditStepDialog.tsx` — nieuwe `PhaseSelect`, media-beheer in edit
+- `TripDetail.tsx` — nieuwe tab "Alle foto's", FloorplanScrollView, ProgressControl
+- `Photobook.tsx` — editor-modus, virtualisatie
+- `index.css` / `tailwind.config.ts` — kleur-tokens per fase
 
-**Behouden zoals het is:**
-- Auth-flow, profiles, step_media, likes, comments — allemaal intact
-- Storage bucket `trip-media` (interne naam mag, in UI tonen we niets)
-- Bestaande projecten van gebruikers blijven werken (nieuwe kolommen krijgen defaults)
-
+**Geparkeerd tot je input:**
+- Naam, ondertitel/slogan en blauwdruk-achtergrond design (wachten op je Google Drive-opties).

@@ -4,15 +4,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import BlueprintTimeline from "@/components/BlueprintTimeline";
 import BlueprintBackground from "@/components/BlueprintBackground";
-import ProgressBar from "@/components/ProgressBar";
+import ProgressControl from "@/components/ProgressControl";
 import FollowButton from "@/components/FollowButton";
 import AddStepDialog from "@/components/AddStepDialog";
 import EditStepDialog from "@/components/EditStepDialog";
 import ProjectStats from "@/components/ProjectStats";
 import FloorplanView from "@/components/FloorplanView";
+import FloorplanScrollView from "@/components/FloorplanScrollView";
+import AllPhotosTab from "@/components/AllPhotosTab";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Calendar, MapPin, Plus, BookOpen, Share2, Hammer, LayoutGrid, Map as MapIcon } from "lucide-react";
+import { MapPin, Plus, BookOpen, Share2, Hammer, LayoutGrid, Map as MapIcon, Images } from "lucide-react";
 import { differenceInDays } from "date-fns";
 import { toast } from "sonner";
 import {
@@ -218,7 +220,15 @@ const TripDetail = () => {
           />
 
           <div className="mt-4 max-w-md">
-            <ProgressBar value={trip.progress_percentage ?? 0} />
+            <ProgressControl
+              tripId={trip.id}
+              isOwner={!!isOwner}
+              startDate={trip.start_date}
+              endDate={trip.end_date}
+              progressMode={trip.progress_mode}
+              progressPercentage={trip.progress_percentage}
+              onChanged={fetchTrip}
+            />
           </div>
         </div>
       </section>
@@ -231,6 +241,7 @@ const TripDetail = () => {
             <TabsList className="mb-2">
               <TabsTrigger value="timeline" className="gap-1.5"><LayoutGrid className="h-3.5 w-3.5" /> Tijdlijn</TabsTrigger>
               <TabsTrigger value="floorplan" className="gap-1.5"><MapIcon className="h-3.5 w-3.5" /> Plattegrond</TabsTrigger>
+              <TabsTrigger value="photos" className="gap-1.5"><Images className="h-3.5 w-3.5" /> Alle foto's</TabsTrigger>
             </TabsList>
             <TabsContent value="timeline">
               {steps.length === 0 ? (
@@ -250,14 +261,26 @@ const TripDetail = () => {
               )}
             </TabsContent>
             <TabsContent value="floorplan">
-              <FloorplanView
-                tripId={trip.id}
-                userId={trip.user_id}
-                isOwner={!!isOwner}
-                floorplanUrl={trip.floorplan_url}
-                steps={steps}
-                onChanged={fetchTrip}
-              />
+              {isOwner ? (
+                <FloorplanView
+                  tripId={trip.id}
+                  userId={trip.user_id}
+                  isOwner={!!isOwner}
+                  floorplanUrl={trip.floorplan_url}
+                  steps={steps}
+                  onChanged={fetchTrip}
+                />
+              ) : trip.floorplan_url ? (
+                <FloorplanScrollView floorplanUrl={trip.floorplan_url} steps={steps} />
+              ) : (
+                <div className="py-16 text-center text-muted-foreground">
+                  <MapIcon className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                  <p>Nog geen plattegrond beschikbaar.</p>
+                </div>
+              )}
+            </TabsContent>
+            <TabsContent value="photos">
+              <AllPhotosTab tripId={trip.id} steps={steps} />
             </TabsContent>
           </Tabs>
         </div>
