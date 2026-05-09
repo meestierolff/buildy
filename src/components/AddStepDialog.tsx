@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import PhaseSelect, { DEFAULT_PHASES } from "./PhaseSelect";
 import { toast } from "sonner";
 import { Upload, X } from "lucide-react";
 
@@ -17,15 +17,8 @@ interface AddStepDialogProps {
   onAdded: () => void;
 }
 
-export const PHASES = [
-  "Voorbereiding",
-  "Sloop",
-  "Ruwbouw",
-  "Installatie",
-  "Afwerking",
-  "Inrichting",
-  "Oplevering",
-];
+// Re-export so existing imports keep working
+export const PHASES = DEFAULT_PHASES;
 
 const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
   const { user } = useAuth();
@@ -36,6 +29,19 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
   const [description, setDescription] = useState("");
   const [stepDate, setStepDate] = useState(new Date().toISOString().split("T")[0]);
   const [files, setFiles] = useState<File[]>([]);
+  const [customPhases, setCustomPhases] = useState<string[]>([]);
+
+  useEffect(() => {
+    supabase.from("trips").select("custom_phases").eq("id", tripId).single().then(({ data }) => {
+      setCustomPhases((data?.custom_phases as string[]) || []);
+    });
+  }, [tripId]);
+
+  const addCustomPhase = async (name: string) => {
+    const next = Array.from(new Set([...customPhases, name]));
+    setCustomPhases(next);
+    await supabase.from("trips").update({ custom_phases: next }).eq("id", tripId);
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -113,16 +119,7 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Fase</Label>
-              <Select value={phase} onValueChange={setPhase}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Kies fase" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PHASES.map((p) => (
-                    <SelectItem key={p} value={p}>{p}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <PhaseSelect value={phase} onChange={setPhase} customPhases={customPhases} onAddCustom={addCustomPhase} />
             </div>
             <div>
               <Label>Datum *</Label>
