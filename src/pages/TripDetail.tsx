@@ -220,7 +220,15 @@ const TripDetail = () => {
           />
 
           <div className="mt-4 max-w-md">
-            <ProgressBar value={trip.progress_percentage ?? 0} />
+            <ProgressControl
+              tripId={trip.id}
+              isOwner={!!isOwner}
+              startDate={trip.start_date}
+              endDate={trip.end_date}
+              progressMode={trip.progress_mode}
+              progressPercentage={trip.progress_percentage}
+              onChanged={fetchTrip}
+            />
           </div>
         </div>
       </section>
