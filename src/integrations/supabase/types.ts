@@ -159,6 +159,69 @@ export type Database = {
         }
         Relationships: []
       }
+      photobook_excluded_media: {
+        Row: {
+          created_at: string
+          media_id: string
+          trip_id: string
+        }
+        Insert: {
+          created_at?: string
+          media_id: string
+          trip_id: string
+        }
+        Update: {
+          created_at?: string
+          media_id?: string
+          trip_id?: string
+        }
+        Relationships: []
+      }
+      photobook_excluded_steps: {
+        Row: {
+          created_at: string
+          step_id: string
+          trip_id: string
+        }
+        Insert: {
+          created_at?: string
+          step_id: string
+          trip_id: string
+        }
+        Update: {
+          created_at?: string
+          step_id?: string
+          trip_id?: string
+        }
+        Relationships: []
+      }
+      photobook_settings: {
+        Row: {
+          chapter_overrides: Json
+          cover_media_id: string | null
+          cover_subtitle: string | null
+          cover_title: string | null
+          trip_id: string
+          updated_at: string
+        }
+        Insert: {
+          chapter_overrides?: Json
+          cover_media_id?: string | null
+          cover_subtitle?: string | null
+          cover_title?: string | null
+          trip_id: string
+          updated_at?: string
+        }
+        Update: {
+          chapter_overrides?: Json
+          cover_media_id?: string | null
+          cover_subtitle?: string | null
+          cover_title?: string | null
+          trip_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -334,11 +397,13 @@ export type Database = {
           countries: string[] | null
           cover_image_url: string | null
           created_at: string
+          custom_phases: string[]
           description: string | null
           end_date: string | null
           floorplan_url: string | null
           id: string
           is_public: boolean
+          progress_mode: string
           progress_percentage: number
           project_type: string | null
           start_date: string | null
@@ -351,11 +416,13 @@ export type Database = {
           countries?: string[] | null
           cover_image_url?: string | null
           created_at?: string
+          custom_phases?: string[]
           description?: string | null
           end_date?: string | null
           floorplan_url?: string | null
           id?: string
           is_public?: boolean
+          progress_mode?: string
           progress_percentage?: number
           project_type?: string | null
           start_date?: string | null
@@ -368,11 +435,13 @@ export type Database = {
           countries?: string[] | null
           cover_image_url?: string | null
           created_at?: string
+          custom_phases?: string[]
           description?: string | null
           end_date?: string | null
           floorplan_url?: string | null
           id?: string
           is_public?: boolean
+          progress_mode?: string
           progress_percentage?: number
           project_type?: string | null
           start_date?: string | null
