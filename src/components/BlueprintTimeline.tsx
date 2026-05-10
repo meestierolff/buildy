@@ -96,7 +96,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) 
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           {step.phase && (
-                            <span className="text-[10px] font-bold uppercase tracking-wider bg-accent/15 text-accent px-2 py-0.5 rounded-full">
+                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${phaseColor(step.phase)}`}>
                               {step.phase}
                             </span>
                           )}
