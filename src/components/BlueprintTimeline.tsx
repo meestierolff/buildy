@@ -123,13 +123,23 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) 
                     {step.step_media.length > 0 && (
                       <div className="grid grid-cols-2 gap-1 rounded-lg overflow-hidden mb-3">
                         {step.step_media.slice(0, 4).map((m, mi) => (
-                          <div key={m.id} className={`relative ${step.step_media.length === 1 ? "col-span-2" : ""} ${mi === 0 && step.step_media.length === 3 ? "row-span-2" : ""}`}>
+                          <button
+                            type="button"
+                            key={m.id}
+                            onClick={() => openLightboxForStep(step, mi)}
+                            className={`relative group ${step.step_media.length === 1 ? "col-span-2" : ""} ${mi === 0 && step.step_media.length === 3 ? "row-span-2" : ""}`}
+                          >
                             {m.media_type === "video" ? (
                               <video src={m.media_url} className="w-full h-28 object-cover" />
                             ) : (
-                              <img src={m.media_url} alt="" className="w-full h-28 object-cover" loading="lazy" />
+                              <img src={m.media_url} alt="" className="w-full h-28 object-cover group-hover:opacity-90 transition-opacity" loading="lazy" />
                             )}
-                          </div>
+                            {mi === 3 && step.step_media.length > 4 && (
+                              <div className="absolute inset-0 bg-black/60 text-white text-sm font-semibold flex items-center justify-center">
+                                +{step.step_media.length - 4}
+                              </div>
+                            )}
+                          </button>
                         ))}
                       </div>
                     )}
