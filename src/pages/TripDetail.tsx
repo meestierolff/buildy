@@ -37,6 +37,7 @@ const TripDetail = () => {
   const [showAddStep, setShowAddStep] = useState(false);
   const [editingStep, setEditingStep] = useState<any>(null);
   const [deletingStepId, setDeletingStepId] = useState<string | null>(null);
+  const [floorMode, setFloorMode] = useState<"view" | "manage">("view");
 
   const isOwner = user && trip?.user_id === user.id;
 
