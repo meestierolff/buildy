@@ -186,6 +186,14 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) 
           );
         })}
       </div>
+      {lightbox && (
+        <MediaLightbox
+          items={lightbox.items}
+          index={lightbox.idx}
+          onIndex={(i) => setLightbox({ ...lightbox, idx: i })}
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </div>
   );
 };
