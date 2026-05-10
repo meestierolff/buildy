@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import PhaseSelect from "./PhaseSelect";
 import { toast } from "sonner";
-import { Upload, X, Trash2 } from "lucide-react";
+import { Upload, X, Trash2, ArrowLeft, ArrowRight, MapPin, Hammer } from "lucide-react";
 
 interface EditStepDialogProps {
   step: any;
@@ -25,20 +25,41 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
   const [isMilestone, setIsMilestone] = useState<boolean>(!!step.is_milestone);
   const [description, setDescription] = useState(step.description || "");
   const [stepDate, setStepDate] = useState(step.step_date);
-  const [existingMedia, setExistingMedia] = useState<any[]>(step.step_media || []);
+  const [existingMedia, setExistingMedia] = useState<any[]>(
+    [...(step.step_media || [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+  );
   const [newFiles, setNewFiles] = useState<File[]>([]);
   const [customPhases, setCustomPhases] = useState<string[]>([]);
+  const [floorplanUrl, setFloorplanUrl] = useState<string | null>(null);
+  const [pinX, setPinX] = useState<number | null>(step.floorplan_x);
+  const [pinY, setPinY] = useState<number | null>(step.floorplan_y);
 
   useEffect(() => {
-    supabase.from("trips").select("custom_phases").eq("id", step.trip_id).single().then(({ data }) => {
-      setCustomPhases((data?.custom_phases as string[]) || []);
-    });
+    supabase
+      .from("trips")
+      .select("custom_phases, floorplan_url")
+      .eq("id", step.trip_id)
+      .single()
+      .then(({ data }) => {
+        setCustomPhases((data?.custom_phases as string[]) || []);
+        setFloorplanUrl((data?.floorplan_url as string) || null);
+      });
   }, [step.trip_id]);
 
   const addCustomPhase = async (name: string) => {
     const next = Array.from(new Set([...customPhases, name]));
     setCustomPhases(next);
     await supabase.from("trips").update({ custom_phases: next }).eq("id", step.trip_id);
+  };
+
+  const moveMedia = (index: number, dir: -1 | 1) => {
+    setExistingMedia((prev) => {
+      const next = [...prev];
+      const target = index + dir;
+      if (target < 0 || target >= next.length) return prev;
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
   };
 
   const removeExisting = async (m: any) => {
@@ -48,7 +69,6 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
       toast.error("Kon niet verwijderen");
       return;
     }
-    // best-effort storage cleanup
     try {
       const url = new URL(m.media_url);
       const idx = url.pathname.indexOf("/trip-media/");
@@ -64,6 +84,12 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
     if (e.target.files) setNewFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
   };
 
+  const handlePinClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setPinX(((e.clientX - rect.left) / rect.width) * 100);
+    setPinY(((e.clientY - rect.top) / rect.height) * 100);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -77,6 +103,8 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
         is_milestone: isMilestone,
         description: description || null,
         step_date: stepDate,
+        floorplan_x: pinX,
+        floorplan_y: pinY,
       })
       .eq("id", step.id);
 
@@ -85,6 +113,15 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
       setLoading(false);
       return;
     }
+
+    // Persist reorder of existing media
+    await Promise.all(
+      existingMedia.map((m, i) =>
+        (m.sort_order ?? 0) !== i
+          ? supabase.from("step_media").update({ sort_order: i }).eq("id", m.id)
+          : Promise.resolve()
+      )
+    );
 
     const baseOrder = existingMedia.length;
     for (let i = 0; i < newFiles.length; i++) {
@@ -146,7 +183,7 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
               <p className="text-xs text-muted-foreground mt-1">Geen foto's</p>
             ) : (
               <div className="flex flex-wrap gap-2 mt-1">
-                {existingMedia.map((m) => (
+                {existingMedia.map((m, i) => (
                   <div key={m.id} className="relative group">
                     <div className="w-20 h-20 rounded-md bg-muted overflow-hidden">
                       {m.media_type === "video" ? (
@@ -154,6 +191,27 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
                       ) : (
                         <img src={m.media_url} alt="" className="w-full h-full object-cover" />
                       )}
+                    </div>
+                    <div className="absolute inset-x-0 bottom-0 flex justify-between bg-black/50 px-1">
+                      <button
+                        type="button"
+                        onClick={() => moveMedia(i, -1)}
+                        disabled={i === 0}
+                        className="text-white disabled:opacity-30 p-0.5"
+                        aria-label="Eerder"
+                      >
+                        <ArrowLeft className="h-3 w-3" />
+                      </button>
+                      <span className="text-[10px] text-white">{i + 1}</span>
+                      <button
+                        type="button"
+                        onClick={() => moveMedia(i, 1)}
+                        disabled={i === existingMedia.length - 1}
+                        className="text-white disabled:opacity-30 p-0.5"
+                        aria-label="Later"
+                      >
+                        <ArrowRight className="h-3 w-3" />
+                      </button>
                     </div>
                     <button
                       type="button"
@@ -198,6 +256,37 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
               </div>
             )}
           </div>
+
+          {floorplanUrl && (
+            <div>
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" /> Plek op plattegrond</Label>
+                {pinX != null && (
+                  <button
+                    type="button"
+                    onClick={() => { setPinX(null); setPinY(null); }}
+                    className="text-xs text-muted-foreground hover:text-destructive"
+                  >
+                    Pin verwijderen
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1 mb-2">Klik op de plattegrond om de pin te plaatsen of te verplaatsen.</p>
+              <div className="relative w-full bg-muted rounded-lg overflow-hidden border-2 border-border cursor-crosshair" onClick={handlePinClick}>
+                <img src={floorplanUrl} alt="Plattegrond" className="w-full h-auto block select-none" />
+                {pinX != null && pinY != null && (
+                  <div
+                    className="absolute -translate-x-1/2 -translate-y-full pointer-events-none"
+                    style={{ left: `${pinX}%`, top: `${pinY}%` }}
+                  >
+                    <div className="bg-accent text-accent-foreground rounded-full p-1.5 shadow-lg">
+                      <Hammer className="h-3.5 w-3.5" />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <Button type="submit" className="w-full bg-accent text-accent-foreground hover:bg-accent/90" disabled={loading}>
             {loading ? "Opslaan..." : "Opslaan"}
