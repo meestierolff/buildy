@@ -37,6 +37,7 @@ const TripDetail = () => {
   const [showAddStep, setShowAddStep] = useState(false);
   const [editingStep, setEditingStep] = useState<any>(null);
   const [deletingStepId, setDeletingStepId] = useState<string | null>(null);
+  const [floorMode, setFloorMode] = useState<"view" | "manage">("view");
 
   const isOwner = user && trip?.user_id === user.id;
 
@@ -261,7 +262,35 @@ const TripDetail = () => {
               )}
             </TabsContent>
             <TabsContent value="floorplan">
-              {isOwner ? (
+              {!trip.floorplan_url && !isOwner && (
+                <div className="py-16 text-center text-muted-foreground">
+                  <MapIcon className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                  <p>Nog geen plattegrond beschikbaar.</p>
+                </div>
+              )}
+              {trip.floorplan_url && (
+                <>
+                  {isOwner && (
+                    <div className="flex justify-end gap-1 pt-3">
+                      <Button size="sm" variant={floorMode === "view" ? "default" : "outline"} onClick={() => setFloorMode("view")}>Bekijken</Button>
+                      <Button size="sm" variant={floorMode === "manage" ? "default" : "outline"} onClick={() => setFloorMode("manage")}>Pinnen beheren</Button>
+                    </div>
+                  )}
+                  {(!isOwner || floorMode === "view") ? (
+                    <FloorplanScrollView floorplanUrl={trip.floorplan_url} steps={steps} />
+                  ) : (
+                    <FloorplanView
+                      tripId={trip.id}
+                      userId={trip.user_id}
+                      isOwner={!!isOwner}
+                      floorplanUrl={trip.floorplan_url}
+                      steps={steps}
+                      onChanged={fetchTrip}
+                    />
+                  )}
+                </>
+              )}
+              {!trip.floorplan_url && isOwner && (
                 <FloorplanView
                   tripId={trip.id}
                   userId={trip.user_id}
@@ -270,13 +299,6 @@ const TripDetail = () => {
                   steps={steps}
                   onChanged={fetchTrip}
                 />
-              ) : trip.floorplan_url ? (
-                <FloorplanScrollView floorplanUrl={trip.floorplan_url} steps={steps} />
-              ) : (
-                <div className="py-16 text-center text-muted-foreground">
-                  <MapIcon className="h-10 w-10 mx-auto mb-2 opacity-40" />
-                  <p>Nog geen plattegrond beschikbaar.</p>
-                </div>
               )}
             </TabsContent>
             <TabsContent value="photos">

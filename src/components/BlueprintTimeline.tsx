@@ -5,6 +5,8 @@ import { format } from "date-fns";
 import { nl } from "date-fns/locale";
 import ReactionBar from "@/components/ReactionBar";
 import CommentsSheet from "@/components/CommentsSheet";
+import MediaLightbox, { LightboxItem } from "@/components/MediaLightbox";
+import { phaseColor } from "@/components/PhaseSelect";
 
 interface StepMedia {
   id: string;
@@ -49,7 +51,21 @@ const phaseIcon = (phase: string | null) => {
 const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) => {
   const [openComments, setOpenComments] = useState<string | null>(null);
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [lightbox, setLightbox] = useState<{ items: LightboxItem[]; idx: number; tripId?: string } | null>(null);
   const cc = (id: string, base: number) => commentCounts[id] ?? base;
+
+  const openLightboxForStep = (step: Step, mediaIdx: number) => {
+    const items: LightboxItem[] = step.step_media.map((m) => ({
+      id: m.id,
+      url: m.media_url,
+      type: m.media_type,
+      stepId: step.id,
+      stepTitle: step.location_name,
+      stepDate: step.step_date,
+      phase: step.phase,
+    }));
+    setLightbox({ items, idx: mediaIdx });
+  };
   return (
     <div className="relative">
       {/* connector line */}
@@ -80,7 +96,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) 
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           {step.phase && (
-                            <span className="text-[10px] font-bold uppercase tracking-wider bg-accent/15 text-accent px-2 py-0.5 rounded-full">
+                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${phaseColor(step.phase)}`}>
                               {step.phase}
                             </span>
                           )}
@@ -107,13 +123,23 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) 
                     {step.step_media.length > 0 && (
                       <div className="grid grid-cols-2 gap-1 rounded-lg overflow-hidden mb-3">
                         {step.step_media.slice(0, 4).map((m, mi) => (
-                          <div key={m.id} className={`relative ${step.step_media.length === 1 ? "col-span-2" : ""} ${mi === 0 && step.step_media.length === 3 ? "row-span-2" : ""}`}>
+                          <button
+                            type="button"
+                            key={m.id}
+                            onClick={() => openLightboxForStep(step, mi)}
+                            className={`relative group ${step.step_media.length === 1 ? "col-span-2" : ""} ${mi === 0 && step.step_media.length === 3 ? "row-span-2" : ""}`}
+                          >
                             {m.media_type === "video" ? (
                               <video src={m.media_url} className="w-full h-28 object-cover" />
                             ) : (
-                              <img src={m.media_url} alt="" className="w-full h-28 object-cover" loading="lazy" />
+                              <img src={m.media_url} alt="" className="w-full h-28 object-cover group-hover:opacity-90 transition-opacity" loading="lazy" />
                             )}
-                          </div>
+                            {mi === 3 && step.step_media.length > 4 && (
+                              <div className="absolute inset-0 bg-black/60 text-white text-sm font-semibold flex items-center justify-center">
+                                +{step.step_media.length - 4}
+                              </div>
+                            )}
+                          </button>
                         ))}
                       </div>
                     )}
@@ -160,6 +186,14 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) 
           );
         })}
       </div>
+      {lightbox && (
+        <MediaLightbox
+          items={lightbox.items}
+          index={lightbox.idx}
+          onIndex={(i) => setLightbox({ ...lightbox, idx: i })}
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </div>
   );
 };
