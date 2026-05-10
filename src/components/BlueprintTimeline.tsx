@@ -51,7 +51,21 @@ const phaseIcon = (phase: string | null) => {
 const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) => {
   const [openComments, setOpenComments] = useState<string | null>(null);
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [lightbox, setLightbox] = useState<{ items: LightboxItem[]; idx: number; tripId?: string } | null>(null);
   const cc = (id: string, base: number) => commentCounts[id] ?? base;
+
+  const openLightboxForStep = (step: Step, mediaIdx: number) => {
+    const items: LightboxItem[] = step.step_media.map((m) => ({
+      id: m.id,
+      url: m.media_url,
+      type: m.media_type,
+      stepId: step.id,
+      stepTitle: step.location_name,
+      stepDate: step.step_date,
+      phase: step.phase,
+    }));
+    setLightbox({ items, idx: mediaIdx });
+  };
   return (
     <div className="relative">
       {/* connector line */}
