@@ -5,6 +5,8 @@ import { format } from "date-fns";
 import { nl } from "date-fns/locale";
 import ReactionBar from "@/components/ReactionBar";
 import CommentsSheet from "@/components/CommentsSheet";
+import MediaLightbox, { LightboxItem } from "@/components/MediaLightbox";
+import { phaseColor } from "@/components/PhaseSelect";
 
 interface StepMedia {
   id: string;
