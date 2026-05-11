@@ -192,7 +192,18 @@ const TripDetail = () => {
     <div className="min-h-screen">
       {/* Project header */}
       <section className="relative bg-primary text-primary-foreground overflow-hidden">
-        <div className="absolute inset-0 blueprint-grid opacity-15" />
+        {trip.cover_image_url ? (
+          <>
+            <img
+              src={trip.cover_image_url}
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover opacity-40"
+            />
+            <div className="absolute inset-0 bg-gradient-to-b from-primary/70 via-primary/80 to-primary" />
+          </>
+        ) : (
+          <div className="absolute inset-0 blueprint-grid opacity-15" />
+        )}
         <div className="container relative py-10">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
@@ -218,9 +229,14 @@ const TripDetail = () => {
 
             <div className="flex flex-wrap gap-2">
               {isOwner && (
-                <Button size="sm" onClick={() => setShowAddStep(true)} className="gap-1.5 bg-accent text-accent-foreground hover:bg-accent/90">
-                  <Plus className="h-4 w-4" /> Update toevoegen
-                </Button>
+                <>
+                  <Button size="sm" onClick={() => setShowAddStep(true)} className="gap-1.5 bg-accent text-accent-foreground hover:bg-accent/90">
+                    <Plus className="h-4 w-4" /> Update toevoegen
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setShowCoverPicker(true)} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
+                    <ImagePlus className="h-4 w-4" /> Cover
+                  </Button>
+                </>
               )}
               {!isOwner && trip.is_public && (
                 <FollowButton projectId={trip.id} />
@@ -234,6 +250,50 @@ const TripDetail = () => {
                 </Button>
               </Link>
             </div>
+          </div>
+
+          {/* Project description */}
+          <div className="mt-4 max-w-2xl">
+            {editingDesc ? (
+              <div className="space-y-2">
+                <Textarea
+                  value={descDraft}
+                  onChange={(e) => setDescDraft(e.target.value)}
+                  rows={3}
+                  placeholder="Korte beschrijving van je project..."
+                  className="bg-primary-foreground/10 text-primary-foreground placeholder:text-primary-foreground/50 border-primary-foreground/20"
+                />
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={saveDescription} disabled={savingDesc} className="gap-1.5 bg-accent text-accent-foreground hover:bg-accent/90">
+                    <Check className="h-3.5 w-3.5" /> Opslaan
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setEditingDesc(false)} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
+                    <X className="h-3.5 w-3.5" /> Annuleren
+                  </Button>
+                </div>
+              </div>
+            ) : trip.description ? (
+              <div className="group relative">
+                <p className="text-sm md:text-base text-primary-foreground/85 whitespace-pre-line leading-relaxed">
+                  {trip.description}
+                </p>
+                {isOwner && (
+                  <button
+                    onClick={() => { setDescDraft(trip.description ?? ""); setEditingDesc(true); }}
+                    className="mt-1 text-xs text-accent hover:underline inline-flex items-center gap-1"
+                  >
+                    <Pencil className="h-3 w-3" /> Bewerken
+                  </button>
+                )}
+              </div>
+            ) : isOwner ? (
+              <button
+                onClick={() => { setDescDraft(""); setEditingDesc(true); }}
+                className="text-xs text-primary-foreground/60 hover:text-accent inline-flex items-center gap-1"
+              >
+                <Pencil className="h-3 w-3" /> Beschrijving toevoegen
+              </button>
+            ) : null}
           </div>
 
           <ProjectStats
