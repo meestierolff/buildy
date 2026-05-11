@@ -73,7 +73,8 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
       .single();
 
     if (error) {
-      toast.error("Kon update niet toevoegen: " + error.message);
+      console.error("Add step failed:", error);
+      toast.error("Kon update niet toevoegen. Probeer het opnieuw.");
       setLoading(false);
       return;
     }
