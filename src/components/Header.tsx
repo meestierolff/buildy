@@ -36,6 +36,9 @@ const Header = () => {
               <span className="inline-flex items-center gap-1.5"><Heart className="h-3.5 w-3.5" /> Gevolgd</span>
             </NavLink>
           )}
+          <NavLink to="/vrienden" className={navLinkClass}>
+            <span className="inline-flex items-center gap-1.5"><Users className="h-3.5 w-3.5" /> Vrienden</span>
+          </NavLink>
         </nav>
 
         <nav className="flex items-center gap-3">
