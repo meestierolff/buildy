@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Hammer, Plus, LogOut, User, Heart, Compass } from "lucide-react";
+import { Hammer, Plus, LogOut, User, Heart, Compass, Users } from "lucide-react";
 import NotificationBell from "@/components/NotificationBell";
 import OnboardingDialog from "@/components/OnboardingDialog";
 
