@@ -22,7 +22,8 @@ const Auth = () => {
     if (isLogin) {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
-        toast.error(error.message);
+        console.error("Sign in failed:", error);
+        toast.error("Ongeldige inloggegevens. Controleer je e-mail en wachtwoord.");
       } else {
         navigate("/");
       }
@@ -36,7 +37,8 @@ const Auth = () => {
         },
       });
       if (error) {
-        toast.error(error.message);
+        console.error("Sign up failed:", error);
+        toast.error("Registratie is niet gelukt. Probeer het opnieuw of gebruik een ander e-mailadres.");
       } else {
         toast.success("Check je e-mail om je account te bevestigen!");
       }
