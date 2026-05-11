@@ -12,9 +12,11 @@ import ProjectStats from "@/components/ProjectStats";
 import FloorplanView from "@/components/FloorplanView";
 import FloorplanScrollView from "@/components/FloorplanScrollView";
 import AllPhotosTab from "@/components/AllPhotosTab";
+import CoverPickerDialog from "@/components/CoverPickerDialog";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { MapPin, Plus, BookOpen, Share2, Hammer, LayoutGrid, Map as MapIcon, Images } from "lucide-react";
+import { MapPin, Plus, BookOpen, Share2, Hammer, LayoutGrid, Map as MapIcon, Images, ImagePlus, Pencil, Check, X } from "lucide-react";
 import { differenceInDays } from "date-fns";
 import { toast } from "sonner";
 import {
