@@ -423,6 +423,16 @@ const TripDetail = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {showCoverPicker && (
+        <CoverPickerDialog
+          tripId={trip.id}
+          userId={trip.user_id}
+          currentUrl={trip.cover_image_url}
+          onClose={() => setShowCoverPicker(false)}
+          onSaved={fetchTrip}
+        />
+      )}
     </div>
   );
 };
