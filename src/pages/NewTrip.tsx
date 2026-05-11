@@ -56,7 +56,8 @@ const NewTrip = () => {
       .single();
 
     if (error) {
-      toast.error("Kon project niet aanmaken: " + error.message);
+      console.error("Create trip failed:", error);
+      toast.error("Kon project niet aanmaken. Probeer het opnieuw.");
     } else {
       toast.success("Project aangemaakt!");
       navigate(`/trip/${data.id}`);
