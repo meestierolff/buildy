@@ -12,6 +12,7 @@ import TripDetail from "./pages/TripDetail";
 import Profile from "./pages/Profile";
 import Photobook from "./pages/Photobook";
 import Favorites from "./pages/Favorites";
+import Friends from "./pages/Friends";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -33,6 +34,7 @@ const App = () => (
                 <Route path="/trip/:id" element={<TripDetail />} />
                 <Route path="/trip/:id/photobook" element={<Photobook />} />
                 <Route path="/favorieten" element={<Favorites />} />
+                <Route path="/vrienden" element={<Friends />} />
                 <Route path="/profile/:userId" element={<Profile />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>

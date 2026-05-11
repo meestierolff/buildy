@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Hammer, Plus, LogOut, User, Heart, Compass } from "lucide-react";
+import { Hammer, Plus, LogOut, User, Heart, Compass, Users } from "lucide-react";
 import NotificationBell from "@/components/NotificationBell";
 import OnboardingDialog from "@/components/OnboardingDialog";
 
@@ -36,6 +36,9 @@ const Header = () => {
               <span className="inline-flex items-center gap-1.5"><Heart className="h-3.5 w-3.5" /> Gevolgd</span>
             </NavLink>
           )}
+          <NavLink to="/vrienden" className={navLinkClass}>
+            <span className="inline-flex items-center gap-1.5"><Users className="h-3.5 w-3.5" /> Vrienden</span>
+          </NavLink>
         </nav>
 
         <nav className="flex items-center gap-3">
