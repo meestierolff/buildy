@@ -308,7 +308,7 @@ const Photobook = () => {
       )}
 
       <div className="flex-1 flex items-center justify-center p-4">
-        <div className="relative w-full max-w-3xl aspect-[3/4] bg-card rounded-xl shadow-2xl overflow-hidden">
+        <div className="relative w-full max-w-5xl aspect-[4/3] bg-card rounded-xl shadow-2xl overflow-hidden">
           {/* Render only nearby pages for perf */}
           {pages.map((p, i) => {
             if (Math.abs(i - safePage) > 1) return null;
