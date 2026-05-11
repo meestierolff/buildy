@@ -150,6 +150,22 @@ const TripDetail = () => {
     toast.success("Link gekopieerd!");
   };
 
+  const saveDescription = async () => {
+    setSavingDesc(true);
+    const { error } = await supabase
+      .from("trips")
+      .update({ description: descDraft.trim() || null })
+      .eq("id", trip.id);
+    setSavingDesc(false);
+    if (error) {
+      console.error(error);
+      toast.error("Opslaan mislukt.");
+      return;
+    }
+    setEditingDesc(false);
+    fetchTrip();
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[80vh]">
