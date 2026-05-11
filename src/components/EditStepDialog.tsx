@@ -109,7 +109,8 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
       .eq("id", step.id);
 
     if (error) {
-      toast.error("Kon update niet opslaan: " + error.message);
+      console.error("Update step failed:", error);
+      toast.error("Kon update niet opslaan. Probeer het opnieuw.");
       setLoading(false);
       return;
     }
