@@ -12,6 +12,7 @@ import TripDetail from "./pages/TripDetail";
 import Profile from "./pages/Profile";
 import Photobook from "./pages/Photobook";
 import Favorites from "./pages/Favorites";
+import Friends from "./pages/Friends";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
