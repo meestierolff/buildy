@@ -130,7 +130,8 @@ const TripDetail = () => {
     if (!deletingStepId) return;
     const { error } = await supabase.from("steps").delete().eq("id", deletingStepId);
     if (error) {
-      toast.error("Kon update niet verwijderen: " + error.message);
+      console.error("Delete step failed:", error);
+      toast.error("Kon update niet verwijderen. Probeer het opnieuw.");
     } else {
       toast.success("Update verwijderd");
       fetchTrip();
