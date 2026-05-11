@@ -34,6 +34,7 @@ const App = () => (
                 <Route path="/trip/:id" element={<TripDetail />} />
                 <Route path="/trip/:id/photobook" element={<Photobook />} />
                 <Route path="/favorieten" element={<Favorites />} />
+                <Route path="/vrienden" element={<Friends />} />
                 <Route path="/profile/:userId" element={<Profile />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
