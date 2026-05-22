@@ -120,38 +120,67 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) 
                       )}
                     </div>
 
-                    {step.step_media.length > 0 && (
-                      <div className={`grid gap-1 rounded-lg overflow-hidden mb-3 ${step.step_media.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
-                        {step.step_media.slice(0, 4).map((m, mi) => {
-                          const isSingle = step.step_media.length === 1;
-                          const wrapperCls = isSingle
-                            ? "relative group aspect-[4/3] bg-muted"
-                            : `relative group aspect-square bg-muted ${mi === 0 && step.step_media.length === 3 ? "row-span-2 aspect-auto" : ""}`;
-                          const mediaCls = isSingle
-                            ? "absolute inset-0 w-full h-full object-contain"
-                            : "absolute inset-0 w-full h-full object-cover group-hover:opacity-90 transition-opacity";
-                          return (
-                            <button
-                              type="button"
-                              key={m.id}
-                              onClick={() => openLightboxForStep(step, mi)}
-                              className={wrapperCls}
-                            >
-                              {m.media_type === "video" ? (
-                                <video src={m.media_url} className={mediaCls} />
-                              ) : (
-                                <img src={m.media_url} alt="" className={mediaCls} loading="lazy" />
-                              )}
-                              {mi === 3 && step.step_media.length > 4 && (
-                                <div className="absolute inset-0 bg-black/60 text-white text-sm font-semibold flex items-center justify-center">
-                                  +{step.step_media.length - 4}
-                                </div>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
+                    {(() => {
+                      const visuals = step.step_media.filter((m) => m.media_type !== "pdf");
+                      const pdfs = step.step_media.filter((m) => m.media_type === "pdf");
+                      return (
+                        <>
+                          {visuals.length > 0 && (
+                            <div className={`grid gap-1 rounded-lg overflow-hidden mb-3 ${visuals.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
+                              {visuals.slice(0, 4).map((m, mi) => {
+                                const isSingle = visuals.length === 1;
+                                const wrapperCls = isSingle
+                                  ? "relative group aspect-[4/3] bg-muted"
+                                  : `relative group aspect-square bg-muted ${mi === 0 && visuals.length === 3 ? "row-span-2 aspect-auto" : ""}`;
+                                const mediaCls = isSingle
+                                  ? "absolute inset-0 w-full h-full object-contain"
+                                  : "absolute inset-0 w-full h-full object-cover group-hover:opacity-90 transition-opacity";
+                                const origIdx = step.step_media.findIndex((x) => x.id === m.id);
+                                return (
+                                  <button
+                                    type="button"
+                                    key={m.id}
+                                    onClick={() => openLightboxForStep(step, origIdx)}
+                                    className={wrapperCls}
+                                  >
+                                    {m.media_type === "video" ? (
+                                      <video src={m.media_url} className={mediaCls} />
+                                    ) : (
+                                      <img src={m.media_url} alt="" className={mediaCls} loading="lazy" />
+                                    )}
+                                    {mi === 3 && visuals.length > 4 && (
+                                      <div className="absolute inset-0 bg-black/60 text-white text-sm font-semibold flex items-center justify-center">
+                                        +{visuals.length - 4}
+                                      </div>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                          {pdfs.length > 0 && (
+                            <div className="space-y-1.5 mb-3">
+                              {pdfs.map((m) => {
+                                const name = decodeURIComponent(m.media_url.split("/").pop() || "document.pdf");
+                                return (
+                                  <a
+                                    key={m.id}
+                                    href={m.media_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-2 rounded-md border bg-secondary/40 hover:bg-secondary px-3 py-2 text-sm transition-colors"
+                                  >
+                                    <span className="text-lg">📄</span>
+                                    <span className="truncate flex-1">{name}</span>
+                                    <span className="text-xs text-muted-foreground">PDF</span>
+                                  </a>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
 
                     {step.description && (
                       <p className="text-sm text-foreground/80 leading-relaxed line-clamp-4">
