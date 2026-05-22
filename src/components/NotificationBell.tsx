@@ -70,8 +70,8 @@ const NotificationBell = () => {
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) markAllRead(); }}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative rounded-full hover:bg-primary-foreground/10 text-primary-foreground">
-          <Bell className="h-5 w-5" />
+        <Button variant="ghost" size="icon" className="relative rounded-full hover:bg-muted text-foreground h-9 w-9">
+          <Bell className="h-4 w-4" strokeWidth={1.75} />
           {unread > 0 && (
             <span className="absolute top-1 right-1 h-4 min-w-4 px-1 rounded-full bg-accent text-accent-foreground text-[10px] font-bold flex items-center justify-center">
               {unread > 9 ? "9+" : unread}
