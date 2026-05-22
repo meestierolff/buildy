@@ -219,9 +219,11 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
               <div className="flex flex-wrap gap-2 mt-1">
                 {existingMedia.map((m, i) => (
                   <div key={m.id} className="relative group">
-                    <div className="w-20 h-20 rounded-md bg-muted overflow-hidden">
+                    <div className="w-20 h-20 rounded-md bg-muted overflow-hidden flex items-center justify-center text-center px-1">
                       {m.media_type === "video" ? (
                         <video src={m.media_url} className="w-full h-full object-cover" />
+                      ) : m.media_type === "pdf" ? (
+                        <span className="text-[10px] leading-tight">📄 PDF</span>
                       ) : (
                         <img src={m.media_url} alt="" className="w-full h-full object-cover" />
                       )}
