@@ -9,14 +9,14 @@ const ProgressBar = ({ value, showLabel = true, size = "md" }: ProgressBarProps)
   return (
     <div className="w-full">
       {showLabel && (
-        <div className="flex items-center justify-between mb-1.5 text-xs font-medium">
-          <span className="text-muted-foreground uppercase tracking-wider">Voortgang</span>
-          <span className="text-accent font-bold">{clamped}%</span>
+        <div className="flex items-center justify-between mb-2">
+          <span className="eyebrow">Voortgang</span>
+          <span className="text-[10px] font-bold tabular-nums tracking-widest text-foreground">{clamped}%</span>
         </div>
       )}
-      <div className={`w-full bg-secondary rounded-full overflow-hidden ${size === "sm" ? "h-1.5" : "h-2.5"}`}>
+      <div className={`w-full bg-muted overflow-hidden ${size === "sm" ? "h-0.5" : "h-[3px]"}`}>
         <div
-          className="h-full bg-gradient-to-r from-accent to-accent/80 transition-all duration-500 ease-out"
+          className="h-full bg-accent transition-all duration-500 ease-out"
           style={{ width: `${clamped}%` }}
         />
       </div>
