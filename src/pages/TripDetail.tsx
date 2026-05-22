@@ -328,20 +328,30 @@ const TripDetail = () => {
       <section className="relative">
         <BlueprintBackground />
         <div className="container relative max-w-5xl">
-          <Tabs defaultValue="timeline" className="pt-6">
+          <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); if (v !== "timeline") setMilestonesOnly(false); }} className="pt-6">
             <TabsList className="mb-2">
               <TabsTrigger value="timeline" className="gap-1.5"><LayoutGrid className="h-3.5 w-3.5" /> Tijdlijn</TabsTrigger>
               <TabsTrigger value="floorplan" className="gap-1.5"><MapIcon className="h-3.5 w-3.5" /> Plattegrond</TabsTrigger>
               <TabsTrigger value="photos" className="gap-1.5"><Images className="h-3.5 w-3.5" /> Alle foto's</TabsTrigger>
             </TabsList>
             <TabsContent value="timeline">
-              {steps.length === 0 ? (
-                <div className="py-20 text-center text-muted-foreground">
-                  <Hammer className="h-12 w-12 mx-auto mb-3 opacity-40" />
-                  <p className="text-lg">Nog geen updates.</p>
-                  {isOwner && <p className="text-sm mt-1">Voeg je eerste 'voor'-foto toe om te starten!</p>}
+              {milestonesOnly && (
+                <div className="flex items-center justify-between mb-3 px-3 py-2 rounded-md bg-accent/10 border border-accent/30 text-sm">
+                  <span>Alleen mijlpalen worden getoond</span>
+                  <Button size="sm" variant="ghost" onClick={() => setMilestonesOnly(false)} className="h-7">
+                    Filter wissen
+                  </Button>
                 </div>
-              ) : (
+              )}
+              {(() => {
+                const visible = milestonesOnly ? steps.filter((s) => s.is_milestone) : steps;
+                return visible.length === 0 ? (
+                  <div className="py-20 text-center text-muted-foreground">
+                    <Hammer className="h-12 w-12 mx-auto mb-3 opacity-40" />
+                    <p className="text-lg">{milestonesOnly ? "Geen mijlpalen gevonden." : "Nog geen updates."}</p>
+                    {isOwner && !milestonesOnly && <p className="text-sm mt-1">Voeg je eerste 'voor'-foto toe om te starten!</p>}
+                  </div>
+                ) : (
                 <BlueprintTimeline
                   steps={steps}
                   onLike={handleLike}
