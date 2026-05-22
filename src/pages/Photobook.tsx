@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { ArrowLeft, ChevronLeft, ChevronRight, Hammer, Pencil, Eye, EyeOff, Check } from "lucide-react";
 import { format } from "date-fns";
 import { nl } from "date-fns/locale";
