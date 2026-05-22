@@ -265,7 +265,7 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
             <label className="mt-1 flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-3 cursor-pointer hover:border-accent transition-colors">
               <Upload className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Klik om bestanden te selecteren</span>
-              <input type="file" multiple accept="image/*,video/*" className="hidden" onChange={handleFileChange} />
+              <input type="file" multiple accept="image/*,video/*,application/pdf" className="hidden" onChange={handleFileChange} />
             </label>
             {newFiles.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-2">
