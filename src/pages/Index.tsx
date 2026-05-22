@@ -2,11 +2,9 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Hammer, Plus, Home, Heart } from "lucide-react";
-import ProgressBar from "@/components/ProgressBar";
+import { Plus, Home, Hammer } from "lucide-react";
+import EmptyState from "@/components/EmptyState";
 
 interface ProjectCard {
   id: string;
@@ -17,95 +15,120 @@ interface ProjectCard {
   cover_image_url: string | null;
   user_id: string;
   is_public: boolean;
-  profile?: { display_name: string };
+  profile_name?: string;
   step_count: number;
   follower_count: number;
 }
 
-const ProjectGrid = ({ projects, loading, emptyText }: { projects: ProjectCard[]; loading: boolean; emptyText: string }) => {
+const Card = ({ p }: { p: ProjectCard }) => {
+  const pct = Math.max(0, Math.min(100, p.progress_percentage ?? 0));
+  return (
+    <Link to={`/trip/${p.id}`} className="group block">
+      <div className="relative aspect-[4/5] overflow-hidden rounded-sm bg-muted mb-5">
+        {p.cover_image_url ? (
+          <img
+            src={p.cover_image_url}
+            alt={p.title}
+            loading="lazy"
+            decoding="async"
+            className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center blueprint-grid">
+            <Home className="h-12 w-12 text-muted-foreground/40" strokeWidth={1.5} />
+          </div>
+        )}
+        {p.project_type && (
+          <div className="absolute top-5 left-5">
+            <span className="bg-background/95 backdrop-blur-md px-3 py-1.5 rounded-sm text-[9px] font-bold uppercase tracking-[0.2em] text-foreground shadow-sm">
+              {p.project_type}
+            </span>
+          </div>
+        )}
+      </div>
+      <div className="space-y-3">
+        <div className="flex justify-between items-baseline gap-3">
+          <h3 className="font-serif italic text-2xl leading-tight truncate">{p.title}</h3>
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest tabular-nums shrink-0">{pct}%</span>
+        </div>
+        <div className="space-y-2">
+          {p.address && (
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wide truncate">{p.address}</p>
+          )}
+          <div className="w-full h-0.5 bg-muted">
+            <div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+        <div className="flex items-center justify-between pt-1">
+          <span className="text-[11px] text-muted-foreground font-medium">
+            {p.profile_name ? `door ${p.profile_name}` : ""}
+          </span>
+          <span className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
+            {p.step_count} updates
+          </span>
+        </div>
+      </div>
+    </Link>
+  );
+};
+
+const Grid = ({ projects, loading, emptyState }: { projects: ProjectCard[]; loading: boolean; emptyState: React.ReactNode }) => {
   if (loading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
         {[1, 2, 3].map((i) => (
-          <Card key={i} className="animate-pulse">
-            <div className="h-48 bg-muted rounded-t-lg" />
-            <CardContent className="p-4 space-y-2">
-              <div className="h-5 bg-muted rounded w-3/4" />
-              <div className="h-4 bg-muted rounded w-1/2" />
-            </CardContent>
-          </Card>
+          <div key={i} className="animate-pulse">
+            <div className="aspect-[4/5] bg-muted rounded-sm mb-5" />
+            <div className="h-5 bg-muted rounded w-3/4 mb-3" />
+            <div className="h-3 bg-muted rounded w-1/2" />
+          </div>
         ))}
       </div>
     );
   }
-  if (projects.length === 0) {
-    return (
-      <div className="text-center py-16 text-muted-foreground">
-        <Hammer className="h-12 w-12 mx-auto mb-4 opacity-40" />
-        <p className="text-lg">{emptyText}</p>
-      </div>
-    );
-  }
+  if (projects.length === 0) return <>{emptyState}</>;
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {projects.map((p) => (
-        <Link key={p.id} to={`/trip/${p.id}`}>
-          <Card className="overflow-hidden hover:shadow-xl transition-all group cursor-pointer border-2 border-border hover:border-accent/40 h-full">
-            <div className="h-44 bg-gradient-to-br from-primary/20 to-accent/20 relative overflow-hidden">
-              {p.cover_image_url ? (
-                <img src={p.cover_image_url} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center blueprint-grid">
-                  <Home className="h-12 w-12 text-primary/40" />
-                </div>
-              )}
-              {p.project_type && (
-                <span className="absolute top-2 left-2 bg-accent text-accent-foreground text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full">
-                  {p.project_type}
-                </span>
-              )}
-            </div>
-            <CardContent className="p-4 space-y-2">
-              <h3 className="font-bold text-lg font-sans leading-tight line-clamp-1">{p.title}</h3>
-              {p.address && <p className="text-xs text-muted-foreground line-clamp-1">📍 {p.address}</p>}
-              <ProgressBar value={p.progress_percentage ?? 0} showLabel={false} size="sm" />
-              <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
-                <span className="flex items-center gap-1"><Hammer className="h-3 w-3" /> {p.step_count} updates</span>
-                <span className="flex items-center gap-1"><Heart className="h-3 w-3" /> {p.follower_count}</span>
-              </div>
-              {p.profile && <p className="text-xs text-muted-foreground">door {p.profile.display_name}</p>}
-            </CardContent>
-          </Card>
-        </Link>
-      ))}
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
+      {projects.map((p) => <Card key={p.id} p={p} />)}
     </div>
   );
 };
 
+const enrich = async (rows: any[]): Promise<ProjectCard[]> => {
+  if (rows.length === 0) return [];
+  const ids = rows.map((r) => r.id);
+  const userIds = Array.from(new Set(rows.map((r) => r.user_id)));
+
+  const [stepsRes, favRes, profRes] = await Promise.all([
+    supabase.from("steps").select("trip_id").in("trip_id", ids),
+    supabase.from("favorites").select("project_id").in("project_id", ids),
+    supabase.from("profiles").select("user_id, display_name").in("user_id", userIds),
+  ]);
+
+  const stepCounts = new Map<string, number>();
+  (stepsRes.data || []).forEach((s: any) => stepCounts.set(s.trip_id, (stepCounts.get(s.trip_id) || 0) + 1));
+  const favCounts = new Map<string, number>();
+  (favRes.data || []).forEach((f: any) => favCounts.set(f.project_id, (favCounts.get(f.project_id) || 0) + 1));
+  const profMap = new Map<string, string>();
+  (profRes.data || []).forEach((p: any) => profMap.set(p.user_id, p.display_name));
+
+  return rows.map((t: any) => ({
+    ...t,
+    step_count: stepCounts.get(t.id) || 0,
+    follower_count: favCounts.get(t.id) || 0,
+    profile_name: profMap.get(t.user_id) || undefined,
+  }));
+};
+
 const Index = () => {
   const { user } = useAuth();
+  const [tab, setTab] = useState<"discover" | "mine">(user ? "mine" : "discover");
   const [discover, setDiscover] = useState<ProjectCard[]>([]);
   const [mine, setMine] = useState<ProjectCard[]>([]);
   const [loadingD, setLoadingD] = useState(true);
   const [loadingM, setLoadingM] = useState(true);
 
-  const enrich = async (rows: any[]): Promise<ProjectCard[]> => {
-    return Promise.all(
-      rows.map(async (t: any) => {
-        const [{ count: stepCount }, { count: followerCount }, { data: profile }] = await Promise.all([
-          supabase.from("steps").select("*", { count: "exact", head: true }).eq("trip_id", t.id),
-          supabase.from("favorites").select("*", { count: "exact", head: true }).eq("project_id", t.id),
-          supabase.from("profiles").select("display_name").eq("user_id", t.user_id).single(),
-        ]);
-        return {
-          ...t,
-          profile: profile || undefined,
-          step_count: stepCount || 0,
-          follower_count: followerCount || 0,
-        };
-      })
-    );
-  };
+  useEffect(() => { setTab(user ? "mine" : "discover"); }, [user]);
 
   useEffect(() => {
     (async () => {
@@ -115,7 +138,7 @@ const Index = () => {
         .eq("is_public", true)
         .order("created_at", { ascending: false })
         .limit(20);
-      if (data) setDiscover(await enrich(data));
+      setDiscover(await enrich(data || []));
       setLoadingD(false);
     })();
   }, []);
@@ -128,74 +151,90 @@ const Index = () => {
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
-      if (data) setMine(await enrich(data));
+      setMine(await enrich(data || []));
       setLoadingM(false);
     })();
   }, [user]);
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-background">
       {/* Hero */}
-      <section className="relative overflow-hidden py-20 md:py-28">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/95 to-primary/85" />
-        <div className="absolute inset-0 blueprint-grid opacity-15" />
-        <div className="container relative text-center">
-          <div className="flex justify-center mb-6">
-            <div className="bg-accent rounded-2xl p-3 shadow-lg shadow-accent/30">
-              <Hammer className="h-7 w-7 text-accent-foreground" />
-            </div>
-          </div>
-          <h1 className="text-4xl md:text-6xl font-bold mb-4 tracking-tight text-primary-foreground">
-            <span className="text-gradient-gold italic">Verbeter</span> je huis,<br className="hidden md:block" />
-            stap voor stap.
-          </h1>
-          <p className="text-lg md:text-xl text-primary-foreground/80 max-w-2xl mx-auto mb-8">
-            Leg elke fase van je verbouwing vast met foto's en verhalen. Druk een fotoboek af voor later.
-          </p>
-          {user ? (
-            <Link to="/trips/new">
-              <Button size="lg" className="gap-2 text-base bg-accent text-accent-foreground hover:bg-accent/90 shadow-lg shadow-accent/30">
-                <Plus className="h-5 w-5" /> Start een nieuw project
-              </Button>
-            </Link>
-          ) : (
-            <Link to="/auth">
-              <Button size="lg" className="gap-2 text-base bg-accent text-accent-foreground hover:bg-accent/90 shadow-lg shadow-accent/30">
-                <Hammer className="h-5 w-5" /> Aan de slag
-              </Button>
-            </Link>
+      <header className="max-w-5xl mx-auto px-6 md:px-8 py-20 md:py-32 text-center">
+        <h1 className="text-5xl md:text-7xl lg:text-8xl font-serif italic leading-[0.9] mb-8 tracking-tight">
+          Verbeter je huis,<br />
+          <span className="text-accent">stap voor stap.</span>
+        </h1>
+        <p className="max-w-xl mx-auto text-base md:text-lg text-muted-foreground leading-relaxed mb-10 font-light">
+          Leg elke fase van je verbouwing vast met foto's en verhalen.<br className="hidden md:block" />
+          Een digitaal dagboek voor de architectuur van je leven.
+        </p>
+        {user ? (
+          <Link to="/trips/new">
+            <Button size="lg" className="rounded-full px-8 py-6 text-[11px] font-bold uppercase tracking-[0.15em] bg-foreground text-background hover:bg-foreground/90 shadow-sm gap-2">
+              <Plus className="h-4 w-4" /> Start een nieuw project
+            </Button>
+          </Link>
+        ) : (
+          <Link to="/auth">
+            <Button size="lg" className="rounded-full px-8 py-6 text-[11px] font-bold uppercase tracking-[0.15em] bg-foreground text-background hover:bg-foreground/90 shadow-sm">
+              Aan de slag
+            </Button>
+          </Link>
+        )}
+      </header>
+
+      {/* Projects */}
+      <section className="max-w-7xl mx-auto px-6 md:px-8 pb-24">
+        <div className="flex items-center gap-10 mb-12 border-b border-border">
+          <button
+            onClick={() => setTab("discover")}
+            className={`text-[11px] font-bold uppercase tracking-[0.2em] relative py-4 transition-colors ${
+              tab === "discover" ? "text-foreground" : "text-muted-foreground/60 hover:text-muted-foreground"
+            }`}
+          >
+            Ontdekken
+            {tab === "discover" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-foreground" />}
+          </button>
+          {user && (
+            <button
+              onClick={() => setTab("mine")}
+              className={`text-[11px] font-bold uppercase tracking-[0.2em] relative py-4 transition-colors ${
+                tab === "mine" ? "text-foreground" : "text-muted-foreground/60 hover:text-muted-foreground"
+              }`}
+            >
+              Mijn projecten
+              {tab === "mine" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-foreground" />}
+            </button>
           )}
         </div>
-      </section>
 
-      {/* Tabs */}
-      <section className="container py-12">
-        <Tabs defaultValue={user ? "mine" : "discover"} className="w-full">
-          <TabsList className="mb-8">
-            <TabsTrigger value="discover">Ontdekken</TabsTrigger>
-            {user && <TabsTrigger value="mine">Mijn projecten</TabsTrigger>}
-          </TabsList>
-          <TabsContent value="discover">
-            <ProjectGrid projects={discover} loading={loadingD} emptyText="Nog geen publieke projecten." />
-          </TabsContent>
-          {user && (
-            <TabsContent value="mine">
-              {mine.length === 0 && !loadingM ? (
-                <div className="text-center py-16 text-muted-foreground">
-                  <Home className="h-12 w-12 mx-auto mb-4 opacity-40" />
-                  <p className="text-lg mb-4">Je hebt nog geen projecten.</p>
+        {tab === "discover" && (
+          <Grid
+            projects={discover}
+            loading={loadingD}
+            emptyState={<EmptyState icon={Home} title="Nog geen publieke projecten" description="Zodra anderen hun verbouwing delen verschijnen ze hier." />}
+          />
+        )}
+        {tab === "mine" && user && (
+          <Grid
+            projects={mine}
+            loading={loadingM}
+            emptyState={
+              <EmptyState
+                icon={Hammer}
+                title="Begin je eerste verbouwing"
+                description="Documenteer elke stap, deel updates en bewaar foto's voor later."
+                action={
                   <Link to="/trips/new">
-                    <Button className="bg-accent text-accent-foreground hover:bg-accent/90">
-                      <Plus className="h-4 w-4 mr-1" /> Maak je eerste project
+                    <Button className="rounded-full px-6 text-[11px] font-bold uppercase tracking-widest bg-foreground text-background hover:bg-foreground/90 gap-2">
+                      <Plus className="h-4 w-4" /> Nieuw project
                     </Button>
                   </Link>
-                </div>
-              ) : (
-                <ProjectGrid projects={mine} loading={loadingM} emptyText="Geen projecten." />
-              )}
-            </TabsContent>
-          )}
-        </Tabs>
+                }
+              />
+            }
+          />
+        )}
       </section>
     </div>
   );

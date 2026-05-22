@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Hammer, Plus, LogOut, User, Heart, Compass, Users } from "lucide-react";
+import { Plus, LogOut, User, Heart } from "lucide-react";
 import NotificationBell from "@/components/NotificationBell";
 import OnboardingDialog from "@/components/OnboardingDialog";
 
@@ -11,69 +11,66 @@ const Header = () => {
   const { user, signOut } = useAuth();
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-    `text-sm font-medium px-3 py-1.5 rounded-md transition-colors ${
-      isActive ? "bg-primary-foreground/15 text-accent" : "text-primary-foreground/80 hover:text-accent"
+    `text-[11px] font-bold uppercase tracking-[0.2em] py-2 transition-colors ${
+      isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"
     }`;
 
   return (
-    <header className="sticky top-0 z-50 border-b bg-primary/95 backdrop-blur-md text-primary-foreground">
-      <div className="container flex h-16 items-center justify-between gap-4">
+    <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur-md text-foreground">
+      <div className="max-w-7xl mx-auto px-6 md:px-8 flex h-16 items-center justify-between gap-4">
         <Link to="/" className="flex items-center gap-2 group">
-          <div className="bg-accent rounded-md p-1.5 transition-transform group-hover:rotate-6">
-            <Hammer className="h-4 w-4 text-accent-foreground" />
+          <div className="w-8 h-8 bg-foreground rounded-md flex items-center justify-center">
+            <svg className="w-4 h-4 text-background" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+            </svg>
           </div>
-          <span className="text-xl font-bold font-sans tracking-tight">
-            Buildy
-          </span>
+          <span className="text-lg font-semibold tracking-tight">Buildy</span>
         </Link>
 
-        <nav className="hidden md:flex items-center gap-1">
-          <NavLink to="/" end className={navLinkClass}>
-            <span className="inline-flex items-center gap-1.5"><Compass className="h-3.5 w-3.5" /> Ontdekken</span>
-          </NavLink>
-          {user && (
-            <NavLink to="/favorieten" className={navLinkClass}>
-              <span className="inline-flex items-center gap-1.5"><Heart className="h-3.5 w-3.5" /> Gevolgd</span>
-            </NavLink>
-          )}
-          <NavLink to="/vrienden" className={navLinkClass}>
-            <span className="inline-flex items-center gap-1.5"><Users className="h-3.5 w-3.5" /> Vrienden</span>
-          </NavLink>
+        <nav className="hidden md:flex items-center gap-8">
+          <NavLink to="/" end className={navLinkClass}>Ontdekken</NavLink>
+          {user && <NavLink to="/favorieten" className={navLinkClass}>Gevolgd</NavLink>}
+          <NavLink to="/vrienden" className={navLinkClass}>Vrienden</NavLink>
         </nav>
 
-        <nav className="flex items-center gap-3">
+        <div className="flex items-center gap-3">
           {user ? (
             <>
               <NotificationBell />
-              <Link to="/trips/new">
-                <Button size="sm" className="gap-1.5 bg-accent text-accent-foreground hover:bg-accent/90 shadow-md shadow-accent/30">
+              <Link to="/trips/new" className="hidden sm:block">
+                <Button size="sm" variant="outline" className="rounded-full px-4 text-[11px] font-bold uppercase tracking-widest gap-1.5 border-border">
+                  <Plus className="h-3.5 w-3.5" />
+                  Nieuw project
+                </Button>
+              </Link>
+              <Link to="/trips/new" className="sm:hidden">
+                <Button size="icon" variant="outline" className="rounded-full h-9 w-9 border-border">
                   <Plus className="h-4 w-4" />
-                  <span className="hidden sm:inline">Nieuw project</span>
                 </Button>
               </Link>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="rounded-full hover:bg-primary-foreground/10">
+                  <Button variant="ghost" size="icon" className="rounded-full">
                     <Avatar className="h-8 w-8">
                       <AvatarImage src="" />
-                      <AvatarFallback className="bg-accent text-accent-foreground text-xs font-bold">
+                      <AvatarFallback className="bg-muted text-foreground text-xs font-semibold">
                         {user.email?.[0]?.toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align="end" className="w-48">
                   <DropdownMenuItem asChild>
-                    <Link to={`/profile/${user.id}`} className="flex items-center gap-2">
+                    <Link to={`/profile/${user.id}`} className="flex items-center gap-2 cursor-pointer">
                       <User className="h-4 w-4" /> Profiel
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link to="/favorieten" className="flex items-center gap-2">
+                    <Link to="/favorieten" className="flex items-center gap-2 cursor-pointer">
                       <Heart className="h-4 w-4" /> Gevolgd
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={signOut} className="flex items-center gap-2">
+                  <DropdownMenuItem onClick={signOut} className="flex items-center gap-2 cursor-pointer">
                     <LogOut className="h-4 w-4" /> Uitloggen
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -81,10 +78,12 @@ const Header = () => {
             </>
           ) : (
             <Link to="/auth">
-              <Button size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90">Inloggen</Button>
+              <Button size="sm" className="rounded-full px-5 text-[11px] font-bold uppercase tracking-widest bg-foreground text-background hover:bg-foreground/90">
+                Inloggen
+              </Button>
             </Link>
           )}
-        </nav>
+        </div>
       </div>
       {user && <OnboardingDialog />}
     </header>
