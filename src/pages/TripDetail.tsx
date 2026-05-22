@@ -68,6 +68,7 @@ const TripDetail = () => {
         .eq("user_id", tripData.user_id)
         .single();
       setTrip({ ...tripData, profile: profileData });
+      setCoverY(typeof (tripData as any).cover_position_y === "number" ? (tripData as any).cover_position_y : 50);
     }
 
     const { data: stepsData } = await supabase
