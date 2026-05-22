@@ -343,8 +343,31 @@ const Photobook = () => {
 
       {editing && pages[safePage]?.key === "cover" && (
         <div className="container pb-3 space-y-2">
-          <div className="rounded-lg border bg-card p-3 space-y-2">
+          <div className="rounded-lg border bg-card p-3 space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cover</p>
+
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Omslagfoto</p>
+              <div className="flex gap-1.5 overflow-x-auto pb-1">
+                <button
+                  onClick={() => upsertSettings({ cover_media_id: null })}
+                  className={`flex-shrink-0 w-14 h-14 rounded border-2 bg-muted flex items-center justify-center text-[10px] ${!settings.cover_media_id ? "border-primary" : "border-transparent"}`}
+                  title="Geen foto"
+                >
+                  Geen
+                </button>
+                {steps.flatMap((s: any) => (s.step_media || []).filter((m: any) => m.media_type !== "video")).map((m: any) => (
+                  <button
+                    key={m.id}
+                    onClick={() => upsertSettings({ cover_media_id: m.id })}
+                    className={`flex-shrink-0 w-14 h-14 rounded border-2 overflow-hidden ${settings.cover_media_id === m.id ? "border-primary" : "border-transparent"}`}
+                  >
+                    <img src={m.media_url} alt="" className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <Input
               placeholder={trip.title}
               value={settings.cover_title ?? ""}
@@ -355,6 +378,31 @@ const Photobook = () => {
               value={settings.cover_subtitle ?? ""}
               onChange={(e) => upsertSettings({ cover_subtitle: e.target.value || null })}
             />
+
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Titelpositie</p>
+              <div className="grid grid-cols-4 gap-1.5">
+                {[
+                  { v: "top", label: "Boven", bar: "top-2" },
+                  { v: "center", label: "Midden", bar: "top-1/2 -translate-y-1/2" },
+                  { v: "bottom", label: "Onder", bar: "bottom-2" },
+                  { v: "banner", label: "Banner", bar: "bottom-0", full: true },
+                ].map((o) => {
+                  const active = ((trip.cover_title_position as string) || "center") === o.v;
+                  return (
+                    <button
+                      key={o.v}
+                      onClick={() => updateTripField({ cover_title_position: o.v })}
+                      className={`relative h-12 rounded border-2 bg-muted ${active ? "border-primary" : "border-transparent"}`}
+                      title={o.label}
+                    >
+                      <span className={`absolute left-2 right-2 h-1.5 rounded ${o.full ? "left-0 right-0 h-3 bg-muted-foreground/60" : "bg-muted-foreground/60"} ${o.bar}`} />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <p className="text-[11px] text-muted-foreground">
               💡 Klik op een foto in het boek om die uit het fotoboek te halen (blijft in je tijdlijn).
               Klik op een hoofdstukpagina om de titel aan te passen.
@@ -362,6 +410,7 @@ const Photobook = () => {
           </div>
         </div>
       )}
+
 
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="relative w-full max-w-5xl aspect-[4/3] bg-card rounded-xl shadow-2xl overflow-hidden">
