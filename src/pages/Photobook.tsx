@@ -43,7 +43,15 @@ const Photobook = () => {
   const [printFormat, setPrintFormat] = useState<PeechoFormat>("A4_LANDSCAPE");
   const [printBusy, setPrintBusy] = useState(false);
   const [printedPdfUrl, setPrintedPdfUrl] = useState<string | null>(null);
+  const [isPro, setIsPro] = useState(false);
   const PEECHO_CHECKOUT = (import.meta.env.VITE_PEECHO_CHECKOUT_URL as string) || "https://www.peecho.com/checkout/upload-and-order";
+
+  useEffect(() => {
+    if (!user) { setIsPro(false); return; }
+    supabase.from("profiles").select("is_pro").eq("user_id", user.id).maybeSingle().then(({ data }) => {
+      setIsPro(!!(data as any)?.is_pro);
+    });
+  }, [user]);
 
   const handleGeneratePeechoPdf = async () => {
     if (!trip || !id) return;
