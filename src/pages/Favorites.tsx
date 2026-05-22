@@ -73,24 +73,25 @@ const Favorites = () => {
   }
 
   return (
-    <div className="container py-12">
-      <div className="flex items-center gap-3 mb-6">
-        <Heart className="h-7 w-7 text-accent" />
-        <h1 className="text-3xl font-bold">Gevolgd</h1>
+    <div className="max-w-7xl mx-auto px-6 md:px-8 py-16">
+      <div className="mb-12">
+        <p className="eyebrow mb-2">Jouw feed</p>
+        <h1 className="font-serif italic text-4xl md:text-5xl">Gevolgd</h1>
       </div>
 
       {loading ? (
-        <p className="text-muted-foreground">Laden...</p>
+        <p className="text-muted-foreground text-sm">Laden…</p>
       ) : projects.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <Heart className="h-12 w-12 mx-auto mb-4 opacity-40" />
-          <p>Je volgt nog geen projecten. Ontdek projecten op de homepage en klik op 'Volgen'.</p>
-        </div>
+        <EmptyState
+          icon={Heart}
+          title="Nog niks gevolgd"
+          description="Ontdek projecten op de homepage en klik op 'Volgen' om updates hier terug te zien."
+        />
       ) : (
         <Tabs defaultValue="feed">
-          <TabsList className="mb-6">
-            <TabsTrigger value="feed" className="gap-1.5"><Activity className="h-3.5 w-3.5" /> Recent</TabsTrigger>
-            <TabsTrigger value="projects" className="gap-1.5"><Home className="h-3.5 w-3.5" /> Projecten ({projects.length})</TabsTrigger>
+          <TabsList className="mb-8 bg-transparent border-b border-border rounded-none p-0 h-auto gap-8">
+            <TabsTrigger value="feed" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Recent</TabsTrigger>
+            <TabsTrigger value="projects" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Projecten ({projects.length})</TabsTrigger>
           </TabsList>
 
           <TabsContent value="feed">
@@ -100,21 +101,21 @@ const Favorites = () => {
               <div className="space-y-3 max-w-2xl">
                 {activity.map((s: any) => (
                   <Link key={s.id} to={`/trip/${s.trip_id}`}>
-                    <Card className="hover:shadow-md transition-shadow border-2 hover:border-accent/40">
-                      <CardContent className="p-4 flex gap-3">
+                    <Card className="hover:bg-muted/40 transition-colors border border-border shadow-none rounded-sm">
+                      <CardContent className="p-4 flex gap-4">
                         {s.step_media?.[0] ? (
-                          <img src={s.step_media[0].media_url} alt="" className="h-16 w-16 object-cover rounded-lg shrink-0" />
+                          <img src={s.step_media[0].media_url} alt="" loading="lazy" className="h-16 w-16 object-cover rounded-sm shrink-0" />
                         ) : (
-                          <div className="h-16 w-16 bg-muted rounded-lg flex items-center justify-center shrink-0">
-                            <Hammer className="h-5 w-5 text-muted-foreground" />
+                          <div className="h-16 w-16 bg-muted rounded-sm flex items-center justify-center shrink-0">
+                            <Hammer className="h-5 w-5 text-muted-foreground" strokeWidth={1.5} />
                           </div>
                         )}
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">
                             {s.trip?.title} · {formatDistanceToNow(new Date(s.created_at), { addSuffix: true, locale: nl })}
                           </p>
-                          <p className="font-semibold text-sm leading-tight mt-0.5 line-clamp-1">{s.location_name}</p>
-                          {s.description && <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{s.description}</p>}
+                          <p className="font-serif italic text-lg leading-tight mt-0.5 line-clamp-1">{s.location_name}</p>
+                          {s.description && <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{s.description}</p>}
                         </div>
                       </CardContent>
                     </Card>
@@ -125,36 +126,43 @@ const Favorites = () => {
           </TabsContent>
 
           <TabsContent value="projects">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {projects.map((p) => (
-                <Link key={p.id} to={`/trip/${p.id}`}>
-                  <Card className="overflow-hidden hover:shadow-xl transition-all group cursor-pointer border-2 border-border hover:border-accent/40 h-full">
-                    <div className="h-44 bg-gradient-to-br from-primary/20 to-accent/20 relative overflow-hidden">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
+              {projects.map((p) => {
+                const pct = Math.max(0, Math.min(100, p.progress_percentage ?? 0));
+                return (
+                  <Link key={p.id} to={`/trip/${p.id}`} className="group block">
+                    <div className="relative aspect-[4/5] overflow-hidden rounded-sm bg-muted mb-5">
                       {p.cover_image_url ? (
-                        <img src={p.cover_image_url} alt={p.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        <img src={p.cover_image_url} alt={p.title} loading="lazy" className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center blueprint-grid">
-                          <Home className="h-12 w-12 text-primary/40" />
+                          <Home className="h-12 w-12 text-muted-foreground/40" strokeWidth={1.5} />
                         </div>
                       )}
                       {p.project_type && (
-                        <span className="absolute top-2 left-2 bg-accent text-accent-foreground text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full">
-                          {p.project_type}
-                        </span>
+                        <div className="absolute top-5 left-5">
+                          <span className="bg-background/95 backdrop-blur-md px-3 py-1.5 rounded-sm text-[9px] font-bold uppercase tracking-[0.2em] text-foreground shadow-sm">
+                            {p.project_type}
+                          </span>
+                        </div>
                       )}
                     </div>
-                    <CardContent className="p-4 space-y-2">
-                      <h3 className="font-bold text-lg font-sans leading-tight line-clamp-1">{p.title}</h3>
-                      {p.address && <p className="text-xs text-muted-foreground line-clamp-1">📍 {p.address}</p>}
-                      <ProgressBar value={p.progress_percentage ?? 0} showLabel={false} size="sm" />
-                      <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
-                        <span className="flex items-center gap-1"><Hammer className="h-3 w-3" /> {p.step_count} updates</span>
-                        {p.profile && <span>door {p.profile.display_name}</span>}
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-baseline gap-3">
+                        <h3 className="font-serif italic text-2xl leading-tight truncate">{p.title}</h3>
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest tabular-nums shrink-0">{pct}%</span>
                       </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              ))}
+                      <div className="w-full h-0.5 bg-muted">
+                        <div className="h-full bg-accent" style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-[11px] text-muted-foreground">{p.profile?.display_name && `door ${p.profile.display_name}`}</span>
+                        <span className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">{p.step_count} updates</span>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           </TabsContent>
         </Tabs>
