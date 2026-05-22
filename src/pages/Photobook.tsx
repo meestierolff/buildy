@@ -372,17 +372,30 @@ const Photobook = () => {
         <span className="text-sm text-muted-foreground">
           Pagina {safePage + 1} / {pages.length}
         </span>
-        {isOwner && (
-          <Button
-            variant={editing ? "default" : "outline"}
-            size="sm"
-            onClick={() => setEditing(!editing)}
-            className="ml-auto gap-1.5"
-          >
-            {editing ? <Check className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
-            {editing ? "Klaar met bewerken" : "Bewerk fotoboek"}
-          </Button>
-        )}
+        <div className="ml-auto flex items-center gap-2">
+          {isOwner && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setPrintedPdfUrl(null); setPrintOpen(true); }}
+              className="gap-1.5"
+            >
+              <BookOpen className="h-4 w-4" />
+              Bestel als boek
+            </Button>
+          )}
+          {isOwner && (
+            <Button
+              variant={editing ? "default" : "outline"}
+              size="sm"
+              onClick={() => setEditing(!editing)}
+              className="gap-1.5"
+            >
+              {editing ? <Check className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+              {editing ? "Klaar" : "Bewerk"}
+            </Button>
+          )}
+        </div>
       </div>
 
       {editing && pages[safePage]?.key === "cover" && (
