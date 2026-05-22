@@ -264,6 +264,28 @@ const TripDetail = () => {
             </div>
           </div>
 
+          {isOwner && adjustCover && trip.cover_image_url && (
+            <div className="mt-4 hidden md:flex items-center gap-3 rounded-md border border-primary-foreground/20 bg-primary-foreground/10 p-3 max-w-md">
+              <MoveVertical className="h-4 w-4 text-accent shrink-0" />
+              <div className="flex-1">
+                <div className="text-xs text-primary-foreground/80 mb-1">Verticale positie coverfoto</div>
+                <Slider
+                  value={[coverY]}
+                  min={0}
+                  max={100}
+                  step={1}
+                  onValueChange={(v) => setCoverY(v[0])}
+                  onValueCommit={async (v) => {
+                    const { error } = await supabase.from("trips").update({ cover_position_y: v[0] } as any).eq("id", trip.id);
+                    if (error) toast.error("Kon positie niet opslaan");
+                  }}
+                />
+              </div>
+              <span className="text-xs tabular-nums text-primary-foreground/70 w-10 text-right">{coverY}%</span>
+            </div>
+          )}
+
+
           {/* Project description */}
           <div className="mt-4 max-w-2xl">
             {editingDesc ? (
