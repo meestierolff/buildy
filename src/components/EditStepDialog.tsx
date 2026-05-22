@@ -25,9 +25,9 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
   const [isMilestone, setIsMilestone] = useState<boolean>(!!step.is_milestone);
   const [description, setDescription] = useState(step.description || "");
   const [stepDate, setStepDate] = useState(step.step_date);
-  const [cost, setCost] = useState<string>(step.cost != null ? String(step.cost) : "");
-  const [hoursSpent, setHoursSpent] = useState<string>(step.hours_spent != null ? String(step.hours_spent) : "");
-  const [workType, setWorkType] = useState<string>(step.work_type || "");
+  const [cost, setCost] = useState<string>("");
+  const [hoursSpent, setHoursSpent] = useState<string>("");
+  const [workType, setWorkType] = useState<string>("");
   const [existingMedia, setExistingMedia] = useState<any[]>(
     [...(step.step_media || [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
   );
@@ -47,7 +47,19 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
         setCustomPhases((data?.custom_phases as string[]) || []);
         setFloorplanUrl((data?.floorplan_url as string) || null);
       });
-  }, [step.trip_id]);
+    supabase
+      .from("step_budget")
+      .select("cost, hours_spent, work_type")
+      .eq("step_id", step.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setCost(data.cost != null ? String(data.cost) : "");
+          setHoursSpent(data.hours_spent != null ? String(data.hours_spent) : "");
+          setWorkType(data.work_type || "");
+        }
+      });
+  }, [step.trip_id, step.id]);
 
   const addCustomPhase = async (name: string) => {
     const next = Array.from(new Set([...customPhases, name]));
