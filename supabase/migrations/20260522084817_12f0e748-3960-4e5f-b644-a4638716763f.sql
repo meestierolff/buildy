@@ -1,0 +1,1 @@
+ALTER TABLE public.trips ADD COLUMN IF NOT EXISTS cover_position_y integer NOT NULL DEFAULT 50;

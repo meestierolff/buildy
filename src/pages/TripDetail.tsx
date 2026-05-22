@@ -16,7 +16,8 @@ import CoverPickerDialog from "@/components/CoverPickerDialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { MapPin, Plus, BookOpen, Share2, Hammer, LayoutGrid, Map as MapIcon, Images, ImagePlus, Pencil, Check, X } from "lucide-react";
+import { MapPin, Plus, BookOpen, Share2, Hammer, LayoutGrid, Map as MapIcon, Images, ImagePlus, Pencil, Check, X, MoveVertical } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
 import { differenceInDays } from "date-fns";
 import { toast } from "sonner";
 import {
@@ -46,6 +47,8 @@ const TripDetail = () => {
   const [savingDesc, setSavingDesc] = useState(false);
   const [activeTab, setActiveTab] = useState("timeline");
   const [milestonesOnly, setMilestonesOnly] = useState(false);
+  const [adjustCover, setAdjustCover] = useState(false);
+  const [coverY, setCoverY] = useState<number>(50);
 
   const isOwner = user && trip?.user_id === user.id;
 
@@ -65,6 +68,7 @@ const TripDetail = () => {
         .eq("user_id", tripData.user_id)
         .single();
       setTrip({ ...tripData, profile: profileData });
+      setCoverY(typeof (tripData as any).cover_position_y === "number" ? (tripData as any).cover_position_y : 50);
     }
 
     const { data: stepsData } = await supabase
@@ -199,6 +203,7 @@ const TripDetail = () => {
             <img
               src={trip.cover_image_url}
               alt=""
+              style={{ objectPosition: `center ${coverY}%` }}
               className="absolute inset-0 w-full h-full object-cover opacity-40"
             />
             <div className="absolute inset-0 bg-gradient-to-b from-primary/70 via-primary/80 to-primary" />
@@ -238,6 +243,11 @@ const TripDetail = () => {
                   <Button size="sm" variant="outline" onClick={() => setShowCoverPicker(true)} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
                     <ImagePlus className="h-4 w-4" /> Cover
                   </Button>
+                  {trip.cover_image_url && (
+                    <Button size="sm" variant="outline" onClick={() => setAdjustCover((v) => !v)} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground hidden md:inline-flex">
+                      <MoveVertical className="h-4 w-4" /> {adjustCover ? "Klaar" : "Positie"}
+                    </Button>
+                  )}
                 </>
               )}
               {!isOwner && trip.is_public && (
@@ -253,6 +263,28 @@ const TripDetail = () => {
               </Link>
             </div>
           </div>
+
+          {isOwner && adjustCover && trip.cover_image_url && (
+            <div className="mt-4 hidden md:flex items-center gap-3 rounded-md border border-primary-foreground/20 bg-primary-foreground/10 p-3 max-w-md">
+              <MoveVertical className="h-4 w-4 text-accent shrink-0" />
+              <div className="flex-1">
+                <div className="text-xs text-primary-foreground/80 mb-1">Verticale positie coverfoto</div>
+                <Slider
+                  value={[coverY]}
+                  min={0}
+                  max={100}
+                  step={1}
+                  onValueChange={(v) => setCoverY(v[0])}
+                  onValueCommit={async (v) => {
+                    const { error } = await supabase.from("trips").update({ cover_position_y: v[0] } as any).eq("id", trip.id);
+                    if (error) toast.error("Kon positie niet opslaan");
+                  }}
+                />
+              </div>
+              <span className="text-xs tabular-nums text-primary-foreground/70 w-10 text-right">{coverY}%</span>
+            </div>
+          )}
+
 
           {/* Project description */}
           <div className="mt-4 max-w-2xl">
