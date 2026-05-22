@@ -71,9 +71,6 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
         is_milestone: isMilestone,
         description: description || null,
         step_date: stepDate,
-        cost: cost === "" ? null : Number(cost),
-        hours_spent: hoursSpent === "" ? null : Number(hoursSpent),
-        work_type: workType || null,
       })
       .select()
       .single();
@@ -83,6 +80,16 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
       toast.error("Kon update niet toevoegen. Probeer het opnieuw.");
       setLoading(false);
       return;
+    }
+
+    if (cost !== "" || hoursSpent !== "" || workType) {
+      await supabase.from("step_budget").insert({
+        step_id: step.id,
+        trip_id: tripId,
+        cost: cost === "" ? null : Number(cost),
+        hours_spent: hoursSpent === "" ? null : Number(hoursSpent),
+        work_type: workType || null,
+      });
     }
 
     for (let i = 0; i < files.length; i++) {

@@ -108,9 +108,6 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
         step_date: stepDate,
         floorplan_x: pinX,
         floorplan_y: pinY,
-        cost: cost === "" ? null : Number(cost),
-        hours_spent: hoursSpent === "" ? null : Number(hoursSpent),
-        work_type: workType || null,
       })
       .eq("id", step.id);
 
@@ -119,6 +116,19 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
       toast.error("Kon update niet opslaan. Probeer het opnieuw.");
       setLoading(false);
       return;
+    }
+
+    const hasBudget = cost !== "" || hoursSpent !== "" || workType !== "";
+    if (hasBudget) {
+      await supabase.from("step_budget").upsert({
+        step_id: step.id,
+        trip_id: step.trip_id,
+        cost: cost === "" ? null : Number(cost),
+        hours_spent: hoursSpent === "" ? null : Number(hoursSpent),
+        work_type: workType || null,
+      });
+    } else {
+      await supabase.from("step_budget").delete().eq("step_id", step.id);
     }
 
     // Persist reorder of existing media
