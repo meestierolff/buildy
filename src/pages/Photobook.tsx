@@ -82,14 +82,15 @@ const Photobook = () => {
   useEffect(() => {
     const fetchData = async () => {
       if (!id) return;
-      const [{ data: tripData }, { data: stepsData }, { data: settingsData }, { data: exMedia }, { data: exSteps }] = await Promise.all([
+      const [{ data: tripData }, { data: stepsData }, { data: settingsData }, { data: exMedia }, { data: exSteps }, { data: privInfo }] = await Promise.all([
         supabase.from("trips").select("*").eq("id", id).single(),
         supabase.from("steps").select("*, step_media(*)").eq("trip_id", id).order("step_date", { ascending: true }),
         supabase.from("photobook_settings").select("*").eq("trip_id", id).maybeSingle(),
         supabase.from("photobook_excluded_media").select("media_id").eq("trip_id", id),
         supabase.from("photobook_excluded_steps").select("step_id").eq("trip_id", id),
+        supabase.from("trip_private_info").select("address").eq("trip_id", id).maybeSingle(),
       ]);
-      setTrip(tripData);
+      setTrip(tripData ? { ...tripData, address: privInfo?.address ?? null } : null);
       setSteps(stepsData || []);
       if (settingsData) {
         setSettings({
