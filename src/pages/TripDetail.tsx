@@ -303,6 +303,11 @@ const TripDetail = () => {
             totalPhotos={totalPhotos}
             daysActive={days}
             milestones={milestones}
+            milestonesActive={milestonesOnly}
+            onMilestonesClick={milestones > 0 ? () => {
+              setMilestonesOnly((v) => !v);
+              setActiveTab("timeline");
+            } : undefined}
           />
 
           <div className="mt-4 max-w-md">
