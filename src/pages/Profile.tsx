@@ -38,12 +38,13 @@ const Profile = () => {
       location: profileData.location || "",
     });
 
-    const { data: tripsData } = await supabase
+    let tripsQuery = supabase
       .from("trips")
       .select("*")
       .eq("user_id", userId)
-      .eq("is_public", true)
       .order("created_at", { ascending: false });
+    if (!isMe) tripsQuery = tripsQuery.eq("is_public", true);
+    const { data: tripsData } = await tripsQuery;
     setTrips(tripsData || []);
 
     const tripIds = (tripsData || []).map((t: any) => t.id);
@@ -57,7 +58,7 @@ const Profile = () => {
     setLoading(false);
   };
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [userId]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [userId, user?.id]);
 
   const save = async () => {
     if (!user) return;
