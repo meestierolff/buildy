@@ -25,6 +25,9 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
   const [isMilestone, setIsMilestone] = useState<boolean>(!!step.is_milestone);
   const [description, setDescription] = useState(step.description || "");
   const [stepDate, setStepDate] = useState(step.step_date);
+  const [cost, setCost] = useState<string>(step.cost != null ? String(step.cost) : "");
+  const [hoursSpent, setHoursSpent] = useState<string>(step.hours_spent != null ? String(step.hours_spent) : "");
+  const [workType, setWorkType] = useState<string>(step.work_type || "");
   const [existingMedia, setExistingMedia] = useState<any[]>(
     [...(step.step_media || [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
   );
