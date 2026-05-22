@@ -77,6 +77,14 @@ const Photobook = () => {
     if (error) toast.error("Kon niet opslaan");
   };
 
+  const updateTripField = async (patch: Record<string, any>) => {
+    if (!id) return;
+    setTrip((t: any) => ({ ...t, ...patch }));
+    const { error } = await supabase.from("trips").update(patch).eq("id", id);
+    if (error) toast.error("Kon niet opslaan");
+  };
+
+
   const toggleMedia = async (mediaId: string) => {
     if (!id) return;
     const isOut = excludedMedia.has(mediaId);
