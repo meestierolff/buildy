@@ -16,7 +16,7 @@ import CoverPickerDialog from "@/components/CoverPickerDialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { MapPin, Plus, BookOpen, Share2, Hammer, LayoutGrid, Map as MapIcon, Images, ImagePlus, Pencil, Check, X, MoveVertical } from "lucide-react";
+import { MapPin, Plus, BookOpen, Share2, Hammer, LayoutGrid, Map as MapIcon, Images, ImagePlus, Pencil, Check, X, MoveVertical, Wallet } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 import { differenceInDays } from "date-fns";
 import { toast } from "sonner";
