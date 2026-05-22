@@ -44,6 +44,8 @@ const TripDetail = () => {
   const [editingDesc, setEditingDesc] = useState(false);
   const [descDraft, setDescDraft] = useState("");
   const [savingDesc, setSavingDesc] = useState(false);
+  const [activeTab, setActiveTab] = useState("timeline");
+  const [milestonesOnly, setMilestonesOnly] = useState(false);
 
   const isOwner = user && trip?.user_id === user.id;
 
