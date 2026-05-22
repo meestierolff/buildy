@@ -352,14 +352,15 @@ const TripDetail = () => {
                     {isOwner && !milestonesOnly && <p className="text-sm mt-1">Voeg je eerste 'voor'-foto toe om te starten!</p>}
                   </div>
                 ) : (
-                <BlueprintTimeline
-                  steps={steps}
-                  onLike={handleLike}
-                  onEdit={setEditingStep}
-                  onDelete={setDeletingStepId}
-                  isOwner={!!isOwner}
-                />
-              )}
+                  <BlueprintTimeline
+                    steps={visible}
+                    onLike={handleLike}
+                    onEdit={setEditingStep}
+                    onDelete={setDeletingStepId}
+                    isOwner={!!isOwner}
+                  />
+                );
+              })()}
             </TabsContent>
             <TabsContent value="floorplan">
               {!trip.floorplan_url && !isOwner && (
