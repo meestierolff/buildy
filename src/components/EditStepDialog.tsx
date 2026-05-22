@@ -142,7 +142,7 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
           step_id: step.id,
           user_id: user.id,
           media_url: urlData.publicUrl,
-          media_type: file.type.startsWith("video") ? "video" : "image",
+          media_type: file.type === "application/pdf" ? "pdf" : file.type.startsWith("video") ? "video" : "image",
           sort_order: baseOrder + i,
         });
       }
