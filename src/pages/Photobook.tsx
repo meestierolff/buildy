@@ -409,12 +409,23 @@ const PhotoEditOverlay = ({
         const out = excludedMedia.has(m.id);
         return (
           <div key={m.id} className="relative group">
-            <img src={m.media_url} alt="" className={`w-12 h-12 object-cover rounded ${out ? "opacity-30" : ""}`} />
-            <div className="absolute inset-0 flex items-center justify-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 rounded">
+            <img src={m.media_url} alt="" className={`w-12 h-12 object-cover rounded transition ${out ? "opacity-40 grayscale" : ""}`} />
+            {out && (
+              <>
+                <div className="absolute inset-0 rounded ring-2 ring-destructive" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <EyeOff className="h-4 w-4 text-destructive drop-shadow" />
+                </div>
+                <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-[8px] font-bold uppercase tracking-wide px-1 py-0.5 rounded">
+                  Uit
+                </span>
+              </>
+            )}
+            <div className="absolute inset-0 flex items-center justify-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 rounded">
               <button
                 onClick={() => onToggleMedia(m.id)}
                 className="text-white p-1 hover:bg-white/20 rounded"
-                title={out ? "Toon" : "Verberg"}
+                title={out ? "Terugzetten in fotoboek" : "Verberg uit fotoboek"}
               >
                 {out ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
               </button>
@@ -426,6 +437,7 @@ const PhotoEditOverlay = ({
               </button>
             </div>
           </div>
+
         );
       })}
     </div>
