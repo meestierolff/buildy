@@ -407,6 +407,7 @@ export type Database = {
         Row: {
           address: string | null
           budget_public: boolean
+          budget_total: number | null
           countries: string[] | null
           cover_image_url: string | null
           cover_position_y: number
@@ -429,6 +430,7 @@ export type Database = {
         Insert: {
           address?: string | null
           budget_public?: boolean
+          budget_total?: number | null
           countries?: string[] | null
           cover_image_url?: string | null
           cover_position_y?: number
@@ -451,6 +453,7 @@ export type Database = {
         Update: {
           address?: string | null
           budget_public?: boolean
+          budget_total?: number | null
           countries?: string[] | null
           cover_image_url?: string | null
           cover_position_y?: number
