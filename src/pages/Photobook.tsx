@@ -193,7 +193,7 @@ const Photobook = () => {
     }
 
 
-    const visibleSteps = steps.filter((s) => !excludedSteps.has(s.id));
+    const visibleSteps = editing ? steps : steps.filter((s) => !excludedSteps.has(s.id));
     const phaseOrder = ["Aankoop", "Voorbereiding/Design", "Voorbereiding", "Sloop", "Ruwbouw", "Installatie", "Afbouw", "Afwerking", "Inrichting", "Oplevering"];
     const grouped = new Map<string, any[]>();
     for (const step of visibleSteps) {
