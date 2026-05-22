@@ -433,16 +433,21 @@ const Photobook = () => {
                 style={{ display: i === safePage ? "block" : "none" }}
               >
                 {p.node}
-                {editing && p.meta?.stepId && (
-                  <div className="absolute top-2 right-2 z-10 flex gap-1.5">
-                    <button
-                      onClick={() => toggleStep(p.meta!.stepId!)}
-                      className="bg-black/60 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1 hover:bg-black/80"
-                    >
-                      <EyeOff className="h-3 w-3" /> Verberg update
-                    </button>
-                  </div>
-                )}
+                {editing && p.meta?.stepId && (() => {
+                  const stepId = p.meta!.stepId!;
+                  const isHidden = excludedSteps.has(stepId);
+                  return (
+                    <div className="absolute top-2 right-2 z-10 flex items-center gap-2 bg-background/95 backdrop-blur border rounded-full pl-3 pr-2 py-1.5 shadow-md">
+                      <span className="text-xs font-medium">
+                        {isHidden ? "Verborgen uit fotoboek" : "In fotoboek"}
+                      </span>
+                      <Switch
+                        checked={!isHidden}
+                        onCheckedChange={() => toggleStep(stepId)}
+                      />
+                    </div>
+                  );
+                })()}
                 {editing && p.meta?.stepId && (
                   <PhotoEditOverlay
                     step={steps.find((s) => s.id === p.meta!.stepId)}
