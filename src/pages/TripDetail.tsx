@@ -212,7 +212,7 @@ const TripDetail = () => {
           <div className="absolute inset-0 blueprint-grid opacity-15" />
         )}
         <div className="container relative py-10">
-          <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-col md:flex-row md:flex-wrap md:items-start md:justify-between gap-4">
             <div className="min-w-0 flex-1">
               {trip.project_type && (
                 <span className="inline-block text-[11px] font-bold uppercase tracking-widest bg-accent text-accent-foreground px-2.5 py-1 rounded-full mb-3">
@@ -234,7 +234,7 @@ const TripDetail = () => {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 w-full md:w-auto">
               {isOwner && (
                 <>
                   <Button size="sm" onClick={() => setShowAddStep(true)} className="gap-1.5 bg-accent text-accent-foreground hover:bg-accent/90">
