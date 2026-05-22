@@ -397,6 +397,7 @@ export type Database = {
           countries: string[] | null
           cover_image_url: string | null
           cover_position_y: number
+          cover_title_position: string
           created_at: string
           custom_phases: string[]
           description: string | null
@@ -417,6 +418,7 @@ export type Database = {
           countries?: string[] | null
           cover_image_url?: string | null
           cover_position_y?: number
+          cover_title_position?: string
           created_at?: string
           custom_phases?: string[]
           description?: string | null
@@ -437,6 +439,7 @@ export type Database = {
           countries?: string[] | null
           cover_image_url?: string | null
           cover_position_y?: number
+          cover_title_position?: string
           created_at?: string
           custom_phases?: string[]
           description?: string | null
