@@ -149,6 +149,29 @@ const Photobook = () => {
       ),
     });
 
+    if (trip.floorplan_url) {
+      list.push({
+        key: "floorplan",
+        node: (
+          <div className="h-full flex flex-col bg-card p-12">
+            <div className="text-center mb-6">
+              <p className="text-xs uppercase tracking-[0.3em] text-accent font-bold mb-2">Plattegrond</p>
+              <h2 className="text-3xl font-serif font-bold">{trip.title}</h2>
+              {trip.address && <p className="text-sm text-muted-foreground mt-1">{trip.address}</p>}
+            </div>
+            <div className="flex-1 min-h-0 flex items-center justify-center">
+              <img
+                src={trip.floorplan_url}
+                alt="Plattegrond"
+                className="max-w-full max-h-full object-contain rounded-md shadow-sm"
+              />
+            </div>
+          </div>
+        ),
+      });
+    }
+
+
     const visibleSteps = steps.filter((s) => !excludedSteps.has(s.id));
     const phaseOrder = ["Aankoop", "Voorbereiding/Design", "Voorbereiding", "Sloop", "Ruwbouw", "Installatie", "Afbouw", "Afwerking", "Inrichting", "Oplevering"];
     const grouped = new Map<string, any[]>();
