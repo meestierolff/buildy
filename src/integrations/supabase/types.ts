@@ -230,6 +230,7 @@ export type Database = {
           display_name: string
           id: string
           is_private: boolean
+          is_pro: boolean
           location: string | null
           onboarded: boolean
           updated_at: string
@@ -242,6 +243,7 @@ export type Database = {
           display_name?: string
           id?: string
           is_private?: boolean
+          is_pro?: boolean
           location?: string | null
           onboarded?: boolean
           updated_at?: string
@@ -254,6 +256,7 @@ export type Database = {
           display_name?: string
           id?: string
           is_private?: boolean
+          is_pro?: boolean
           location?: string | null
           onboarded?: boolean
           updated_at?: string
@@ -287,6 +290,7 @@ export type Database = {
       }
       step_media: {
         Row: {
+          compare_role: string | null
           created_at: string
           id: string
           media_type: string
@@ -296,6 +300,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          compare_role?: string | null
           created_at?: string
           id?: string
           media_type?: string
@@ -305,6 +310,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          compare_role?: string | null
           created_at?: string
           id?: string
           media_type?: string
