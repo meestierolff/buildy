@@ -4,7 +4,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Hammer } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -19,17 +18,25 @@ const OnboardingDialog = () => {
 
   useEffect(() => {
     if (!user) return;
+    let cancelled = false;
     (async () => {
       const { data } = await supabase
         .from("profiles")
         .select("onboarded, display_name")
         .eq("user_id", user.id)
         .maybeSingle();
+      if (cancelled) return;
       if (data && !data.onboarded) {
-        setDisplayName(data.display_name || "");
-        setOpen(true);
+        // Use first name part if display_name looks like an email
+        const seed = (data.display_name || "").includes("@")
+          ? ""
+          : data.display_name || "";
+        setDisplayName(seed);
+        // Soft delay so it doesn't punch in on page load
+        setTimeout(() => !cancelled && setOpen(true), 900);
       }
     })();
+    return () => { cancelled = true; };
   }, [user]);
 
   const save = async () => {
@@ -52,37 +59,41 @@ const OnboardingDialog = () => {
     if (error) {
       toast.error("Kon profiel niet opslaan");
     } else {
-      toast.success("Welkom bij Buildy!");
+      toast.success("Welkom bij Buildy");
       setOpen(false);
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <div className="mx-auto bg-accent rounded-xl p-3 mb-2">
-            <Hammer className="h-6 w-6 text-accent-foreground" />
-          </div>
-          <DialogTitle className="text-center">Welkom bij Buildy!</DialogTitle>
-          <DialogDescription className="text-center">
-            Even je profiel inrichten zodat anderen je verbouwingen kunnen vinden.
+      <DialogContent className="sm:max-w-md rounded-lg">
+        <DialogHeader className="space-y-3">
+          <p className="eyebrow text-center">Even kennismaken</p>
+          <DialogTitle className="text-center font-serif italic text-3xl font-normal">
+            Welkom bij Buildy
+          </DialogTitle>
+          <DialogDescription className="text-center text-sm text-muted-foreground leading-relaxed">
+            Vul je profiel aan zodat anderen je verbouwingen kunnen vinden.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
-          <div>
-            <Label htmlFor="dn">Naam</Label>
+        <div className="space-y-4 pt-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="dn" className="text-[11px] uppercase tracking-widest font-bold text-muted-foreground">Naam</Label>
             <Input id="dn" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Bijv. Jan Bakker" />
           </div>
-          <div>
-            <Label htmlFor="loc">Locatie</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="loc" className="text-[11px] uppercase tracking-widest font-bold text-muted-foreground">Locatie</Label>
             <Input id="loc" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Bijv. Amsterdam" />
           </div>
-          <div>
-            <Label htmlFor="bio">Bio</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="bio" className="text-[11px] uppercase tracking-widest font-bold text-muted-foreground">Bio</Label>
             <Textarea id="bio" value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Wat ga je verbouwen?" rows={3} />
           </div>
-          <Button onClick={save} disabled={saving} className="w-full bg-accent text-accent-foreground hover:bg-accent/90">
+          <Button
+            onClick={save}
+            disabled={saving}
+            className="w-full rounded-full text-[11px] font-bold uppercase tracking-widest bg-foreground text-background hover:bg-foreground/90 h-11"
+          >
             Aan de slag
           </Button>
         </div>
