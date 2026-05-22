@@ -39,6 +39,7 @@ const Friends = () => {
       let q = supabase
         .from("profiles")
         .select("user_id, display_name, avatar_url, bio, location")
+        .eq("is_private", false)
         .order("display_name", { ascending: true })
         .range(from, from + PAGE_SIZE - 1);
       if (search) q = q.ilike("display_name", `%${search}%`);
