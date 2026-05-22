@@ -5,10 +5,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { ArrowLeft, ChevronLeft, ChevronRight, Hammer, Pencil, Eye, EyeOff, Check } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { ArrowLeft, ChevronLeft, ChevronRight, Hammer, Pencil, Eye, EyeOff, Check, BookOpen, Download, ExternalLink, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { nl } from "date-fns/locale";
 import { toast } from "sonner";
+import { buildPeechoPdf, PEECHO_FORMATS, type PeechoFormat } from "@/lib/peechoExport";
 
 interface PhotobookSettings {
   cover_title: string | null;
@@ -36,6 +38,37 @@ const Photobook = () => {
   const [excludedSteps, setExcludedSteps] = useState<Set<string>>(new Set());
 
   const isOwner = user && trip?.user_id === user.id;
+
+  const [printOpen, setPrintOpen] = useState(false);
+  const [printFormat, setPrintFormat] = useState<PeechoFormat>("A4_LANDSCAPE");
+  const [printBusy, setPrintBusy] = useState(false);
+  const [printedPdfUrl, setPrintedPdfUrl] = useState<string | null>(null);
+  const PEECHO_CHECKOUT = (import.meta.env.VITE_PEECHO_CHECKOUT_URL as string) || "https://www.peecho.com/checkout/upload-and-order";
+
+  const handleGeneratePeechoPdf = async () => {
+    if (!trip || !id) return;
+    setPrintBusy(true);
+    setPrintedPdfUrl(null);
+    try {
+      const blob = await buildPeechoPdf({
+        trip, steps, settings, excludedMedia, excludedSteps, format: printFormat,
+      });
+      // Upload to public storage so Peecho (or user) can fetch it
+      const path = `${trip.user_id}/peecho/${id}-${Date.now()}.pdf`;
+      const { error: upErr } = await supabase.storage.from("trip-media").upload(path, blob, {
+        contentType: "application/pdf", upsert: true,
+      });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from("trip-media").getPublicUrl(path);
+      setPrintedPdfUrl(pub.publicUrl);
+      toast.success("Print-PDF gegenereerd volgens Peecho-richtlijnen");
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e.message || "Genereren mislukt");
+    } finally {
+      setPrintBusy(false);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -339,17 +372,30 @@ const Photobook = () => {
         <span className="text-sm text-muted-foreground">
           Pagina {safePage + 1} / {pages.length}
         </span>
-        {isOwner && (
-          <Button
-            variant={editing ? "default" : "outline"}
-            size="sm"
-            onClick={() => setEditing(!editing)}
-            className="ml-auto gap-1.5"
-          >
-            {editing ? <Check className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
-            {editing ? "Klaar met bewerken" : "Bewerk fotoboek"}
-          </Button>
-        )}
+        <div className="ml-auto flex items-center gap-2">
+          {isOwner && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setPrintedPdfUrl(null); setPrintOpen(true); }}
+              className="gap-1.5"
+            >
+              <BookOpen className="h-4 w-4" />
+              Bestel als boek
+            </Button>
+          )}
+          {isOwner && (
+            <Button
+              variant={editing ? "default" : "outline"}
+              size="sm"
+              onClick={() => setEditing(!editing)}
+              className="gap-1.5"
+            >
+              {editing ? <Check className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+              {editing ? "Klaar" : "Bewerk"}
+            </Button>
+          )}
+        </div>
       </div>
 
       {editing && pages[safePage]?.key === "cover" && (
@@ -491,6 +537,66 @@ const Photobook = () => {
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
+
+      <Dialog open={printOpen} onOpenChange={setPrintOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Bestel als hardcover boek</DialogTitle>
+            <DialogDescription>
+              We exporteren een print-klare PDF volgens de Peecho-richtlijnen (300 dpi, RGB, 12 mm marges, even aantal pagina's, ingesloten lettertypes). Daarna kun je deze direct uploaden bij Peecho voor druk en verzending.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Formaat</p>
+            <div className="grid grid-cols-3 gap-2">
+              {(Object.keys(PEECHO_FORMATS) as PeechoFormat[]).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => setPrintFormat(k)}
+                  disabled={printBusy}
+                  className={`rounded-md border p-2 text-left text-xs transition ${printFormat === k ? "border-primary bg-primary/5" : "border-border hover:bg-muted"}`}
+                >
+                  <p className="font-semibold">{PEECHO_FORMATS[k].label}</p>
+                  <p className="text-muted-foreground">{PEECHO_FORMATS[k].w} × {PEECHO_FORMATS[k].h} mm</p>
+                </button>
+              ))}
+            </div>
+
+            {!printedPdfUrl ? (
+              <Button onClick={handleGeneratePeechoPdf} disabled={printBusy} className="w-full gap-2">
+                {printBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookOpen className="h-4 w-4" />}
+                {printBusy ? "Print-PDF maken…" : "Print-PDF genereren"}
+              </Button>
+            ) : (
+              <div className="space-y-2 rounded-md border bg-secondary/40 p-3">
+                <p className="text-xs text-muted-foreground">PDF klaar — kies hoe je verder wilt:</p>
+                <a href={printedPdfUrl} target="_blank" rel="noreferrer" download>
+                  <Button variant="outline" className="w-full gap-2">
+                    <Download className="h-4 w-4" /> Download print-PDF
+                  </Button>
+                </a>
+                <a
+                  href={PEECHO_CHECKOUT.includes("?") ? `${PEECHO_CHECKOUT}&pdf=${encodeURIComponent(printedPdfUrl)}` : `${PEECHO_CHECKOUT}?pdf=${encodeURIComponent(printedPdfUrl)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <Button className="w-full gap-2">
+                    <ExternalLink className="h-4 w-4" /> Bestel via Peecho
+                  </Button>
+                </a>
+                <p className="text-[11px] text-muted-foreground">
+                  Bij Peecho upload je de PDF en kies je hardcover, formaat en verzendadres. De PDF-link blijft 1 uur geldig — open Peecho meteen.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPrintOpen(false)}>Sluiten</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
