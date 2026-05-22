@@ -39,6 +39,37 @@ const Photobook = () => {
 
   const isOwner = user && trip?.user_id === user.id;
 
+  const [printOpen, setPrintOpen] = useState(false);
+  const [printFormat, setPrintFormat] = useState<PeechoFormat>("A4_LANDSCAPE");
+  const [printBusy, setPrintBusy] = useState(false);
+  const [printedPdfUrl, setPrintedPdfUrl] = useState<string | null>(null);
+  const PEECHO_CHECKOUT = (import.meta.env.VITE_PEECHO_CHECKOUT_URL as string) || "https://www.peecho.com/checkout/upload-and-order";
+
+  const handleGeneratePeechoPdf = async () => {
+    if (!trip || !id) return;
+    setPrintBusy(true);
+    setPrintedPdfUrl(null);
+    try {
+      const blob = await buildPeechoPdf({
+        trip, steps, settings, excludedMedia, excludedSteps, format: printFormat,
+      });
+      // Upload to public storage so Peecho (or user) can fetch it
+      const path = `${trip.user_id}/peecho/${id}-${Date.now()}.pdf`;
+      const { error: upErr } = await supabase.storage.from("trip-media").upload(path, blob, {
+        contentType: "application/pdf", upsert: true,
+      });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from("trip-media").getPublicUrl(path);
+      setPrintedPdfUrl(pub.publicUrl);
+      toast.success("Print-PDF gegenereerd volgens Peecho-richtlijnen");
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e.message || "Genereren mislukt");
+    } finally {
+      setPrintBusy(false);
+    }
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       if (!id) return;
