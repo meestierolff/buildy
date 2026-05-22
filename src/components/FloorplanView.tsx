@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Upload, MapPin, Hammer, Move } from "lucide-react";
+import { Upload, MapPin, Hammer, Move, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface Step {
@@ -26,10 +26,41 @@ const FloorplanView = ({ tripId, userId, isOwner, floorplanUrl, steps, onChanged
   const fileRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [pinningStepId, setPinningStepId] = useState<string | null>(null);
   const [activeStep, setActiveStep] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
+
+  const makeBlueprint = async () => {
+    if (!floorplanUrl) return;
+    if (!confirm("De huidige plattegrond wordt vervangen door een AI-blauwdruk. Doorgaan?")) return;
+    setGenerating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("floorplan-blueprint", {
+        body: { imageUrl: floorplanUrl },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      const dataUrl: string = (data as any).image;
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+      const path = `${userId}/floorplans/${tripId}-blueprint-${Date.now()}.png`;
+      const { error: upErr } = await supabase.storage
+        .from("trip-media")
+        .upload(path, blob, { upsert: true, contentType: "image/png" });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from("trip-media").getPublicUrl(path);
+      await supabase.from("trips").update({ floorplan_url: pub.publicUrl }).eq("id", tripId);
+      toast.success("Blauwdruk gegenereerd ✨");
+      onChanged();
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e?.message || "Genereren mislukt");
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const upload = async (file: File) => {
     setUploading(true);
@@ -129,7 +160,7 @@ const FloorplanView = ({ tripId, userId, isOwner, floorplanUrl, steps, onChanged
           )}
         </div>
         {isOwner && (
-          <>
+          <div className="flex flex-wrap gap-2">
             <input
               ref={fileRef}
               type="file"
@@ -137,10 +168,21 @@ const FloorplanView = ({ tripId, userId, isOwner, floorplanUrl, steps, onChanged
               hidden
               onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
             />
-            <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading} className="gap-1.5">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={makeBlueprint}
+              disabled={generating || uploading}
+              className="gap-1.5"
+              title="Genereer een strakke blauwdruk-versie met AI"
+            >
+              {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              {generating ? "AI bezig..." : "Maak blauwdruk (AI)"}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={uploading || generating} className="gap-1.5">
               <Upload className="h-3.5 w-3.5" /> Vervang
             </Button>
-          </>
+          </div>
         )}
       </div>
 
