@@ -33,6 +33,7 @@ const ProgressControl = ({ tripId, isOwner, startDate, endDate, progressMode, pr
   const initialMode = (progressMode === "auto" && hasEnd) ? "auto" : "manual";
   const [mode, setMode] = useState<"auto" | "manual">(initialMode);
   const [manualVal, setManualVal] = useState<number>(progressPercentage ?? 0);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     setMode(progressMode === "auto" && hasEnd ? "auto" : "manual");
@@ -59,9 +60,22 @@ const ProgressControl = ({ tripId, isOwner, startDate, endDate, progressMode, pr
 
   return (
     <div className="space-y-2">
-      <ProgressBar value={displayed} />
-      {isOwner && (
-        <div className="flex flex-wrap items-center gap-3 text-xs text-primary-foreground/80">
+      <div className="flex items-center gap-2">
+        <div className="flex-1"><ProgressBar value={displayed} /></div>
+        {isOwner && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setEditing((v) => !v)}
+            className="h-7 px-2 text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
+            aria-label={editing ? "Klaar" : "Bewerk voortgang"}
+          >
+            {editing ? <Check className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
+          </Button>
+        )}
+      </div>
+      {isOwner && editing && (
+        <div className="flex flex-wrap items-center gap-3 text-xs text-primary-foreground/80 rounded-md border border-primary-foreground/15 bg-primary-foreground/5 p-2">
           {hasEnd && (
             <div className="flex items-center gap-2">
               <Switch
