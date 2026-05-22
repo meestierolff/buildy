@@ -26,6 +26,8 @@ const Budget = () => {
   const [trip, setTrip] = useState<any>(null);
   const [steps, setSteps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingBudget, setEditingBudget] = useState(false);
+  const [budgetDraft, setBudgetDraft] = useState("");
 
   useEffect(() => {
     if (!id) return;
