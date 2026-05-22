@@ -203,6 +203,7 @@ const TripDetail = () => {
             <img
               src={trip.cover_image_url}
               alt=""
+              style={{ objectPosition: `center ${coverY}%` }}
               className="absolute inset-0 w-full h-full object-cover opacity-40"
             />
             <div className="absolute inset-0 bg-gradient-to-b from-primary/70 via-primary/80 to-primary" />
