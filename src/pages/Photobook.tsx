@@ -313,7 +313,7 @@ const Photobook = () => {
     }
 
     return list;
-  }, [trip, steps, settings, excludedMedia, excludedSteps]);
+  }, [trip, steps, settings, excludedMedia, excludedSteps, editing]);
 
   if (loading) {
     return (
