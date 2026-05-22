@@ -243,6 +243,11 @@ const TripDetail = () => {
                   <Button size="sm" variant="outline" onClick={() => setShowCoverPicker(true)} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
                     <ImagePlus className="h-4 w-4" /> Cover
                   </Button>
+                  {trip.cover_image_url && (
+                    <Button size="sm" variant="outline" onClick={() => setAdjustCover((v) => !v)} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground hidden md:inline-flex">
+                      <MoveVertical className="h-4 w-4" /> {adjustCover ? "Klaar" : "Positie"}
+                    </Button>
+                  )}
                 </>
               )}
               {!isOwner && trip.is_public && (
