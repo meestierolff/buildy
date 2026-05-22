@@ -325,11 +325,13 @@ export type Database = {
       }
       steps: {
         Row: {
+          cost: number | null
           country: string | null
           created_at: string
           description: string | null
           floorplan_x: number | null
           floorplan_y: number | null
+          hours_spent: number | null
           id: string
           is_milestone: boolean
           latitude: number | null
@@ -343,13 +345,16 @@ export type Database = {
           trip_id: string
           updated_at: string
           user_id: string
+          work_type: string | null
         }
         Insert: {
+          cost?: number | null
           country?: string | null
           created_at?: string
           description?: string | null
           floorplan_x?: number | null
           floorplan_y?: number | null
+          hours_spent?: number | null
           id?: string
           is_milestone?: boolean
           latitude?: number | null
@@ -363,13 +368,16 @@ export type Database = {
           trip_id: string
           updated_at?: string
           user_id: string
+          work_type?: string | null
         }
         Update: {
+          cost?: number | null
           country?: string | null
           created_at?: string
           description?: string | null
           floorplan_x?: number | null
           floorplan_y?: number | null
+          hours_spent?: number | null
           id?: string
           is_milestone?: boolean
           latitude?: number | null
@@ -383,6 +391,7 @@ export type Database = {
           trip_id?: string
           updated_at?: string
           user_id?: string
+          work_type?: string | null
         }
         Relationships: [
           {
@@ -397,6 +406,7 @@ export type Database = {
       trips: {
         Row: {
           address: string | null
+          budget_public: boolean
           countries: string[] | null
           cover_image_url: string | null
           cover_position_y: number
@@ -418,6 +428,7 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          budget_public?: boolean
           countries?: string[] | null
           cover_image_url?: string | null
           cover_position_y?: number
@@ -439,6 +450,7 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          budget_public?: boolean
           countries?: string[] | null
           cover_image_url?: string | null
           cover_position_y?: number
@@ -486,6 +498,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_view_budget: { Args: { _trip_id: string }; Returns: boolean }
       can_view_step: { Args: { _step_id: string }; Returns: boolean }
       can_view_trip: { Args: { _trip_id: string }; Returns: boolean }
     }
