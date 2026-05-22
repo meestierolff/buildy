@@ -288,6 +288,48 @@ export type Database = {
         }
         Relationships: []
       }
+      step_budget: {
+        Row: {
+          cost: number | null
+          hours_spent: number | null
+          step_id: string
+          trip_id: string
+          updated_at: string
+          work_type: string | null
+        }
+        Insert: {
+          cost?: number | null
+          hours_spent?: number | null
+          step_id: string
+          trip_id: string
+          updated_at?: string
+          work_type?: string | null
+        }
+        Update: {
+          cost?: number | null
+          hours_spent?: number | null
+          step_id?: string
+          trip_id?: string
+          updated_at?: string
+          work_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "step_budget_step_id_fkey"
+            columns: ["step_id"]
+            isOneToOne: true
+            referencedRelation: "steps"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "step_budget_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       step_media: {
         Row: {
           compare_role: string | null
@@ -331,13 +373,11 @@ export type Database = {
       }
       steps: {
         Row: {
-          cost: number | null
           country: string | null
           created_at: string
           description: string | null
           floorplan_x: number | null
           floorplan_y: number | null
-          hours_spent: number | null
           id: string
           is_milestone: boolean
           latitude: number | null
@@ -351,16 +391,13 @@ export type Database = {
           trip_id: string
           updated_at: string
           user_id: string
-          work_type: string | null
         }
         Insert: {
-          cost?: number | null
           country?: string | null
           created_at?: string
           description?: string | null
           floorplan_x?: number | null
           floorplan_y?: number | null
-          hours_spent?: number | null
           id?: string
           is_milestone?: boolean
           latitude?: number | null
@@ -374,16 +411,13 @@ export type Database = {
           trip_id: string
           updated_at?: string
           user_id: string
-          work_type?: string | null
         }
         Update: {
-          cost?: number | null
           country?: string | null
           created_at?: string
           description?: string | null
           floorplan_x?: number | null
           floorplan_y?: number | null
-          hours_spent?: number | null
           id?: string
           is_milestone?: boolean
           latitude?: number | null
@@ -397,7 +431,6 @@ export type Database = {
           trip_id?: string
           updated_at?: string
           user_id?: string
-          work_type?: string | null
         }
         Relationships: [
           {
@@ -409,9 +442,34 @@ export type Database = {
           },
         ]
       }
-      trips: {
+      trip_private_info: {
         Row: {
           address: string | null
+          trip_id: string
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          trip_id: string
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          trip_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trip_private_info_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: true
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trips: {
+        Row: {
           budget_public: boolean
           budget_total: number | null
           countries: string[] | null
@@ -434,7 +492,6 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          address?: string | null
           budget_public?: boolean
           budget_total?: number | null
           countries?: string[] | null
@@ -457,7 +514,6 @@ export type Database = {
           user_id: string
         }
         Update: {
-          address?: string | null
           budget_public?: boolean
           budget_total?: number | null
           countries?: string[] | null
