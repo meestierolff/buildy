@@ -256,11 +256,13 @@ const TripDetail = () => {
               <Button size="sm" variant="outline" onClick={handleShare} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
                 <Share2 className="h-4 w-4" /> Delen
               </Button>
-              <Link to={`/trip/${id}/photobook`}>
-                <Button size="sm" variant="outline" className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
-                  <BookOpen className="h-4 w-4" /> Fotoboek
-                </Button>
-              </Link>
+              {isOwner && (
+                <Link to={`/trip/${id}/photobook`}>
+                  <Button size="sm" variant="outline" className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
+                    <BookOpen className="h-4 w-4" /> Fotoboek
+                  </Button>
+                </Link>
+              )}
             </div>
           </div>
 
