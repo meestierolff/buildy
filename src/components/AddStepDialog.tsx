@@ -170,19 +170,21 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
           </div>
 
           <div>
-            <Label>Foto's & Video's</Label>
+            <Label>Foto's, video's & PDF's</Label>
             <label className="mt-1 flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-4 cursor-pointer hover:border-accent transition-colors">
               <Upload className="h-5 w-5 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Klik om bestanden te selecteren</span>
-              <input type="file" multiple accept="image/*,video/*" className="hidden" onChange={handleFileChange} />
+              <input type="file" multiple accept="image/*,video/*,application/pdf" className="hidden" onChange={handleFileChange} />
             </label>
             {files.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-2">
                 {files.map((f, i) => (
                   <div key={i} className="relative group">
-                    <div className="w-16 h-16 rounded-md bg-muted flex items-center justify-center overflow-hidden">
+                    <div className="w-16 h-16 rounded-md bg-muted flex items-center justify-center overflow-hidden text-center px-1">
                       {f.type.startsWith("image") ? (
                         <img src={URL.createObjectURL(f)} alt="" className="w-full h-full object-cover" />
+                      ) : f.type === "application/pdf" ? (
+                        <span className="text-[10px] leading-tight break-all">📄<br />{f.name.length > 14 ? f.name.slice(0, 12) + "…" : f.name}</span>
                       ) : (
                         <span className="text-xs">🎥</span>
                       )}
