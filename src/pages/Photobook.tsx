@@ -225,18 +225,39 @@ const Photobook = () => {
               key: `${step.id}-${i}`,
               meta: { stepId: step.id },
               node: (
-                <div className="h-full flex flex-col bg-card">
-                  <div className={`flex-1 grid gap-1 min-h-0 ${batch.length === 2 ? "grid-cols-2" : "grid-cols-2 grid-rows-2"}`}>
+                <div
+                  className="h-full bg-card overflow-hidden grid"
+                  style={{ gridTemplateRows: isFirst ? "1fr auto" : "1fr" }}
+                >
+                  <div
+                    className={`grid gap-1 overflow-hidden ${batch.length === 2 ? "grid-cols-2" : "grid-cols-2 grid-rows-2"}`}
+                  >
                     {batch.map((m: any) => (
-                      <img key={m.id} src={m.media_url} loading="lazy" alt="" className="w-full h-full object-cover" />
+                      <img
+                        key={m.id}
+                        src={m.media_url}
+                        loading="lazy"
+                        alt=""
+                        className="w-full h-full object-cover min-h-0 min-w-0 block"
+                      />
                     ))}
                   </div>
                   {isFirst && (
-                    <div className="p-6">
-                      <p className="text-xs uppercase tracking-widest text-accent mb-1 font-bold">{chapterTitle}</p>
-                      <p className="text-xs text-muted-foreground mb-1">{format(new Date(step.step_date), "d MMM yyyy", { locale: nl })}</p>
-                      <h2 className="text-2xl font-bold font-serif">{step.location_name}</h2>
-                      {hasDescription && <p className="text-sm text-foreground/80 mt-2 italic">"{step.description}"</p>}
+                    <div className="px-5 py-4 sm:px-6 sm:py-5 border-t bg-card">
+                      <p className="text-[10px] sm:text-xs uppercase tracking-widest text-accent mb-0.5 font-bold">
+                        {chapterTitle}
+                      </p>
+                      <p className="text-[10px] sm:text-xs text-muted-foreground mb-1">
+                        {format(new Date(step.step_date), "d MMM yyyy", { locale: nl })}
+                      </p>
+                      <h2 className="text-lg sm:text-2xl font-bold font-serif leading-tight">
+                        {step.location_name}
+                      </h2>
+                      {hasDescription && (
+                        <p className="text-xs sm:text-sm text-foreground/80 mt-1.5 italic line-clamp-2 sm:line-clamp-3">
+                          "{step.description}"
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
