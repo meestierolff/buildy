@@ -28,6 +28,9 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
   const [isMilestone, setIsMilestone] = useState(false);
   const [description, setDescription] = useState("");
   const [stepDate, setStepDate] = useState(new Date().toISOString().split("T")[0]);
+  const [cost, setCost] = useState<string>("");
+  const [hoursSpent, setHoursSpent] = useState<string>("");
+  const [workType, setWorkType] = useState<string>("");
   const [files, setFiles] = useState<File[]>([]);
   const [customPhases, setCustomPhases] = useState<string[]>([]);
 
