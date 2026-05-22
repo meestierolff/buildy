@@ -47,6 +47,8 @@ const TripDetail = () => {
   const [savingDesc, setSavingDesc] = useState(false);
   const [activeTab, setActiveTab] = useState("timeline");
   const [milestonesOnly, setMilestonesOnly] = useState(false);
+  const [adjustCover, setAdjustCover] = useState(false);
+  const [coverY, setCoverY] = useState<number>(50);
 
   const isOwner = user && trip?.user_id === user.id;
 
