@@ -11,6 +11,7 @@ import NewTrip from "./pages/NewTrip";
 import TripDetail from "./pages/TripDetail";
 import Profile from "./pages/Profile";
 import Photobook from "./pages/Photobook";
+import Budget from "./pages/Budget";
 import Favorites from "./pages/Favorites";
 import Friends from "./pages/Friends";
 import NotFound from "./pages/NotFound";
