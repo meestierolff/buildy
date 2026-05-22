@@ -212,14 +212,33 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
           </div>
 
           <div>
-            <Label>Bestaande foto's</Label>
+            <div className="flex items-baseline justify-between">
+              <Label>Bestaande foto's</Label>
+              <p className="text-[10px] text-muted-foreground">Markeer 1 als <strong>Voor</strong> en 1 als <strong>Na</strong> voor de vergelijking-slider.</p>
+            </div>
             {existingMedia.length === 0 ? (
               <p className="text-xs text-muted-foreground mt-1">Geen foto's</p>
             ) : (
               <div className="flex flex-wrap gap-2 mt-1">
-                {existingMedia.map((m, i) => (
+                {existingMedia.map((m, i) => {
+                  const role = m.compare_role as "before" | "after" | null;
+                  const setRole = async (next: "before" | "after" | null) => {
+                    // Ensure uniqueness across the step
+                    setExistingMedia((prev) =>
+                      prev.map((x) => {
+                        if (x.id === m.id) return { ...x, compare_role: next };
+                        if (next && x.compare_role === next) return { ...x, compare_role: null };
+                        return x;
+                      })
+                    );
+                    if (next) {
+                      await supabase.from("step_media").update({ compare_role: null }).eq("step_id", step.id).eq("compare_role", next);
+                    }
+                    await supabase.from("step_media").update({ compare_role: next }).eq("id", m.id);
+                  };
+                  return (
                   <div key={m.id} className="relative group">
-                    <div className="w-20 h-20 rounded-md bg-muted overflow-hidden flex items-center justify-center text-center px-1">
+                    <div className={`w-20 h-20 rounded-md bg-muted overflow-hidden flex items-center justify-center text-center px-1 ${role ? "ring-2 ring-accent" : ""}`}>
                       {m.media_type === "video" ? (
                         <video src={m.media_url} className="w-full h-full object-cover" />
                       ) : m.media_type === "pdf" ? (
@@ -228,6 +247,17 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
                         <img src={m.media_url} alt="" className="w-full h-full object-cover" />
                       )}
                     </div>
+                    {role && (
+                      <span className="absolute top-0.5 left-0.5 text-[9px] font-bold uppercase tracking-wider bg-accent text-accent-foreground px-1 rounded">
+                        {role === "before" ? "Voor" : "Na"}
+                      </span>
+                    )}
+                    {m.media_type !== "pdf" && m.media_type !== "video" && (
+                      <div className="absolute top-full mt-1 left-0 right-0 flex gap-0.5 z-10">
+                        <button type="button" onClick={() => setRole(role === "before" ? null : "before")} className={`flex-1 text-[9px] py-0.5 rounded ${role === "before" ? "bg-accent text-accent-foreground" : "bg-muted hover:bg-muted-foreground/20"}`}>Voor</button>
+                        <button type="button" onClick={() => setRole(role === "after" ? null : "after")} className={`flex-1 text-[9px] py-0.5 rounded ${role === "after" ? "bg-accent text-accent-foreground" : "bg-muted hover:bg-muted-foreground/20"}`}>Na</button>
+                      </div>
+                    )}
                     <div className="absolute inset-x-0 bottom-0 flex justify-between bg-black/50 px-1">
                       <button
                         type="button"
@@ -257,8 +287,12 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
                       <Trash2 className="h-3 w-3" />
                     </button>
                   </div>
-                ))}
+                  );
+                })}
               </div>
+            )}
+            {existingMedia.some((m) => m.compare_role) && (
+              <p className="text-[10px] text-muted-foreground mt-8">Vergelijking-slider wordt automatisch getoond in de tijdlijn.</p>
             )}
           </div>
 

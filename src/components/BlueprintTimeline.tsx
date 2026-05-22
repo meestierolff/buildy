@@ -6,12 +6,14 @@ import { nl } from "date-fns/locale";
 import ReactionBar from "@/components/ReactionBar";
 import CommentsSheet from "@/components/CommentsSheet";
 import MediaLightbox, { LightboxItem } from "@/components/MediaLightbox";
+import BeforeAfterSlider from "@/components/BeforeAfterSlider";
 import { phaseColor } from "@/components/PhaseSelect";
 
 interface StepMedia {
   id: string;
   media_url: string;
   media_type: string;
+  compare_role?: "before" | "after" | null;
 }
 
 interface Step {
