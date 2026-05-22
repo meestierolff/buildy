@@ -108,6 +108,9 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
         step_date: stepDate,
         floorplan_x: pinX,
         floorplan_y: pinY,
+        cost: cost === "" ? null : Number(cost),
+        hours_spent: hoursSpent === "" ? null : Number(hoursSpent),
+        work_type: workType || null,
       })
       .eq("id", step.id);
 
