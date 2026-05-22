@@ -229,6 +229,7 @@ export type Database = {
           created_at: string
           display_name: string
           id: string
+          is_private: boolean
           location: string | null
           onboarded: boolean
           updated_at: string
@@ -240,6 +241,7 @@ export type Database = {
           created_at?: string
           display_name?: string
           id?: string
+          is_private?: boolean
           location?: string | null
           onboarded?: boolean
           updated_at?: string
@@ -251,6 +253,7 @@ export type Database = {
           created_at?: string
           display_name?: string
           id?: string
+          is_private?: boolean
           location?: string | null
           onboarded?: boolean
           updated_at?: string
@@ -454,6 +457,27 @@ export type Database = {
           title?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      user_follows: {
+        Row: {
+          created_at: string
+          follower_id: string
+          following_id: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          follower_id: string
+          following_id: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          follower_id?: string
+          following_id?: string
+          id?: string
         }
         Relationships: []
       }
