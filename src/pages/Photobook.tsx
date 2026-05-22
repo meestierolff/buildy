@@ -123,6 +123,8 @@ const Photobook = () => {
     const allMedia = steps.flatMap((s) => (s.step_media || []).map((m: any) => ({ ...m, step: s })));
     const coverImage = settings.cover_media_id
       ? allMedia.find((m) => m.id === settings.cover_media_id)
+      : trip.cover_image_url
+      ? { media_url: trip.cover_image_url }
       : null;
     const coverTitle = settings.cover_title || trip.title;
     const coverSubtitle = settings.cover_subtitle ?? trip.address ?? "";
@@ -360,10 +362,15 @@ const Photobook = () => {
               <div className="flex gap-1.5 overflow-x-auto pb-1">
                 <button
                   onClick={() => upsertSettings({ cover_media_id: null })}
-                  className={`flex-shrink-0 w-14 h-14 rounded border-2 bg-muted flex items-center justify-center text-[10px] ${!settings.cover_media_id ? "border-primary" : "border-transparent"}`}
-                  title="Geen foto"
+                  className={`flex-shrink-0 w-14 h-14 rounded border-2 overflow-hidden relative ${!settings.cover_media_id ? "border-primary" : "border-transparent"}`}
+                  title="Standaard: projectcover"
                 >
-                  Geen
+                  {trip.cover_image_url ? (
+                    <img src={trip.cover_image_url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-muted flex items-center justify-center text-[9px]">Geen</div>
+                  )}
+                  <span className="absolute inset-x-0 bottom-0 bg-primary/80 text-primary-foreground text-[8px] py-0.5 text-center font-medium">Project</span>
                 </button>
                 {steps.flatMap((s: any) => (s.step_media || []).filter((m: any) => m.media_type !== "video")).map((m: any) => (
                   <button
