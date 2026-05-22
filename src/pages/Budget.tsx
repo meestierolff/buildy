@@ -71,6 +71,18 @@ const Budget = () => {
     }
   };
 
+  const saveBudget = async () => {
+    if (!id) return;
+    const val = budgetDraft === "" ? null : Number(budgetDraft);
+    const { error } = await supabase.from("trips").update({ budget_total: val }).eq("id", id);
+    if (error) toast.error("Kon niet opslaan");
+    else {
+      setTrip((t: any) => ({ ...t, budget_total: val }));
+      setEditingBudget(false);
+      toast.success("Budget opgeslagen");
+    }
+  };
+
   if (loading) {
     return (
       <div className="container py-20 flex justify-center">
