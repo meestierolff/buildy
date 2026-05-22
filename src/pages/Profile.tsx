@@ -58,7 +58,7 @@ const Profile = () => {
     setLoading(false);
   };
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [userId]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [userId, user?.id]);
 
   const save = async () => {
     if (!user) return;
