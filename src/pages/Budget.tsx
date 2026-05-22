@@ -6,7 +6,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Wallet, Clock, Hammer, Briefcase, Users, EyeOff, Loader2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
+import { ArrowLeft, Wallet, Clock, Hammer, Briefcase, Users, EyeOff, Loader2, Target, Pencil, Check } from "lucide-react";
 import { toast } from "sonner";
 
 const fmtEUR = (n: number) =>
