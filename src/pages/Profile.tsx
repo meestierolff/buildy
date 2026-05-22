@@ -256,7 +256,6 @@ const Profile = () => {
                     </div>
                     <CardContent className="p-4">
                       <h3 className="font-semibold text-lg font-sans">{trip.title}</h3>
-                      {trip.address && <p className="text-xs text-muted-foreground mt-1">📍 {trip.address}</p>}
                     </CardContent>
                   </Card>
                 </Link>
