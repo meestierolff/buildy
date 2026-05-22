@@ -555,50 +555,69 @@ const Photobook = () => {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Formaat</p>
-            <div className="grid grid-cols-3 gap-2">
-              {(Object.keys(PEECHO_FORMATS) as PeechoFormat[]).map((k) => (
-                <button
-                  key={k}
-                  onClick={() => setPrintFormat(k)}
-                  disabled={printBusy}
-                  className={`rounded-md border p-2 text-left text-xs transition ${printFormat === k ? "border-primary bg-primary/5" : "border-border hover:bg-muted"}`}
-                >
-                  <p className="font-semibold">{PEECHO_FORMATS[k].label}</p>
-                  <p className="text-muted-foreground">{PEECHO_FORMATS[k].w} × {PEECHO_FORMATS[k].h} mm</p>
-                </button>
-              ))}
-            </div>
-
-            {!printedPdfUrl ? (
-              <Button onClick={handleGeneratePeechoPdf} disabled={printBusy} className="w-full gap-2">
-                {printBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookOpen className="h-4 w-4" />}
-                {printBusy ? "Print-PDF maken…" : "Print-PDF genereren"}
-              </Button>
-            ) : (
-              <div className="space-y-2 rounded-md border bg-secondary/40 p-3">
-                <p className="text-xs text-muted-foreground">PDF klaar — kies hoe je verder wilt:</p>
-                <a href={printedPdfUrl} target="_blank" rel="noreferrer" download>
-                  <Button variant="outline" className="w-full gap-2">
-                    <Download className="h-4 w-4" /> Download print-PDF
-                  </Button>
-                </a>
-                <a
-                  href={PEECHO_CHECKOUT.includes("?") ? `${PEECHO_CHECKOUT}&pdf=${encodeURIComponent(printedPdfUrl)}` : `${PEECHO_CHECKOUT}?pdf=${encodeURIComponent(printedPdfUrl)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <Button className="w-full gap-2">
-                    <ExternalLink className="h-4 w-4" /> Bestel via Peecho
-                  </Button>
-                </a>
-                <p className="text-[11px] text-muted-foreground">
-                  Bij Peecho upload je de PDF en kies je hardcover, formaat en verzendadres. De PDF-link blijft 1 uur geldig — open Peecho meteen.
-                </p>
+          {!isPro ? (
+            <div className="space-y-3 rounded-md border border-accent/40 bg-accent/5 p-4">
+              <div className="flex items-start gap-2">
+                <div className="text-xs font-bold uppercase tracking-widest bg-accent text-accent-foreground px-2 py-0.5 rounded-full">Buildy Pro</div>
               </div>
-            )}
-          </div>
+              <p className="text-sm font-medium leading-snug">
+                Een hardcover boek laten drukken en versturen is een Buildy Pro-functie.
+              </p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                We werken nog aan de betaalflow. In de tussentijd: laat het ons weten als je je verbouwing als boek wilt bestellen — we activeren Pro dan handmatig voor jouw account.
+              </p>
+              <Button asChild className="w-full">
+                <a href="mailto:hi@buildy.app?subject=Buildy%20Pro%20activeren">
+                  Vraag Pro aan
+                </a>
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Formaat</p>
+              <div className="grid grid-cols-3 gap-2">
+                {(Object.keys(PEECHO_FORMATS) as PeechoFormat[]).map((k) => (
+                  <button
+                    key={k}
+                    onClick={() => setPrintFormat(k)}
+                    disabled={printBusy}
+                    className={`rounded-md border p-2 text-left text-xs transition ${printFormat === k ? "border-primary bg-primary/5" : "border-border hover:bg-muted"}`}
+                  >
+                    <p className="font-semibold">{PEECHO_FORMATS[k].label}</p>
+                    <p className="text-muted-foreground">{PEECHO_FORMATS[k].w} × {PEECHO_FORMATS[k].h} mm</p>
+                  </button>
+                ))}
+              </div>
+
+              {!printedPdfUrl ? (
+                <Button onClick={handleGeneratePeechoPdf} disabled={printBusy} className="w-full gap-2">
+                  {printBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookOpen className="h-4 w-4" />}
+                  {printBusy ? "Print-PDF maken…" : "Print-PDF genereren"}
+                </Button>
+              ) : (
+                <div className="space-y-2 rounded-md border bg-secondary/40 p-3">
+                  <p className="text-xs text-muted-foreground">PDF klaar — kies hoe je verder wilt:</p>
+                  <a href={printedPdfUrl} target="_blank" rel="noreferrer" download>
+                    <Button variant="outline" className="w-full gap-2">
+                      <Download className="h-4 w-4" /> Download print-PDF
+                    </Button>
+                  </a>
+                  <a
+                    href={PEECHO_CHECKOUT.includes("?") ? `${PEECHO_CHECKOUT}&pdf=${encodeURIComponent(printedPdfUrl)}` : `${PEECHO_CHECKOUT}?pdf=${encodeURIComponent(printedPdfUrl)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <Button className="w-full gap-2">
+                      <ExternalLink className="h-4 w-4" /> Bestel via Peecho
+                    </Button>
+                  </a>
+                  <p className="text-[11px] text-muted-foreground">
+                    Bij Peecho upload je de PDF en kies je hardcover, formaat en verzendadres.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           <DialogFooter>
             <Button variant="ghost" onClick={() => setPrintOpen(false)}>Sluiten</Button>
