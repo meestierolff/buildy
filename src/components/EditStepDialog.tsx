@@ -184,6 +184,33 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
             <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} />
           </div>
 
+          <div className="rounded-lg border p-3 space-y-3 bg-secondary/30">
+            <Label className="text-sm font-semibold">💰 Budget & tijd</Label>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Kosten (€)</Label>
+                <Input type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0,00" />
+              </div>
+              <div>
+                <Label className="text-xs">Uren besteed</Label>
+                <Input type="number" min="0" step="0.5" value={hoursSpent} onChange={(e) => setHoursSpent(e.target.value)} placeholder="0" />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Type werk</Label>
+              <select
+                value={workType}
+                onChange={(e) => setWorkType(e.target.value)}
+                className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">— Kies —</option>
+                <option value="diy">Zelf gedaan</option>
+                <option value="outsourced">Uitbesteed</option>
+                <option value="mixed">Combinatie</option>
+              </select>
+            </div>
+          </div>
+
           <div>
             <Label>Bestaande foto's</Label>
             {existingMedia.length === 0 ? (
