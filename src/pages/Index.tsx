@@ -10,7 +10,6 @@ interface ProjectCard {
   id: string;
   title: string;
   project_type: string | null;
-  address: string | null;
   progress_percentage: number | null;
   cover_image_url: string | null;
   user_id: string;
@@ -52,9 +51,6 @@ const Card = ({ p }: { p: ProjectCard }) => {
           <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest tabular-nums shrink-0">{pct}%</span>
         </div>
         <div className="space-y-2">
-          {p.address && (
-            <p className="text-[11px] text-muted-foreground uppercase tracking-wide truncate">{p.address}</p>
-          )}
           <div className="w-full h-0.5 bg-muted">
             <div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} />
           </div>

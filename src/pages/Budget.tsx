@@ -32,12 +32,18 @@ const Budget = () => {
   useEffect(() => {
     if (!id) return;
     (async () => {
-      const [{ data: t }, { data: s }] = await Promise.all([
+      const [{ data: t }, { data: s }, { data: b }] = await Promise.all([
         supabase.from("trips").select("*").eq("id", id).single(),
         supabase.from("steps").select("*").eq("trip_id", id).order("step_date", { ascending: true }),
+        supabase.from("step_budget").select("*").eq("trip_id", id),
       ]);
       setTrip(t);
-      setSteps(s || []);
+      const budgetMap = new Map((b || []).map((row: any) => [row.step_id, row]));
+      const merged = (s || []).map((step: any) => {
+        const bud = budgetMap.get(step.id) as any;
+        return { ...step, cost: bud?.cost ?? null, hours_spent: bud?.hours_spent ?? null, work_type: bud?.work_type ?? null };
+      });
+      setSteps(merged);
       setLoading(false);
     })();
   }, [id]);

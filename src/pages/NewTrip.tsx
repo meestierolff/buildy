@@ -46,7 +46,6 @@ const NewTrip = () => {
         title,
         description: description || null,
         project_type: projectType || null,
-        address: address || null,
         start_date: startDate || null,
         end_date: endDate || null,
         countries: [],
@@ -59,6 +58,9 @@ const NewTrip = () => {
       console.error("Create trip failed:", error);
       toast.error("Kon project niet aanmaken. Probeer het opnieuw.");
     } else {
+      if (address) {
+        await supabase.from("trip_private_info").insert({ trip_id: data.id, address });
+      }
       toast.success("Project aangemaakt!");
       navigate(`/trip/${data.id}`);
     }
