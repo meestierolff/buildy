@@ -55,6 +55,7 @@ const Photobook = () => {
 
   const handleGeneratePeechoPdf = async () => {
     if (!trip || !id) return;
+    if (!isPro) { toast.error("Buildy Pro vereist"); return; }
     setPrintBusy(true);
     setPrintedPdfUrl(null);
     try {
