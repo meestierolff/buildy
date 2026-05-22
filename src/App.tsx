@@ -11,6 +11,7 @@ import NewTrip from "./pages/NewTrip";
 import TripDetail from "./pages/TripDetail";
 import Profile from "./pages/Profile";
 import Photobook from "./pages/Photobook";
+import Budget from "./pages/Budget";
 import Favorites from "./pages/Favorites";
 import Friends from "./pages/Friends";
 import NotFound from "./pages/NotFound";
@@ -33,6 +34,7 @@ const App = () => (
                 <Route path="/trips/new" element={<NewTrip />} />
                 <Route path="/trip/:id" element={<TripDetail />} />
                 <Route path="/trip/:id/photobook" element={<Photobook />} />
+                <Route path="/trip/:id/budget" element={<Budget />} />
                 <Route path="/favorieten" element={<Favorites />} />
                 <Route path="/vrienden" element={<Friends />} />
                 <Route path="/profile/:userId" element={<Profile />} />
