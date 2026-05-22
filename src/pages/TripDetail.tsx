@@ -256,6 +256,13 @@ const TripDetail = () => {
               <Button size="sm" variant="outline" onClick={handleShare} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
                 <Share2 className="h-4 w-4" /> Delen
               </Button>
+              {(isOwner || (trip.is_public && trip.budget_public)) && (
+                <Link to={`/trip/${id}/budget`}>
+                  <Button size="sm" variant="outline" className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
+                    <Wallet className="h-4 w-4" /> Budget
+                  </Button>
+                </Link>
+              )}
               {isOwner && (
                 <Link to={`/trip/${id}/photobook`}>
                   <Button size="sm" variant="outline" className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
