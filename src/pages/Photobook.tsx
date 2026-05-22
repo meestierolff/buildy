@@ -118,21 +118,30 @@ const Photobook = () => {
     const coverTitle = settings.cover_title || trip.title;
     const coverSubtitle = settings.cover_subtitle ?? trip.address ?? "";
 
+    const titlePos = (trip.cover_title_position as string) || "center";
+    const posClass =
+      titlePos === "top" ? "justify-start pt-16"
+      : titlePos === "bottom" ? "justify-end pb-16"
+      : titlePos === "banner" ? "justify-end pb-0"
+      : "justify-center";
+
     list.push({
       key: "cover",
       node: (
-        <div className="flex flex-col items-center justify-center h-full bg-primary text-primary-foreground p-12 text-center relative overflow-hidden">
+        <div className={`flex flex-col items-center h-full bg-primary text-primary-foreground text-center relative overflow-hidden ${posClass}`}>
           {coverImage && (
             <>
-              <img src={coverImage.media_url} alt="" className="absolute inset-0 w-full h-full object-cover opacity-40" />
-              <div className="absolute inset-0 bg-primary/60" />
+              <img src={coverImage.media_url} alt="" className={`absolute inset-0 w-full h-full object-cover ${titlePos === "banner" ? "opacity-100" : "opacity-40"}`} />
+              {titlePos !== "banner" && <div className="absolute inset-0 bg-primary/60" />}
             </>
           )}
-          <div className="absolute inset-0 blueprint-grid opacity-15" />
-          <div className="relative">
-            <div className="bg-accent rounded-2xl p-3 inline-block mb-6 shadow-lg">
-              <Hammer className="h-8 w-8 text-accent-foreground" />
-            </div>
+          {titlePos !== "banner" && <div className="absolute inset-0 blueprint-grid opacity-15" />}
+          <div className={`relative px-12 ${titlePos === "banner" ? "w-full bg-primary/85 py-8" : ""}`}>
+            {titlePos !== "banner" && (
+              <div className="bg-accent rounded-2xl p-3 inline-block mb-6 shadow-lg">
+                <Hammer className="h-8 w-8 text-accent-foreground" />
+              </div>
+            )}
             {trip.project_type && (
               <p className="text-xs uppercase tracking-[0.3em] text-accent mb-3 font-bold">{trip.project_type}</p>
             )}
@@ -143,11 +152,14 @@ const Photobook = () => {
                 {format(new Date(trip.start_date), "d MMM yyyy", { locale: nl })} — {format(new Date(trip.end_date), "d MMM yyyy", { locale: nl })}
               </p>
             )}
-            <p className="mt-10 text-xs uppercase tracking-widest text-accent/80">Een Buildy verbouwingslogboek</p>
+            {titlePos !== "banner" && (
+              <p className="mt-10 text-xs uppercase tracking-widest text-accent/80">Een Buildy verbouwingslogboek</p>
+            )}
           </div>
         </div>
       ),
     });
+
 
     if (trip.floorplan_url) {
       list.push({
