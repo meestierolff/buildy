@@ -4,8 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Heart, Hammer, Home, Activity } from "lucide-react";
-import ProgressBar from "@/components/ProgressBar";
+import { Heart, Hammer, Home } from "lucide-react";
+import EmptyState from "@/components/EmptyState";
 import { formatDistanceToNow } from "date-fns";
 import { nl } from "date-fns/locale";
 
