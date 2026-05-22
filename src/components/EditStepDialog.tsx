@@ -142,7 +142,7 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
           step_id: step.id,
           user_id: user.id,
           media_url: urlData.publicUrl,
-          media_type: file.type.startsWith("video") ? "video" : "image",
+          media_type: file.type === "application/pdf" ? "pdf" : file.type.startsWith("video") ? "video" : "image",
           sort_order: baseOrder + i,
         });
       }
@@ -219,9 +219,11 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
               <div className="flex flex-wrap gap-2 mt-1">
                 {existingMedia.map((m, i) => (
                   <div key={m.id} className="relative group">
-                    <div className="w-20 h-20 rounded-md bg-muted overflow-hidden">
+                    <div className="w-20 h-20 rounded-md bg-muted overflow-hidden flex items-center justify-center text-center px-1">
                       {m.media_type === "video" ? (
                         <video src={m.media_url} className="w-full h-full object-cover" />
+                      ) : m.media_type === "pdf" ? (
+                        <span className="text-[10px] leading-tight">📄 PDF</span>
                       ) : (
                         <img src={m.media_url} alt="" className="w-full h-full object-cover" />
                       )}
@@ -265,15 +267,17 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
             <label className="mt-1 flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-3 cursor-pointer hover:border-accent transition-colors">
               <Upload className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Klik om bestanden te selecteren</span>
-              <input type="file" multiple accept="image/*,video/*" className="hidden" onChange={handleFileChange} />
+              <input type="file" multiple accept="image/*,video/*,application/pdf" className="hidden" onChange={handleFileChange} />
             </label>
             {newFiles.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-2">
                 {newFiles.map((f, i) => (
                   <div key={i} className="relative group">
-                    <div className="w-16 h-16 rounded-md bg-muted overflow-hidden">
+                    <div className="w-16 h-16 rounded-md bg-muted overflow-hidden flex items-center justify-center text-center px-1">
                       {f.type.startsWith("image") ? (
                         <img src={URL.createObjectURL(f)} alt="" className="w-full h-full object-cover" />
+                      ) : f.type === "application/pdf" ? (
+                        <span className="text-[10px] leading-tight">📄 PDF</span>
                       ) : (
                         <span className="text-xs">🎥</span>
                       )}

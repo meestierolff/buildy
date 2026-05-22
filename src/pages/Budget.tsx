@@ -6,7 +6,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Wallet, Clock, Hammer, Briefcase, Users, EyeOff, Loader2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
+import { ArrowLeft, Wallet, Clock, Hammer, Briefcase, Users, EyeOff, Loader2, Target, Pencil, Check } from "lucide-react";
 import { toast } from "sonner";
 
 const fmtEUR = (n: number) =>
@@ -24,6 +26,8 @@ const Budget = () => {
   const [trip, setTrip] = useState<any>(null);
   const [steps, setSteps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingBudget, setEditingBudget] = useState(false);
+  const [budgetDraft, setBudgetDraft] = useState("");
 
   useEffect(() => {
     if (!id) return;
@@ -64,6 +68,18 @@ const Budget = () => {
     else {
       setTrip((t: any) => ({ ...t, budget_public: val }));
       toast.success(val ? "Budget nu openbaar" : "Budget nu privé");
+    }
+  };
+
+  const saveBudget = async () => {
+    if (!id) return;
+    const val = budgetDraft === "" ? null : Number(budgetDraft);
+    const { error } = await supabase.from("trips").update({ budget_total: val }).eq("id", id);
+    if (error) toast.error("Kon niet opslaan");
+    else {
+      setTrip((t: any) => ({ ...t, budget_total: val }));
+      setEditingBudget(false);
+      toast.success("Budget opgeslagen");
     }
   };
 
@@ -116,9 +132,77 @@ const Budget = () => {
         </Card>
       )}
 
+      {/* Verbouwbudget */}
+      <Card className="mb-6 border-accent/30">
+        <CardContent className="p-5">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2">
+              <Target className="h-5 w-5 text-accent" />
+              <h2 className="font-semibold">Verbouwbudget</h2>
+            </div>
+            {isOwner && !editingBudget && (
+              <Button size="sm" variant="ghost" onClick={() => { setBudgetDraft(trip.budget_total != null ? String(trip.budget_total) : ""); setEditingBudget(true); }}>
+                <Pencil className="h-3.5 w-3.5 mr-1" /> {trip.budget_total != null ? "Wijzig" : "Instellen"}
+              </Button>
+            )}
+          </div>
+          {editingBudget ? (
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">€</span>
+              <Input
+                type="number"
+                min="0"
+                step="100"
+                value={budgetDraft}
+                onChange={(e) => setBudgetDraft(e.target.value)}
+                placeholder="Bijv. 50000"
+                autoFocus
+              />
+              <Button size="sm" onClick={saveBudget} className="bg-accent text-accent-foreground hover:bg-accent/90">
+                <Check className="h-4 w-4" />
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditingBudget(false)}>Annuleer</Button>
+            </div>
+          ) : trip.budget_total != null && trip.budget_total > 0 ? (
+            (() => {
+              const total = Number(trip.budget_total);
+              const spent = totals.cost;
+              const remaining = total - spent;
+              const pct = Math.min(100, (spent / total) * 100);
+              const over = spent > total;
+              return (
+                <div>
+                  <div className="flex items-end justify-between mb-2 gap-3 flex-wrap">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Besteed</div>
+                      <div className={`text-2xl font-bold ${over ? "text-destructive" : "text-foreground"}`}>{fmtEUR(spent)}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-muted-foreground">{over ? "Overschrijding" : "Resterend"}</div>
+                      <div className={`text-2xl font-bold ${over ? "text-destructive" : "text-accent"}`}>
+                        {fmtEUR(Math.abs(remaining))}
+                      </div>
+                    </div>
+                  </div>
+                  <Progress value={pct} className={over ? "[&>div]:bg-destructive" : ""} />
+                  <div className="flex justify-between text-xs text-muted-foreground mt-1.5">
+                    <span>{Math.round(pct)}% gebruikt</span>
+                    <span>van {fmtEUR(total)}</span>
+                  </div>
+                </div>
+              );
+            })()
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {isOwner ? "Stel een verbouwbudget in om je uitgaven te volgen." : "Er is nog geen verbouwbudget ingesteld."}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <Card><CardContent className="p-4">
-          <div className="text-xs text-muted-foreground flex items-center gap-1"><Wallet className="h-3 w-3" /> Totaal</div>
+          <div className="text-xs text-muted-foreground flex items-center gap-1"><Wallet className="h-3 w-3" /> Besteed</div>
           <div className="text-2xl font-bold text-accent">{fmtEUR(totals.cost)}</div>
         </CardContent></Card>
         <Card><CardContent className="p-4">
