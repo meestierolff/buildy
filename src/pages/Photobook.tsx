@@ -306,7 +306,7 @@ const Photobook = () => {
         )}
       </div>
 
-      {editing && (
+      {editing && pages[safePage]?.key === "cover" && (
         <div className="container pb-3 space-y-2">
           <div className="rounded-lg border bg-card p-3 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Cover</p>
