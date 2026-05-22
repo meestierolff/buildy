@@ -211,24 +211,24 @@ const TripDetail = () => {
         ) : (
           <div className="absolute inset-0 blueprint-grid opacity-15" />
         )}
-        <div className="container relative py-10">
+        <div className="container relative py-6 md:py-10">
           <div className="flex flex-col md:flex-row md:flex-wrap md:items-start md:justify-between gap-4">
             <div className="min-w-0 flex-1">
               {trip.project_type && (
-                <span className="inline-block text-[11px] font-bold uppercase tracking-widest bg-accent text-accent-foreground px-2.5 py-1 rounded-full mb-3">
+                <span className="inline-block text-[10px] md:text-[11px] font-bold uppercase tracking-widest bg-accent text-accent-foreground px-2.5 py-1 rounded-full mb-3">
                   {trip.project_type}
                 </span>
               )}
-              <h1 className="text-3xl md:text-4xl font-bold mb-2 leading-tight">{trip.title}</h1>
+              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 leading-tight break-words">{trip.title}</h1>
               {trip.profile && (
                 <Link to={`/profile/${trip.user_id}`} className="text-sm text-primary-foreground/70 hover:text-accent">
                   door {trip.profile.display_name}
                 </Link>
               )}
-              <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-primary-foreground/80">
+              <div className="flex flex-wrap items-center gap-3 mt-3 text-sm text-primary-foreground/80">
                 {trip.address && (
                   <span className="flex items-center gap-1.5">
-                    <MapPin className="h-3.5 w-3.5" /> {trip.address}
+                    <MapPin className="h-3.5 w-3.5 shrink-0" /> <span className="break-words">{trip.address}</span>
                   </span>
                 )}
               </div>

@@ -123,10 +123,18 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) 
                     </div>
 
                     {(() => {
-                      const visuals = step.step_media.filter((m) => m.media_type !== "pdf");
+                      const before = step.step_media.find((m) => m.compare_role === "before");
+                      const after = step.step_media.find((m) => m.compare_role === "after");
+                      const hasCompare = !!before && !!after;
+                      const visuals = step.step_media.filter((m) => m.media_type !== "pdf" && !(hasCompare && (m.id === before!.id || m.id === after!.id)));
                       const pdfs = step.step_media.filter((m) => m.media_type === "pdf");
                       return (
                         <>
+                          {hasCompare && (
+                            <div className="mb-3">
+                              <BeforeAfterSlider beforeUrl={before!.media_url} afterUrl={after!.media_url} />
+                            </div>
+                          )}
                           {visuals.length > 0 && (
                             <div className={`grid gap-1 rounded-lg overflow-hidden mb-3 ${visuals.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
                               {visuals.slice(0, 4).map((m, mi) => {
