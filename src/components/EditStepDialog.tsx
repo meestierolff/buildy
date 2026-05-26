@@ -49,8 +49,9 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
       .single()
       .then(({ data }) => {
         setCustomPhases((data?.custom_phases as string[]) || []);
-        const floors = Array.isArray(data?.floorplans) && (data.floorplans as FloorInfo[]).length > 0
-          ? (data.floorplans as FloorInfo[])
+        const fpRaw = (data?.floorplans as unknown) as FloorInfo[] | null;
+        const floors = Array.isArray(fpRaw) && fpRaw.length > 0
+          ? fpRaw
           : data?.floorplan_url
             ? [{ id: "__legacy__", label: "Begane grond", url: data.floorplan_url as string }]
             : [];
