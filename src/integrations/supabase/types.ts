@@ -201,6 +201,8 @@ export type Database = {
           cover_media_id: string | null
           cover_subtitle: string | null
           cover_title: string | null
+          step_layout_overrides: Json
+          step_photo_order: Json
           trip_id: string
           updated_at: string
         }
@@ -209,6 +211,8 @@ export type Database = {
           cover_media_id?: string | null
           cover_subtitle?: string | null
           cover_title?: string | null
+          step_layout_overrides?: Json
+          step_photo_order?: Json
           trip_id: string
           updated_at?: string
         }
@@ -217,6 +221,8 @@ export type Database = {
           cover_media_id?: string | null
           cover_subtitle?: string | null
           cover_title?: string | null
+          step_layout_overrides?: Json
+          step_photo_order?: Json
           trip_id?: string
           updated_at?: string
         }
@@ -376,6 +382,7 @@ export type Database = {
           country: string | null
           created_at: string
           description: string | null
+          floorplan_id: string | null
           floorplan_x: number | null
           floorplan_y: number | null
           id: string
@@ -396,6 +403,7 @@ export type Database = {
           country?: string | null
           created_at?: string
           description?: string | null
+          floorplan_id?: string | null
           floorplan_x?: number | null
           floorplan_y?: number | null
           id?: string
@@ -416,6 +424,7 @@ export type Database = {
           country?: string | null
           created_at?: string
           description?: string | null
+          floorplan_id?: string | null
           floorplan_x?: number | null
           floorplan_y?: number | null
           id?: string
@@ -481,6 +490,7 @@ export type Database = {
           description: string | null
           end_date: string | null
           floorplan_url: string | null
+          floorplans: Json
           id: string
           is_public: boolean
           progress_mode: string
@@ -503,6 +513,7 @@ export type Database = {
           description?: string | null
           end_date?: string | null
           floorplan_url?: string | null
+          floorplans?: Json
           id?: string
           is_public?: boolean
           progress_mode?: string
@@ -525,6 +536,7 @@ export type Database = {
           description?: string | null
           end_date?: string | null
           floorplan_url?: string | null
+          floorplans?: Json
           id?: string
           is_public?: boolean
           progress_mode?: string
