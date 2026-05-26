@@ -70,8 +70,8 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) 
   };
   return (
     <div className="relative">
-      {/* connector line */}
-      <div className="absolute left-1/2 top-0 bottom-0 -translate-x-1/2 w-0.5 bg-gradient-to-b from-accent via-accent/60 to-accent/20" />
+      {/* connector line — left edge on mobile, centered on desktop */}
+      <div className="absolute left-5 md:left-1/2 top-0 bottom-0 md:-translate-x-1/2 w-0.5 bg-gradient-to-b from-accent via-accent/60 to-accent/20" />
 
       <div className="space-y-10 py-8">
         {steps.map((step, i) => {
@@ -80,7 +80,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) 
           return (
             <div key={step.id} className="relative">
               {/* node / milestone marker */}
-              <div className="absolute left-1/2 top-6 -translate-x-1/2 z-10">
+              <div className="absolute left-5 md:left-1/2 top-6 -translate-x-1/2 z-10">
                 {step.is_milestone ? (
                   <div className="w-12 h-12 rounded-full bg-accent text-accent-foreground flex items-center justify-center shadow-lg shadow-accent/40 ring-4 ring-background">
                     <Icon className="h-5 w-5" />
@@ -90,8 +90,8 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) 
                 )}
               </div>
 
-              {/* card */}
-              <div className={`flex ${isLeft ? "justify-start pr-[calc(50%+2rem)]" : "justify-end pl-[calc(50%+2rem)]"}`}>
+              {/* card: full width on mobile, alternating on desktop */}
+              <div className={`pl-14 md:pl-0 md:flex ${isLeft ? "md:justify-start md:pr-[calc(50%+2rem)]" : "md:justify-end md:pl-[calc(50%+2rem)]"}`}>
                 <div className="w-full max-w-md bg-card rounded-xl border-2 border-border shadow-md hover:shadow-xl hover:border-accent/40 transition-all overflow-hidden">
                   <div className="p-4">
                     <div className="flex items-start justify-between gap-2 mb-2">
