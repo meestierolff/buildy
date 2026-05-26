@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Plus, LogOut, User, Heart, Compass, Users } from "lucide-react";
+import { Plus, LogOut, User, Heart, Compass, Users, UserCircle2 } from "lucide-react";
 import NotificationBell from "@/components/NotificationBell";
 import OnboardingDialog from "@/components/OnboardingDialog";
 
@@ -93,6 +93,7 @@ const Header = () => {
           { to: "/", end: true, icon: <Compass className="h-5 w-5" />, label: "Ontdekken" },
           ...(user ? [{ to: "/favorieten", end: false, icon: <Heart className="h-5 w-5" />, label: "Gevolgd" }] : []),
           { to: "/vrienden", end: false, icon: <Users className="h-5 w-5" />, label: "Vrienden" },
+          ...(user ? [{ to: `/profile/${user.id}`, end: false, icon: <UserCircle2 className="h-5 w-5" />, label: "Profiel" }] : []),
         ].map(({ to, end, icon, label }) => (
           <NavLink
             key={to}
