@@ -17,7 +17,7 @@ import ProjectSettingsSheet from "@/components/ProjectSettingsSheet";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { MapPin, Plus, BookOpen, Share2, Hammer, LayoutGrid, Map as MapIcon, Images, Wallet, Settings, Flag, Upload, Sparkles, Loader2, ChevronDown } from "lucide-react";
+import { MapPin, Plus, BookOpen, Share2, Hammer, LayoutGrid, Map as MapIcon, Images, Wallet, Settings, Flag, Upload, Sparkles, Loader2, ChevronDown, MoreHorizontal } from "lucide-react";
 import { differenceInDays } from "date-fns";
 import { toast } from "sonner";
 import {
@@ -296,37 +296,76 @@ const TripDetail = () => {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2 w-full md:w-auto">
+            <div className="flex gap-2 w-full md:w-auto">
               {isOwner && (
-                <>
-                  <Button size="sm" onClick={() => setShowAddStep(true)} className="gap-1.5 bg-accent text-accent-foreground hover:bg-accent/90">
-                    <Plus className="h-4 w-4" /> Update toevoegen
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setShowSettings(true)} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
-                    <Settings className="h-4 w-4" /> Instellingen
-                  </Button>
-                </>
+                <Button size="sm" onClick={() => setShowAddStep(true)} className="gap-1.5 bg-accent text-accent-foreground hover:bg-accent/90 flex-1 md:flex-none">
+                  <Plus className="h-4 w-4" /> Update toevoegen
+                </Button>
               )}
               {!isOwner && trip.is_public && (
                 <FollowButton projectId={trip.id} className="bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground" />
               )}
-              <Button size="sm" variant="outline" onClick={handleShare} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
-                <Share2 className="h-4 w-4" /> Delen
-              </Button>
-              {(isOwner || (trip.is_public && trip.budget_public)) && (
-                <Link to={`/trip/${id}/budget`}>
-                  <Button size="sm" variant="outline" className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
-                    <Wallet className="h-4 w-4" /> Budget
+
+              {/* Desktop: alle losse knoppen */}
+              <div className="hidden md:flex flex-wrap gap-2">
+                {isOwner && (
+                  <Button size="sm" variant="outline" onClick={() => setShowSettings(true)} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
+                    <Settings className="h-4 w-4" /> Instellingen
                   </Button>
-                </Link>
-              )}
-              {isOwner && (
-                <Link to={`/trip/${id}/photobook`}>
-                  <Button size="sm" variant="outline" className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
-                    <BookOpen className="h-4 w-4" /> Fotoboek
-                  </Button>
-                </Link>
-              )}
+                )}
+                <Button size="sm" variant="outline" onClick={handleShare} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
+                  <Share2 className="h-4 w-4" /> Delen
+                </Button>
+                {(isOwner || (trip.is_public && trip.budget_public)) && (
+                  <Link to={`/trip/${id}/budget`}>
+                    <Button size="sm" variant="outline" className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
+                      <Wallet className="h-4 w-4" /> Budget
+                    </Button>
+                  </Link>
+                )}
+                {isOwner && (
+                  <Link to={`/trip/${id}/photobook`}>
+                    <Button size="sm" variant="outline" className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
+                      <BookOpen className="h-4 w-4" /> Fotoboek
+                    </Button>
+                  </Link>
+                )}
+              </div>
+
+              {/* Mobile: overflow menu */}
+              <div className="md:hidden">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant="outline" className="bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground px-2.5">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    {isOwner && (
+                      <DropdownMenuItem onClick={() => setShowSettings(true)} className="gap-2">
+                        <Settings className="h-4 w-4" /> Instellingen
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={handleShare} className="gap-2">
+                      <Share2 className="h-4 w-4" /> Delen
+                    </DropdownMenuItem>
+                    {(isOwner || (trip.is_public && trip.budget_public)) && (
+                      <DropdownMenuItem asChild>
+                        <Link to={`/trip/${id}/budget`} className="flex items-center gap-2">
+                          <Wallet className="h-4 w-4" /> Budget
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
+                    {isOwner && (
+                      <DropdownMenuItem asChild>
+                        <Link to={`/trip/${id}/photobook`} className="flex items-center gap-2">
+                          <BookOpen className="h-4 w-4" /> Fotoboek
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
           </div>
 
