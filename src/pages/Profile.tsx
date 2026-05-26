@@ -357,15 +357,15 @@ const Profile = () => {
             <div className="flex items-start justify-between gap-3 p-3 rounded-lg border bg-muted/30">
               <div className="flex-1">
                 <Label className="flex items-center gap-1.5 font-medium">
-                  <Lock className="h-3.5 w-3.5" /> Privé profiel
+                  <Lock className="h-3.5 w-3.5" /> Openbaar profiel
                 </Label>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Wanneer aan, verschijn je niet in 'Vrienden' of 'Ontdekken'. Alleen mensen met je directe link kunnen je profiel zien.
+                  Standaard ben je privé. Zet dit aan om zichtbaar te zijn in 'Vrienden' en 'Ontdekken', zodat anderen je projecten kunnen volgen.
                 </p>
               </div>
               <Switch
-                checked={draft.is_private}
-                onCheckedChange={(v) => setDraft({ ...draft, is_private: v })}
+                checked={!draft.is_private}
+                onCheckedChange={(v) => setDraft({ ...draft, is_private: !v })}
               />
             </div>
             <Button onClick={save} className="w-full bg-accent text-accent-foreground hover:bg-accent/90">Opslaan</Button>
