@@ -57,7 +57,12 @@ const TripDetail = () => {
 
   const isOwner = user && trip?.user_id === user.id;
 
-  const fetchTrip = useCallback(async () => {
+  useEffect(() => {
+    if (trip?.title) {
+      document.title = `${trip.title} — Buildy`;
+    }
+    return () => { document.title = "Buildy — Verbeter je huis, stap voor stap"; };
+  }, [trip?.title]);
     if (!id) return;
 
     const { data: tripData } = await supabase

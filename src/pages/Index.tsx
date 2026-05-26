@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Plus, Home, Hammer } from "lucide-react";
+import { Plus, Home, Hammer, Search, X } from "lucide-react";
 import EmptyState from "@/components/EmptyState";
 
 interface ProjectCard {
@@ -126,6 +126,8 @@ const enrich = async (rows: any[]): Promise<ProjectCard[]> => {
 const Index = () => {
   const { user } = useAuth();
   const [tab, setTab] = useState<"discover" | "mine">(user ? "mine" : "discover");
+  const [search, setSearch] = useState("");
+  const [selectedType, setSelectedType] = useState("");
   const [discover, setDiscover] = useState<ProjectCard[]>([]);
   const [mine, setMine] = useState<ProjectCard[]>([]);
   const [loadingD, setLoadingD] = useState(true);
@@ -161,9 +163,20 @@ const Index = () => {
 
   // Derived sections from public projects
   const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-  const netBegonnen = discover.filter((p) => p.step_count === 0 || (p as any).created_at > twoWeeksAgo).slice(0, 6);
-  const bijnaKlaar = discover.filter((p) => (p.progress_percentage ?? 0) >= 70 && (p.progress_percentage ?? 0) < 100).slice(0, 6);
-  const trending = [...discover].sort((a, b) => b.follower_count - a.follower_count).slice(0, 6);
+
+  const activeTypes = Array.from(new Set(discover.map((p) => p.project_type).filter(Boolean))) as string[];
+
+  const filtered = discover.filter((p) => {
+    const matchSearch = !search ||
+      p.title.toLowerCase().includes(search.toLowerCase()) ||
+      (p.profile_name || "").toLowerCase().includes(search.toLowerCase());
+    const matchType = !selectedType || p.project_type === selectedType;
+    return matchSearch && matchType;
+  });
+
+  const netBegonnen = filtered.filter((p) => p.step_count === 0 || (p as any).created_at > twoWeeksAgo).slice(0, 6);
+  const bijnaKlaar = filtered.filter((p) => (p.progress_percentage ?? 0) >= 70 && (p.progress_percentage ?? 0) < 100).slice(0, 6);
+  const trending = [...filtered].sort((a, b) => b.follower_count - a.follower_count).slice(0, 6);
 
   return (
     <div className="min-h-screen bg-background">
@@ -218,48 +231,85 @@ const Index = () => {
         </div>
 
         {tab === "discover" && (
-          loadingD ? (
-            <Grid projects={[]} loading={true} emptyState={null} />
-          ) : discover.length === 0 ? (
-            <EmptyState icon={Home} title="Nog geen publieke projecten" description="Zodra anderen hun verbouwing delen verschijnen ze hier." />
-          ) : (
-            <div className="space-y-20">
-              {trending.length > 0 && (
-                <section>
-                  <div className="flex items-baseline gap-3 mb-8">
-                    <h2 className="text-[11px] font-bold uppercase tracking-[0.2em]">Populair</h2>
-                    <div className="flex-1 h-px bg-border" />
-                  </div>
-                  <Grid projects={trending} loading={false} emptyState={null} />
-                </section>
-              )}
-              {netBegonnen.length > 0 && (
-                <section>
-                  <div className="flex items-baseline gap-3 mb-8">
-                    <h2 className="text-[11px] font-bold uppercase tracking-[0.2em]">Net begonnen</h2>
-                    <div className="flex-1 h-px bg-border" />
-                  </div>
-                  <Grid projects={netBegonnen} loading={false} emptyState={null} />
-                </section>
-              )}
-              {bijnaKlaar.length > 0 && (
-                <section>
-                  <div className="flex items-baseline gap-3 mb-8">
-                    <h2 className="text-[11px] font-bold uppercase tracking-[0.2em]">Bijna klaar</h2>
-                    <div className="flex-1 h-px bg-border" />
-                  </div>
-                  <Grid projects={bijnaKlaar} loading={false} emptyState={null} />
-                </section>
-              )}
-              <section>
-                <div className="flex items-baseline gap-3 mb-8">
-                  <h2 className="text-[11px] font-bold uppercase tracking-[0.2em]">Alle projecten</h2>
-                  <div className="flex-1 h-px bg-border" />
+          <div>
+            {/* Search + type filter */}
+            <div className="flex flex-col sm:flex-row gap-3 mb-10">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Zoek project of persoon…"
+                  className="w-full h-10 pl-9 pr-9 rounded-sm border border-border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+                {search && (
+                  <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              {activeTypes.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {activeTypes.map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setSelectedType(selectedType === t ? "" : t)}
+                      className={`px-3 py-1.5 rounded-sm text-[10px] font-bold uppercase tracking-[0.15em] border transition-colors ${
+                        selectedType === t
+                          ? "bg-foreground text-background border-foreground"
+                          : "border-border text-muted-foreground hover:text-foreground hover:border-foreground"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
                 </div>
-                <Grid projects={discover} loading={false} emptyState={null} />
-              </section>
+              )}
             </div>
-          )
+
+            {loadingD ? (
+              <Grid projects={[]} loading={true} emptyState={null} />
+            ) : filtered.length === 0 ? (
+              <EmptyState icon={Home} title={search || selectedType ? "Geen resultaten" : "Nog geen publieke projecten"} description={search || selectedType ? "Probeer een andere zoekterm of filter." : "Zodra anderen hun verbouwing delen verschijnen ze hier."} />
+            ) : (
+              <div className="space-y-20">
+                {trending.length > 0 && (
+                  <section>
+                    <div className="flex items-baseline gap-3 mb-8">
+                      <h2 className="text-[11px] font-bold uppercase tracking-[0.2em]">Populair</h2>
+                      <div className="flex-1 h-px bg-border" />
+                    </div>
+                    <Grid projects={trending} loading={false} emptyState={null} />
+                  </section>
+                )}
+                {netBegonnen.length > 0 && (
+                  <section>
+                    <div className="flex items-baseline gap-3 mb-8">
+                      <h2 className="text-[11px] font-bold uppercase tracking-[0.2em]">Net begonnen</h2>
+                      <div className="flex-1 h-px bg-border" />
+                    </div>
+                    <Grid projects={netBegonnen} loading={false} emptyState={null} />
+                  </section>
+                )}
+                {bijnaKlaar.length > 0 && (
+                  <section>
+                    <div className="flex items-baseline gap-3 mb-8">
+                      <h2 className="text-[11px] font-bold uppercase tracking-[0.2em]">Bijna klaar</h2>
+                      <div className="flex-1 h-px bg-border" />
+                    </div>
+                    <Grid projects={bijnaKlaar} loading={false} emptyState={null} />
+                  </section>
+                )}
+                <section>
+                  <div className="flex items-baseline gap-3 mb-8">
+                    <h2 className="text-[11px] font-bold uppercase tracking-[0.2em]">Alle projecten</h2>
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+                  <Grid projects={filtered} loading={false} emptyState={null} />
+                </section>
+              </div>
+            )}
+          </div>
         )}
         {tab === "mine" && user && (
           <Grid

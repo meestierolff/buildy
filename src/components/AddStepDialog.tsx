@@ -31,6 +31,8 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
   const [cost, setCost] = useState<string>("");
   const [hoursSpent, setHoursSpent] = useState<string>("");
   const [workType, setWorkType] = useState<string>("");
+  const [contractorName, setContractorName] = useState("");
+  const [contractorNotes, setContractorNotes] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [customPhases, setCustomPhases] = useState<string[]>([]);
 
@@ -71,6 +73,8 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
         is_milestone: isMilestone,
         description: description || null,
         step_date: stepDate,
+        contractor_name: contractorName.trim() || null,
+        contractor_notes: contractorNotes.trim() || null,
       })
       .select()
       .single();
@@ -150,7 +154,19 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
           </div>
 
           <div className="rounded-lg border p-3 space-y-3 bg-secondary/30">
-            <Label className="text-sm font-semibold">💰 Budget & tijd (optioneel)</Label>
+            <Label className="text-sm font-semibold">� Aannemer (optioneel)</Label>
+            <div>
+              <Label className="text-xs">Naam / bedrijf</Label>
+              <Input value={contractorName} onChange={(e) => setContractorName(e.target.value)} placeholder="Bijv. Aannemingsbedrijf Jansen" />
+            </div>
+            <div>
+              <Label className="text-xs">Notities</Label>
+              <Textarea value={contractorNotes} onChange={(e) => setContractorNotes(e.target.value)} rows={2} placeholder="Bijv. offerte besproken, startdatum afgesproken…" />
+            </div>
+          </div>
+
+          <div className="rounded-lg border p-3 space-y-3 bg-secondary/30">
+            <Label className="text-sm font-semibold">�💰 Budget & tijd (optioneel)</Label>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Kosten (€)</Label>

@@ -27,6 +27,7 @@ interface Step {
   like_count: number;
   comment_count: number;
   user_liked: boolean;
+  contractor_name?: string | null;
 }
 
 interface Props {
@@ -195,6 +196,12 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) 
                     {step.description && (
                       <p className="text-sm text-foreground/80 leading-relaxed line-clamp-4">
                         {step.description}
+                      </p>
+                    )}
+
+                    {step.contractor_name && (
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-2 font-medium">
+                        🔧 {step.contractor_name}
                       </p>
                     )}
 

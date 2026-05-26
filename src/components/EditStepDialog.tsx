@@ -29,6 +29,8 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
   const [cost, setCost] = useState<string>("");
   const [hoursSpent, setHoursSpent] = useState<string>("");
   const [workType, setWorkType] = useState<string>("");
+  const [contractorName, setContractorName] = useState<string>(step.contractor_name || "");
+  const [contractorNotes, setContractorNotes] = useState<string>(step.contractor_notes || "");
   const [existingMedia, setExistingMedia] = useState<any[]>(
     [...(step.step_media || [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
   );
@@ -123,6 +125,8 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
         floorplan_x: pinX,
         floorplan_y: pinY,
         floorplan_id: pinX != null ? (selectedFloorId === "__legacy__" ? null : selectedFloorId) : null,
+        contractor_name: contractorName.trim() || null,
+        contractor_notes: contractorNotes.trim() || null,
       })
       .eq("id", step.id);
 
@@ -210,7 +214,19 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
           </div>
 
           <div className="rounded-lg border p-3 space-y-3 bg-secondary/30">
-            <Label className="text-sm font-semibold">💰 Budget & tijd</Label>
+            <Label className="text-sm font-semibold">� Aannemer (optioneel)</Label>
+            <div>
+              <Label className="text-xs">Naam / bedrijf</Label>
+              <Input value={contractorName} onChange={(e) => setContractorName(e.target.value)} placeholder="Bijv. Aannemingsbedrijf Jansen" />
+            </div>
+            <div>
+              <Label className="text-xs">Notities</Label>
+              <Textarea value={contractorNotes} onChange={(e) => setContractorNotes(e.target.value)} rows={2} placeholder="Bijv. offerte besproken, startdatum afgesproken…" />
+            </div>
+          </div>
+
+          <div className="rounded-lg border p-3 space-y-3 bg-secondary/30">
+            <Label className="text-sm font-semibold">�💰 Budget & tijd</Label>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Kosten (€)</Label>

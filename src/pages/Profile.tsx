@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { MapPin, Hammer, Camera, Pencil, Lock, UserPlus, UserCheck, Users, BarChart2 } from "lucide-react";
+import { MapPin, Hammer, Camera, Pencil, Lock, UserPlus, UserCheck, Users, BarChart2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface FollowProfile {
@@ -37,6 +37,8 @@ const Profile = () => {
   const [draft, setDraft] = useState({ display_name: "", bio: "", location: "", is_private: false });
 
   const isMe = user?.id === userId;
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   const loadFollows = async (uid: string) => {
     const [{ data: fers }, { data: fing }] = await Promise.all([
@@ -113,6 +115,34 @@ const Profile = () => {
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [userId, user?.id]);
 
+  useEffect(() => {
+    if (profile?.display_name) {
+      document.title = `${profile.display_name} — Buildy`;
+    }
+    return () => { document.title = "Buildy — Verbeter je huis, stap voor stap"; };
+  }, [profile?.display_name]);
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    setAvatarUploading(true);
+    const ext = file.name.split(".").pop();
+    const path = `avatars/${user.id}/avatar.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from("trip-media")
+      .upload(path, file, { upsert: true });
+    if (upErr) {
+      toast.error("Uploaden mislukt");
+    } else {
+      const { data: urlData } = supabase.storage.from("trip-media").getPublicUrl(path);
+      await supabase.from("profiles").update({ avatar_url: urlData.publicUrl }).eq("user_id", user.id);
+      await load();
+      toast.success("Profielfoto bijgewerkt!");
+    }
+    setAvatarUploading(false);
+    if (avatarInputRef.current) avatarInputRef.current.value = "";
+  };
+
   const save = async () => {
     if (!user) return;
     const { error } = await supabase
@@ -188,12 +218,30 @@ const Profile = () => {
   return (
     <div className="container max-w-4xl py-12">
       <div className="flex items-start gap-4 mb-8">
-        <Avatar className="h-20 w-20">
-          <AvatarImage src={profile.avatar_url || ""} />
-          <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
-            {profile.display_name?.[0]?.toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
+        <div className="relative shrink-0">
+          <Avatar className="h-20 w-20">
+            <AvatarImage src={profile.avatar_url || ""} />
+            <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
+              {profile.display_name?.[0]?.toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          {isMe && (
+            <>
+              <button
+                type="button"
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={avatarUploading}
+                className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 focus:opacity-100 transition-opacity"
+                title="Profielfoto wijzigen"
+              >
+                {avatarUploading
+                  ? <Loader2 className="h-5 w-5 text-white animate-spin" />
+                  : <Camera className="h-5 w-5 text-white" />}
+              </button>
+              <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+            </>
+          )}
+        </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2 flex-wrap">
             <h1 className="font-serif italic text-3xl leading-tight flex items-center gap-2">
