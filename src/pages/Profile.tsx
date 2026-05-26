@@ -196,7 +196,7 @@ const Profile = () => {
         </Avatar>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2 flex-wrap">
-            <h1 className="text-2xl font-bold flex items-center gap-2">
+            <h1 className="font-serif italic text-3xl leading-tight flex items-center gap-2">
               {profile.display_name}
               {profile.is_private && (
                 <span title="Privé profiel" className="inline-flex items-center gap-1 text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
@@ -252,21 +252,39 @@ const Profile = () => {
           {trips.length === 0 ? (
             <p className="text-center text-sm text-muted-foreground py-10">Nog geen projecten.</p>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {trips.map((trip) => (
-                <Link key={trip.id} to={`/trip/${trip.id}`}>
-                  <Card className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer border-2 hover:border-accent/40">
-                    <div className="h-40 bg-gradient-to-br from-primary/20 to-accent/20">
-                      {trip.cover_image_url && (
-                        <img src={trip.cover_image_url} alt={trip.title} className="w-full h-full object-cover" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
+              {trips.map((trip) => {
+                const pct = Math.max(0, Math.min(100, trip.progress_percentage ?? 0));
+                return (
+                  <Link key={trip.id} to={`/trip/${trip.id}`} className="group block">
+                    <div className="relative aspect-[4/5] overflow-hidden rounded-sm bg-muted mb-5">
+                      {trip.cover_image_url ? (
+                        <img src={trip.cover_image_url} alt={trip.title} loading="lazy" className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center blueprint-grid">
+                          <Hammer className="h-12 w-12 text-muted-foreground/40" strokeWidth={1.5} />
+                        </div>
+                      )}
+                      {trip.project_type && (
+                        <div className="absolute top-5 left-5">
+                          <span className="bg-background/95 backdrop-blur-md px-3 py-1.5 rounded-sm text-[9px] font-bold uppercase tracking-[0.2em] text-foreground shadow-sm">
+                            {trip.project_type}
+                          </span>
+                        </div>
                       )}
                     </div>
-                    <CardContent className="p-4">
-                      <h3 className="font-semibold text-lg font-sans">{trip.title}</h3>
-                    </CardContent>
-                  </Card>
-                </Link>
-              ))}
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-baseline gap-3">
+                        <h3 className="font-serif italic text-2xl leading-tight truncate">{trip.title}</h3>
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest tabular-nums shrink-0">{pct}%</span>
+                      </div>
+                      <div className="w-full h-0.5 bg-muted">
+                        <div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           )}
         </TabsContent>
