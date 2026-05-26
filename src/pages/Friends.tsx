@@ -30,6 +30,8 @@ const Friends = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [following, setFollowing] = useState<Set<string>>(new Set());
+  const [followedProfiles, setFollowedProfiles] = useState<ProfileResult[]>([]);
+  const [loadingFollowed, setLoadingFollowed] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const reqIdRef = useRef(0);
 
@@ -38,16 +40,37 @@ const Friends = () => {
     return () => clearTimeout(t);
   }, [query]);
 
-  // Load who I already follow
+  // Load who I already follow + their profiles
   useEffect(() => {
     if (!user) return;
-    supabase
-      .from("user_follows")
-      .select("following_id")
-      .eq("follower_id", user.id)
-      .then(({ data }) => {
-        setFollowing(new Set((data || []).map((r: any) => r.following_id)));
-      });
+    setLoadingFollowed(true);
+    (async () => {
+      const { data } = await supabase
+        .from("user_follows")
+        .select("following_id")
+        .eq("follower_id", user.id);
+      const ids = (data || []).map((r: any) => r.following_id);
+      setFollowing(new Set(ids));
+      if (ids.length === 0) { setFollowedProfiles([]); setLoadingFollowed(false); return; }
+
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("user_id, display_name, avatar_url, bio, location")
+        .in("user_id", ids)
+        .order("display_name", { ascending: true });
+
+      if (profiles) {
+        const { data: trips } = await supabase
+          .from("trips")
+          .select("user_id")
+          .in("user_id", ids)
+          .eq("is_public", true);
+        const counts: Record<string, number> = {};
+        (trips || []).forEach((t: any) => { counts[t.user_id] = (counts[t.user_id] || 0) + 1; });
+        setFollowedProfiles(profiles.map((p: any) => ({ ...p, project_count: counts[p.user_id] || 0 })));
+      }
+      setLoadingFollowed(false);
+    })();
   }, [user]);
 
   const fetchPage = useCallback(
@@ -127,11 +150,8 @@ const Friends = () => {
         .eq("follower_id", user.id)
         .eq("following_id", uid);
       if (!error) {
-        setFollowing((prev) => {
-          const n = new Set(prev);
-          n.delete(uid);
-          return n;
-        });
+        setFollowing((prev) => { const n = new Set(prev); n.delete(uid); return n; });
+        setFollowedProfiles((prev) => prev.filter((p) => p.user_id !== uid));
       } else toast.error("Kon niet ontvolgen");
     } else {
       const { error } = await supabase
@@ -139,6 +159,12 @@ const Friends = () => {
         .insert({ follower_id: user.id, following_id: uid });
       if (!error) {
         setFollowing((prev) => new Set(prev).add(uid));
+        const profile = results.find((p) => p.user_id === uid);
+        if (profile) {
+          setFollowedProfiles((prev) =>
+            [...prev, profile].sort((a, b) => (a.display_name || "").localeCompare(b.display_name || ""))
+          );
+        }
       } else toast.error("Kon niet volgen");
     }
     setBusyId(null);
@@ -166,10 +192,59 @@ const Friends = () => {
       </div>
 
       {!debounced ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <Search className="h-10 w-10 mx-auto mb-3 opacity-40" />
-          <p>Typ een naam om bouwers te vinden.</p>
-        </div>
+        loadingFollowed ? (
+          <p className="text-center text-muted-foreground py-10 flex items-center justify-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" /> Laden...
+          </p>
+        ) : followedProfiles.length > 0 ? (
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-4">
+              Je volgt ({followedProfiles.length})
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {followedProfiles.map((p) => (
+                <Card key={p.user_id} className="hover:shadow-md hover:border-accent/40 transition-all">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <Link to={`/profile/${p.user_id}`} className="flex items-center gap-3 min-w-0 flex-1">
+                      <Avatar className="h-12 w-12">
+                        <AvatarImage src={p.avatar_url ?? ""} />
+                        <AvatarFallback className="bg-accent text-accent-foreground font-bold">
+                          {p.display_name?.[0]?.toUpperCase() ?? "?"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold truncate">{p.display_name || "Naamloos"}</p>
+                        {p.location && (
+                          <p className="text-xs text-muted-foreground truncate">📍 {p.location}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                          <Hammer className="h-3 w-3" /> {p.project_count}{" "}
+                          {p.project_count === 1 ? "project" : "projecten"}
+                        </p>
+                      </div>
+                    </Link>
+                    {user && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => toggleFollow(p.user_id)}
+                        disabled={busyId === p.user_id}
+                      >
+                        <UserCheck className="h-3.5 w-3.5 mr-1" /> Volgend
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-16 text-muted-foreground">
+            <Users className="h-10 w-10 mx-auto mb-3 opacity-40" />
+            <p>Je volgt nog niemand.</p>
+            <p className="text-sm mt-1">Zoek hierboven naar bouwers om ze te volgen.</p>
+          </div>
+        )
       ) : loading ? (
         <p className="text-center text-muted-foreground py-10 flex items-center justify-center gap-2">
           <Loader2 className="h-4 w-4 animate-spin" /> Zoeken...

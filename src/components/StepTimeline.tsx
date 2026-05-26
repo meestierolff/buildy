@@ -1,8 +1,9 @@
 import { useRef, useEffect } from "react";
 import { format } from "date-fns";
 import { nl } from "date-fns/locale";
-import { MapPin, Clock, Heart, MessageCircle, Pencil, Trash2 } from "lucide-react";
+import { MapPin, Clock, Heart, MessageCircle, Pencil, Trash2, Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { phaseColor } from "@/components/PhaseSelect";
 
 interface StepMedia {
   id: string;
@@ -19,6 +20,8 @@ interface Step {
   travel_hours: number | null;
   latitude: number | null;
   longitude: number | null;
+  phase?: string | null;
+  is_milestone?: boolean;
   step_media: StepMedia[];
   like_count: number;
   comment_count: number;
@@ -69,7 +72,9 @@ const StepTimeline = ({ steps, activeStepId, onStepClick, onLike, onEdit, onDele
             {/* Dot */}
             <div
               className={`absolute left-[-1px] top-2 w-3.5 h-3.5 rounded-full border-2 transition-all ${
-                activeStepId === step.id
+                step.is_milestone
+                  ? "bg-accent border-accent"
+                  : activeStepId === step.id
                   ? "bg-accent border-accent shadow-md shadow-accent/30"
                   : "bg-card border-primary/50"
               }`}
@@ -82,9 +87,21 @@ const StepTimeline = ({ steps, activeStepId, onStepClick, onLike, onEdit, onDele
               }`}
             >
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-muted-foreground">
-                  {format(new Date(step.step_date), "d MMMM yyyy", { locale: nl })}
-                </span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-muted-foreground">
+                    {format(new Date(step.step_date), "d MMMM yyyy", { locale: nl })}
+                  </span>
+                  {step.phase && (
+                    <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-sm ${phaseColor(step.phase)}`}>
+                      {step.phase}
+                    </span>
+                  )}
+                  {step.is_milestone && (
+                    <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-sm bg-accent/15 text-accent flex items-center gap-0.5">
+                      <Flag className="h-2.5 w-2.5" /> Mijlpaal
+                    </span>
+                  )}
+                </div>
                 {isOwner && (
                   <div className="flex items-center gap-1">
                     <Button

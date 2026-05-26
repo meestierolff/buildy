@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Plus, LogOut, User, Heart } from "lucide-react";
+import { Plus, LogOut, User, Heart, Compass, Users } from "lucide-react";
 import NotificationBell from "@/components/NotificationBell";
 import OnboardingDialog from "@/components/OnboardingDialog";
 
@@ -86,6 +86,29 @@ const Header = () => {
         </div>
       </div>
       {user && <OnboardingDialog />}
+
+      {/* Mobile bottom tab bar */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-border bg-background/95 backdrop-blur-md flex">
+        {[
+          { to: "/", end: true, icon: <Compass className="h-5 w-5" />, label: "Ontdekken" },
+          ...(user ? [{ to: "/favorieten", end: false, icon: <Heart className="h-5 w-5" />, label: "Gevolgd" }] : []),
+          { to: "/vrienden", end: false, icon: <Users className="h-5 w-5" />, label: "Vrienden" },
+        ].map(({ to, end, icon, label }) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={end}
+            className={({ isActive }: { isActive: boolean }) =>
+              `flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+                isActive ? "text-foreground" : "text-muted-foreground"
+              }`
+            }
+          >
+            {icon}
+            {label}
+          </NavLink>
+        ))}
+      </nav>
     </header>
   );
 };

@@ -133,7 +133,7 @@ const Index = () => {
         .select("*")
         .eq("is_public", true)
         .order("created_at", { ascending: false })
-        .limit(20);
+        .limit(40);
       setDiscover(await enrich(data || []));
       setLoadingD(false);
     })();
@@ -151,6 +151,12 @@ const Index = () => {
       setLoadingM(false);
     })();
   }, [user]);
+
+  // Derived sections from public projects
+  const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+  const netBegonnen = discover.filter((p) => p.step_count === 0 || (p as any).created_at > twoWeeksAgo).slice(0, 6);
+  const bijnaKlaar = discover.filter((p) => (p.progress_percentage ?? 0) >= 70 && (p.progress_percentage ?? 0) < 100).slice(0, 6);
+  const trending = [...discover].sort((a, b) => b.follower_count - a.follower_count).slice(0, 6);
 
   return (
     <div className="min-h-screen bg-background">
@@ -205,11 +211,48 @@ const Index = () => {
         </div>
 
         {tab === "discover" && (
-          <Grid
-            projects={discover}
-            loading={loadingD}
-            emptyState={<EmptyState icon={Home} title="Nog geen publieke projecten" description="Zodra anderen hun verbouwing delen verschijnen ze hier." />}
-          />
+          loadingD ? (
+            <Grid projects={[]} loading={true} emptyState={null} />
+          ) : discover.length === 0 ? (
+            <EmptyState icon={Home} title="Nog geen publieke projecten" description="Zodra anderen hun verbouwing delen verschijnen ze hier." />
+          ) : (
+            <div className="space-y-20">
+              {trending.length > 0 && (
+                <section>
+                  <div className="flex items-baseline gap-3 mb-8">
+                    <h2 className="text-[11px] font-bold uppercase tracking-[0.2em]">Populair</h2>
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+                  <Grid projects={trending} loading={false} emptyState={null} />
+                </section>
+              )}
+              {netBegonnen.length > 0 && (
+                <section>
+                  <div className="flex items-baseline gap-3 mb-8">
+                    <h2 className="text-[11px] font-bold uppercase tracking-[0.2em]">Net begonnen</h2>
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+                  <Grid projects={netBegonnen} loading={false} emptyState={null} />
+                </section>
+              )}
+              {bijnaKlaar.length > 0 && (
+                <section>
+                  <div className="flex items-baseline gap-3 mb-8">
+                    <h2 className="text-[11px] font-bold uppercase tracking-[0.2em]">Bijna klaar</h2>
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+                  <Grid projects={bijnaKlaar} loading={false} emptyState={null} />
+                </section>
+              )}
+              <section>
+                <div className="flex items-baseline gap-3 mb-8">
+                  <h2 className="text-[11px] font-bold uppercase tracking-[0.2em]">Alle projecten</h2>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+                <Grid projects={discover} loading={false} emptyState={null} />
+              </section>
+            </div>
+          )
         )}
         {tab === "mine" && user && (
           <Grid

@@ -3,6 +3,7 @@ import { Hammer, X } from "lucide-react";
 import { format } from "date-fns";
 import { nl } from "date-fns/locale";
 import { phaseColor } from "./PhaseSelect";
+import type { FloorInfo } from "./FloorplanView";
 
 interface Step {
   id: string;
@@ -12,23 +13,48 @@ interface Step {
   phase: string | null;
   floorplan_x: number | null;
   floorplan_y: number | null;
+  floorplan_id: string | null;
   step_media: { id: string; media_url: string; media_type: string }[];
 }
 
 interface Props {
-  floorplanUrl: string;
+  floorplans: FloorInfo[];
   steps: Step[];
 }
 
-const FloorplanScrollView = ({ floorplanUrl, steps }: Props) => {
-  const pinned = steps.filter((s) => s.floorplan_x != null && s.floorplan_y != null);
+const FloorplanScrollView = ({ floorplans, steps }: Props) => {
+  const [activeFloorIdx, setActiveFloorIdx] = useState(0);
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  if (floorplans.length === 0) return null;
+
+  const activeFloor = floorplans[activeFloorIdx];
+  const pinned = steps.filter(
+    (s) =>
+      s.floorplan_x != null &&
+      s.floorplan_y != null &&
+      (s.floorplan_id === activeFloor.id ||
+        (activeFloor.id === "__legacy__" && s.floorplan_id == null))
+  );
   const active = pinned.find((s) => s.id === activeId) || null;
 
   return (
     <div className="py-6">
+      {floorplans.length > 1 && (
+        <div className="flex gap-2 mb-4 flex-wrap">
+          {floorplans.map((f, idx) => (
+            <button
+              key={f.id}
+              onClick={() => { setActiveFloorIdx(idx); setActiveId(null); }}
+              className={`text-sm px-3 py-1.5 rounded-full border transition-colors ${activeFloorIdx === idx ? "bg-accent text-accent-foreground border-accent font-medium" : "bg-muted border-border hover:border-accent"}`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="relative w-full bg-muted rounded-xl overflow-hidden border-2 border-border">
-        <img src={floorplanUrl} alt="Plattegrond" className="w-full h-auto block" />
+        <img src={activeFloor.url} alt="Plattegrond" className="w-full h-auto block" />
         {pinned.map((s) => {
           const isActive = s.id === activeId;
           return (

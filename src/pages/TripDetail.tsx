@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -9,15 +9,15 @@ import FollowButton from "@/components/FollowButton";
 import AddStepDialog from "@/components/AddStepDialog";
 import EditStepDialog from "@/components/EditStepDialog";
 import ProjectStats from "@/components/ProjectStats";
-import FloorplanView from "@/components/FloorplanView";
+import FloorplanView, { type FloorInfo } from "@/components/FloorplanView";
 import FloorplanScrollView from "@/components/FloorplanScrollView";
 import AllPhotosTab from "@/components/AllPhotosTab";
 import CoverPickerDialog from "@/components/CoverPickerDialog";
+import ProjectSettingsSheet from "@/components/ProjectSettingsSheet";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { MapPin, Plus, BookOpen, Share2, Hammer, LayoutGrid, Map as MapIcon, Images, ImagePlus, Pencil, Check, X, MoveVertical, Wallet } from "lucide-react";
-import { Slider } from "@/components/ui/slider";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { MapPin, Plus, BookOpen, Share2, Hammer, LayoutGrid, Map as MapIcon, Images, Wallet, Settings, Flag, Upload, Sparkles, Loader2, ChevronDown } from "lucide-react";
 import { differenceInDays } from "date-fns";
 import { toast } from "sonner";
 import {
@@ -42,13 +42,18 @@ const TripDetail = () => {
   const [deletingStepId, setDeletingStepId] = useState<string | null>(null);
   const [floorMode, setFloorMode] = useState<"view" | "manage">("view");
   const [showCoverPicker, setShowCoverPicker] = useState(false);
-  const [editingDesc, setEditingDesc] = useState(false);
-  const [descDraft, setDescDraft] = useState("");
-  const [savingDesc, setSavingDesc] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [activeTab, setActiveTab] = useState("timeline");
   const [milestonesOnly, setMilestonesOnly] = useState(false);
   const [adjustCover, setAdjustCover] = useState(false);
   const [coverY, setCoverY] = useState<number>(50);
+  const [uploadingFloorplan, setUploadingFloorplan] = useState(false);
+  const [generatingBlueprint, setGeneratingBlueprint] = useState(false);
+  const floorFileRef = useRef<HTMLInputElement>(null);
+  const addFloorFileRef = useRef<HTMLInputElement>(null);
+
+  // suppress unused warning — adjustCover kept for potential future use
+  void adjustCover;
 
   const isOwner = user && trip?.user_id === user.id;
 
@@ -159,21 +164,68 @@ const TripDetail = () => {
     toast.success("Link gekopieerd!");
   };
 
-  const saveDescription = async () => {
-    setSavingDesc(true);
-    const { error } = await supabase
-      .from("trips")
-      .update({ description: descDraft.trim() || null })
-      .eq("id", trip.id);
-    setSavingDesc(false);
-    if (error) {
-      console.error(error);
-      toast.error("Opslaan mislukt.");
-      return;
-    }
-    setEditingDesc(false);
+  const uploadFloorplan = async (file: File) => {
+    setUploadingFloorplan(true);
+    const path = `${trip.user_id}/floorplans/${trip.id}-${Date.now()}-${file.name}`;
+    const { error: upErr } = await supabase.storage.from("trip-media").upload(path, file, { upsert: true });
+    if (upErr) { toast.error("Upload mislukt"); setUploadingFloorplan(false); return; }
+    const { data } = supabase.storage.from("trip-media").getPublicUrl(path);
+    // Keep legacy floorplan_url for backward compat; reset floorplans to single floor
+    const newFloors: FloorInfo[] = [{ id: crypto.randomUUID(), label: "Begane grond", url: data.publicUrl }];
+    await supabase.from("trips").update({ floorplan_url: data.publicUrl, floorplans: newFloors as any }).eq("id", trip.id);
+    toast.success("Plattegrond geüpload");
+    setUploadingFloorplan(false);
     fetchTrip();
   };
+
+  const addFloor = async (file: File) => {
+    setUploadingFloorplan(true);
+    const path = `${trip.user_id}/floorplans/${trip.id}-${Date.now()}-${file.name}`;
+    const { error: upErr } = await supabase.storage.from("trip-media").upload(path, file, { upsert: true });
+    if (upErr) { toast.error("Upload mislukt"); setUploadingFloorplan(false); return; }
+    const { data } = supabase.storage.from("trip-media").getPublicUrl(path);
+    const existing: FloorInfo[] = Array.isArray(trip.floorplans) && trip.floorplans.length > 0
+      ? trip.floorplans
+      : trip.floorplan_url
+        ? [{ id: "__legacy__", label: "Begane grond", url: trip.floorplan_url }]
+        : [];
+    const floorLabels = ["Begane grond", "1e verdieping", "2e verdieping", "3e verdieping", "4e verdieping"];
+    const newLabel = floorLabels[existing.length] ?? `Verdieping ${existing.length}`;
+    const newFloors: FloorInfo[] = [...existing, { id: crypto.randomUUID(), label: newLabel, url: data.publicUrl }];
+    await supabase.from("trips").update({ floorplans: newFloors as any }).eq("id", trip.id);
+    toast.success(`${newLabel} toegevoegd`);
+    setUploadingFloorplan(false);
+    fetchTrip();
+  };
+
+  const makeBlueprint = async () => {
+    if (!trip?.floorplan_url) return;
+    if (!confirm("De huidige plattegrond wordt vervangen door een AI-blauwdruk. Doorgaan?")) return;
+    setGeneratingBlueprint(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("floorplan-blueprint", {
+        body: { imageUrl: trip.floorplan_url },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      const dataUrl: string = (data as any).image;
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+      const path = `${trip.user_id}/floorplans/${trip.id}-blueprint-${Date.now()}.png`;
+      const { error: upErr } = await supabase.storage.from("trip-media").upload(path, blob, { upsert: true, contentType: "image/png" });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from("trip-media").getPublicUrl(path);
+      await supabase.from("trips").update({ floorplan_url: pub.publicUrl }).eq("id", trip.id);
+      toast.success("Blauwdruk gegenereerd ✨");
+      fetchTrip();
+    } catch (e: any) {
+      toast.error(e?.message || "Genereren mislukt");
+    } finally {
+      setGeneratingBlueprint(false);
+    }
+  };
+
+
 
   if (loading) {
     return (
@@ -196,6 +248,13 @@ const TripDetail = () => {
     : null;
   const totalPhotos = steps.reduce((sum, s) => sum + (s.step_media?.length ?? 0), 0);
   const milestones = steps.filter((s) => s.is_milestone).length;
+
+  const effectiveFloorplans: FloorInfo[] =
+    Array.isArray(trip.floorplans) && trip.floorplans.length > 0
+      ? trip.floorplans
+      : trip.floorplan_url
+        ? [{ id: "__legacy__", label: "Begane grond", url: trip.floorplan_url }]
+        : [];
 
   return (
     <div className="min-h-screen">
@@ -243,18 +302,13 @@ const TripDetail = () => {
                   <Button size="sm" onClick={() => setShowAddStep(true)} className="gap-1.5 bg-accent text-accent-foreground hover:bg-accent/90">
                     <Plus className="h-4 w-4" /> Update toevoegen
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => setShowCoverPicker(true)} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
-                    <ImagePlus className="h-4 w-4" /> Cover
+                  <Button size="sm" variant="outline" onClick={() => setShowSettings(true)} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
+                    <Settings className="h-4 w-4" /> Instellingen
                   </Button>
-                  {trip.cover_image_url && (
-                    <Button size="sm" variant="outline" onClick={() => setAdjustCover((v) => !v)} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground hidden md:inline-flex">
-                      <MoveVertical className="h-4 w-4" /> {adjustCover ? "Klaar" : "Positie"}
-                    </Button>
-                  )}
                 </>
               )}
               {!isOwner && trip.is_public && (
-                <FollowButton projectId={trip.id} />
+                <FollowButton projectId={trip.id} className="bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground" />
               )}
               <Button size="sm" variant="outline" onClick={handleShare} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
                 <Share2 className="h-4 w-4" /> Delen
@@ -276,88 +330,26 @@ const TripDetail = () => {
             </div>
           </div>
 
-          {isOwner && adjustCover && trip.cover_image_url && (
-            <div className="mt-4 hidden md:flex items-center gap-3 rounded-md border border-primary-foreground/20 bg-primary-foreground/10 p-3 max-w-md">
-              <MoveVertical className="h-4 w-4 text-accent shrink-0" />
-              <div className="flex-1">
-                <div className="text-xs text-primary-foreground/80 mb-1">Verticale positie coverfoto</div>
-                <Slider
-                  value={[coverY]}
-                  min={0}
-                  max={100}
-                  step={1}
-                  onValueChange={(v) => setCoverY(v[0])}
-                  onValueCommit={async (v) => {
-                    const { error } = await supabase.from("trips").update({ cover_position_y: v[0] } as any).eq("id", trip.id);
-                    if (error) toast.error("Kon positie niet opslaan");
-                  }}
-                />
-              </div>
-              <span className="text-xs tabular-nums text-primary-foreground/70 w-10 text-right">{coverY}%</span>
+          {/* Project description */}
+          {trip.description && (
+            <div className="mt-4 max-w-2xl">
+              <p className="text-sm md:text-base text-primary-foreground/85 whitespace-pre-line leading-relaxed">
+                {trip.description}
+              </p>
             </div>
           )}
-
-
-          {/* Project description */}
-          <div className="mt-4 max-w-2xl">
-            {editingDesc ? (
-              <div className="space-y-2">
-                <Textarea
-                  value={descDraft}
-                  onChange={(e) => setDescDraft(e.target.value)}
-                  rows={3}
-                  placeholder="Korte beschrijving van je project..."
-                  className="bg-primary-foreground/10 text-primary-foreground placeholder:text-primary-foreground/50 border-primary-foreground/20"
-                />
-                <div className="flex gap-2">
-                  <Button size="sm" onClick={saveDescription} disabled={savingDesc} className="gap-1.5 bg-accent text-accent-foreground hover:bg-accent/90">
-                    <Check className="h-3.5 w-3.5" /> Opslaan
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setEditingDesc(false)} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
-                    <X className="h-3.5 w-3.5" /> Annuleren
-                  </Button>
-                </div>
-              </div>
-            ) : trip.description ? (
-              <div className="group relative">
-                <p className="text-sm md:text-base text-primary-foreground/85 whitespace-pre-line leading-relaxed">
-                  {trip.description}
-                </p>
-                {isOwner && (
-                  <button
-                    onClick={() => { setDescDraft(trip.description ?? ""); setEditingDesc(true); }}
-                    className="mt-1 text-xs text-accent hover:underline inline-flex items-center gap-1"
-                  >
-                    <Pencil className="h-3 w-3" /> Bewerken
-                  </button>
-                )}
-              </div>
-            ) : isOwner ? (
-              <button
-                onClick={() => { setDescDraft(""); setEditingDesc(true); }}
-                className="text-xs text-primary-foreground/60 hover:text-accent inline-flex items-center gap-1"
-              >
-                <Pencil className="h-3 w-3" /> Beschrijving toevoegen
-              </button>
-            ) : null}
-          </div>
 
           <ProjectStats
             totalUpdates={steps.length}
             totalPhotos={totalPhotos}
             daysActive={days}
             milestones={milestones}
-            milestonesActive={milestonesOnly}
-            onMilestonesClick={milestones > 0 ? () => {
-              setMilestonesOnly((v) => !v);
-              setActiveTab("timeline");
-            } : undefined}
           />
 
           <div className="mt-4 max-w-md">
             <ProgressControl
               tripId={trip.id}
-              isOwner={!!isOwner}
+              isOwner={false}
               startDate={trip.start_date}
               endDate={trip.end_date}
               progressMode={trip.progress_mode}
@@ -373,11 +365,32 @@ const TripDetail = () => {
         <BlueprintBackground />
         <div className="container relative max-w-5xl">
           <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); if (v !== "timeline") setMilestonesOnly(false); }} className="pt-6">
-            <TabsList className="mb-2">
-              <TabsTrigger value="timeline" className="gap-1.5"><LayoutGrid className="h-3.5 w-3.5" /> Tijdlijn</TabsTrigger>
-              <TabsTrigger value="floorplan" className="gap-1.5"><MapIcon className="h-3.5 w-3.5" /> Plattegrond</TabsTrigger>
-              <TabsTrigger value="photos" className="gap-1.5"><Images className="h-3.5 w-3.5" /> Alle foto's</TabsTrigger>
-            </TabsList>
+            <div className="flex items-center justify-between mb-2">
+              <TabsList>
+                <TabsTrigger value="timeline" className="gap-1.5"><LayoutGrid className="h-3.5 w-3.5" /> Tijdlijn</TabsTrigger>
+                <TabsTrigger value="floorplan" className="gap-1.5"><MapIcon className="h-3.5 w-3.5" /> Plattegrond</TabsTrigger>
+                <TabsTrigger value="photos" className="gap-1.5"><Images className="h-3.5 w-3.5" /> Alle foto's</TabsTrigger>
+              </TabsList>
+              <div className="flex items-center gap-2">
+                {milestones > 0 && activeTab === "timeline" && (
+                  <Button
+                    size="sm"
+                    variant={milestonesOnly ? "default" : "outline"}
+                    onClick={() => setMilestonesOnly((v) => !v)}
+                    className={`gap-1.5 ${milestonesOnly ? "bg-accent text-accent-foreground hover:bg-accent/90" : ""}`}
+                  >
+                    <Flag className="h-3.5 w-3.5" /> Mijlpalen
+                  </Button>
+                )}
+                {(isOwner || (trip.is_public && trip.budget_public)) && (
+                  <Link to={`/trip/${id}/budget`}>
+                    <Button size="sm" variant="outline" className="gap-1.5">
+                      <Wallet className="h-3.5 w-3.5" /> Budget
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            </div>
             <TabsContent value="timeline">
               {milestonesOnly && (
                 <div className="flex items-center justify-between mb-3 px-3 py-2 rounded-md bg-accent/10 border border-accent/30 text-sm">
@@ -407,43 +420,63 @@ const TripDetail = () => {
               })()}
             </TabsContent>
             <TabsContent value="floorplan">
-              {!trip.floorplan_url && !isOwner && (
+              {effectiveFloorplans.length === 0 && !isOwner && (
                 <div className="py-16 text-center text-muted-foreground">
                   <MapIcon className="h-10 w-10 mx-auto mb-2 opacity-40" />
                   <p>Nog geen plattegrond beschikbaar.</p>
                 </div>
               )}
-              {trip.floorplan_url && (
+              {effectiveFloorplans.length === 0 && isOwner && (
+                <div className="py-16 text-center">
+                  <MapIcon className="h-12 w-12 mx-auto mb-3 text-muted-foreground/40" />
+                  <p className="text-muted-foreground mb-4">Nog geen plattegrond geüpload.</p>
+                  <Button onClick={() => floorFileRef.current?.click()} disabled={uploadingFloorplan} className="gap-1.5 bg-accent text-accent-foreground hover:bg-accent/90">
+                    <Upload className="h-4 w-4" /> {uploadingFloorplan ? "Uploaden..." : "Plattegrond uploaden"}
+                  </Button>
+                </div>
+              )}
+              {effectiveFloorplans.length > 0 && (
                 <>
                   {isOwner && (
                     <div className="flex justify-end gap-1 pt-3">
                       <Button size="sm" variant={floorMode === "view" ? "default" : "outline"} onClick={() => setFloorMode("view")}>Bekijken</Button>
-                      <Button size="sm" variant={floorMode === "manage" ? "default" : "outline"} onClick={() => setFloorMode("manage")}>Pinnen beheren</Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button size="sm" variant={floorMode === "manage" ? "default" : "outline"} className="gap-1.5">
+                            Beheren <ChevronDown className="h-3.5 w-3.5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setFloorMode("manage")}>
+                            <MapPin className="h-4 w-4 mr-2" /> Pinnen beheren
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={makeBlueprint} disabled={generatingBlueprint || uploadingFloorplan}>
+                            {generatingBlueprint ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+                            AI blauwdruk maken
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => addFloorFileRef.current?.click()} disabled={uploadingFloorplan || generatingBlueprint}>
+                            <Upload className="h-4 w-4 mr-2" /> Verdieping toevoegen
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => floorFileRef.current?.click()} disabled={uploadingFloorplan || generatingBlueprint}>
+                            <Upload className="h-4 w-4 mr-2" /> Plattegrond vervangen
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   )}
                   {(!isOwner || floorMode === "view") ? (
-                    <FloorplanScrollView floorplanUrl={trip.floorplan_url} steps={steps} />
+                    <FloorplanScrollView floorplans={effectiveFloorplans} steps={steps} />
                   ) : (
                     <FloorplanView
                       tripId={trip.id}
                       userId={trip.user_id}
                       isOwner={!!isOwner}
-                      floorplanUrl={trip.floorplan_url}
+                      floorplans={effectiveFloorplans}
                       steps={steps}
                       onChanged={fetchTrip}
                     />
                   )}
                 </>
-              )}
-              {!trip.floorplan_url && isOwner && (
-                <FloorplanView
-                  tripId={trip.id}
-                  userId={trip.user_id}
-                  isOwner={!!isOwner}
-                  floorplanUrl={trip.floorplan_url}
-                  steps={steps}
-                  onChanged={fetchTrip}
-                />
               )}
             </TabsContent>
             <TabsContent value="photos">
@@ -495,6 +528,33 @@ const TripDetail = () => {
           onSaved={fetchTrip}
         />
       )}
+
+      {isOwner && (
+        <ProjectSettingsSheet
+          open={showSettings}
+          onOpenChange={setShowSettings}
+          trip={trip}
+          coverY={coverY}
+          onCoverYChange={setCoverY}
+          onOpenCoverPicker={() => setShowCoverPicker(true)}
+          onChanged={fetchTrip}
+        />
+      )}
+
+      <input
+        ref={floorFileRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => e.target.files?.[0] && uploadFloorplan(e.target.files[0])}
+      />
+      <input
+        ref={addFloorFileRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => e.target.files?.[0] && addFloor(e.target.files[0])}
+      />
     </div>
   );
 };

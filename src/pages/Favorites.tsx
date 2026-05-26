@@ -4,10 +4,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Heart, Hammer, Home } from "lucide-react";
+import { Heart, Hammer, Home, Flag } from "lucide-react";
 import EmptyState from "@/components/EmptyState";
 import { formatDistanceToNow } from "date-fns";
 import { nl } from "date-fns/locale";
+import { phaseColor } from "@/components/PhaseSelect";
 
 const Favorites = () => {
   const { user } = useAuth();
@@ -52,10 +53,10 @@ const Favorites = () => {
       // Activity feed: latest steps from followed projects
       const { data: recent } = await supabase
         .from("steps")
-        .select("id, location_name, description, step_date, trip_id, created_at, step_media(media_url)")
+        .select("id, location_name, description, step_date, trip_id, created_at, phase, is_milestone, step_media(media_url)")
         .in("trip_id", ids)
         .order("created_at", { ascending: false })
-        .limit(15);
+        .limit(20);
       if (recent) {
         const tMap = new Map((trips || []).map((t: any) => [t.id, t]));
         setActivity(recent.map((s: any) => ({ ...s, trip: tMap.get(s.trip_id) })));
@@ -104,18 +105,35 @@ const Favorites = () => {
                     <Card className="hover:bg-muted/40 transition-colors border border-border shadow-none rounded-sm">
                       <CardContent className="p-4 flex gap-4">
                         {s.step_media?.[0] ? (
-                          <img src={s.step_media[0].media_url} alt="" loading="lazy" className="h-16 w-16 object-cover rounded-sm shrink-0" />
+                          <img src={s.step_media[0].media_url} alt="" loading="lazy" className="h-20 w-20 object-cover rounded-sm shrink-0" />
                         ) : (
-                          <div className="h-16 w-16 bg-muted rounded-sm flex items-center justify-center shrink-0">
+                          <div className="h-20 w-20 bg-muted rounded-sm flex items-center justify-center shrink-0">
                             <Hammer className="h-5 w-5 text-muted-foreground" strokeWidth={1.5} />
                           </div>
                         )}
                         <div className="min-w-0 flex-1">
-                          <p className="text-[11px] text-muted-foreground uppercase tracking-wide">
-                            {s.trip?.title} · {formatDistanceToNow(new Date(s.created_at), { addSuffix: true, locale: nl })}
+                          <p className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">
+                            {s.trip?.title}
                           </p>
-                          <p className="font-serif italic text-lg leading-tight mt-0.5 line-clamp-1">{s.location_name}</p>
-                          {s.description && <p className="text-sm text-muted-foreground line-clamp-2 mt-1">{s.description}</p>}
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <p className="font-serif italic text-lg leading-tight line-clamp-1">{s.location_name}</p>
+                            {s.is_milestone && (
+                              <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-sm bg-accent/15 text-accent flex items-center gap-0.5 shrink-0">
+                                <Flag className="h-2.5 w-2.5" /> Mijlpaal
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {s.phase && (
+                              <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-sm ${phaseColor(s.phase)}`}>
+                                {s.phase}
+                              </span>
+                            )}
+                            <span className="text-[10px] text-muted-foreground">
+                              {formatDistanceToNow(new Date(s.created_at), { addSuffix: true, locale: nl })}
+                            </span>
+                          </div>
+                          {s.description && <p className="text-sm text-muted-foreground line-clamp-2 mt-1.5">{s.description}</p>}
                         </div>
                       </CardContent>
                     </Card>

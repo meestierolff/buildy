@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { MapPin, Hammer, Camera, Pencil, Lock, UserPlus, UserCheck, Users } from "lucide-react";
+import { MapPin, Hammer, Camera, Pencil, Lock, UserPlus, UserCheck, Users, BarChart2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface FollowProfile {
@@ -27,6 +27,7 @@ const Profile = () => {
   const [profile, setProfile] = useState<any>(null);
   const [trips, setTrips] = useState<any[]>([]);
   const [stats, setStats] = useState({ updates: 0, photos: 0 });
+  const [statsExtra, setStatsExtra] = useState({ budgetTotal: 0, completedProjects: 0, upcomingProject: null as any });
   const [followers, setFollowers] = useState<FollowProfile[]>([]);
   const [following, setFollowing] = useState<FollowProfile[]>([]);
   const [iFollow, setIFollow] = useState(false);
@@ -89,6 +90,11 @@ const Profile = () => {
     if (!isMe) tripsQuery = tripsQuery.eq("is_public", true);
     const { data: tripsData } = await tripsQuery;
     setTrips(tripsData || []);
+
+    const completedProjects = (tripsData || []).filter((t: any) => (t.progress_percentage || 0) >= 100).length;
+    const budgetTotal = (tripsData || []).reduce((sum: number, t: any) => sum + (t.budget_total || 0), 0);
+    const upcomingProject = (tripsData || []).find((t: any) => t.start_date && new Date(t.start_date) > new Date()) || null;
+    setStatsExtra({ budgetTotal, completedProjects, upcomingProject });
 
     const tripIds = (tripsData || []).map((t: any) => t.id);
     if (tripIds.length) {
@@ -237,6 +243,7 @@ const Profile = () => {
       <Tabs defaultValue="projects" className="w-full">
         <TabsList>
           <TabsTrigger value="projects">Projecten</TabsTrigger>
+          <TabsTrigger value="stats" className="gap-1.5"><BarChart2 className="h-3.5 w-3.5" /> Statistieken</TabsTrigger>
           <TabsTrigger value="followers" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Volgers ({followers.length})</TabsTrigger>
           <TabsTrigger value="following" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Volgend ({following.length})</TabsTrigger>
         </TabsList>
@@ -264,9 +271,67 @@ const Profile = () => {
           )}
         </TabsContent>
 
-        <TabsContent value="followers" className="mt-6">
-          <PeopleList list={followers} empty="Nog geen volgers." />
+        <TabsContent value="stats" className="mt-6 space-y-8">
+          {/* Big numbers */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              { label: "Projecten", value: trips.length, sub: statsExtra.completedProjects > 0 ? `${statsExtra.completedProjects} afgerond` : null },
+              { label: "Updates", value: stats.updates, sub: null },
+              { label: "Foto's", value: stats.photos, sub: null },
+              { label: "Geïnvesteerd", value: statsExtra.budgetTotal > 0 ? `€${statsExtra.budgetTotal.toLocaleString("nl")}` : "—", sub: null },
+            ].map((item) => (
+              <div key={item.label} className="rounded-lg border bg-card p-4 text-center">
+                <div className="text-3xl font-bold tabular-nums">{item.value}</div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mt-1">{item.label}</div>
+                {item.sub && <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">{item.sub}</div>}
+              </div>
+            ))}
+          </div>
+
+          {/* Upcoming project countdown */}
+          {statsExtra.upcomingProject && (() => {
+            const days = Math.ceil((new Date(statsExtra.upcomingProject.start_date).getTime() - Date.now()) / 86_400_000);
+            return (
+              <div className="p-5 rounded-lg border-2 border-accent/40 bg-accent/5">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-accent mb-1">Aankomend project</p>
+                <p className="font-serif italic text-xl leading-tight">{statsExtra.upcomingProject.title}</p>
+                <p className="text-3xl font-bold mt-2">Nog <span className="text-accent">{days}</span> <span className="text-lg font-normal text-muted-foreground">dagen</span></p>
+              </div>
+            );
+          })()}
+
+          {/* Badges */}
+          {(() => {
+            const BADGES = [
+              { id: "early", emoji: "⭐", label: "Vroege Bouwer", desc: "Een van de eerste gebruikers", earned: true },
+              { id: "first_step", emoji: "🔨", label: "Eerste Sloopdag", desc: "Eerste update gepost", earned: stats.updates >= 1 },
+              { id: "craftsman", emoji: "📐", label: "Vakman", desc: "10 updates gepost", earned: stats.updates >= 10 },
+              { id: "documentalist", emoji: "📸", label: "Documentalist", desc: "50 foto's geüpload", earned: stats.photos >= 50 },
+              { id: "completed", emoji: "🏁", label: "Opgeleverd", desc: "Project afgerond op 100%", earned: statsExtra.completedProjects >= 1 },
+              { id: "popular", emoji: "🤝", label: "Buurtbouwer", desc: "5 volgers verzameld", earned: followers.length >= 5 },
+            ];
+            return (
+              <div>
+                <h3 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-4">Badges</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {BADGES.map((b) => (
+                    <div key={b.id} className={`rounded-lg border p-3 flex items-center gap-3 transition-all ${b.earned ? "bg-card" : "opacity-35 bg-muted/10"}`}>
+                      <span className="text-2xl leading-none">{b.emoji}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm">{b.label}</p>
+                        <p className="text-xs text-muted-foreground leading-tight">{b.desc}</p>
+                      </div>
+                      {b.earned && <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </TabsContent>
+
+        <TabsContent value="followers" className="mt-6">
+          <PeopleList list={followers} empty="Nog geen volgers." /></TabsContent>
 
         <TabsContent value="following" className="mt-6">
           <PeopleList list={following} empty="Volgt nog niemand." />

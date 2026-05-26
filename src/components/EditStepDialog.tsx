@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import PhaseSelect from "./PhaseSelect";
 import { toast } from "sonner";
-import { Upload, X, Trash2, ArrowLeft, ArrowRight, MapPin, Hammer } from "lucide-react";
+import { Upload, X, Trash2, MapPin, Hammer } from "lucide-react";
+import type { FloorInfo } from "./FloorplanView";
 
 interface EditStepDialogProps {
   step: any;
@@ -32,20 +33,29 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
     [...(step.step_media || [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
   );
   const [newFiles, setNewFiles] = useState<File[]>([]);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [customPhases, setCustomPhases] = useState<string[]>([]);
-  const [floorplanUrl, setFloorplanUrl] = useState<string | null>(null);
+  const [floorplans, setFloorplans] = useState<FloorInfo[]>([]);
+  const [selectedFloorId, setSelectedFloorId] = useState<string>(step.floorplan_id ?? "__legacy__");
   const [pinX, setPinX] = useState<number | null>(step.floorplan_x);
   const [pinY, setPinY] = useState<number | null>(step.floorplan_y);
 
   useEffect(() => {
     supabase
       .from("trips")
-      .select("custom_phases, floorplan_url")
+      .select("custom_phases, floorplan_url, floorplans")
       .eq("id", step.trip_id)
       .single()
       .then(({ data }) => {
         setCustomPhases((data?.custom_phases as string[]) || []);
-        setFloorplanUrl((data?.floorplan_url as string) || null);
+        const floors = Array.isArray(data?.floorplans) && (data.floorplans as FloorInfo[]).length > 0
+          ? (data.floorplans as FloorInfo[])
+          : data?.floorplan_url
+            ? [{ id: "__legacy__", label: "Begane grond", url: data.floorplan_url as string }]
+            : [];
+        setFloorplans(floors);
+        if (!step.floorplan_id) setSelectedFloorId(floors[0]?.id ?? "__legacy__");
       });
     supabase
       .from("step_budget")
@@ -67,15 +77,6 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
     await supabase.from("trips").update({ custom_phases: next }).eq("id", step.trip_id);
   };
 
-  const moveMedia = (index: number, dir: -1 | 1) => {
-    setExistingMedia((prev) => {
-      const next = [...prev];
-      const target = index + dir;
-      if (target < 0 || target >= next.length) return prev;
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
-  };
 
   const removeExisting = async (m: any) => {
     if (!confirm("Foto verwijderen?")) return;
@@ -120,6 +121,7 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
         step_date: stepDate,
         floorplan_x: pinX,
         floorplan_y: pinY,
+        floorplan_id: pinX != null ? (selectedFloorId === "__legacy__" ? null : selectedFloorId) : null,
       })
       .eq("id", step.id);
 
@@ -259,8 +261,27 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
                     await supabase.from("step_media").update({ compare_role: next }).eq("id", m.id);
                   };
                   return (
-                  <div key={m.id} className="relative group">
-                    <div className={`w-20 h-20 rounded-md bg-muted overflow-hidden flex items-center justify-center text-center px-1 ${role ? "ring-2 ring-accent" : ""}`}>
+                  <div
+                    key={m.id}
+                    className={`relative group cursor-grab active:cursor-grabbing select-none transition-opacity ${dragIdx === i ? "opacity-30" : ""}`}
+                    draggable
+                    onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDragIdx(i); }}
+                    onDragOver={(e) => { e.preventDefault(); setDragOverIdx(i); }}
+                    onDragLeave={() => setDragOverIdx(null)}
+                    onDrop={() => {
+                      if (dragIdx === null || dragIdx === i) return;
+                      setExistingMedia((prev) => {
+                        const next = [...prev];
+                        const [moved] = next.splice(dragIdx, 1);
+                        next.splice(i, 0, moved);
+                        return next;
+                      });
+                      setDragIdx(null);
+                      setDragOverIdx(null);
+                    }}
+                    onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
+                  >
+                    <div className={`w-20 h-20 rounded-md bg-muted overflow-hidden flex items-center justify-center text-center px-1 transition ${role ? "ring-2 ring-accent" : ""} ${dragOverIdx === i && dragIdx !== i ? "ring-2 ring-primary" : ""}`}>
                       {m.media_type === "video" ? (
                         <video src={m.media_url} className="w-full h-full object-cover" />
                       ) : m.media_type === "pdf" ? (
@@ -280,27 +301,7 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
                         <button type="button" onClick={() => setRole(role === "after" ? null : "after")} className={`flex-1 text-[9px] py-0.5 rounded ${role === "after" ? "bg-accent text-accent-foreground" : "bg-muted hover:bg-muted-foreground/20"}`}>Na</button>
                       </div>
                     )}
-                    <div className="absolute inset-x-0 bottom-0 flex justify-between bg-black/50 px-1">
-                      <button
-                        type="button"
-                        onClick={() => moveMedia(i, -1)}
-                        disabled={i === 0}
-                        className="text-white disabled:opacity-30 p-0.5"
-                        aria-label="Eerder"
-                      >
-                        <ArrowLeft className="h-3 w-3" />
-                      </button>
-                      <span className="text-[10px] text-white">{i + 1}</span>
-                      <button
-                        type="button"
-                        onClick={() => moveMedia(i, 1)}
-                        disabled={i === existingMedia.length - 1}
-                        className="text-white disabled:opacity-30 p-0.5"
-                        aria-label="Later"
-                      >
-                        <ArrowRight className="h-3 w-3" />
-                      </button>
-                    </div>
+                    <span className="absolute bottom-0 inset-x-0 text-center text-[9px] text-white/70 bg-black/40 py-0.5 pointer-events-none">{i + 1}</span>
                     <button
                       type="button"
                       onClick={() => removeExisting(m)}
@@ -351,7 +352,9 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
             )}
           </div>
 
-          {floorplanUrl && (
+          {floorplans.length > 0 && (() => {
+            const activeFloor = floorplans.find((f) => f.id === selectedFloorId) ?? floorplans[0];
+            return (
             <div>
               <div className="flex items-center justify-between">
                 <Label className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" /> Plek op plattegrond</Label>
@@ -365,9 +368,23 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
                   </button>
                 )}
               </div>
+              {floorplans.length > 1 && (
+                <div className="flex gap-2 mt-2 mb-2 flex-wrap">
+                  {floorplans.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setSelectedFloorId(f.id)}
+                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${selectedFloorId === f.id ? "bg-accent text-accent-foreground border-accent font-medium" : "bg-muted border-border hover:border-accent"}`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              )}
               <p className="text-xs text-muted-foreground mt-1 mb-2">Klik op de plattegrond om de pin te plaatsen of te verplaatsen.</p>
               <div className="relative w-full bg-muted rounded-lg overflow-hidden border-2 border-border cursor-crosshair" onClick={handlePinClick}>
-                <img src={floorplanUrl} alt="Plattegrond" className="w-full h-auto block select-none" />
+                <img src={activeFloor.url} alt="Plattegrond" className="w-full h-auto block select-none" />
                 {pinX != null && pinY != null && (
                   <div
                     className="absolute -translate-x-1/2 -translate-y-full pointer-events-none"
@@ -380,7 +397,8 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
                 )}
               </div>
             </div>
-          )}
+            );
+          })()}
 
           <Button type="submit" className="w-full bg-accent text-accent-foreground hover:bg-accent/90" disabled={loading}>
             {loading ? "Opslaan..." : "Opslaan"}

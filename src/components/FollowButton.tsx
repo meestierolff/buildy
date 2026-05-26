@@ -9,9 +9,10 @@ interface FollowButtonProps {
   projectId: string;
   size?: "sm" | "default";
   variant?: "default" | "outline";
+  className?: string;
 }
 
-const FollowButton = ({ projectId, size = "sm", variant = "outline" }: FollowButtonProps) => {
+const FollowButton = ({ projectId, size = "sm", variant = "outline", className }: FollowButtonProps) => {
   const { user } = useAuth();
   const [following, setFollowing] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -54,7 +55,7 @@ const FollowButton = ({ projectId, size = "sm", variant = "outline" }: FollowBut
       variant={following ? "default" : variant}
       onClick={toggle}
       disabled={loading}
-      className={`gap-1.5 ${following ? "bg-accent text-accent-foreground hover:bg-accent/90" : ""}`}
+      className={`gap-1.5 ${following ? "bg-accent text-accent-foreground hover:bg-accent/90" : (className ?? "")}`}
     >
       <Heart className={`h-4 w-4 ${following ? "fill-current" : ""}`} />
       {following ? "Gevolgd" : "Volgen"}

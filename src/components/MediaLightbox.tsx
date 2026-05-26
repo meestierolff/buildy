@@ -71,14 +71,13 @@ const MediaLightbox = ({ items, index, onClose, onIndex, tripId }: Props) => {
 
       <div
         className="flex-1 flex items-center justify-center relative overflow-hidden touch-pan-y"
-        onClick={(e) => e.stopPropagation()}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
       >
         {index > 0 && (
           <button
-            onClick={() => onIndex(index - 1)}
+            onClick={(e) => { e.stopPropagation(); onIndex(index - 1); }}
             className="hidden sm:flex absolute left-2 p-3 rounded-full bg-white/10 text-white hover:bg-white/20 z-10"
           >
             <ChevronLeft className="h-6 w-6" />
@@ -87,6 +86,7 @@ const MediaLightbox = ({ items, index, onClose, onIndex, tripId }: Props) => {
         <div
           className="w-full h-full flex items-center justify-center transition-transform"
           style={{ transform: `translateX(${dragX}px)` }}
+          onClick={(e) => e.stopPropagation()}
         >
           {item.type === "video" ? (
             <video src={item.url} controls className="max-h-full max-w-full" />
@@ -101,7 +101,7 @@ const MediaLightbox = ({ items, index, onClose, onIndex, tripId }: Props) => {
         </div>
         {index < items.length - 1 && (
           <button
-            onClick={() => onIndex(index + 1)}
+            onClick={(e) => { e.stopPropagation(); onIndex(index + 1); }}
             className="hidden sm:flex absolute right-2 p-3 rounded-full bg-white/10 text-white hover:bg-white/20 z-10"
           >
             <ChevronRight className="h-6 w-6" />
