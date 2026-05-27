@@ -188,27 +188,23 @@ const Profile = () => {
 
   const PeopleList = ({ list, empty }: { list: FollowProfile[]; empty: string }) => (
     list.length === 0 ? (
-      <p className="text-center text-sm text-muted-foreground py-10">{empty}</p>
+      <p className="text-center text-sm text-muted-foreground py-10 font-light">{empty}</p>
     ) : (
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div>
         {list.map((p) => (
-          <Link key={p.user_id} to={`/profile/${p.user_id}`}>
-            <Card className="hover:shadow-md hover:border-accent/40 transition-all">
-              <CardContent className="p-3 flex items-center gap-3">
-                <Avatar className="h-10 w-10">
-                  <AvatarImage src={p.avatar_url ?? ""} />
-                  <AvatarFallback className="bg-accent text-accent-foreground font-bold">
-                    {p.display_name?.[0]?.toUpperCase() ?? "?"}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold truncate flex items-center gap-1">
-                    {p.display_name || "Naamloos"}
-                    {p.is_private && <Lock className="h-3 w-3 text-muted-foreground" />}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+          <Link key={p.user_id} to={`/profile/${p.user_id}`} className="flex items-center gap-4 py-4 border-b border-border last:border-b-0 group">
+            <Avatar className="h-11 w-11">
+              <AvatarImage src={p.avatar_url ?? ""} />
+              <AvatarFallback className="bg-muted text-foreground font-semibold text-sm">
+                {p.display_name?.[0]?.toUpperCase() ?? "?"}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <p className="font-serif italic text-lg leading-tight truncate flex items-center gap-2 group-hover:text-accent transition-colors">
+                {p.display_name || "Naamloos"}
+                {p.is_private && <Lock className="h-3 w-3 text-muted-foreground shrink-0" />}
+              </p>
+            </div>
           </Link>
         ))}
       </div>
@@ -216,85 +212,92 @@ const Profile = () => {
   );
 
   return (
-    <div className="container max-w-4xl py-12">
-      <div className="flex items-start gap-4 mb-8">
-        <div className="relative shrink-0">
-          <Avatar className="h-20 w-20">
-            <AvatarImage src={profile.avatar_url || ""} />
-            <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
-              {profile.display_name?.[0]?.toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          {isMe && (
-            <>
-              <button
-                type="button"
-                onClick={() => avatarInputRef.current?.click()}
-                disabled={avatarUploading}
-                className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 focus:opacity-100 transition-opacity"
-                title="Profielfoto wijzigen"
-              >
-                {avatarUploading
-                  ? <Loader2 className="h-5 w-5 text-white animate-spin" />
-                  : <Camera className="h-5 w-5 text-white" />}
-              </button>
-              <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
-            </>
-          )}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2 flex-wrap">
-            <h1 className="font-serif italic text-3xl leading-tight flex items-center gap-2">
-              {profile.display_name}
-              {profile.is_private && (
-                <span title="Privé profiel" className="inline-flex items-center gap-1 text-xs font-normal text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
-                  <Lock className="h-3 w-3" /> Privé
-                </span>
-              )}
-            </h1>
-            <div className="flex gap-2">
+    <div className="min-h-screen bg-background">
+      <div className="max-w-4xl mx-auto px-6 md:px-8 py-12 md:py-20">
+        {/* Hero */}
+        <div className="flex flex-col md:flex-row md:items-start gap-8 md:gap-10 mb-16">
+          <div className="relative shrink-0">
+            <Avatar className="h-28 w-28 md:h-32 md:w-32">
+              <AvatarImage src={profile.avatar_url || ""} />
+              <AvatarFallback className="bg-muted text-foreground font-serif italic text-4xl">
+                {profile.display_name?.[0]?.toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            {isMe && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => avatarInputRef.current?.click()}
+                  disabled={avatarUploading}
+                  className="absolute inset-0 rounded-full bg-foreground/40 flex items-center justify-center opacity-0 hover:opacity-100 focus:opacity-100 transition-opacity"
+                  title="Profielfoto wijzigen"
+                >
+                  {avatarUploading
+                    ? <Loader2 className="h-5 w-5 text-background animate-spin" />
+                    : <Camera className="h-5 w-5 text-background" />}
+                </button>
+                <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+              </>
+            )}
+          </div>
+
+          <div className="flex-1 min-w-0">
+            {profile.is_private && (
+              <p className="eyebrow mb-3 flex items-center gap-1.5"><Lock className="h-3 w-3" /> Privé profiel</p>
+            )}
+            <h1 className="font-serif italic text-4xl md:text-5xl leading-tight">{profile.display_name}</h1>
+            {profile.location && (
+              <p className="text-sm text-muted-foreground flex items-center gap-1.5 mt-3 font-light">
+                <MapPin className="h-3.5 w-3.5" /> {profile.location}
+              </p>
+            )}
+            {profile.bio && <p className="text-sm mt-4 leading-relaxed font-light max-w-xl">{profile.bio}</p>}
+
+            <div className="flex flex-wrap gap-x-8 gap-y-3 mt-6">
+              {[
+                { label: "Projecten", value: trips.length },
+                { label: "Volgers", value: followers.length },
+                { label: "Volgend", value: following.length },
+                { label: "Updates", value: stats.updates },
+                { label: "Foto's", value: stats.photos },
+              ].map((s) => (
+                <div key={s.label}>
+                  <p className="font-serif italic text-2xl leading-none tabular-nums">{s.value}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-1">{s.label}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6 flex gap-2">
               {!isMe && user && (
                 <Button
                   size="sm"
-                  variant={iFollow ? "default" : "outline"}
                   onClick={toggleFollow}
                   disabled={followBusy}
-                  className={`gap-1.5 ${iFollow ? "bg-accent text-accent-foreground hover:bg-accent/90" : ""}`}
+                  className={`rounded-full px-5 text-[11px] font-bold uppercase tracking-widest gap-1.5 ${iFollow ? "bg-foreground text-background hover:bg-foreground/90" : "bg-accent text-accent-foreground hover:bg-accent/90"}`}
                 >
                   {iFollow ? <><UserCheck className="h-3.5 w-3.5" /> Gevolgd</> : <><UserPlus className="h-3.5 w-3.5" /> Volgen</>}
                 </Button>
               )}
               {isMe && (
-                <Button size="sm" variant="outline" onClick={() => setEditing(true)} className="gap-1.5">
-                  <Pencil className="h-3.5 w-3.5" /> Bewerk
+                <Button size="sm" variant="outline" onClick={() => setEditing(true)} className="rounded-full px-5 text-[11px] font-bold uppercase tracking-widest gap-1.5 border-border">
+                  <Pencil className="h-3.5 w-3.5" /> Bewerk profiel
                 </Button>
               )}
             </div>
           </div>
-          {profile.location && (
-            <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-              <MapPin className="h-3.5 w-3.5" /> {profile.location}
-            </p>
-          )}
-          {profile.bio && <p className="text-sm mt-2 leading-relaxed">{profile.bio}</p>}
-
-          <div className="flex flex-wrap gap-5 mt-3 text-sm">
-            <span><strong>{trips.length}</strong> <span className="text-muted-foreground">projecten</span></span>
-            <span><strong>{followers.length}</strong> <span className="text-muted-foreground">volgers</span></span>
-            <span><strong>{following.length}</strong> <span className="text-muted-foreground">volgend</span></span>
-            <span className="flex items-center gap-1"><Hammer className="h-3.5 w-3.5 text-accent" /><strong>{stats.updates}</strong> <span className="text-muted-foreground">updates</span></span>
-            <span className="flex items-center gap-1"><Camera className="h-3.5 w-3.5 text-accent" /><strong>{stats.photos}</strong> <span className="text-muted-foreground">foto's</span></span>
-          </div>
         </div>
-      </div>
+
+
 
       <Tabs defaultValue="projects" className="w-full">
-        <TabsList>
-          <TabsTrigger value="projects">Projecten</TabsTrigger>
-          <TabsTrigger value="stats" className="gap-1.5"><BarChart2 className="h-3.5 w-3.5" /> Statistieken</TabsTrigger>
-          <TabsTrigger value="followers" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Volgers ({followers.length})</TabsTrigger>
-          <TabsTrigger value="following" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Volgend ({following.length})</TabsTrigger>
+        <TabsList className="bg-transparent border-b border-border rounded-none p-0 h-auto gap-8 w-full justify-start mb-8">
+          <TabsTrigger value="projects" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Projecten</TabsTrigger>
+          <TabsTrigger value="stats" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Statistieken</TabsTrigger>
+          <TabsTrigger value="followers" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Volgers ({followers.length})</TabsTrigger>
+          <TabsTrigger value="following" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Volgend ({following.length})</TabsTrigger>
         </TabsList>
+
 
         <TabsContent value="projects" className="mt-6">
           {trips.length === 0 ? (
@@ -438,7 +441,9 @@ const Profile = () => {
           </div>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
+
   );
 };
 

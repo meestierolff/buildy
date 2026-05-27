@@ -2,13 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, Wallet, Clock, Hammer, Briefcase, Users, EyeOff, Loader2, Target, Pencil, Check } from "lucide-react";
+import { ArrowLeft, Clock, Hammer, Briefcase, Users, EyeOff, Loader2, Pencil, Check } from "lucide-react";
+import EmptyState from "@/components/EmptyState";
 import { toast } from "sonner";
 
 const fmtEUR = (n: number) =>
@@ -52,11 +51,7 @@ const Budget = () => {
   const canView = isOwner || (trip?.is_public && trip?.budget_public);
 
   const totals = useMemo(() => {
-    let cost = 0,
-      hours = 0,
-      diy = 0,
-      out = 0,
-      mix = 0;
+    let cost = 0, hours = 0, diy = 0, out = 0, mix = 0;
     steps.forEach((s) => {
       cost += Number(s.cost) || 0;
       hours += Number(s.hours_spent) || 0;
@@ -71,10 +66,7 @@ const Budget = () => {
     if (!id) return;
     const { error } = await supabase.from("trips").update({ budget_public: val }).eq("id", id);
     if (error) toast.error("Kon niet opslaan");
-    else {
-      setTrip((t: any) => ({ ...t, budget_public: val }));
-      toast.success(val ? "Budget nu openbaar" : "Budget nu privé");
-    }
+    else { setTrip((t: any) => ({ ...t, budget_public: val })); toast.success(val ? "Budget nu openbaar" : "Budget nu privé"); }
   };
 
   const saveBudget = async () => {
@@ -82,187 +74,165 @@ const Budget = () => {
     const val = budgetDraft === "" ? null : Number(budgetDraft);
     const { error } = await supabase.from("trips").update({ budget_total: val }).eq("id", id);
     if (error) toast.error("Kon niet opslaan");
-    else {
-      setTrip((t: any) => ({ ...t, budget_total: val }));
-      setEditingBudget(false);
-      toast.success("Budget opgeslagen");
-    }
+    else { setTrip((t: any) => ({ ...t, budget_total: val })); setEditingBudget(false); toast.success("Budget opgeslagen"); }
   };
 
   if (loading) {
-    return (
-      <div className="container py-20 flex justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <div className="min-h-screen bg-background flex justify-center items-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   }
-
-  if (!trip) return <div className="container py-20 text-center">Project niet gevonden</div>;
+  if (!trip) return <div className="min-h-screen bg-background flex justify-center items-center text-muted-foreground text-sm">Project niet gevonden</div>;
 
   if (!canView) {
     return (
-      <div className="container max-w-2xl py-20 text-center">
-        <EyeOff className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
-        <h1 className="text-2xl font-bold mb-2">Budget is privé</h1>
-        <p className="text-muted-foreground mb-6">De eigenaar heeft het budget van dit project niet openbaar gemaakt.</p>
-        <Link to={`/trip/${id}`}>
-          <Button variant="outline"><ArrowLeft className="h-4 w-4 mr-1" /> Terug naar project</Button>
-        </Link>
+      <div className="min-h-screen bg-background flex items-center justify-center px-6">
+        <EmptyState
+          icon={EyeOff}
+          title="Budget is privé"
+          description="De eigenaar heeft het budget van dit project niet openbaar gemaakt."
+          action={
+            <Link to={`/trip/${id}`}>
+              <Button variant="outline" className="rounded-full text-[11px] font-bold uppercase tracking-widest">
+                <ArrowLeft className="h-3.5 w-3.5 mr-1.5" /> Terug naar project
+              </Button>
+            </Link>
+          }
+        />
       </div>
     );
   }
 
   const withCost = steps.filter((s) => s.cost != null || s.hours_spent != null);
+  const total = trip.budget_total != null ? Number(trip.budget_total) : null;
+  const spent = totals.cost;
+  const over = total != null && spent > total;
+  const pct = total ? Math.min(100, (spent / total) * 100) : 0;
 
   return (
-    <div className="container max-w-4xl py-10">
-      <Link to={`/trip/${id}`} className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mb-4">
-        <ArrowLeft className="h-3.5 w-3.5" /> Terug naar {trip.title}
-      </Link>
+    <div className="min-h-screen bg-background">
+      <div className="max-w-4xl mx-auto px-6 md:px-8 py-12 md:py-16">
+        <Link to={`/trip/${id}`} className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors mb-10">
+          <ArrowLeft className="h-3.5 w-3.5" /> {trip.title}
+        </Link>
 
-      <div className="flex items-center gap-2 mb-2">
-        <Wallet className="h-6 w-6 text-accent" />
-        <h1 className="text-3xl font-bold">Budget</h1>
-      </div>
-      <p className="text-muted-foreground mb-6">Overzicht van kosten en uren per update.</p>
+        <div className="mb-12">
+          <p className="eyebrow mb-3">Budget</p>
+          <h1 className="font-serif italic text-4xl md:text-5xl leading-tight">Wat de verbouwing kost.</h1>
+        </div>
 
-      {isOwner && (
-        <Card className="mb-6">
-          <CardContent className="p-4 flex items-center justify-between gap-3">
-            <div>
-              <Label htmlFor="public-budget" className="font-semibold cursor-pointer">Budget openbaar maken</Label>
-              <p className="text-xs text-muted-foreground mt-0.5">Anderen zien dan dit overzicht bij je project.</p>
-            </div>
-            <Switch id="public-budget" checked={!!trip.budget_public} onCheckedChange={togglePublic} />
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Verbouwbudget */}
-      <Card className="mb-6 border-accent/30">
-        <CardContent className="p-5">
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <div className="flex items-center gap-2">
-              <Target className="h-5 w-5 text-accent" />
-              <h2 className="font-semibold">Verbouwbudget</h2>
-            </div>
+        {/* Budget overview */}
+        <section className="border-t border-border pt-10 mb-16">
+          <div className="flex items-baseline justify-between gap-3 mb-6">
+            <h2 className="text-[11px] font-bold uppercase tracking-[0.2em]">Verbouwbudget</h2>
             {isOwner && !editingBudget && (
-              <Button size="sm" variant="ghost" onClick={() => { setBudgetDraft(trip.budget_total != null ? String(trip.budget_total) : ""); setEditingBudget(true); }}>
-                <Pencil className="h-3.5 w-3.5 mr-1" /> {trip.budget_total != null ? "Wijzig" : "Instellen"}
-              </Button>
+              <button
+                onClick={() => { setBudgetDraft(total != null ? String(total) : ""); setEditingBudget(true); }}
+                className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground hover:text-accent transition-colors flex items-center gap-1"
+              >
+                <Pencil className="h-3 w-3" /> {total != null ? "Wijzig" : "Instellen"}
+              </button>
             )}
           </div>
+
           {editingBudget ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 max-w-md">
               <span className="text-muted-foreground">€</span>
-              <Input
-                type="number"
-                min="0"
-                step="100"
-                value={budgetDraft}
-                onChange={(e) => setBudgetDraft(e.target.value)}
-                placeholder="Bijv. 50000"
-                autoFocus
-              />
-              <Button size="sm" onClick={saveBudget} className="bg-accent text-accent-foreground hover:bg-accent/90">
-                <Check className="h-4 w-4" />
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setEditingBudget(false)}>Annuleer</Button>
+              <Input type="number" min="0" step="100" value={budgetDraft} onChange={(e) => setBudgetDraft(e.target.value)} placeholder="Bijv. 50000" autoFocus className="h-11" />
+              <Button size="sm" onClick={saveBudget} className="rounded-full bg-foreground text-background hover:bg-foreground/90 h-11 w-11 p-0"><Check className="h-4 w-4" /></Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditingBudget(false)} className="text-[11px] font-bold uppercase tracking-widest">Annuleer</Button>
             </div>
-          ) : trip.budget_total != null && trip.budget_total > 0 ? (
-            (() => {
-              const total = Number(trip.budget_total);
-              const spent = totals.cost;
-              const remaining = total - spent;
-              const pct = Math.min(100, (spent / total) * 100);
-              const over = spent > total;
-              return (
+          ) : total != null && total > 0 ? (
+            <div>
+              <div className="flex items-end justify-between gap-6 flex-wrap mb-4">
                 <div>
-                  <div className="flex items-end justify-between mb-2 gap-3 flex-wrap">
-                    <div>
-                      <div className="text-xs text-muted-foreground">Besteed</div>
-                      <div className={`text-2xl font-bold ${over ? "text-destructive" : "text-foreground"}`}>{fmtEUR(spent)}</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs text-muted-foreground">{over ? "Overschrijding" : "Resterend"}</div>
-                      <div className={`text-2xl font-bold ${over ? "text-destructive" : "text-accent"}`}>
-                        {fmtEUR(Math.abs(remaining))}
-                      </div>
-                    </div>
-                  </div>
-                  <Progress value={pct} className={over ? "[&>div]:bg-destructive" : ""} />
-                  <div className="flex justify-between text-xs text-muted-foreground mt-1.5">
-                    <span>{Math.round(pct)}% gebruikt</span>
-                    <span>van {fmtEUR(total)}</span>
-                  </div>
+                  <p className="eyebrow mb-1">Besteed</p>
+                  <p className={`font-serif italic text-5xl md:text-6xl leading-none ${over ? "text-destructive" : "text-foreground"}`}>{fmtEUR(spent)}</p>
                 </div>
-              );
-            })()
+                <div className="text-right">
+                  <p className="eyebrow mb-1">{over ? "Overschrijding" : "Resterend"}</p>
+                  <p className={`font-serif italic text-3xl md:text-4xl leading-none ${over ? "text-destructive" : "text-accent"}`}>{fmtEUR(Math.abs(total - spent))}</p>
+                </div>
+              </div>
+              <div className="w-full h-0.5 bg-muted">
+                <div className={`h-full transition-all ${over ? "bg-destructive" : "bg-accent"}`} style={{ width: `${pct}%` }} />
+              </div>
+              <div className="flex justify-between text-[11px] text-muted-foreground uppercase tracking-widest font-bold mt-2 tabular-nums">
+                <span>{Math.round(pct)}% gebruikt</span>
+                <span>van {fmtEUR(total)}</span>
+              </div>
+            </div>
           ) : (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground font-light">
               {isOwner ? "Stel een verbouwbudget in om je uitgaven te volgen." : "Er is nog geen verbouwbudget ingesteld."}
             </p>
           )}
-        </CardContent>
-      </Card>
+        </section>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <Card><CardContent className="p-4">
-          <div className="text-xs text-muted-foreground flex items-center gap-1"><Wallet className="h-3 w-3" /> Besteed</div>
-          <div className="text-2xl font-bold text-accent">{fmtEUR(totals.cost)}</div>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <div className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="h-3 w-3" /> Uren</div>
-          <div className="text-2xl font-bold">{totals.hours}</div>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <div className="text-xs text-muted-foreground flex items-center gap-1"><Hammer className="h-3 w-3" /> Zelf gedaan</div>
-          <div className="text-lg font-bold">{fmtEUR(totals.diy)}</div>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <div className="text-xs text-muted-foreground flex items-center gap-1"><Briefcase className="h-3 w-3" /> Uitbesteed</div>
-          <div className="text-lg font-bold">{fmtEUR(totals.out + totals.mix)}</div>
-        </CardContent></Card>
+        {/* Stats grid */}
+        <section className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-8 mb-16 border-t border-border pt-10">
+          {[
+            { label: "Uren", value: totals.hours, icon: Clock },
+            { label: "Zelf gedaan", value: fmtEUR(totals.diy), icon: Hammer },
+            { label: "Uitbesteed", value: fmtEUR(totals.out + totals.mix), icon: Briefcase },
+            { label: "Totaal", value: fmtEUR(totals.cost), icon: null },
+          ].map((s) => (
+            <div key={s.label}>
+              <p className="eyebrow mb-2">{s.label}</p>
+              <p className="font-serif italic text-3xl md:text-4xl leading-none tabular-nums">{s.value}</p>
+            </div>
+          ))}
+        </section>
+
+        {/* Public toggle */}
+        {isOwner && (
+          <section className="border-t border-border pt-10 pb-10 flex items-start justify-between gap-4">
+            <div>
+              <Label htmlFor="public-budget" className="font-medium cursor-pointer">Budget openbaar maken</Label>
+              <p className="text-xs text-muted-foreground mt-1 font-light">Anderen zien dan dit overzicht bij je project.</p>
+            </div>
+            <Switch id="public-budget" checked={!!trip.budget_public} onCheckedChange={togglePublic} />
+          </section>
+        )}
+
+        {/* Per update */}
+        <section className="border-t border-border pt-10">
+          <div className="flex items-baseline gap-3 mb-6">
+            <h2 className="text-[11px] font-bold uppercase tracking-[0.2em]">Per update</h2>
+            <div className="flex-1 h-px bg-border" />
+          </div>
+
+          {withCost.length === 0 ? (
+            <p className="text-sm text-muted-foreground font-light py-6">Nog geen kosten of uren ingevuld. Voeg ze toe via een update.</p>
+          ) : (
+            <div>
+              {withCost.map((s) => {
+                const W = s.work_type ? WORK_LABELS[s.work_type] : null;
+                const Icon = W?.icon;
+                return (
+                  <div key={s.id} className="flex items-center justify-between gap-4 py-5 border-b border-border last:border-b-0">
+                    <div className="min-w-0">
+                      <p className="font-serif italic text-xl leading-tight truncate">{s.location_name}</p>
+                      <p className="text-[11px] text-muted-foreground uppercase tracking-widest font-bold mt-1">{new Date(s.step_date).toLocaleDateString("nl-NL")}</p>
+                    </div>
+                    <div className="flex items-center gap-5 text-sm shrink-0">
+                      {W && Icon && (
+                        <span className="text-[11px] text-muted-foreground uppercase tracking-widest font-bold flex items-center gap-1">
+                          <Icon className="h-3 w-3" /> {W.label}
+                        </span>
+                      )}
+                      {s.hours_spent != null && (
+                        <span className="text-muted-foreground text-sm tabular-nums">{s.hours_spent}u</span>
+                      )}
+                      {s.cost != null && (
+                        <span className="font-serif italic text-2xl text-foreground tabular-nums">{fmtEUR(Number(s.cost))}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
       </div>
-
-      <h2 className="text-lg font-semibold mb-3">Per update</h2>
-      {withCost.length === 0 ? (
-        <Card><CardContent className="p-8 text-center text-muted-foreground">
-          Nog geen kosten of uren ingevuld. Voeg ze toe via een update.
-        </CardContent></Card>
-      ) : (
-        <div className="space-y-2">
-          {withCost.map((s) => {
-            const W = s.work_type ? WORK_LABELS[s.work_type] : null;
-            const Icon = W?.icon;
-            return (
-              <Card key={s.id}>
-                <CardContent className="p-4 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-semibold truncate">{s.location_name}</p>
-                    <p className="text-xs text-muted-foreground">{new Date(s.step_date).toLocaleDateString("nl-NL")}</p>
-                  </div>
-                  <div className="flex items-center gap-4 text-sm shrink-0">
-                    {W && Icon && (
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Icon className="h-3 w-3" /> {W.label}
-                      </span>
-                    )}
-                    {s.hours_spent != null && (
-                      <span className="text-muted-foreground flex items-center gap-1">
-                        <Clock className="h-3 w-3" /> {s.hours_spent}u
-                      </span>
-                    )}
-                    {s.cost != null && (
-                      <span className="font-bold text-accent">{fmtEUR(Number(s.cost))}</span>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 };
