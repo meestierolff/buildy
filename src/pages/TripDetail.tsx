@@ -63,6 +63,8 @@ const TripDetail = () => {
     }
     return () => { document.title = "Buildy — Verbeter je huis, stap voor stap"; };
   }, [trip?.title]);
+
+  const fetchTrip = useCallback(async () => {
     if (!id) return;
 
     const { data: tripData } = await supabase
