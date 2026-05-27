@@ -440,7 +440,9 @@ const Profile = () => {
           </div>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
+
   );
 };
 
