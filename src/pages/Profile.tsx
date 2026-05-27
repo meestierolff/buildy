@@ -291,12 +291,13 @@ const Profile = () => {
 
 
       <Tabs defaultValue="projects" className="w-full">
-        <TabsList>
-          <TabsTrigger value="projects">Projecten</TabsTrigger>
-          <TabsTrigger value="stats" className="gap-1.5"><BarChart2 className="h-3.5 w-3.5" /> Statistieken</TabsTrigger>
-          <TabsTrigger value="followers" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Volgers ({followers.length})</TabsTrigger>
-          <TabsTrigger value="following" className="gap-1.5"><Users className="h-3.5 w-3.5" /> Volgend ({following.length})</TabsTrigger>
+        <TabsList className="bg-transparent border-b border-border rounded-none p-0 h-auto gap-8 w-full justify-start mb-8">
+          <TabsTrigger value="projects" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Projecten</TabsTrigger>
+          <TabsTrigger value="stats" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Statistieken</TabsTrigger>
+          <TabsTrigger value="followers" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Volgers ({followers.length})</TabsTrigger>
+          <TabsTrigger value="following" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Volgend ({following.length})</TabsTrigger>
         </TabsList>
+
 
         <TabsContent value="projects" className="mt-6">
           {trips.length === 0 ? (
