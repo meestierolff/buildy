@@ -765,7 +765,7 @@ const Photobook = () => {
         {/* ── DESKTOP: two-page spread view ── */}
         <div className="hidden md:flex flex-1 flex-col items-center justify-center py-8 px-4">
         {/* Book spread */}
-        <div className="w-full max-w-5xl" style={{ aspectRatio: "4/3" }}>
+        <div className="w-full max-w-6xl" style={{ aspectRatio: "3/1" }}>
           <div className="relative h-full rounded-sm overflow-hidden shadow-[0_30px_80px_rgba(0,0,0,0.85)]">
             <div className="flex h-full">
               {/* Left page */}
