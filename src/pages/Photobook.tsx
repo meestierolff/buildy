@@ -657,12 +657,12 @@ const Photobook = () => {
                     >
                       <div
                         className="rounded overflow-hidden border-2 border-transparent group-hover:border-white/50 transition relative bg-[#f8f7f4]"
-                        style={{ width: 100, height: 150 }}
+                        style={{ width: 150, height: 100 }}
                       >
                         <div
                           style={{
-                            width: 400,
-                            height: 600,
+                            width: 600,
+                            height: 400,
                             transformOrigin: "top left",
                             transform: "scale(0.25)",
                             position: "absolute",
@@ -673,6 +673,7 @@ const Photobook = () => {
                         >
                           {page.node}
                         </div>
+
                         {isStepHidden && (
                           <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
                             <EyeOff className="h-5 w-5 text-white/70" />
