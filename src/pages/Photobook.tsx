@@ -246,7 +246,7 @@ const Photobook = () => {
       key: "cover",
       node: (
         <div className="h-full flex flex-col relative overflow-hidden bg-primary">
-          {/* Full-bleed photo — sharp, 100% opacity, no dimming overlay */}
+          {/* Full-bleed photo */}
           {coverImage && (
             <img
               src={coverImage.media_url}
@@ -254,28 +254,27 @@ const Photobook = () => {
               className="absolute inset-0 w-full h-full object-cover"
             />
           )}
-          {/* Pushes title strip to bottom */}
-          <div className="flex-1" />
-          {/* Title strip: fully opaque solid background — print-safe */}
-          <div className="relative bg-primary text-primary-foreground text-center px-10 py-7">
-            {/* New Buildy logo */}
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <div className="w-7 h-7 bg-primary-foreground rounded-md flex items-center justify-center flex-shrink-0">
-                <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {/* Dark gradient overlay at the bottom so text is legible on the photo */}
+          <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/85 via-black/55 to-transparent pointer-events-none" />
+          {/* Text overlay (no solid bar) — sits on top of the photo */}
+          <div className="relative mt-auto text-center px-[6%] pb-[7%] pt-[10%] text-white">
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <div className="w-6 h-6 bg-white/95 rounded-md flex items-center justify-center flex-shrink-0">
+                <svg className="w-3.5 h-3.5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                 </svg>
               </div>
-              <span className="text-sm font-semibold tracking-tight text-primary-foreground">Buildy</span>
+              <span className="text-xs font-semibold tracking-tight">Buildy</span>
             </div>
             {trip.project_type && (
               <p className="text-[9px] uppercase tracking-[0.35em] text-accent mb-2 font-bold">{trip.project_type}</p>
             )}
-            <h1 className="text-4xl font-bold mb-3 font-serif">{coverTitle}</h1>
+            <h1 className="text-5xl font-bold mb-3 font-serif drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)]">{coverTitle}</h1>
             {coverSubtitle && (
-              <p className="text-sm text-primary-foreground mb-2">{coverSubtitle}</p>
+              <p className="text-sm mb-1 drop-shadow-[0_1px_4px_rgba(0,0,0,0.6)]">{coverSubtitle}</p>
             )}
             {trip.start_date && trip.end_date && (
-              <p className="text-base text-primary-foreground">
+              <p className="text-sm drop-shadow-[0_1px_4px_rgba(0,0,0,0.6)]">
                 {format(new Date(trip.start_date), "d MMM yyyy", { locale: nl })} — {format(new Date(trip.end_date), "d MMM yyyy", { locale: nl })}
               </p>
             )}
@@ -283,6 +282,7 @@ const Photobook = () => {
         </div>
       ),
     });
+
 
 
     if (trip.floorplan_url) {
@@ -403,17 +403,17 @@ const Photobook = () => {
           const pageKey = `${step.id}-${pageIdx}`;
 
           if (useFullBleed) {
-            // Full-bleed single photo with text section
+            // Single photo with safe printer margin + caption
             list.push({
               key: pageKey,
               meta: { stepId: step.id, firstStep: pageIdx === 0 },
               node: (
-                <div className="h-full flex flex-col bg-[#f8f7f4]">
+                <div className="h-full flex flex-col bg-[#f8f7f4] p-[5%]">
                   <div className="flex-[3] min-h-0 overflow-hidden">
                     <img src={batch[0].media_url} alt="" loading="lazy" className="w-full h-full object-cover" />
                   </div>
                   {isFirst && (
-                    <div className="flex-[1] min-h-0 px-6 pt-3 pb-2 border-t border-black/[0.06] overflow-hidden">
+                    <div className="flex-[1] min-h-0 pt-3 overflow-hidden">
                       <p className="text-[8px] uppercase tracking-[0.2em] text-accent font-bold mb-0.5">{chapterTitle}</p>
                       <p className="text-[8px] text-muted-foreground mb-1">{format(new Date(step.step_date), "d MMM yyyy", { locale: nl })}</p>
                       <h2 className="text-lg font-bold font-serif leading-tight mb-1">{step.location_name}</h2>
@@ -425,7 +425,7 @@ const Photobook = () => {
               ),
             });
           } else {
-            // Grid layout
+            // Grid layout — with gap between photos and printer-safe margin
             const gridClass =
               layout === "2-side" ? "grid-cols-2"
               : layout === "2-stack" ? "grid-rows-2"
@@ -436,14 +436,14 @@ const Photobook = () => {
               key: pageKey,
               meta: { stepId: step.id, firstStep: pageIdx === 0 },
               node: (
-                <div className="h-full flex flex-col bg-card overflow-hidden">
-                  <div className={`flex-1 overflow-hidden grid min-h-0 ${gridClass}`}>
+                <div className="h-full flex flex-col bg-card overflow-hidden p-[5%]">
+                  <div className={`flex-1 overflow-hidden grid min-h-0 gap-[3%] ${gridClass}`}>
                     {batch.map((m: any) => (
                       <img key={m.id} src={m.media_url} loading="lazy" alt="" className="w-full h-full object-cover min-h-0 min-w-0 block" />
                     ))}
                   </div>
                   {isFirst && (
-                    <div className="px-5 py-3 border-t bg-card">
+                    <div className="pt-3">
                       <p className="text-[10px] uppercase tracking-widest text-accent mb-0.5 font-bold">{chapterTitle}</p>
                       <h2 className="text-base font-bold font-serif leading-tight">{step.location_name}</h2>
                       {hasDescription && <p className="text-xs text-foreground/70 mt-0.5 italic line-clamp-2">"{step.description}"</p>}
@@ -454,6 +454,7 @@ const Photobook = () => {
               ),
             });
           }
+
           pageIdx++;
         }
       }
@@ -656,12 +657,12 @@ const Photobook = () => {
                     >
                       <div
                         className="rounded overflow-hidden border-2 border-transparent group-hover:border-white/50 transition relative bg-[#f8f7f4]"
-                        style={{ width: 100, height: 150 }}
+                        style={{ width: 150, height: 100 }}
                       >
                         <div
                           style={{
-                            width: 400,
-                            height: 600,
+                            width: 600,
+                            height: 400,
                             transformOrigin: "top left",
                             transform: "scale(0.25)",
                             position: "absolute",
@@ -672,6 +673,7 @@ const Photobook = () => {
                         >
                           {page.node}
                         </div>
+
                         {isStepHidden && (
                           <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
                             <EyeOff className="h-5 w-5 text-white/70" />
@@ -712,8 +714,9 @@ const Photobook = () => {
         <div className="md:hidden flex-1 flex flex-col items-center justify-center py-6 px-4">
           <div
             className="mx-auto relative rounded-sm overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.8)] bg-[#f8f7f4]"
-            style={{ width: "min(100%, calc((100vh - 220px) * 2 / 3))", aspectRatio: "2/3" }}
+            style={{ width: "min(100%, calc((100vh - 220px) * 3 / 2))", aspectRatio: "3/2" }}
           >
+
             {pages[pageIdx] ? (
               <div className="absolute inset-0">
                 {pages[pageIdx].node}
@@ -763,7 +766,7 @@ const Photobook = () => {
         {/* ── DESKTOP: two-page spread view ── */}
         <div className="hidden md:flex flex-1 flex-col items-center justify-center py-8 px-4">
         {/* Book spread */}
-        <div className="w-full max-w-5xl" style={{ aspectRatio: "4/3" }}>
+        <div className="w-full max-w-6xl" style={{ aspectRatio: "3/1" }}>
           <div className="relative h-full rounded-sm overflow-hidden shadow-[0_30px_80px_rgba(0,0,0,0.85)]">
             <div className="flex h-full">
               {/* Left page */}
