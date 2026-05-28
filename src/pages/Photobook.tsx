@@ -403,17 +403,17 @@ const Photobook = () => {
           const pageKey = `${step.id}-${pageIdx}`;
 
           if (useFullBleed) {
-            // Full-bleed single photo with text section
+            // Single photo with safe printer margin + caption
             list.push({
               key: pageKey,
               meta: { stepId: step.id, firstStep: pageIdx === 0 },
               node: (
-                <div className="h-full flex flex-col bg-[#f8f7f4]">
+                <div className="h-full flex flex-col bg-[#f8f7f4] p-[5%]">
                   <div className="flex-[3] min-h-0 overflow-hidden">
                     <img src={batch[0].media_url} alt="" loading="lazy" className="w-full h-full object-cover" />
                   </div>
                   {isFirst && (
-                    <div className="flex-[1] min-h-0 px-6 pt-3 pb-2 border-t border-black/[0.06] overflow-hidden">
+                    <div className="flex-[1] min-h-0 pt-3 overflow-hidden">
                       <p className="text-[8px] uppercase tracking-[0.2em] text-accent font-bold mb-0.5">{chapterTitle}</p>
                       <p className="text-[8px] text-muted-foreground mb-1">{format(new Date(step.step_date), "d MMM yyyy", { locale: nl })}</p>
                       <h2 className="text-lg font-bold font-serif leading-tight mb-1">{step.location_name}</h2>
@@ -425,7 +425,7 @@ const Photobook = () => {
               ),
             });
           } else {
-            // Grid layout
+            // Grid layout — with gap between photos and printer-safe margin
             const gridClass =
               layout === "2-side" ? "grid-cols-2"
               : layout === "2-stack" ? "grid-rows-2"
@@ -436,14 +436,14 @@ const Photobook = () => {
               key: pageKey,
               meta: { stepId: step.id, firstStep: pageIdx === 0 },
               node: (
-                <div className="h-full flex flex-col bg-card overflow-hidden">
-                  <div className={`flex-1 overflow-hidden grid min-h-0 ${gridClass}`}>
+                <div className="h-full flex flex-col bg-card overflow-hidden p-[5%]">
+                  <div className={`flex-1 overflow-hidden grid min-h-0 gap-[3%] ${gridClass}`}>
                     {batch.map((m: any) => (
                       <img key={m.id} src={m.media_url} loading="lazy" alt="" className="w-full h-full object-cover min-h-0 min-w-0 block" />
                     ))}
                   </div>
                   {isFirst && (
-                    <div className="px-5 py-3 border-t bg-card">
+                    <div className="pt-3">
                       <p className="text-[10px] uppercase tracking-widest text-accent mb-0.5 font-bold">{chapterTitle}</p>
                       <h2 className="text-base font-bold font-serif leading-tight">{step.location_name}</h2>
                       {hasDescription && <p className="text-xs text-foreground/70 mt-0.5 italic line-clamp-2">"{step.description}"</p>}
@@ -454,6 +454,7 @@ const Photobook = () => {
               ),
             });
           }
+
           pageIdx++;
         }
       }
