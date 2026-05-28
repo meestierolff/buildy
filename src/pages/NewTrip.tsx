@@ -32,7 +32,7 @@ const NewTrip = () => {
   const [address, setAddress] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [isPublic, setIsPublic] = useState(true);
+  const [isPublic, setIsPublic] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
