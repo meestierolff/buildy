@@ -135,12 +135,15 @@ export default function ProjectSettingsSheet({
 
             <div className="space-y-1.5">
               <Label htmlFor="s-type">Type project</Label>
-              <Select value={projectTypeDraft} onValueChange={setProjectTypeDraft}>
+              <Select
+                value={projectTypeDraft || "__none__"}
+                onValueChange={(v) => setProjectTypeDraft(v === "__none__" ? "" : v)}
+              >
                 <SelectTrigger id="s-type">
                   <SelectValue placeholder="Kies een type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">— Geen —</SelectItem>
+                  <SelectItem value="__none__">— Geen —</SelectItem>
                   {PROJECT_TYPES.map((t) => (
                     <SelectItem key={t} value={t}>{t}</SelectItem>
                   ))}

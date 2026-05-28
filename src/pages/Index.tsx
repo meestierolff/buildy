@@ -98,13 +98,8 @@ const enrich = async (rows: any[]): Promise<ProjectCard[]> => {
   const [stepsRes, favRes, profRes] = await Promise.all([
     supabase.from("steps").select("trip_id").in("trip_id", ids),
     supabase.from("favorites").select("project_id").in("project_id", ids),
-    supabase.from("profiles").select("user_id, display_name, is_private").in("user_id", userIds),
+    supabase.from("profiles").select("user_id, display_name").in("user_id", userIds),
   ]);
-
-  // Build set of public profile user_ids — filter out private profiles from discover
-  const publicUserIds = new Set(
-    (profRes.data || []).filter((p: any) => !p.is_private).map((p: any) => p.user_id)
-  );
 
   const stepCounts = new Map<string, number>();
   (stepsRes.data || []).forEach((s: any) => stepCounts.set(s.trip_id, (stepCounts.get(s.trip_id) || 0) + 1));
@@ -113,8 +108,8 @@ const enrich = async (rows: any[]): Promise<ProjectCard[]> => {
   const profMap = new Map<string, string>();
   (profRes.data || []).forEach((p: any) => profMap.set(p.user_id, p.display_name));
 
+  // Trip visibility is controlled by trips.is_public — profiles stay publicly findable
   return rows
-    .filter((t: any) => publicUserIds.has(t.user_id))
     .map((t: any) => ({
       ...t,
       step_count: stepCounts.get(t.id) || 0,

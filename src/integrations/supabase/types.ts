@@ -379,6 +379,8 @@ export type Database = {
       }
       steps: {
         Row: {
+          contractor_name: string | null
+          contractor_notes: string | null
           country: string | null
           created_at: string
           description: string | null
@@ -400,6 +402,8 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          contractor_name?: string | null
+          contractor_notes?: string | null
           country?: string | null
           created_at?: string
           description?: string | null
@@ -421,6 +425,8 @@ export type Database = {
           user_id: string
         }
         Update: {
+          contractor_name?: string | null
+          contractor_notes?: string | null
           country?: string | null
           created_at?: string
           description?: string | null
