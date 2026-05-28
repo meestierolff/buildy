@@ -246,7 +246,7 @@ const Photobook = () => {
       key: "cover",
       node: (
         <div className="h-full flex flex-col relative overflow-hidden bg-primary">
-          {/* Full-bleed photo — sharp, 100% opacity, no dimming overlay */}
+          {/* Full-bleed photo */}
           {coverImage && (
             <img
               src={coverImage.media_url}
@@ -254,28 +254,27 @@ const Photobook = () => {
               className="absolute inset-0 w-full h-full object-cover"
             />
           )}
-          {/* Pushes title strip to bottom */}
-          <div className="flex-1" />
-          {/* Title strip: fully opaque solid background — print-safe */}
-          <div className="relative bg-primary text-primary-foreground text-center px-10 py-7">
-            {/* New Buildy logo */}
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <div className="w-7 h-7 bg-primary-foreground rounded-md flex items-center justify-center flex-shrink-0">
-                <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          {/* Dark gradient overlay at the bottom so text is legible on the photo */}
+          <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/85 via-black/55 to-transparent pointer-events-none" />
+          {/* Text overlay (no solid bar) — sits on top of the photo */}
+          <div className="relative mt-auto text-center px-[6%] pb-[7%] pt-[10%] text-white">
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <div className="w-6 h-6 bg-white/95 rounded-md flex items-center justify-center flex-shrink-0">
+                <svg className="w-3.5 h-3.5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                 </svg>
               </div>
-              <span className="text-sm font-semibold tracking-tight text-primary-foreground">Buildy</span>
+              <span className="text-xs font-semibold tracking-tight">Buildy</span>
             </div>
             {trip.project_type && (
               <p className="text-[9px] uppercase tracking-[0.35em] text-accent mb-2 font-bold">{trip.project_type}</p>
             )}
-            <h1 className="text-4xl font-bold mb-3 font-serif">{coverTitle}</h1>
+            <h1 className="text-5xl font-bold mb-3 font-serif drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)]">{coverTitle}</h1>
             {coverSubtitle && (
-              <p className="text-sm text-primary-foreground mb-2">{coverSubtitle}</p>
+              <p className="text-sm mb-1 drop-shadow-[0_1px_4px_rgba(0,0,0,0.6)]">{coverSubtitle}</p>
             )}
             {trip.start_date && trip.end_date && (
-              <p className="text-base text-primary-foreground">
+              <p className="text-sm drop-shadow-[0_1px_4px_rgba(0,0,0,0.6)]">
                 {format(new Date(trip.start_date), "d MMM yyyy", { locale: nl })} — {format(new Date(trip.end_date), "d MMM yyyy", { locale: nl })}
               </p>
             )}
@@ -283,6 +282,7 @@ const Photobook = () => {
         </div>
       ),
     });
+
 
 
     if (trip.floorplan_url) {
