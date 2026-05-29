@@ -415,7 +415,7 @@ const TripDetail = () => {
         <BlueprintBackground />
         <div className="container relative max-w-5xl">
           <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); if (v !== "timeline") setMilestonesOnly(false); }} className="pt-6">
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
               <TabsList>
                 <TabsTrigger value="timeline" className="gap-1.5"><LayoutGrid className="h-3.5 w-3.5" /> Tijdlijn</TabsTrigger>
                 <TabsTrigger value="floorplan" className="gap-1.5"><MapIcon className="h-3.5 w-3.5" /> Plattegrond</TabsTrigger>
@@ -433,7 +433,7 @@ const TripDetail = () => {
                   </Button>
                 )}
                 {(isOwner || (trip.is_public && trip.budget_public)) && (
-                  <Link to={`/trip/${id}/budget`}>
+                  <Link to={`/trip/${id}/budget`} className="hidden md:inline-flex">
                     <Button size="sm" variant="outline" className="gap-1.5">
                       <Wallet className="h-3.5 w-3.5" /> Budget
                     </Button>
