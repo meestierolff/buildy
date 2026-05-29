@@ -339,40 +339,44 @@ const TripDetail = () => {
                 )}
               </div>
 
-              {/* Mobile: overflow menu */}
-              <div className="md:hidden">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button size="sm" variant="outline" className="bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground px-2.5">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-44">
-                    {isOwner && (
-                      <DropdownMenuItem onClick={() => setShowSettings(true)} className="gap-2">
-                        <Settings className="h-4 w-4" /> Instellingen
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem onClick={handleShare} className="gap-2">
-                      <Share2 className="h-4 w-4" /> Delen
-                    </DropdownMenuItem>
-                    {(isOwner || (trip.is_public && trip.budget_public)) && (
-                      <DropdownMenuItem asChild>
-                        <Link to={`/trip/${id}/budget`} className="flex items-center gap-2">
-                          <Wallet className="h-4 w-4" /> Budget
-                        </Link>
-                      </DropdownMenuItem>
-                    )}
-                    {isOwner && (
-                      <DropdownMenuItem asChild>
-                        <Link to={`/trip/${id}/photobook`} className="flex items-center gap-2">
-                          <BookOpen className="h-4 w-4" /> Fotoboek
-                        </Link>
-                      </DropdownMenuItem>
-                    )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
+            </div>
+
+            {/* Mobile: zichtbare actie-rij ipv overflow-menu */}
+            <div className="md:hidden grid grid-cols-4 gap-2 w-full mt-1">
+              {isOwner && (
+                <button
+                  onClick={() => setShowSettings(true)}
+                  className="flex flex-col items-center gap-1.5 rounded-xl border border-primary-foreground/20 bg-primary-foreground/5 hover:bg-primary-foreground/10 px-2 py-2.5 text-primary-foreground"
+                >
+                  <Settings className="h-4 w-4" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Instel</span>
+                </button>
+              )}
+              <button
+                onClick={handleShare}
+                className="flex flex-col items-center gap-1.5 rounded-xl border border-primary-foreground/20 bg-primary-foreground/5 hover:bg-primary-foreground/10 px-2 py-2.5 text-primary-foreground"
+              >
+                <Share2 className="h-4 w-4" />
+                <span className="text-[10px] font-bold uppercase tracking-wider">Delen</span>
+              </button>
+              {(isOwner || (trip.is_public && trip.budget_public)) && (
+                <Link
+                  to={`/trip/${id}/budget`}
+                  className="flex flex-col items-center gap-1.5 rounded-xl border border-primary-foreground/20 bg-primary-foreground/5 hover:bg-primary-foreground/10 px-2 py-2.5 text-primary-foreground"
+                >
+                  <Wallet className="h-4 w-4" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Budget</span>
+                </Link>
+              )}
+              {isOwner && (
+                <Link
+                  to={`/trip/${id}/photobook`}
+                  className="flex flex-col items-center gap-1.5 rounded-xl border border-accent bg-accent text-accent-foreground hover:bg-accent/90 px-2 py-2.5"
+                >
+                  <BookOpen className="h-4 w-4" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Fotoboek</span>
+                </Link>
+              )}
             </div>
           </div>
 
