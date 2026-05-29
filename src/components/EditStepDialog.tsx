@@ -280,7 +280,7 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
                   return (
                   <div
                     key={m.id}
-                    className={`relative group cursor-grab active:cursor-grabbing select-none transition-opacity ${dragIdx === i ? "opacity-30" : ""}`}
+                    className={`relative group cursor-grab active:cursor-grabbing select-none transition-opacity pb-7 ${dragIdx === i ? "opacity-30" : ""}`}
                     draggable
                     onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDragIdx(i); }}
                     onDragOver={(e) => { e.preventDefault(); setDragOverIdx(i); }}
