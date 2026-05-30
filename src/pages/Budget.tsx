@@ -217,43 +217,43 @@ const Budget = () => {
                 const W = s.work_type ? WORK_LABELS[s.work_type] : null;
                 const Icon = W?.icon;
                 return (
-                  <div key={s.id} className="flex items-center justify-between gap-4 py-5 border-b border-border last:border-b-0">
-                    <div className="min-w-0">
-                      <p className="font-serif italic text-xl leading-tight truncate">{s.location_name}</p>
-                      <p className="text-[11px] text-muted-foreground uppercase tracking-widest font-bold mt-1">{new Date(s.step_date).toLocaleDateString("nl-NL")}</p>
+                  <div key={s.id} className="py-5 border-b border-border last:border-b-0">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="font-serif italic text-xl leading-tight truncate">{s.location_name}</p>
+                        <p className="text-[11px] text-muted-foreground uppercase tracking-widest font-bold mt-1">{new Date(s.step_date).toLocaleDateString("nl-NL")}</p>
+                      </div>
+                      <div className="flex items-center gap-5 text-sm shrink-0">
+                        {W && Icon && (
+                          <span className="text-[11px] text-muted-foreground uppercase tracking-widest font-bold flex items-center gap-1">
+                            <Icon className="h-3 w-3" /> {W.label}
+                          </span>
+                        )}
+                        {s.hours_spent != null && (
+                          <span className="text-muted-foreground text-sm tabular-nums">{s.hours_spent}u</span>
+                        )}
+                        {s.cost != null && (
+                          <span className="font-serif italic text-2xl text-foreground tabular-nums">{fmtEUR(Number(s.cost))}</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-5 text-sm shrink-0">
-                      {W && Icon && (
-                        <span className="text-[11px] text-muted-foreground uppercase tracking-widest font-bold flex items-center gap-1">
-                          <Icon className="h-3 w-3" /> {W.label}
-                        </span>
-                      )}
-                      {s.hours_spent != null && (
-                        <span className="text-muted-foreground text-sm tabular-nums">{s.hours_spent}u</span>
-                      )}
-                      {s.cost != null && (
-                        <span className="font-serif italic text-2xl text-foreground tabular-nums">{fmtEUR(Number(s.cost))}</span>
-                      )}
-                    </div>
+                    {s.work_type === "mixed" && (s.diy_cost != null || s.outsourced_cost != null) && (
+                      <div className="mt-2 flex flex-wrap gap-4 text-[11px] text-muted-foreground uppercase tracking-widest font-bold">
+                        {s.diy_cost != null && (
+                          <span className="flex items-center gap-1">
+                            <Hammer className="h-3 w-3" /> Zelf: {fmtEUR(Number(s.diy_cost))}{s.diy_hours != null ? ` · ${s.diy_hours}u` : ""}
+                          </span>
+                        )}
+                        {s.outsourced_cost != null && (
+                          <span className="flex items-center gap-1">
+                            <Briefcase className="h-3 w-3" /> Uitbesteed: {fmtEUR(Number(s.outsourced_cost))}{s.outsourced_hours != null ? ` · ${s.outsourced_hours}u` : ""}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  {/* Mixed split breakdown */}
-                  {s.work_type === "mixed" && (s.diy_cost != null || s.outsourced_cost != null) && (
-                    <div className="mt-2 flex flex-wrap gap-4 text-[11px] text-muted-foreground uppercase tracking-widest font-bold">
-                      {s.diy_cost != null && (
-                        <span className="flex items-center gap-1">
-                          <Hammer className="h-3 w-3" /> Zelf: {fmtEUR(Number(s.diy_cost))}{s.diy_hours != null ? ` · ${s.diy_hours}u` : ""}
-                        </span>
-                      )}
-                      {s.outsourced_cost != null && (
-                        <span className="flex items-center gap-1">
-                          <Briefcase className="h-3 w-3" /> Uitbesteed: {fmtEUR(Number(s.outsourced_cost))}{s.outsourced_hours != null ? ` · ${s.outsourced_hours}u` : ""}
-                        </span>
-                      )}
-                    </div>
-                  )}                  )}
-                </div>
-              );
-            })}
+                );
+              })}
             </div>
           )}
         </section>
