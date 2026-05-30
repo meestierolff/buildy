@@ -297,7 +297,11 @@ export type Database = {
       step_budget: {
         Row: {
           cost: number | null
+          diy_cost: number | null
+          diy_hours: number | null
           hours_spent: number | null
+          outsourced_cost: number | null
+          outsourced_hours: number | null
           step_id: string
           trip_id: string
           updated_at: string
@@ -305,7 +309,11 @@ export type Database = {
         }
         Insert: {
           cost?: number | null
+          diy_cost?: number | null
+          diy_hours?: number | null
           hours_spent?: number | null
+          outsourced_cost?: number | null
+          outsourced_hours?: number | null
           step_id: string
           trip_id: string
           updated_at?: string
@@ -313,7 +321,11 @@ export type Database = {
         }
         Update: {
           cost?: number | null
+          diy_cost?: number | null
+          diy_hours?: number | null
           hours_spent?: number | null
+          outsourced_cost?: number | null
+          outsourced_hours?: number | null
           step_id?: string
           trip_id?: string
           updated_at?: string
