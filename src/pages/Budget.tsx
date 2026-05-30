@@ -235,7 +235,8 @@ const Budget = () => {
                         <span className="font-serif italic text-2xl text-foreground tabular-nums">{fmtEUR(Number(s.cost))}</span>
                       )}
                     </div>
-                  </div>                  {/* Mixed split breakdown */}
+                  </div>
+                  {/* Mixed split breakdown */}
                   {s.work_type === "mixed" && (s.diy_cost != null || s.outsourced_cost != null) && (
                     <div className="mt-2 flex flex-wrap gap-4 text-[11px] text-muted-foreground uppercase tracking-widest font-bold">
                       {s.diy_cost != null && (
