@@ -2,9 +2,8 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Heart, Hammer, Home, Flag } from "lucide-react";
+import { Heart, Home, Flag } from "lucide-react";
 import EmptyState from "@/components/EmptyState";
 import { formatDistanceToNow } from "date-fns";
 import { nl } from "date-fns/locale";
@@ -97,48 +96,51 @@ const Favorites = () => {
 
           <TabsContent value="feed">
             {activity.length === 0 ? (
-              <p className="text-muted-foreground text-sm">Nog geen updates.</p>
+              <p className="text-muted-foreground text-sm">Nog geen updates van gevolgde projecten.</p>
             ) : (
-              <div className="space-y-3 max-w-2xl">
-                {activity.map((s: any) => (
-                  <Link key={s.id} to={`/trip/${s.trip_id}`}>
-                    <Card className="hover:bg-muted/40 transition-colors border border-border shadow-none rounded-sm">
-                      <CardContent className="p-4 flex gap-4">
-                        {s.step_media?.[0] ? (
-                          <img src={s.step_media[0].media_url} alt="" loading="lazy" className="h-20 w-20 object-cover rounded-sm shrink-0" />
-                        ) : (
-                          <div className="h-20 w-20 bg-muted rounded-sm flex items-center justify-center shrink-0">
-                            <Hammer className="h-5 w-5 text-muted-foreground" strokeWidth={1.5} />
-                          </div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[11px] text-muted-foreground uppercase tracking-wide mb-0.5">
-                            {s.trip?.title}
-                          </p>
-                          <div className="flex items-center gap-2 flex-wrap mb-1">
-                            <p className="font-serif italic text-lg leading-tight line-clamp-1">{s.location_name}</p>
-                            {s.is_milestone && (
-                              <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-sm bg-accent/15 text-accent flex items-center gap-0.5 shrink-0">
-                                <Flag className="h-2.5 w-2.5" /> Mijlpaal
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {s.phase && (
-                              <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-sm ${phaseColor(s.phase)}`}>
-                                {s.phase}
-                              </span>
-                            )}
-                            <span className="text-[10px] text-muted-foreground">
-                              {formatDistanceToNow(new Date(s.created_at), { addSuffix: true, locale: nl })}
-                            </span>
-                          </div>
-                          {s.description && <p className="text-sm text-muted-foreground line-clamp-2 mt-1.5">{s.description}</p>}
+              <div className="max-w-lg divide-y divide-border/50 rounded-xl overflow-hidden border border-border/60">
+                {activity.map((s: any) => {
+                  const firstPhoto = s.step_media?.[0]?.media_url;
+                  return (
+                    <Link key={s.id} to={`/trip/${s.trip_id}`} className="block hover:bg-muted/40 transition-colors bg-card">
+                      {/* project name header */}
+                      <div className="px-4 pt-3 pb-1 flex items-center gap-2">
+                        <Home className="h-3 w-3 text-accent shrink-0" />
+                        <span className="text-[11px] font-semibold text-accent truncate">{s.trip?.title}</span>
+                        <span className="text-[10px] text-muted-foreground ml-auto shrink-0">
+                          {formatDistanceToNow(new Date(s.created_at), { addSuffix: true, locale: nl })}
+                        </span>
+                      </div>
+
+                      {/* photo */}
+                      {firstPhoto && (
+                        <div className="w-full" style={{ aspectRatio: "4/3" }}>
+                          <img src={firstPhoto} alt="" loading="lazy" className="w-full h-full object-cover" />
                         </div>
-                      </CardContent>
-                    </Card>
-                  </Link>
-                ))}
+                      )}
+
+                      {/* meta + text */}
+                      <div className="px-4 pt-2 pb-3 space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {s.phase && (
+                            <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full ${phaseColor(s.phase)}`}>
+                              {s.phase}
+                            </span>
+                          )}
+                          {s.is_milestone && (
+                            <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 flex items-center gap-0.5">
+                              <Flag className="h-2.5 w-2.5" /> Mijlpaal
+                            </span>
+                          )}
+                        </div>
+                        <p className="font-bold text-sm leading-tight">{s.location_name}</p>
+                        {s.description && (
+                          <p className="text-xs text-muted-foreground line-clamp-2">{s.description}</p>
+                        )}
+                      </div>
+                    </Link>
+                  );
+                })}
               </div>
             )}
           </TabsContent>

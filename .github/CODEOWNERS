@@ -1,0 +1,11 @@
+# Buildy codebase owners
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+* @meestierolff
+
+# Supabase migrations — extra care
+/supabase/migrations/ @meestierolff
+
+# Integrations
+/src/integrations/ @meestierolff
+/src/lib/peechoExport.ts @meestierolff

@@ -31,6 +31,10 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
   const [cost, setCost] = useState<string>("");
   const [hoursSpent, setHoursSpent] = useState<string>("");
   const [workType, setWorkType] = useState<string>("");
+  const [diyCost, setDiyCost] = useState<string>("");
+  const [diyHours, setDiyHours] = useState<string>("");
+  const [outsourcedCost, setOutsourcedCost] = useState<string>("");
+  const [outsourcedHours, setOutsourcedHours] = useState<string>("");
   const [contractorName, setContractorName] = useState("");
   const [contractorNotes, setContractorNotes] = useState("");
   const [files, setFiles] = useState<File[]>([]);
@@ -86,13 +90,25 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
       return;
     }
 
-    if (cost !== "" || hoursSpent !== "" || workType) {
+    if (cost !== "" || hoursSpent !== "" || workType ||
+        diyCost !== "" || diyHours !== "" || outsourcedCost !== "" || outsourcedHours !== "") {
+      const isMixed = workType === "mixed";
+      const totalCost = isMixed
+        ? (diyCost !== "" || outsourcedCost !== "" ? Number(diyCost || 0) + Number(outsourcedCost || 0) : null)
+        : (cost === "" ? null : Number(cost));
+      const totalHours = isMixed
+        ? (diyHours !== "" || outsourcedHours !== "" ? Number(diyHours || 0) + Number(outsourcedHours || 0) : null)
+        : (hoursSpent === "" ? null : Number(hoursSpent));
       await supabase.from("step_budget").insert({
         step_id: step.id,
         trip_id: tripId,
-        cost: cost === "" ? null : Number(cost),
-        hours_spent: hoursSpent === "" ? null : Number(hoursSpent),
+        cost: totalCost,
+        hours_spent: totalHours,
         work_type: workType || null,
+        diy_cost: isMixed && diyCost !== "" ? Number(diyCost) : null,
+        diy_hours: isMixed && diyHours !== "" ? Number(diyHours) : null,
+        outsourced_cost: isMixed && outsourcedCost !== "" ? Number(outsourcedCost) : null,
+        outsourced_hours: isMixed && outsourcedHours !== "" ? Number(outsourcedHours) : null,
       });
     }
 
@@ -166,17 +182,19 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
           </div>
 
           <div className="rounded-lg border p-3 space-y-3 bg-secondary/30">
-            <Label className="text-sm font-semibold">�💰 Budget & tijd (optioneel)</Label>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Kosten (€)</Label>
-                <Input type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0,00" />
+            <Label className="text-sm font-semibold">💰 Budget & tijd (optioneel)</Label>
+            {workType !== "mixed" && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Kosten (€)</Label>
+                  <Input type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0,00" />
+                </div>
+                <div>
+                  <Label className="text-xs">Uren besteed</Label>
+                  <Input type="number" min="0" step="0.5" value={hoursSpent} onChange={(e) => setHoursSpent(e.target.value)} placeholder="0" />
+                </div>
               </div>
-              <div>
-                <Label className="text-xs">Uren besteed</Label>
-                <Input type="number" min="0" step="0.5" value={hoursSpent} onChange={(e) => setHoursSpent(e.target.value)} placeholder="0" />
-              </div>
-            </div>
+            )}
             <div>
               <Label className="text-xs">Type werk</Label>
               <select
@@ -190,6 +208,29 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
                 <option value="mixed">Combinatie</option>
               </select>
             </div>
+            {workType === "mixed" && (
+              <div className="space-y-2">
+                <p className="text-[11px] text-muted-foreground">Specificeer het aandeel zelf gedaan vs uitbesteed:</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Kosten zelf gedaan (€)</Label>
+                    <Input type="number" min="0" step="0.01" value={diyCost} onChange={(e) => setDiyCost(e.target.value)} placeholder="0,00" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Uren zelf gedaan</Label>
+                    <Input type="number" min="0" step="0.5" value={diyHours} onChange={(e) => setDiyHours(e.target.value)} placeholder="0" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Kosten uitbesteed (€)</Label>
+                    <Input type="number" min="0" step="0.01" value={outsourcedCost} onChange={(e) => setOutsourcedCost(e.target.value)} placeholder="0,00" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Uren uitbesteed</Label>
+                    <Input type="number" min="0" step="0.5" value={outsourcedHours} onChange={(e) => setOutsourcedHours(e.target.value)} placeholder="0" />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div>

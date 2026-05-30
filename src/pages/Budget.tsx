@@ -40,7 +40,16 @@ const Budget = () => {
       const budgetMap = new Map((b || []).map((row: any) => [row.step_id, row]));
       const merged = (s || []).map((step: any) => {
         const bud = budgetMap.get(step.id) as any;
-        return { ...step, cost: bud?.cost ?? null, hours_spent: bud?.hours_spent ?? null, work_type: bud?.work_type ?? null };
+        return {
+          ...step,
+          cost: bud?.cost ?? null,
+          hours_spent: bud?.hours_spent ?? null,
+          work_type: bud?.work_type ?? null,
+          diy_cost: bud?.diy_cost ?? null,
+          diy_hours: bud?.diy_hours ?? null,
+          outsourced_cost: bud?.outsourced_cost ?? null,
+          outsourced_hours: bud?.outsourced_hours ?? null,
+        };
       });
       setSteps(merged);
       setLoading(false);
@@ -226,9 +235,24 @@ const Budget = () => {
                         <span className="font-serif italic text-2xl text-foreground tabular-nums">{fmtEUR(Number(s.cost))}</span>
                       )}
                     </div>
-                  </div>
-                );
-              })}
+                  </div>                  {/* Mixed split breakdown */}
+                  {s.work_type === "mixed" && (s.diy_cost != null || s.outsourced_cost != null) && (
+                    <div className="mt-2 flex flex-wrap gap-4 text-[11px] text-muted-foreground uppercase tracking-widest font-bold">
+                      {s.diy_cost != null && (
+                        <span className="flex items-center gap-1">
+                          <Hammer className="h-3 w-3" /> Zelf: {fmtEUR(Number(s.diy_cost))}{s.diy_hours != null ? ` · ${s.diy_hours}u` : ""}
+                        </span>
+                      )}
+                      {s.outsourced_cost != null && (
+                        <span className="flex items-center gap-1">
+                          <Briefcase className="h-3 w-3" /> Uitbesteed: {fmtEUR(Number(s.outsourced_cost))}{s.outsourced_hours != null ? ` · ${s.outsourced_hours}u` : ""}
+                        </span>
+                      )}
+                    </div>
+                  )}                  )}
+                </div>
+              );
+            })}
             </div>
           )}
         </section>

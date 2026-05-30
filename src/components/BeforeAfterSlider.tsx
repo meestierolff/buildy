@@ -42,9 +42,9 @@ const BeforeAfterSlider = ({ beforeUrl, afterUrl, className = "" }: Props) => {
           style={{ width: ref.current?.offsetWidth || "100%" }}
         />
       </div>
-      {/* Labels */}
-      <span className="absolute top-2 left-2 text-[10px] font-bold uppercase tracking-widest bg-black/65 text-white px-2 py-0.5 rounded-full">Voor</span>
-      <span className="absolute top-2 right-2 text-[10px] font-bold uppercase tracking-widest bg-black/65 text-white px-2 py-0.5 rounded-full">Na</span>
+      {/* Labels — bottom corners to avoid overlap with card header actions */}
+      <span className="absolute bottom-2 left-2 text-[10px] font-bold uppercase tracking-widest bg-black/65 text-white px-2 py-0.5 rounded-full">Voor</span>
+      <span className="absolute bottom-2 right-2 text-[10px] font-bold uppercase tracking-widest bg-black/65 text-white px-2 py-0.5 rounded-full">Na</span>
       {/* Slider line + handle */}
       <div className="absolute inset-y-0 w-0.5 bg-white shadow-lg pointer-events-none" style={{ left: `${pos}%` }} />
       <div

@@ -415,31 +415,36 @@ const TripDetail = () => {
         <BlueprintBackground />
         <div className="container relative max-w-5xl">
           <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); if (v !== "timeline") setMilestonesOnly(false); }} className="pt-6">
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <div className="flex flex-wrap items-center gap-2 mb-2">
               <TabsList>
                 <TabsTrigger value="timeline" className="gap-1.5"><LayoutGrid className="h-3.5 w-3.5" /> Tijdlijn</TabsTrigger>
                 <TabsTrigger value="floorplan" className="gap-1.5"><MapIcon className="h-3.5 w-3.5" /> Plattegrond</TabsTrigger>
                 <TabsTrigger value="photos" className="gap-1.5"><Images className="h-3.5 w-3.5" /> Alle foto's</TabsTrigger>
               </TabsList>
-              <div className="flex items-center gap-2">
-                {milestones > 0 && activeTab === "timeline" && (
-                  <Button
-                    size="sm"
-                    variant={milestonesOnly ? "default" : "outline"}
-                    onClick={() => setMilestonesOnly((v) => !v)}
-                    className={`gap-1.5 ${milestonesOnly ? "bg-accent text-accent-foreground hover:bg-accent/90" : ""}`}
-                  >
-                    <Flag className="h-3.5 w-3.5" /> Mijlpalen
+              {milestones > 0 && activeTab === "timeline" && (
+                <Button
+                  size="sm"
+                  variant={milestonesOnly ? "default" : "outline"}
+                  onClick={() => setMilestonesOnly((v) => !v)}
+                  className={`gap-1.5 ${milestonesOnly ? "bg-accent text-accent-foreground hover:bg-accent/90" : ""}`}
+                >
+                  <Flag className="h-3.5 w-3.5" /> Mijlpalen
+                </Button>
+              )}
+              {(isOwner || (trip.is_public && trip.budget_public)) && (
+                <Link to={`/trip/${id}/budget`}>
+                  <Button size="sm" variant="outline" className="gap-1.5">
+                    <Wallet className="h-3.5 w-3.5" /> Budget
                   </Button>
-                )}
-                {(isOwner || (trip.is_public && trip.budget_public)) && (
-                  <Link to={`/trip/${id}/budget`} className="hidden md:inline-flex">
-                    <Button size="sm" variant="outline" className="gap-1.5">
-                      <Wallet className="h-3.5 w-3.5" /> Budget
-                    </Button>
-                  </Link>
-                )}
-              </div>
+                </Link>
+              )}
+              {isOwner && (
+                <Link to={`/trip/${id}/photobook`}>
+                  <Button size="sm" variant="outline" className="gap-1.5">
+                    <BookOpen className="h-3.5 w-3.5" /> Fotoboek
+                  </Button>
+                </Link>
+              )}
             </div>
             <TabsContent value="timeline">
               {milestonesOnly && (

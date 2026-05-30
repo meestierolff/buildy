@@ -112,12 +112,26 @@
   .blueprint-grid {
     background-color: hsl(var(--muted));
     background-image:
-      linear-gradient(hsl(var(--blueprint-line) / 0.18) 1px, transparent 1px),
-      linear-gradient(90deg, hsl(var(--blueprint-line) / 0.18) 1px, transparent 1px);
-    background-size: 24px 24px;
+      /* Major grid lines every 5 cells */
+      linear-gradient(hsl(var(--blueprint-line) / 0.55) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--blueprint-line) / 0.55) 1px, transparent 1px),
+      /* Minor grid lines */
+      linear-gradient(hsl(var(--blueprint-line) / 0.22) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--blueprint-line) / 0.22) 1px, transparent 1px);
+    background-size: 120px 120px, 120px 120px, 24px 24px, 24px 24px;
   }
 
   .eyebrow {
     @apply text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground;
+  }
+
+  /* Remove browser number input spinners globally */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
   }
 }

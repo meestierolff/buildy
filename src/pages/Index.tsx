@@ -182,7 +182,7 @@ const Index = () => {
           <span className="text-accent">stap voor stap.</span>
         </h1>
         <p className="max-w-xl mx-auto text-base md:text-lg text-muted-foreground leading-relaxed mb-10 font-light">
-          Leg elke fase van je verbouwing vast met foto's en verhalen.<br className="hidden md:block" />
+          Leg elke fase van je verbouwing vast met foto's en verhalen.{" "}<br className="hidden md:block" />
           Een digitaal dagboek voor de architectuur van je leven.
         </p>
         {user ? (

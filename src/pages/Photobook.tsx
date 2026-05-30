@@ -6,13 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { ArrowLeft, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, LayoutGrid, Pencil, Eye, EyeOff, Check, BookOpen, Download, ExternalLink, Loader2 } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, LayoutGrid, Pencil, Eye, EyeOff, Check, BookOpen, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { nl } from "date-fns/locale";
 import { toast } from "sonner";
 import { buildPeechoPdf, PEECHO_FORMATS, type PeechoFormat } from "@/lib/peechoExport";
 
 type StepLayout = "auto" | "1-full" | "2-side" | "2-stack" | "grid";
+type CoverTextPos = "bottom" | "top" | "center";
 
 interface PhotobookSettings {
   cover_title: string | null;
@@ -108,7 +109,7 @@ const Photobook = () => {
   const [printedPdfUrl, setPrintedPdfUrl] = useState<string | null>(null);
   const [isPro, setIsPro] = useState(false);
   const [stepBudgetMap, setStepBudgetMap] = useState<Map<string, number>>(new Map());
-  const PEECHO_CHECKOUT = (import.meta.env.VITE_PEECHO_CHECKOUT_URL as string) || "https://www.peecho.com/checkout/upload-and-order";
+  const PEECHO_SCRIPT_URL = (import.meta.env.VITE_PEECHO_SCRIPT_URL as string) || "";
 
   useEffect(() => {
     if (!user) { setIsPro(false); return; }
@@ -126,7 +127,7 @@ const Photobook = () => {
       const blob = await buildPeechoPdf({
         trip, steps, settings, excludedMedia, excludedSteps, format: printFormat,
       });
-      // Upload to public storage so Peecho (or user) can fetch it
+      // Upload to public storage so Peecho can fetch the PDF directly
       const path = `${trip.user_id}/peecho/${id}-${Date.now()}.pdf`;
       const { error: upErr } = await supabase.storage.from("trip-media").upload(path, blob, {
         contentType: "application/pdf", upsert: true,
@@ -134,7 +135,7 @@ const Photobook = () => {
       if (upErr) throw upErr;
       const { data: pub } = supabase.storage.from("trip-media").getPublicUrl(path);
       setPrintedPdfUrl(pub.publicUrl);
-      toast.success("Print-PDF gegenereerd volgens Peecho-richtlijnen");
+      toast.success("Boek klaar — klik hieronder om te bestellen");
     } catch (e: any) {
       console.error(e);
       toast.error(e.message || "Genereren mislukt");
@@ -242,6 +243,8 @@ const Photobook = () => {
     const coverTitle = settings.cover_title || trip.title;
     const coverSubtitle = settings.cover_subtitle ?? trip.address ?? "";
 
+    const coverTextPos: CoverTextPos = (settings.chapter_overrides["__cover_text_pos__"] as CoverTextPos) || "bottom";
+
     list.push({
       key: "cover",
       node: (
@@ -254,20 +257,23 @@ const Photobook = () => {
               className="absolute inset-0 w-full h-full object-cover"
             />
           )}
-          {/* Dark gradient overlay at the bottom so text is legible on the photo */}
-          <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/85 via-black/55 to-transparent pointer-events-none" />
-          {/* Text overlay (no solid bar) — sits on top of the photo */}
-          <div className="relative mt-auto text-center px-[6%] pb-[7%] pt-[10%] text-white">
-            <div className="flex items-center justify-center gap-2 mb-3">
-              <div className="w-6 h-6 bg-white/95 rounded-md flex items-center justify-center flex-shrink-0">
-                <svg className="w-3.5 h-3.5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                </svg>
-              </div>
-              <span className="text-xs font-semibold tracking-tight">Buildy</span>
-            </div>
+          {/* Gradient overlay based on text position */}
+          {coverImage && (
+            <div className={`absolute inset-0 ${
+              coverTextPos === "top" ? "bg-gradient-to-b from-black/75 via-black/20 to-transparent"
+              : coverTextPos === "center" ? "bg-black/35"
+              : "bg-gradient-to-t from-black/85 via-black/55 to-transparent"
+            } pointer-events-none`} />
+          )}
+
+          {/* Title content — positioned by coverTextPos */}
+          <div className={`absolute inset-x-0 text-center px-[6%] text-white ${
+            coverTextPos === "top" ? "top-[8%]"
+            : coverTextPos === "center" ? "top-1/2 -translate-y-1/2"
+            : "bottom-[7%]"
+          }`}>
             {trip.project_type && (
-              <p className="text-[9px] uppercase tracking-[0.35em] text-accent mb-2 font-bold">{trip.project_type}</p>
+              <p className="text-[8px] uppercase tracking-[0.35em] text-white/70 mb-2 font-bold">{trip.project_type}</p>
             )}
             <h1 className="text-5xl font-bold mb-3 font-serif drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)]">{coverTitle}</h1>
             {coverSubtitle && (
@@ -278,6 +284,14 @@ const Photobook = () => {
                 {format(new Date(trip.start_date), "d MMM yyyy", { locale: nl })} — {format(new Date(trip.end_date), "d MMM yyyy", { locale: nl })}
               </p>
             )}
+          </div>
+
+          {/* Buildy watermark — subtle bottom-right corner */}
+          <div className="absolute bottom-2 right-3 flex items-center gap-1 opacity-50">
+            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+            </svg>
+            <span className="text-[8px] font-semibold text-white tracking-tight">buildy</span>
           </div>
         </div>
       ),
@@ -427,10 +441,10 @@ const Photobook = () => {
           } else {
             // Grid layout — with gap between photos and printer-safe margin
             const gridClass =
-              layout === "2-side" ? "grid-cols-2"
-              : layout === "2-stack" ? "grid-rows-2"
-              : layout === "grid" ? "grid-cols-2 grid-rows-2"
-              : batch.length === 2 ? "grid-cols-2" : "grid-cols-2 grid-rows-2"; // auto
+              layout === "2-side" ? "grid-cols-2 grid-rows-1"
+              : layout === "2-stack" ? "grid-cols-1 grid-rows-2"
+              : layout === "grid" ? "grid-cols-2 grid-rows-[1fr_1fr]"
+              : batch.length === 2 ? "grid-cols-2 grid-rows-1" : "grid-cols-2 grid-rows-[1fr_1fr]"; // auto
 
             list.push({
               key: pageKey,
@@ -592,6 +606,24 @@ const Photobook = () => {
               onChange={(e) => upsertSettings({ cover_subtitle: e.target.value || null })}
             />
 
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Tekstpositie</p>
+              <div className="flex gap-2">
+                {([["top", "Boven"], ["center", "Midden"], ["bottom", "Onder"]] as const).map(([val, label]) => {
+                  const active = (settings.chapter_overrides["__cover_text_pos__"] || "bottom") === val;
+                  return (
+                    <button
+                      key={val}
+                      onClick={() => upsertSettings({ chapter_overrides: { ...settings.chapter_overrides, "__cover_text_pos__": val } })}
+                      className={`flex-1 py-1.5 rounded border text-xs font-medium transition ${active ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/40"}`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <p className="text-[11px] text-muted-foreground">
               💡 Klik op een foto in het boek om die uit het fotoboek te halen (blijft in je tijdlijn).
               Klik op een hoofdstukpagina om de titel aan te passen.
@@ -601,8 +633,10 @@ const Photobook = () => {
       )}
 
       {editing && !overviewMode && !isCover && (() => {
+        // On mobile: use the current single page's stepId; on desktop: use both spread pages
+        const currentStep = pages[pageIdx]?.meta?.stepId;
         const visibleStepIds = Array.from(new Set(
-          [leftPage?.meta?.stepId, rightPage?.meta?.stepId].filter(Boolean) as string[]
+          [currentStep, leftPage?.meta?.stepId, rightPage?.meta?.stepId].filter(Boolean) as string[]
         ));
         if (visibleStepIds.length === 0) return null;
         return (
@@ -611,24 +645,52 @@ const Photobook = () => {
               const step = steps.find((s: any) => s.id === stepId);
               if (!step) return null;
               const currentLayout: StepLayout = (settings.step_layout_overrides[stepId] as StepLayout) ?? "auto";
+              const isHidden = excludedSteps.has(stepId);
+              const photos = (step.step_media || []).filter((m: any) => m.media_type !== "video");
               return (
-                <div key={stepId} className="rounded-lg border bg-card p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                    Lay-out — {step.location_name}
-                  </p>
-                  <div className="flex gap-2 flex-wrap">
-                    {STEP_LAYOUTS.map((l) => (
-                      <button
-                        key={l.id}
-                        onClick={() => upsertSettings({ step_layout_overrides: { ...settings.step_layout_overrides, [stepId]: l.id } })}
-                        title={l.label}
-                        className={`flex flex-col items-center gap-1 p-2 rounded border-2 transition ${currentLayout === l.id ? "border-primary bg-primary/5" : "border-transparent hover:border-muted-foreground/30"}`}
-                      >
-                        {l.icon}
-                        <span className="text-[10px] text-muted-foreground">{l.label}</span>
-                      </button>
-                    ))}
+                <div key={stepId} className="rounded-lg border bg-card p-3 space-y-3">
+                  {/* Step header + include/exclude toggle */}
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold truncate min-w-0">{step.location_name}</p>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[10px] text-muted-foreground">{isHidden ? "Verborgen" : "In fotoboek"}</span>
+                      <Switch checked={!isHidden} onCheckedChange={() => toggleStep(stepId)} />
+                    </div>
                   </div>
+
+                  {/* Layout selector */}
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Lay-out</p>
+                    <div className="flex gap-2 flex-wrap">
+                      {STEP_LAYOUTS.map((l) => (
+                        <button
+                          key={l.id}
+                          onClick={() => upsertSettings({ step_layout_overrides: { ...settings.step_layout_overrides, [stepId]: l.id } })}
+                          title={l.label}
+                          className={`flex flex-col items-center gap-1 p-2 rounded border-2 transition ${currentLayout === l.id ? "border-primary bg-primary/5" : "border-transparent hover:border-muted-foreground/30"}`}
+                        >
+                          {l.icon}
+                          <span className="text-[10px] text-muted-foreground">{l.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Photo order/exclude — moved OUT of page overlay */}
+                  {photos.length > 0 && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
+                        Foto's — sleep om volgorde te wijzigen · klik om te verbergen
+                      </p>
+                      <PhotoManagePanel
+                        stepId={stepId}
+                        photos={photos}
+                        excludedMedia={excludedMedia}
+                        onToggleMedia={toggleMedia}
+                        onReorder={(sid, newOrder) => upsertSettings({ step_photo_order: { ...settings.step_photo_order, [sid]: newOrder } })}
+                      />
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -720,24 +782,6 @@ const Photobook = () => {
             {pages[pageIdx] ? (
               <div className="absolute inset-0">
                 {pages[pageIdx].node}
-                {editing && pages[pageIdx].meta?.firstStep && (() => {
-                  const stepId = pages[pageIdx].meta!.stepId!;
-                  const isHidden = excludedSteps.has(stepId);
-                  return (
-                    <div className="absolute top-2 right-2 z-10 flex items-center gap-2 bg-background/95 backdrop-blur border rounded-full pl-3 pr-2 py-1.5 shadow-md">
-                      <span className="text-xs font-medium">{isHidden ? "Verborgen" : "In fotoboek"}</span>
-                      <Switch checked={!isHidden} onCheckedChange={() => toggleStep(stepId)} />
-                    </div>
-                  );
-                })()}
-                {editing && pages[pageIdx].meta?.stepId && (
-                  <PhotoEditOverlay
-                    step={steps.find((s) => s.id === pages[pageIdx].meta!.stepId)}
-                    excludedMedia={excludedMedia}
-                    onToggleMedia={toggleMedia}
-                    onReorder={(stepId, newOrder) => upsertSettings({ step_photo_order: { ...settings.step_photo_order, [stepId]: newOrder } })}
-                  />
-                )}
                 {editing && pages[pageIdx].meta?.chapter && (
                   <ChapterEditOverlay
                     phase={pages[pageIdx].meta!.chapter!}
@@ -777,24 +821,6 @@ const Photobook = () => {
                 {leftPage ? (
                   <div className="absolute inset-0">
                     {leftPage.node}
-                    {editing && leftPage.meta?.firstStep && (() => {
-                      const stepId = leftPage.meta!.stepId!;
-                      const isHidden = excludedSteps.has(stepId);
-                      return (
-                        <div className="absolute top-2 left-2 z-10 flex items-center gap-2 bg-background/95 backdrop-blur border rounded-full pl-3 pr-2 py-1.5 shadow-md">
-                          <span className="text-xs font-medium">{isHidden ? "Verborgen" : "In fotoboek"}</span>
-                          <Switch checked={!isHidden} onCheckedChange={() => toggleStep(stepId)} />
-                        </div>
-                      );
-                    })()}
-                    {editing && leftPage.meta?.stepId && (
-                      <PhotoEditOverlay
-                        step={steps.find((s) => s.id === leftPage.meta!.stepId)}
-                        excludedMedia={excludedMedia}
-                        onToggleMedia={toggleMedia}
-                        onReorder={(stepId, newOrder) => upsertSettings({ step_photo_order: { ...settings.step_photo_order, [stepId]: newOrder } })}
-                      />
-                    )}
                     {editing && leftPage.meta?.chapter && (
                       <ChapterEditOverlay
                         phase={leftPage.meta.chapter}
@@ -822,24 +848,6 @@ const Photobook = () => {
                 {rightPage ? (
                   <div className="absolute inset-0">
                     {rightPage.node}
-                    {editing && rightPage.meta?.firstStep && (() => {
-                      const stepId = rightPage.meta!.stepId!;
-                      const isHidden = excludedSteps.has(stepId);
-                      return (
-                        <div className="absolute top-2 right-2 z-10 flex items-center gap-2 bg-background/95 backdrop-blur border rounded-full pl-3 pr-2 py-1.5 shadow-md">
-                          <span className="text-xs font-medium">{isHidden ? "Verborgen" : "In fotoboek"}</span>
-                          <Switch checked={!isHidden} onCheckedChange={() => toggleStep(stepId)} />
-                        </div>
-                      );
-                    })()}
-                    {editing && rightPage.meta?.stepId && (
-                      <PhotoEditOverlay
-                        step={steps.find((s) => s.id === rightPage.meta!.stepId)}
-                        excludedMedia={excludedMedia}
-                        onToggleMedia={toggleMedia}
-                        onReorder={(stepId, newOrder) => upsertSettings({ step_photo_order: { ...settings.step_photo_order, [stepId]: newOrder } })}
-                      />
-                    )}
                     {editing && rightPage.meta?.chapter && (
                       <ChapterEditOverlay
                         phase={rightPage.meta.chapter}
@@ -876,12 +884,12 @@ const Photobook = () => {
       )}
 
 
-      <Dialog open={printOpen} onOpenChange={setPrintOpen}>
+      <Dialog open={printOpen} onOpenChange={(open) => { setPrintOpen(open); if (!open) setPrintedPdfUrl(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Bestel als hardcover boek</DialogTitle>
+            <DialogTitle>Bestel als hardcover Bouwboek</DialogTitle>
             <DialogDescription>
-              We exporteren een print-klare PDF volgens de Peecho-richtlijnen (300 dpi, RGB, 12 mm marges, even aantal pagina's, ingesloten lettertypes). Daarna kun je deze direct uploaden bij Peecho voor druk en verzending.
+              Wij maken een print-klare PDF van jouw verbouwing en sturen die direct naar Peecho. Zij zorgen voor druk en verzending aan huis.
             </DialogDescription>
           </DialogHeader>
 
@@ -891,61 +899,55 @@ const Photobook = () => {
                 <div className="text-xs font-bold uppercase tracking-widest bg-accent text-accent-foreground px-2 py-0.5 rounded-full">Buildy Pro</div>
               </div>
               <p className="text-sm font-medium leading-snug">
-                Een hardcover boek laten drukken en versturen is een Buildy Pro-functie.
+                Een hardcover Bouwboek laten drukken is een Buildy Pro-functie.
               </p>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                We werken nog aan de betaalflow. In de tussentijd: laat het ons weten als je je verbouwing als boek wilt bestellen — we activeren Pro dan handmatig voor jouw account.
+                Stuur ons een berichtje — we activeren Pro handmatig voor jouw account en je kunt meteen bestellen.
               </p>
               <Button asChild className="w-full">
-                <a href="mailto:hi@buildy.app?subject=Buildy%20Pro%20activeren">
+                <a href="mailto:hi@buildy.app?subject=Buildy%20Pro%20activeren&body=Hoi%2C%20ik%20wil%20graag%20mijn%20verbouwing%20als%20Bouwboek%20bestellen!">
                   Vraag Pro aan
                 </a>
               </Button>
             </div>
           ) : (
-            <div className="space-y-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Formaat</p>
-              <div className="grid grid-cols-3 gap-2">
-                {(Object.keys(PEECHO_FORMATS) as PeechoFormat[]).map((k) => (
-                  <button
-                    key={k}
-                    onClick={() => setPrintFormat(k)}
-                    disabled={printBusy}
-                    className={`rounded-md border p-2 text-left text-xs transition ${printFormat === k ? "border-primary bg-primary/5" : "border-border hover:bg-muted"}`}
-                  >
-                    <p className="font-semibold">{PEECHO_FORMATS[k].label}</p>
-                    <p className="text-muted-foreground">{PEECHO_FORMATS[k].w} × {PEECHO_FORMATS[k].h} mm</p>
-                  </button>
-                ))}
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">Formaat</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {(Object.keys(PEECHO_FORMATS) as PeechoFormat[]).map((k) => (
+                    <button
+                      key={k}
+                      onClick={() => { setPrintFormat(k); setPrintedPdfUrl(null); }}
+                      disabled={printBusy}
+                      className={`rounded-md border p-2 text-left text-xs transition ${printFormat === k ? "border-primary bg-primary/5" : "border-border hover:bg-muted"}`}
+                    >
+                      <p className="font-semibold">{PEECHO_FORMATS[k].label}</p>
+                      <p className="text-muted-foreground">{PEECHO_FORMATS[k].w} × {PEECHO_FORMATS[k].h} mm</p>
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {!printedPdfUrl ? (
                 <Button onClick={handleGeneratePeechoPdf} disabled={printBusy} className="w-full gap-2">
                   {printBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookOpen className="h-4 w-4" />}
-                  {printBusy ? "Print-PDF maken…" : "Print-PDF genereren"}
+                  {printBusy ? "Boek voorbereiden…" : "Boek klaarmaken voor bestelling"}
                 </Button>
               ) : (
-                <div className="space-y-2 rounded-md border bg-secondary/40 p-3">
-                  <p className="text-xs text-muted-foreground">PDF klaar — kies hoe je verder wilt:</p>
-                  <a href={printedPdfUrl} target="_blank" rel="noreferrer" download>
-                    <Button variant="outline" className="w-full gap-2">
-                      <Download className="h-4 w-4" /> Download print-PDF
-                    </Button>
-                  </a>
-                  <a
-                    href={PEECHO_CHECKOUT.includes("?") ? `${PEECHO_CHECKOUT}&pdf=${encodeURIComponent(printedPdfUrl)}` : `${PEECHO_CHECKOUT}?pdf=${encodeURIComponent(printedPdfUrl)}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <Button className="w-full gap-2">
-                      <ExternalLink className="h-4 w-4" /> Bestel via Peecho
-                    </Button>
-                  </a>
-                  <p className="text-[11px] text-muted-foreground">
-                    Bij Peecho upload je de PDF en kies je hardcover, formaat en verzendadres.
-                  </p>
-                </div>
+                <PeechoPrintWidget
+                  pdfUrl={printedPdfUrl}
+                  pages={pages.length}
+                  format={PEECHO_FORMATS[printFormat]}
+                  coverUrl={trip?.cover_image_url ?? undefined}
+                  title={settings.cover_title || trip?.title || "Bouwboek"}
+                  scriptUrl={PEECHO_SCRIPT_URL}
+                />
               )}
+
+              <p className="text-[11px] text-muted-foreground text-center">
+                Betaling en verzending via Peecho. Levertijd ca. 7–14 werkdagen.
+              </p>
             </div>
           )}
 
@@ -954,6 +956,80 @@ const Photobook = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+};
+
+/** Panel-style photo manager rendered outside the page (in the edit controls panel) */
+const PhotoManagePanel = ({
+  stepId,
+  photos,
+  excludedMedia,
+  onToggleMedia,
+  onReorder,
+}: {
+  stepId: string;
+  photos: any[];
+  excludedMedia: Set<string>;
+  onToggleMedia: (id: string) => void;
+  onReorder: (stepId: string, newOrder: string[]) => void;
+}) => {
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  const handleDrop = (targetIdx: number) => {
+    if (dragIdx === null || dragIdx === targetIdx) return;
+    const newOrder = photos.map((m: any) => m.id);
+    const [moved] = newOrder.splice(dragIdx, 1);
+    newOrder.splice(targetIdx, 0, moved);
+    onReorder(stepId, newOrder);
+    setDragIdx(null);
+    setDragOverIdx(null);
+  };
+
+  return (
+    <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
+      {photos.map((m: any, idx: number) => {
+        const out = excludedMedia.has(m.id);
+        const isDragging = dragIdx === idx;
+        const isOver = dragOverIdx === idx && dragIdx !== idx;
+        return (
+          <div
+            key={m.id}
+            className={`relative group cursor-grab active:cursor-grabbing transition-opacity select-none ${isDragging ? "opacity-30" : ""}`}
+            draggable
+            onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDragIdx(idx); }}
+            onDragOver={(e) => { e.preventDefault(); setDragOverIdx(idx); }}
+            onDragLeave={() => setDragOverIdx(null)}
+            onDrop={() => handleDrop(idx)}
+            onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
+          >
+            <img
+              src={m.media_url}
+              alt=""
+              draggable={false}
+              className={`w-14 h-14 object-cover rounded-md transition ${out ? "opacity-40 grayscale" : ""} ${isOver ? "ring-2 ring-primary" : ""}`}
+            />
+            {out && (
+              <>
+                <div className="absolute inset-0 rounded-md ring-2 ring-destructive" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <EyeOff className="h-4 w-4 text-destructive drop-shadow" />
+                </div>
+              </>
+            )}
+            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 rounded-md">
+              <button
+                onClick={() => onToggleMedia(m.id)}
+                className="text-white p-1.5 hover:bg-white/20 rounded-full"
+                title={out ? "Terugzetten in fotoboek" : "Verberg uit fotoboek"}
+              >
+                {out ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 };
@@ -1052,55 +1128,21 @@ const StepPageFooter = ({
   budgetTotal: number | null;
 }) => {
   const progressPct = totalSteps > 0 ? ((stepIdx + 1) / totalSteps) * 100 : 0;
-  const budgetPct =
-    budgetTotal && budgetTotal > 0
-      ? Math.max(0, ((budgetTotal - cumulativeCost) / budgetTotal) * 100)
-      : null;
 
   return (
-    <div className="flex-shrink-0 px-4 pt-2 pb-2.5 bg-[#f4f3ef] border-t border-black/[0.07]">
-      <div className="flex items-center gap-3">
-        {/* Date */}
-        <div className="flex-shrink-0 w-8 text-center">
-          <p className="text-[7px] uppercase tracking-[0.15em] text-muted-foreground font-semibold leading-none mb-0.5">
-            {format(new Date(step.step_date), "MMM", { locale: nl })}
-          </p>
-          <p className="text-xl font-bold leading-none text-foreground/75">
-            {format(new Date(step.step_date), "d")}
-          </p>
-        </div>
-
-        {/* Bars */}
-        <div className="flex-1 space-y-1.5">
-          <div>
-            <div className="flex justify-between items-baseline mb-[3px]">
-              <span className="text-[7px] uppercase tracking-[0.12em] text-muted-foreground/70 font-medium">Voortgang</span>
-              <span className="text-[7px] text-muted-foreground/60">{Math.round(progressPct)}%</span>
-            </div>
-            <div className="h-[5px] rounded-full bg-black/[0.07] overflow-hidden">
-              <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${progressPct}%` }} />
-            </div>
-          </div>
-          {budgetPct !== null && (
-            <div>
-              <div className="flex justify-between items-baseline mb-[3px]">
-                <span className="text-[7px] uppercase tracking-[0.12em] text-muted-foreground/70 font-medium">Budget resterend</span>
-                <span className="text-[7px] text-muted-foreground/60">{Math.round(budgetPct)}%</span>
-              </div>
-              <div className="h-[5px] rounded-full bg-black/[0.07] overflow-hidden">
-                <div className="h-full rounded-full bg-orange-400 transition-all" style={{ width: `${budgetPct}%` }} />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Update badge */}
-        <div className="flex-shrink-0">
-          <span className="text-[7px] bg-accent/15 text-accent px-1.5 py-0.5 rounded font-bold uppercase tracking-wider whitespace-nowrap">
-            Update {stepIdx + 1}
-          </span>
-        </div>
+    <div className="flex-shrink-0 flex items-center gap-2 px-4 py-1.5 bg-[#f4f3ef] border-t border-black/[0.06]">
+      {/* Step counter */}
+      <span className="text-[7px] text-muted-foreground/50 font-medium tabular-nums shrink-0">
+        {stepIdx + 1}/{totalSteps}
+      </span>
+      {/* Thin progress line */}
+      <div className="flex-1 h-[2px] rounded-full bg-black/[0.07] overflow-hidden">
+        <div className="h-full rounded-full bg-accent/50 transition-all" style={{ width: `${progressPct}%` }} />
       </div>
+      {/* Date */}
+      <span className="text-[7px] text-muted-foreground/50 shrink-0">
+        {format(new Date(step.step_date), "d MMM ''yy", { locale: nl })}
+      </span>
     </div>
   );
 };
@@ -1114,6 +1156,95 @@ const ChapterEditOverlay = ({ phase, value, onChange }: { phase: string; value: 
         placeholder={`Standaard: ${phase}`}
         className="bg-background/95 backdrop-blur"
       />
+    </div>
+  );
+};
+
+/**
+ * Renders Peecho's Print Button JS widget for direct ordering.
+ * The widget loads Peecho's checkout in a popup when clicked.
+ * data-src must be a publicly accessible PDF URL (Supabase public storage).
+ */
+const PeechoPrintWidget = ({
+  pdfUrl,
+  pages,
+  format,
+  coverUrl,
+  title,
+  scriptUrl,
+}: {
+  pdfUrl: string;
+  pages: number;
+  format: { w: number; h: number; label: string };
+  coverUrl?: string;
+  title: string;
+  scriptUrl: string;
+}) => {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!containerRef.current) return;
+
+    // Inject Peecho JS script once per page lifecycle
+    const scriptId = "peecho-print-script";
+    if (!document.getElementById(scriptId) && scriptUrl) {
+      const s = document.createElement("script");
+      s.id = scriptId;
+      s.type = "text/javascript";
+      s.async = true;
+      s.src = scriptUrl;
+      document.head.appendChild(s);
+    }
+
+    // When the script loads (or is already loaded), re-init the button
+    const reinit = () => {
+      if ((window as any).peecho?.init) {
+        (window as any).peecho.init();
+      }
+    };
+    const existing = document.getElementById(scriptId);
+    if (existing) {
+      existing.addEventListener("load", reinit);
+      reinit(); // try immediately in case already loaded
+    }
+    return () => {
+      existing?.removeEventListener("load", reinit);
+    };
+  }, [pdfUrl, scriptUrl]);
+
+  return (
+    <div className="rounded-md border bg-secondary/30 p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+        <p className="text-xs font-medium text-green-700 dark:text-green-400">Bouwboek klaar voor bestelling</p>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Klik op de knop hieronder. Peecho opent een bestelscherm waar je je adres invult en betaalt. Wij zorgen voor druk en verzending.
+      </p>
+      <div ref={containerRef} className="flex justify-center py-2">
+        {/* Peecho Print Button — Peecho's JS replaces this anchor with their branded button */}
+        <a
+          title="Bouwboek bestellen"
+          href="https://www.peecho.com/"
+          className="peecho-print-button"
+          data-filetype="pdf"
+          data-width={format.w}
+          data-height={format.h}
+          data-pages={pages}
+          data-src={pdfUrl}
+          data-thumbnail={coverUrl || ""}
+          data-locale="nl_NL"
+          data-currency="EUR"
+          data-text="Bestel Bouwboek"
+        >
+          Bouwboek bestellen via Peecho
+        </a>
+      </div>
+      {!scriptUrl && (
+        <p className="text-[10px] text-destructive text-center">
+          Configureer <code>VITE_PEECHO_SCRIPT_URL</code> in je .env om het bestelwidget te activeren.
+        </p>
+      )}
     </div>
   );
 };
