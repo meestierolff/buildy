@@ -1215,8 +1215,8 @@ const PeechoPrintWidget = ({
   return (
     <div className="rounded-md border bg-secondary/30 p-4 space-y-3">
       <div className="flex items-center gap-2">
-        <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-        <p className="text-xs font-medium text-green-700 dark:text-green-400">Bouwboek klaar voor bestelling</p>
+        <div className="h-2 w-2 rounded-full bg-accent animate-pulse" />
+        <p className="text-xs font-medium text-accent">Bouwboek klaar voor bestelling</p>
       </div>
       <p className="text-xs text-muted-foreground">
         Klik op de knop hieronder. Peecho opent een bestelscherm waar je je adres invult en betaalt. Wij zorgen voor druk en verzending.

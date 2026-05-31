@@ -352,7 +352,7 @@ const Profile = () => {
               <div key={item.label} className="rounded-lg border bg-card p-4 text-center">
                 <div className="text-3xl font-bold tabular-nums">{item.value}</div>
                 <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mt-1">{item.label}</div>
-                {item.sub && <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5">{item.sub}</div>}
+                {item.sub && <div className="text-xs text-accent mt-0.5">{item.sub}</div>}
               </div>
             ))}
           </div>
@@ -390,7 +390,7 @@ const Profile = () => {
                         <p className="font-semibold text-sm">{b.label}</p>
                         <p className="text-xs text-muted-foreground leading-tight">{b.desc}</p>
                       </div>
-                      {b.earned && <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />}
+                      {b.earned && <div className="w-2 h-2 rounded-full bg-accent shrink-0" />}
                     </div>
                   ))}
                 </div>

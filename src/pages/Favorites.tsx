@@ -128,7 +128,7 @@ const Favorites = () => {
                             </span>
                           )}
                           {s.is_milestone && (
-                            <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 flex items-center gap-0.5">
+                            <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-accent/15 text-accent flex items-center gap-0.5">
                               <Flag className="h-2.5 w-2.5" /> Mijlpaal
                             </span>
                           )}
