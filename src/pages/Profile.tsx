@@ -390,7 +390,7 @@ const Profile = () => {
                         <p className="font-semibold text-sm">{b.label}</p>
                         <p className="text-xs text-muted-foreground leading-tight">{b.desc}</p>
                       </div>
-                      {b.earned && <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />}
+                      {b.earned && <div className="w-2 h-2 rounded-full bg-accent shrink-0" />}
                     </div>
                   ))}
                 </div>
