@@ -195,6 +195,71 @@ export type Database = {
         }
         Relationships: []
       }
+      photobook_orders: {
+        Row: {
+          created_at: string
+          format: string
+          id: string
+          merchant_reference: string
+          ordered_at: string | null
+          page_count: number
+          pdf_url: string
+          peecho_id: string | null
+          peecho_payload: Json
+          status: string
+          status_updated_at: string | null
+          tracking_code: string | null
+          tracking_url: string | null
+          trip_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          format: string
+          id?: string
+          merchant_reference: string
+          ordered_at?: string | null
+          page_count: number
+          pdf_url: string
+          peecho_id?: string | null
+          peecho_payload?: Json
+          status?: string
+          status_updated_at?: string | null
+          tracking_code?: string | null
+          tracking_url?: string | null
+          trip_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          format?: string
+          id?: string
+          merchant_reference?: string
+          ordered_at?: string | null
+          page_count?: number
+          pdf_url?: string
+          peecho_id?: string | null
+          peecho_payload?: Json
+          status?: string
+          status_updated_at?: string | null
+          tracking_code?: string | null
+          tracking_url?: string | null
+          trip_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "photobook_orders_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       photobook_settings: {
         Row: {
           chapter_overrides: Json
