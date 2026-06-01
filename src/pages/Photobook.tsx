@@ -1025,7 +1025,7 @@ const getOrderStatusMeta = (status: string): { label: string; variant: OrderBadg
   if (normalized.includes("cancel") || normalized.includes("fail") || normalized.includes("error")) return { label: "Aandacht nodig", variant: "destructive" };
   if (normalized === "ready_for_checkout") return { label: "Checkout klaar", variant: "outline" };
   if (normalized.includes("submitted") || normalized.includes("paid") || normalized.includes("order")) return { label: "Besteld", variant: "secondary" };
-  return { label: status.replaceAll("_", " "), variant: "outline" };
+  return { label: status.replace(/_/g, " "), variant: "outline" };
 };
 
 const formatOrderDate = (value: string | null) => {
