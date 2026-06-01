@@ -195,39 +195,6 @@ export type Database = {
         }
         Relationships: []
       }
-      photobook_settings: {
-        Row: {
-          chapter_overrides: Json
-          cover_media_id: string | null
-          cover_subtitle: string | null
-          cover_title: string | null
-          step_layout_overrides: Json
-          step_photo_order: Json
-          trip_id: string
-          updated_at: string
-        }
-        Insert: {
-          chapter_overrides?: Json
-          cover_media_id?: string | null
-          cover_subtitle?: string | null
-          cover_title?: string | null
-          step_layout_overrides?: Json
-          step_photo_order?: Json
-          trip_id: string
-          updated_at?: string
-        }
-        Update: {
-          chapter_overrides?: Json
-          cover_media_id?: string | null
-          cover_subtitle?: string | null
-          cover_title?: string | null
-          step_layout_overrides?: Json
-          step_photo_order?: Json
-          trip_id?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
       photobook_orders: {
         Row: {
           created_at: string
@@ -292,6 +259,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      photobook_settings: {
+        Row: {
+          chapter_overrides: Json
+          cover_media_id: string | null
+          cover_subtitle: string | null
+          cover_title: string | null
+          step_layout_overrides: Json
+          step_photo_order: Json
+          trip_id: string
+          updated_at: string
+        }
+        Insert: {
+          chapter_overrides?: Json
+          cover_media_id?: string | null
+          cover_subtitle?: string | null
+          cover_title?: string | null
+          step_layout_overrides?: Json
+          step_photo_order?: Json
+          trip_id: string
+          updated_at?: string
+        }
+        Update: {
+          chapter_overrides?: Json
+          cover_media_id?: string | null
+          cover_subtitle?: string | null
+          cover_title?: string | null
+          step_layout_overrides?: Json
+          step_photo_order?: Json
+          trip_id?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
