@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -40,7 +40,7 @@ const Profile = () => {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
 
-  const loadFollows = async (uid: string) => {
+  const loadFollows = useCallback(async (uid: string) => {
     const [{ data: fers }, { data: fing }] = await Promise.all([
       supabase.from("user_follows").select("follower_id").eq("following_id", uid),
       supabase.from("user_follows").select("following_id").eq("follower_id", uid),
@@ -48,7 +48,7 @@ const Profile = () => {
     const followerIds = (fers || []).map((r: any) => r.follower_id);
     const followingIds = (fing || []).map((r: any) => r.following_id);
     const allIds = Array.from(new Set([...followerIds, ...followingIds]));
-    let profilesById: Record<string, FollowProfile> = {};
+    const profilesById: Record<string, FollowProfile> = {};
     if (allIds.length) {
       const { data: ps } = await supabase
         .from("profiles")
@@ -67,9 +67,9 @@ const Profile = () => {
         .maybeSingle();
       setIFollow(!!rel);
     }
-  };
+  }, [isMe, user]);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!userId) return;
     const { data: profileData } = await supabase
       .from("profiles")
@@ -111,9 +111,9 @@ const Profile = () => {
 
     await loadFollows(userId);
     setLoading(false);
-  };
+  }, [isMe, loadFollows, userId]);
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [userId, user?.id]);
+  useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
     if (profile?.display_name) {

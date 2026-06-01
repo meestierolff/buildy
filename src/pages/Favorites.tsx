@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -10,7 +10,7 @@ import { nl } from "date-fns/locale";
 import { phaseColor } from "@/components/PhaseSelect";
 
 const Favorites = () => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [projects, setProjects] = useState<any[]>([]);
   const [activity, setActivity] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,13 +64,8 @@ const Favorites = () => {
     })();
   }, [user]);
 
-  if (!user) {
-    return (
-      <div className="container py-20 text-center">
-        <p className="text-muted-foreground">Log in om je gevolgde projecten te bekijken.</p>
-      </div>
-    );
-  }
+  if (authLoading) return <div className="min-h-screen bg-background" />;
+  if (!user) return <Navigate to="/auth" replace />;
 
   return (
     <div className="max-w-7xl mx-auto px-6 md:px-8 py-16">

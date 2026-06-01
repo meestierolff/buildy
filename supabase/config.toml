@@ -2,3 +2,6 @@ project_id = "ynxjvldvjjhapgrbivgx"
 
 [functions.floorplan-blueprint]
 verify_jwt = false
+
+[functions.peecho-pingback]
+verify_jwt = false

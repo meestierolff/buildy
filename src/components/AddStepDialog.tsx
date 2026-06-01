@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import PhaseSelect, { DEFAULT_PHASES } from "./PhaseSelect";
 import { toast } from "sonner";
-import { Upload, X } from "lucide-react";
+import { BriefcaseBusiness, FileText, Star, Upload, Video, Wallet, X } from "lucide-react";
 
 interface AddStepDialogProps {
   tripId: string;
@@ -162,7 +162,10 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
           </div>
           <div className="flex items-center gap-3 rounded-lg border p-3 bg-secondary/40">
             <Switch id="milestone" checked={isMilestone} onCheckedChange={setIsMilestone} />
-            <Label htmlFor="milestone" className="cursor-pointer">Markeren als mijlpaal 🏗️</Label>
+            <Label htmlFor="milestone" className="flex cursor-pointer items-center gap-1.5">
+              <Star className="h-3.5 w-3.5 text-accent" />
+              Markeren als mijlpaal
+            </Label>
           </div>
           <div>
             <Label>Verhaal</Label>
@@ -170,7 +173,10 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
           </div>
 
           <div className="rounded-lg border p-3 space-y-3 bg-secondary/30">
-            <Label className="text-sm font-semibold">� Aannemer (optioneel)</Label>
+            <Label className="flex items-center gap-1.5 text-sm font-semibold">
+              <BriefcaseBusiness className="h-3.5 w-3.5 text-muted-foreground" />
+              Aannemer (optioneel)
+            </Label>
             <div>
               <Label className="text-xs">Naam / bedrijf</Label>
               <Input value={contractorName} onChange={(e) => setContractorName(e.target.value)} placeholder="Bijv. Aannemingsbedrijf Jansen" />
@@ -182,7 +188,10 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
           </div>
 
           <div className="rounded-lg border p-3 space-y-3 bg-secondary/30">
-            <Label className="text-sm font-semibold">💰 Budget & tijd (optioneel)</Label>
+            <Label className="flex items-center gap-1.5 text-sm font-semibold">
+              <Wallet className="h-3.5 w-3.5 text-muted-foreground" />
+              Budget & tijd (optioneel)
+            </Label>
             {workType !== "mixed" && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -246,11 +255,14 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
                   <div key={i} className="relative group">
                     <div className="w-16 h-16 rounded-md bg-muted flex items-center justify-center overflow-hidden text-center px-1">
                       {f.type.startsWith("image") ? (
-                        <img src={URL.createObjectURL(f)} alt="" className="w-full h-full object-cover" />
+                        <img src={URL.createObjectURL(f)} alt="" className="w-full h-full object-contain bg-muted" />
                       ) : f.type === "application/pdf" ? (
-                        <span className="text-[10px] leading-tight break-all">📄<br />{f.name.length > 14 ? f.name.slice(0, 12) + "…" : f.name}</span>
+                        <span className="flex flex-col items-center gap-1 text-[10px] leading-tight break-all text-muted-foreground">
+                          <FileText className="h-4 w-4" />
+                          {f.name.length > 14 ? `${f.name.slice(0, 12)}...` : f.name}
+                        </span>
                       ) : (
-                        <span className="text-xs">🎥</span>
+                        <Video className="h-5 w-5 text-muted-foreground" />
                       )}
                     </div>
                     <button

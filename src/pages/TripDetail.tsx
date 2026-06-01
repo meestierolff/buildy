@@ -94,33 +94,37 @@ const TripDetail = () => {
       .order("step_order", { ascending: true });
 
     if (stepsData) {
-      const enriched = await Promise.all(
-        stepsData.map(async (step) => {
-          const [{ count: likeCount }, { count: commentCount }] = await Promise.all([
-            supabase.from("likes").select("*", { count: "exact", head: true }).eq("step_id", step.id),
-            supabase.from("comments").select("*", { count: "exact", head: true }).eq("step_id", step.id),
-          ]);
+      const stepIds = stepsData.map((step) => step.id);
+      if (stepIds.length === 0) {
+        setSteps([]);
+      } else {
+        const [likesRes, commentsRes, userLikesRes] = await Promise.all([
+          supabase.from("likes").select("step_id").in("step_id", stepIds),
+          supabase.from("comments").select("step_id").in("step_id", stepIds),
+          user
+            ? supabase.from("likes").select("step_id").eq("user_id", user.id).in("step_id", stepIds)
+            : Promise.resolve({ data: [] }),
+        ]);
 
-          let userLiked = false;
-          if (user) {
-            const { data: likeData } = await supabase
-              .from("likes")
-              .select("id")
-              .eq("step_id", step.id)
-              .eq("user_id", user.id)
-              .maybeSingle();
-            userLiked = !!likeData;
-          }
+        const likeCounts = new Map<string, number>();
+        (likesRes.data || []).forEach((like: any) => {
+          likeCounts.set(like.step_id, (likeCounts.get(like.step_id) || 0) + 1);
+        });
 
-          return {
-            ...step,
-            like_count: likeCount || 0,
-            comment_count: commentCount || 0,
-            user_liked: userLiked,
-          };
-        })
-      );
-      setSteps(enriched);
+        const commentCounts = new Map<string, number>();
+        (commentsRes.data || []).forEach((comment: any) => {
+          commentCounts.set(comment.step_id, (commentCounts.get(comment.step_id) || 0) + 1);
+        });
+
+        const likedByUser = new Set((userLikesRes.data || []).map((like: any) => like.step_id));
+
+        setSteps(stepsData.map((step) => ({
+          ...step,
+          like_count: likeCounts.get(step.id) || 0,
+          comment_count: commentCounts.get(step.id) || 0,
+          user_liked: likedByUser.has(step.id),
+        })));
+      }
     }
 
     setLoading(false);
@@ -320,9 +324,11 @@ const TripDetail = () => {
                     <Settings className="h-4 w-4" /> Instellingen
                   </Button>
                 )}
-                <Button size="sm" variant="outline" onClick={handleShare} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
-                  <Share2 className="h-4 w-4" /> Delen
-                </Button>
+                {isOwner && (
+                  <Button size="sm" variant="outline" onClick={handleShare} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
+                    <Share2 className="h-4 w-4" /> Delen
+                  </Button>
+                )}
                 {(isOwner || (trip.is_public && trip.budget_public)) && (
                   <Link to={`/trip/${id}/budget`}>
                     <Button size="sm" variant="outline" className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
@@ -332,7 +338,7 @@ const TripDetail = () => {
                 )}
                 {isOwner && (
                   <Link to={`/trip/${id}/photobook`}>
-                    <Button size="sm" variant="outline" className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
+                    <Button size="sm" className="gap-1.5 bg-accent text-accent-foreground shadow-lg shadow-accent/20 hover:bg-accent/90">
                       <BookOpen className="h-4 w-4" /> Fotoboek
                     </Button>
                   </Link>
@@ -342,27 +348,29 @@ const TripDetail = () => {
             </div>
 
             {/* Mobile: zichtbare actie-rij ipv overflow-menu */}
-            <div className="md:hidden grid grid-cols-4 gap-2 w-full mt-1">
+            <div className="md:hidden flex flex-wrap gap-2 w-full mt-1">
               {isOwner && (
                 <button
                   onClick={() => setShowSettings(true)}
-                  className="flex flex-col items-center gap-1.5 rounded-xl border border-primary-foreground/20 bg-primary-foreground/5 hover:bg-primary-foreground/10 px-2 py-2.5 text-primary-foreground"
+                  className="flex min-w-[88px] flex-1 flex-col items-center gap-1.5 rounded-xl border border-primary-foreground/20 bg-primary-foreground/5 hover:bg-primary-foreground/10 px-2 py-2.5 text-primary-foreground"
                 >
                   <Settings className="h-4 w-4" />
                   <span className="text-[10px] font-bold uppercase tracking-wider">Instel</span>
                 </button>
               )}
-              <button
-                onClick={handleShare}
-                className="flex flex-col items-center gap-1.5 rounded-xl border border-primary-foreground/20 bg-primary-foreground/5 hover:bg-primary-foreground/10 px-2 py-2.5 text-primary-foreground"
-              >
-                <Share2 className="h-4 w-4" />
-                <span className="text-[10px] font-bold uppercase tracking-wider">Delen</span>
-              </button>
+              {isOwner && (
+                <button
+                  onClick={handleShare}
+                  className="flex min-w-[88px] flex-1 flex-col items-center gap-1.5 rounded-xl border border-primary-foreground/20 bg-primary-foreground/5 hover:bg-primary-foreground/10 px-2 py-2.5 text-primary-foreground"
+                >
+                  <Share2 className="h-4 w-4" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Delen</span>
+                </button>
+              )}
               {(isOwner || (trip.is_public && trip.budget_public)) && (
                 <Link
                   to={`/trip/${id}/budget`}
-                  className="flex flex-col items-center gap-1.5 rounded-xl border border-primary-foreground/20 bg-primary-foreground/5 hover:bg-primary-foreground/10 px-2 py-2.5 text-primary-foreground"
+                  className="flex min-w-[88px] flex-1 flex-col items-center gap-1.5 rounded-xl border border-primary-foreground/20 bg-primary-foreground/5 hover:bg-primary-foreground/10 px-2 py-2.5 text-primary-foreground"
                 >
                   <Wallet className="h-4 w-4" />
                   <span className="text-[10px] font-bold uppercase tracking-wider">Budget</span>
@@ -371,7 +379,7 @@ const TripDetail = () => {
               {isOwner && (
                 <Link
                   to={`/trip/${id}/photobook`}
-                  className="flex flex-col items-center gap-1.5 rounded-xl border border-accent bg-accent text-accent-foreground hover:bg-accent/90 px-2 py-2.5"
+                  className="flex min-w-[88px] flex-1 flex-col items-center gap-1.5 rounded-xl border border-accent bg-accent text-accent-foreground shadow-lg shadow-accent/20 hover:bg-accent/90 px-2 py-2.5"
                 >
                   <BookOpen className="h-4 w-4" />
                   <span className="text-[10px] font-bold uppercase tracking-wider">Fotoboek</span>
@@ -421,29 +429,22 @@ const TripDetail = () => {
                 <TabsTrigger value="floorplan" className="gap-1.5"><MapIcon className="h-3.5 w-3.5" /> Plattegrond</TabsTrigger>
                 <TabsTrigger value="photos" className="gap-1.5"><Images className="h-3.5 w-3.5" /> Alle foto's</TabsTrigger>
               </TabsList>
-              {milestones > 0 && activeTab === "timeline" && (
+              {milestones > 0 && (
                 <Button
                   size="sm"
                   variant={milestonesOnly ? "default" : "outline"}
-                  onClick={() => setMilestonesOnly((v) => !v)}
+                  onClick={() => {
+                    if (activeTab !== "timeline") {
+                      setActiveTab("timeline");
+                      setMilestonesOnly(true);
+                      return;
+                    }
+                    setMilestonesOnly((v) => !v);
+                  }}
                   className={`gap-1.5 ${milestonesOnly ? "bg-accent text-accent-foreground hover:bg-accent/90" : ""}`}
                 >
                   <Flag className="h-3.5 w-3.5" /> Mijlpalen
                 </Button>
-              )}
-              {(isOwner || (trip.is_public && trip.budget_public)) && (
-                <Link to={`/trip/${id}/budget`}>
-                  <Button size="sm" variant="outline" className="gap-1.5">
-                    <Wallet className="h-3.5 w-3.5" /> Budget
-                  </Button>
-                </Link>
-              )}
-              {isOwner && (
-                <Link to={`/trip/${id}/photobook`}>
-                  <Button size="sm" variant="outline" className="gap-1.5">
-                    <BookOpen className="h-3.5 w-3.5" /> Fotoboek
-                  </Button>
-                </Link>
               )}
             </div>
             <TabsContent value="timeline">

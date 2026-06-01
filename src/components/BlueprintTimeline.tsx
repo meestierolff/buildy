@@ -65,6 +65,8 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) 
         const before = sortedMedia.find((m) => m.compare_role === "before");
         const after = sortedMedia.find((m) => m.compare_role === "after");
         const hasCompare = !!before && !!after;
+        const beforeIdx = before ? sortedMedia.findIndex((m) => m.id === before.id) : -1;
+        const afterIdx = after ? sortedMedia.findIndex((m) => m.id === after.id) : -1;
         const visuals = sortedMedia.filter(
           (m) => m.media_type !== "pdf" && !(hasCompare && (m.id === before!.id || m.id === after!.id))
         );
@@ -110,7 +112,12 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) 
             {/* Before/After slider */}
             {hasCompare && (
               <div className="px-4 pb-3">
-                <BeforeAfterSlider beforeUrl={before!.media_url} afterUrl={after!.media_url} />
+                <BeforeAfterSlider
+                  beforeUrl={before!.media_url}
+                  afterUrl={after!.media_url}
+                  onBeforeClick={() => beforeIdx >= 0 && openLightboxForStep(step, beforeIdx)}
+                  onAfterClick={() => afterIdx >= 0 && openLightboxForStep(step, afterIdx)}
+                />
               </div>
             )}
 

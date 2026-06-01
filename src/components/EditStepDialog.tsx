@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import PhaseSelect from "./PhaseSelect";
 import { toast } from "sonner";
-import { Upload, X, Trash2, MapPin, Hammer } from "lucide-react";
+import { BriefcaseBusiness, FileText, Hammer, MapPin, Star, Trash2, Upload, Video, Wallet, X } from "lucide-react";
 import type { FloorInfo } from "./FloorplanView";
 
 interface EditStepDialogProps {
@@ -80,7 +80,7 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
           setOutsourcedHours(data.outsourced_hours != null ? String(data.outsourced_hours) : "");
         }
       });
-  }, [step.trip_id, step.id]);
+  }, [step.trip_id, step.id, step.floorplan_id]);
 
   const addCustomPhase = async (name: string) => {
     const next = Array.from(new Set([...customPhases, name]));
@@ -226,7 +226,10 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
           </div>
           <div className="flex items-center gap-3 rounded-lg border p-3 bg-secondary/40">
             <Switch id="milestone-edit" checked={isMilestone} onCheckedChange={setIsMilestone} />
-            <Label htmlFor="milestone-edit" className="cursor-pointer">Markeren als mijlpaal 🏗️</Label>
+            <Label htmlFor="milestone-edit" className="flex cursor-pointer items-center gap-1.5">
+              <Star className="h-3.5 w-3.5 text-accent" />
+              Markeren als mijlpaal
+            </Label>
           </div>
           <div>
             <Label>Verhaal</Label>
@@ -234,7 +237,10 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
           </div>
 
           <div className="rounded-lg border p-3 space-y-3 bg-secondary/30">
-            <Label className="text-sm font-semibold">� Aannemer (optioneel)</Label>
+            <Label className="flex items-center gap-1.5 text-sm font-semibold">
+              <BriefcaseBusiness className="h-3.5 w-3.5 text-muted-foreground" />
+              Aannemer (optioneel)
+            </Label>
             <div>
               <Label className="text-xs">Naam / bedrijf</Label>
               <Input value={contractorName} onChange={(e) => setContractorName(e.target.value)} placeholder="Bijv. Aannemingsbedrijf Jansen" />
@@ -246,7 +252,10 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
           </div>
 
           <div className="rounded-lg border p-3 space-y-3 bg-secondary/30">
-            <Label className="text-sm font-semibold">💰 Budget & tijd</Label>
+            <Label className="flex items-center gap-1.5 text-sm font-semibold">
+              <Wallet className="h-3.5 w-3.5 text-muted-foreground" />
+              Budget & tijd
+            </Label>
             {workType !== "mixed" && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -305,7 +314,7 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
             {existingMedia.length === 0 ? (
               <p className="text-xs text-muted-foreground mt-1">Geen foto's</p>
             ) : (
-              <div className="flex flex-wrap gap-2 mt-1">
+              <div className="grid grid-cols-2 gap-3 mt-2 sm:grid-cols-4 md:grid-cols-5">
                 {existingMedia.map((m, i) => {
                   const role = m.compare_role as "before" | "after" | null;
                   const setRole = async (next: "before" | "after" | null) => {
@@ -323,61 +332,67 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
                     await supabase.from("step_media").update({ compare_role: next }).eq("id", m.id);
                   };
                   return (
-                  <div
-                    key={m.id}
-                    className={`relative group cursor-grab active:cursor-grabbing select-none transition-opacity pb-7 ${dragIdx === i ? "opacity-30" : ""}`}
-                    draggable
-                    onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDragIdx(i); }}
-                    onDragOver={(e) => { e.preventDefault(); setDragOverIdx(i); }}
-                    onDragLeave={() => setDragOverIdx(null)}
-                    onDrop={() => {
-                      if (dragIdx === null || dragIdx === i) return;
-                      setExistingMedia((prev) => {
-                        const next = [...prev];
-                        const [moved] = next.splice(dragIdx, 1);
-                        next.splice(i, 0, moved);
-                        return next;
-                      });
-                      setDragIdx(null);
-                      setDragOverIdx(null);
-                    }}
-                    onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
-                  >
-                    <div className={`w-20 h-20 rounded-md bg-muted overflow-hidden flex items-center justify-center text-center px-1 transition ${role ? "ring-2 ring-accent" : ""} ${dragOverIdx === i && dragIdx !== i ? "ring-2 ring-primary" : ""}`}>
-                      {m.media_type === "video" ? (
-                        <video src={m.media_url} className="w-full h-full object-cover" />
-                      ) : m.media_type === "pdf" ? (
-                        <span className="text-[10px] leading-tight">📄 PDF</span>
-                      ) : (
-                        <img src={m.media_url} alt="" className="w-full h-full object-cover" />
+                    <div
+                      key={m.id}
+                      className={`select-none rounded-lg border bg-background p-1.5 transition ${dragIdx === i ? "opacity-30" : ""} ${dragOverIdx === i && dragIdx !== i ? "ring-2 ring-primary" : ""}`}
+                      draggable
+                      onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDragIdx(i); }}
+                      onDragOver={(e) => { e.preventDefault(); setDragOverIdx(i); }}
+                      onDragLeave={() => setDragOverIdx(null)}
+                      onDrop={() => {
+                        if (dragIdx === null || dragIdx === i) return;
+                        setExistingMedia((prev) => {
+                          const next = [...prev];
+                          const [moved] = next.splice(dragIdx, 1);
+                          next.splice(i, 0, moved);
+                          return next;
+                        });
+                        setDragIdx(null);
+                        setDragOverIdx(null);
+                      }}
+                      onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
+                    >
+                      <div className={`relative aspect-square cursor-grab active:cursor-grabbing overflow-hidden rounded-md bg-muted ${role ? "ring-2 ring-accent" : ""}`}>
+                        {m.media_type === "video" ? (
+                          <video src={m.media_url} className="h-full w-full object-contain" />
+                        ) : m.media_type === "pdf" ? (
+                          <span className="flex h-full flex-col items-center justify-center gap-1 px-1 text-center text-[10px] leading-tight text-muted-foreground">
+                            <FileText className="h-4 w-4" />
+                            PDF
+                          </span>
+                        ) : (
+                          <img src={m.media_url} alt="" className="h-full w-full object-contain" />
+                        )}
+                        {role && (
+                          <span className="absolute left-1 top-1 rounded bg-accent px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent-foreground">
+                            {role === "before" ? "Voor" : "Na"}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeExisting(m)}
+                          className="absolute right-1 top-1 rounded-full bg-destructive p-1 text-destructive-foreground shadow"
+                          aria-label="Foto verwijderen"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                      <div className="mt-1 rounded bg-muted py-0.5 text-center text-[10px] font-medium text-muted-foreground">
+                        {i + 1}
+                      </div>
+                      {m.media_type !== "pdf" && m.media_type !== "video" && (
+                        <div className="mt-1 grid grid-cols-2 gap-1">
+                          <button type="button" onClick={() => setRole(role === "before" ? null : "before")} className={`rounded py-1 text-[11px] ${role === "before" ? "bg-accent text-accent-foreground" : "bg-muted hover:bg-muted-foreground/20"}`}>Voor</button>
+                          <button type="button" onClick={() => setRole(role === "after" ? null : "after")} className={`rounded py-1 text-[11px] ${role === "after" ? "bg-accent text-accent-foreground" : "bg-muted hover:bg-muted-foreground/20"}`}>Na</button>
+                        </div>
                       )}
                     </div>
-                    {role && (
-                      <span className="absolute top-0.5 left-0.5 text-[9px] font-bold uppercase tracking-wider bg-accent text-accent-foreground px-1 rounded">
-                        {role === "before" ? "Voor" : "Na"}
-                      </span>
-                    )}
-                    {m.media_type !== "pdf" && m.media_type !== "video" && (
-                      <div className="absolute top-full mt-1 left-0 right-0 flex gap-0.5 z-10">
-                        <button type="button" onClick={() => setRole(role === "before" ? null : "before")} className={`flex-1 text-[9px] py-0.5 rounded ${role === "before" ? "bg-accent text-accent-foreground" : "bg-muted hover:bg-muted-foreground/20"}`}>Voor</button>
-                        <button type="button" onClick={() => setRole(role === "after" ? null : "after")} className={`flex-1 text-[9px] py-0.5 rounded ${role === "after" ? "bg-accent text-accent-foreground" : "bg-muted hover:bg-muted-foreground/20"}`}>Na</button>
-                      </div>
-                    )}
-                    <span className="absolute bottom-0 inset-x-0 text-center text-[9px] text-white/70 bg-black/40 py-0.5 pointer-events-none">{i + 1}</span>
-                    <button
-                      type="button"
-                      onClick={() => removeExisting(m)}
-                      className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full p-1"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </div>
                   );
                 })}
               </div>
             )}
             {existingMedia.some((m) => m.compare_role) && (
-              <p className="text-[10px] text-muted-foreground mt-8">Vergelijking-slider wordt automatisch getoond in de tijdlijn.</p>
+              <p className="text-[10px] text-muted-foreground mt-2">Vergelijking-slider wordt automatisch getoond in de tijdlijn.</p>
             )}
           </div>
 
@@ -394,11 +409,14 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
                   <div key={i} className="relative group">
                     <div className="w-16 h-16 rounded-md bg-muted overflow-hidden flex items-center justify-center text-center px-1">
                       {f.type.startsWith("image") ? (
-                        <img src={URL.createObjectURL(f)} alt="" className="w-full h-full object-cover" />
+                        <img src={URL.createObjectURL(f)} alt="" className="w-full h-full object-contain bg-muted" />
                       ) : f.type === "application/pdf" ? (
-                        <span className="text-[10px] leading-tight">📄 PDF</span>
+                        <span className="flex flex-col items-center gap-1 text-[10px] leading-tight text-muted-foreground">
+                          <FileText className="h-4 w-4" />
+                          PDF
+                        </span>
                       ) : (
-                        <span className="text-xs">🎥</span>
+                        <Video className="h-5 w-5 text-muted-foreground" />
                       )}
                     </div>
                     <button

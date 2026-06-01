@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Link } from "react-router-dom";
 import { ChevronLeft, ChevronRight, X, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
@@ -60,8 +60,12 @@ const MediaLightbox = ({ items, index, onClose, onIndex, tripId }: Props) => {
     if (dx > 0 && index > 0) onIndex(index - 1);
   };
 
+  const closeFromBackdrop = (e: MouseEvent<HTMLElement>) => {
+    if (e.target === e.currentTarget) onClose();
+  };
+
   return (
-    <div className="fixed inset-0 z-[1200] bg-black/95 flex flex-col" onClick={onClose}>
+    <div className="fixed inset-0 z-[1200] bg-black/95 flex flex-col" onClick={closeFromBackdrop}>
       <div className="flex items-center justify-between p-3 text-white" onClick={(e) => e.stopPropagation()}>
         <span className="text-sm opacity-70">{index + 1} / {items.length}</span>
         <button onClick={onClose} className="p-2 rounded-full hover:bg-white/10">
@@ -71,6 +75,7 @@ const MediaLightbox = ({ items, index, onClose, onIndex, tripId }: Props) => {
 
       <div
         className="flex-1 flex items-center justify-center relative overflow-hidden touch-pan-y"
+        onClick={closeFromBackdrop}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
@@ -86,16 +91,17 @@ const MediaLightbox = ({ items, index, onClose, onIndex, tripId }: Props) => {
         <div
           className="w-full h-full flex items-center justify-center transition-transform"
           style={{ transform: `translateX(${dragX}px)` }}
-          onClick={(e) => e.stopPropagation()}
+          onClick={closeFromBackdrop}
         >
           {item.type === "video" ? (
-            <video src={item.url} controls className="max-h-full max-w-full" />
+            <video src={item.url} controls className="max-h-full max-w-full" onClick={(e) => e.stopPropagation()} />
           ) : (
             <img
               src={item.url}
               alt={item.stepTitle}
               draggable={false}
               className="max-h-full max-w-full object-contain select-none"
+              onClick={(e) => e.stopPropagation()}
             />
           )}
         </div>

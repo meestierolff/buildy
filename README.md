@@ -60,6 +60,63 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Buildy launch configuration
+
+### Local checks
+
+```sh
+bun test
+bunx tsc --noEmit
+bun run lint -- --max-warnings=0
+bun run build
+bunx playwright test
+```
+
+Playwright starts the Buildy dev server at `http://127.0.0.1:8090` by default. Set `PLAYWRIGHT_BASE_URL` if you want to test against another running environment.
+
+To run owner-only flows with your own account:
+
+```sh
+mkdir -p tests/e2e/.auth
+bunx playwright open --save-storage=tests/e2e/.auth/user.json http://127.0.0.1:8090/auth
+PLAYWRIGHT_STORAGE_STATE=tests/e2e/.auth/user.json bunx playwright test
+```
+
+### Peecho Bouwboek checkout
+
+The app uses Peecho's Print Button flow: Buildy generates a print-ready PDF in the browser, uploads it to the public `trip-media` bucket, and renders Peecho's checkout button with the public PDF URL.
+
+Client-side env:
+
+```sh
+VITE_PEECHO_SCRIPT_URL="https://d3aln0nj58oevo.cloudfront.net/button/script/YOUR_BUTTON_KEY.js"
+# or:
+VITE_PEECHO_BUTTON_KEY="YOUR_BUTTON_KEY"
+```
+
+Server-side Supabase secret for Peecho status webhooks:
+
+```sh
+supabase secrets set PEECHO_SECRET_KEY="..."
+```
+
+`PEECHO_MERCHANT_API_KEY` is not required for the Print Button checkout. Keep it server-side only if you later add direct REST API order creation.
+
+Deploy the webhook after setting secrets:
+
+```sh
+supabase db push
+supabase functions deploy peecho-pingback
+```
+
+Configure Peecho's `Status update URL` webhook to:
+
+```txt
+https://YOUR_PROJECT_REF.supabase.co/functions/v1/peecho-pingback
+```
+
+The webhook verifies Peecho's `signature` as `SHA256(PEECHO_SECRET_KEY + order_id)` and updates the local `photobook_orders` row via `order_reference`.
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.

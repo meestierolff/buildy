@@ -2,15 +2,17 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { ArrowLeft, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, LayoutGrid, Pencil, Eye, EyeOff, Check, BookOpen, Loader2 } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, LayoutGrid, Pencil, Eye, EyeOff, Check, BookOpen, Loader2, ExternalLink, PackageCheck } from "lucide-react";
 import { format } from "date-fns";
 import { nl } from "date-fns/locale";
 import { toast } from "sonner";
-import { buildPeechoPdf, PEECHO_FORMATS, type PeechoFormat } from "@/lib/peechoExport";
+import { buildPeechoPdf, getPeechoPrintPageCount, PEECHO_FORMATS, PEECHO_MIN_PAGES, type PeechoFormat } from "@/lib/peechoExport";
+import { assertPeechoPdfReachable, createPeechoReference, getPeechoScriptUrl } from "@/lib/peecho";
 
 type StepLayout = "auto" | "1-full" | "2-side" | "2-stack" | "grid";
 type CoverTextPos = "bottom" | "top" | "center";
@@ -23,6 +25,22 @@ interface PhotobookSettings {
   step_layout_overrides: Record<string, StepLayout>;
   step_photo_order: Record<string, string[]>;
 }
+
+interface PhotobookOrder {
+  id: string;
+  merchant_reference: string;
+  peecho_id: string | null;
+  format: string;
+  page_count: number;
+  status: string;
+  tracking_code: string | null;
+  tracking_url: string | null;
+  created_at: string;
+  ordered_at: string | null;
+  status_updated_at: string | null;
+}
+
+const PHOTOBOOK_ORDER_SELECT = "id, merchant_reference, peecho_id, format, page_count, status, tracking_code, tracking_url, created_at, ordered_at, status_updated_at";
 
 const STEP_LAYOUTS: { id: StepLayout; label: string; icon: React.ReactNode }[] = [
   {
@@ -104,39 +122,69 @@ const Photobook = () => {
   const isOwner = user && trip?.user_id === user.id;
 
   const [printOpen, setPrintOpen] = useState(false);
-  const [printFormat, setPrintFormat] = useState<PeechoFormat>("A4_LANDSCAPE");
+  const printFormat: PeechoFormat = "A4_LANDSCAPE";
   const [printBusy, setPrintBusy] = useState(false);
   const [printedPdfUrl, setPrintedPdfUrl] = useState<string | null>(null);
-  const [isPro, setIsPro] = useState(false);
+  const [printedOrderReference, setPrintedOrderReference] = useState<string | null>(null);
+  const [photobookOrders, setPhotobookOrders] = useState<PhotobookOrder[]>([]);
   const [stepBudgetMap, setStepBudgetMap] = useState<Map<string, number>>(new Map());
-  const PEECHO_SCRIPT_URL = (import.meta.env.VITE_PEECHO_SCRIPT_URL as string) || "";
-
-  useEffect(() => {
-    if (!user) { setIsPro(false); return; }
-    supabase.from("profiles").select("is_pro").eq("user_id", user.id).maybeSingle().then(({ data }) => {
-      setIsPro(!!(data as any)?.is_pro);
-    });
-  }, [user]);
+  const PEECHO_SCRIPT_URL = getPeechoScriptUrl();
 
   const handleGeneratePeechoPdf = async () => {
     if (!trip || !id) return;
-    if (!isPro) { toast.error("Buildy Pro vereist"); return; }
     setPrintBusy(true);
     setPrintedPdfUrl(null);
+    setPrintedOrderReference(null);
+    let uploadedPdfPath: string | null = null;
+    let pdfReadyForCheckout = false;
     try {
+      const orderReference = createPeechoReference(id);
       const blob = await buildPeechoPdf({
         trip, steps, settings, excludedMedia, excludedSteps, format: printFormat,
       });
       // Upload to public storage so Peecho can fetch the PDF directly
-      const path = `${trip.user_id}/peecho/${id}-${Date.now()}.pdf`;
+      const path = `${trip.user_id}/peecho/${orderReference}.pdf`;
       const { error: upErr } = await supabase.storage.from("trip-media").upload(path, blob, {
         contentType: "application/pdf", upsert: true,
       });
       if (upErr) throw upErr;
+      uploadedPdfPath = path;
+
       const { data: pub } = supabase.storage.from("trip-media").getPublicUrl(path);
+      await assertPeechoPdfReachable(pub.publicUrl);
+      pdfReadyForCheckout = true;
+      const pageCount = getPeechoPrintPageCount(pages.length);
+
+      const { data: orderData, error: orderErr } = await supabase
+        .from("photobook_orders")
+        .insert({
+          trip_id: id,
+          user_id: trip.user_id,
+          merchant_reference: orderReference,
+          pdf_url: pub.publicUrl,
+          format: printFormat,
+          page_count: pageCount,
+          status: "ready_for_checkout",
+        })
+        .select(PHOTOBOOK_ORDER_SELECT)
+        .single();
+      if (orderErr) {
+        console.error("Could not register Peecho order tracking:", orderErr);
+      }
+
       setPrintedPdfUrl(pub.publicUrl);
+      setPrintedOrderReference(orderReference);
+      if (!orderErr && orderData) {
+        setPhotobookOrders((current) => [orderData as PhotobookOrder, ...current.filter((order) => order.id !== orderData.id)].slice(0, 5));
+      }
       toast.success("Boek klaar — klik hieronder om te bestellen");
     } catch (e: any) {
+      if (uploadedPdfPath && !pdfReadyForCheckout) {
+        const { error: cleanupErr } = await supabase.storage.from("trip-media").remove([uploadedPdfPath]);
+        if (cleanupErr) {
+          console.error("Could not clean up unregistered Peecho PDF:", cleanupErr);
+        }
+      }
       console.error(e);
       toast.error(e.message || "Genereren mislukt");
     } finally {
@@ -147,7 +195,7 @@ const Photobook = () => {
   useEffect(() => {
     const fetchData = async () => {
       if (!id) return;
-      const [{ data: tripData }, { data: stepsData }, { data: settingsData }, { data: exMedia }, { data: exSteps }, { data: privInfo }, { data: budgetData }] = await Promise.all([
+      const [{ data: tripData }, { data: stepsData }, { data: settingsData }, { data: exMedia }, { data: exSteps }, { data: privInfo }, { data: budgetData }, { data: orderData }] = await Promise.all([
         supabase.from("trips").select("*").eq("id", id).single(),
         supabase.from("steps").select("*, step_media(*)").eq("trip_id", id).order("step_date", { ascending: true }),
         supabase.from("photobook_settings").select("*").eq("trip_id", id).maybeSingle(),
@@ -155,6 +203,7 @@ const Photobook = () => {
         supabase.from("photobook_excluded_steps").select("step_id").eq("trip_id", id),
         supabase.from("trip_private_info").select("address").eq("trip_id", id).maybeSingle(),
         supabase.from("step_budget").select("step_id, cost").eq("trip_id", id),
+        supabase.from("photobook_orders").select(PHOTOBOOK_ORDER_SELECT).eq("trip_id", id).order("created_at", { ascending: false }).limit(5),
       ]);
       setStepBudgetMap(new Map((budgetData || []).map((r: any) => [r.step_id, Number(r.cost) || 0])));
       setTrip(tripData ? { ...tripData, address: privInfo?.address ?? null } : null);
@@ -171,10 +220,11 @@ const Photobook = () => {
       }
       setExcludedMedia(new Set((exMedia || []).map((r: any) => r.media_id)));
       setExcludedSteps(new Set((exSteps || []).map((r: any) => r.step_id)));
+      setPhotobookOrders((orderData || []) as PhotobookOrder[]);
       setLoading(false);
     };
     fetchData();
-  }, [id]);
+  }, [id, user?.id]);
 
   const upsertSettings = async (patch: Partial<PhotobookSettings>) => {
     if (!id) return;
@@ -275,9 +325,9 @@ const Photobook = () => {
             {trip.project_type && (
               <p className="text-[8px] uppercase tracking-[0.35em] text-white/70 mb-2 font-bold">{trip.project_type}</p>
             )}
-            <h1 className="text-5xl font-bold mb-3 font-serif drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)]">{coverTitle}</h1>
+            <h1 className="text-5xl font-bold mb-3 font-serif drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)] [overflow-wrap:anywhere] line-clamp-3">{coverTitle}</h1>
             {coverSubtitle && (
-              <p className="text-sm mb-1 drop-shadow-[0_1px_4px_rgba(0,0,0,0.6)]">{coverSubtitle}</p>
+              <p className="text-sm mb-1 drop-shadow-[0_1px_4px_rgba(0,0,0,0.6)] [overflow-wrap:anywhere] line-clamp-2">{coverSubtitle}</p>
             )}
             {trip.start_date && trip.end_date && (
               <p className="text-sm drop-shadow-[0_1px_4px_rgba(0,0,0,0.6)]">
@@ -331,8 +381,13 @@ const Photobook = () => {
     }
     // Sort phases by the earliest step_date within each phase (chronological)
     const sortedPhases = Array.from(grouped.keys()).sort((a, b) => {
-      const aDate = grouped.get(a)![0].step_date ?? "";
-      const bDate = grouped.get(b)![0].step_date ?? "";
+      const firstDateForPhase = (phase: string) =>
+        grouped.get(phase)!.reduce((earliest, step) => {
+          const date = step.step_date ?? "";
+          return !earliest || (date && date < earliest) ? date : earliest;
+        }, "");
+      const aDate = firstDateForPhase(a);
+      const bDate = firstDateForPhase(b);
       return aDate < bDate ? -1 : aDate > bDate ? 1 : 0;
     });
 
@@ -355,7 +410,7 @@ const Photobook = () => {
         node: (
           <div className="h-full flex flex-col items-center justify-center p-12 bg-secondary text-center">
             <p className="text-xs uppercase tracking-[0.3em] text-accent font-bold mb-4">Hoofdstuk</p>
-            <h2 className="text-5xl font-bold font-serif">{chapterTitle}</h2>
+            <h2 className="text-5xl font-bold font-serif [overflow-wrap:anywhere] line-clamp-3">{chapterTitle}</h2>
             <div className="w-16 h-1 bg-accent mt-6" />
           </div>
         ),
@@ -391,8 +446,8 @@ const Photobook = () => {
                 <div className="flex-1 flex flex-col justify-center p-10 md:p-16">
                   <p className="text-xs uppercase tracking-widest text-accent mb-1 font-bold">{chapterTitle}</p>
                   <p className="text-xs text-muted-foreground mb-2">{format(new Date(step.step_date), "d MMM yyyy", { locale: nl })}</p>
-                  <h2 className="text-3xl font-bold font-serif mb-3">{step.location_name}</h2>
-                  <p className="text-base leading-relaxed text-foreground/80 italic whitespace-pre-line">"{step.description}"</p>
+                  <h2 className="text-3xl font-bold font-serif mb-3 [overflow-wrap:anywhere] line-clamp-2">{step.location_name}</h2>
+                  <p className="text-base leading-relaxed text-foreground/80 italic whitespace-pre-line [overflow-wrap:anywhere] line-clamp-[10]">"{step.description}"</p>
                 </div>
                 <StepPageFooter step={step} stepIdx={stepIdx} totalSteps={totalVisible} cumulativeCost={cumulativeCost} budgetTotal={budgetTotal} />
               </div>
@@ -407,14 +462,12 @@ const Photobook = () => {
           : layout === "2-side" || layout === "2-stack" ? 2
           : 4; // "grid" or "auto" → 4
 
-        // For "auto" with a single photo, use full-bleed layout
-        const useFullBleed = layout === "1-full" || (layout === "auto" && photos.length === 1);
-
         let pageIdx = 0;
         for (let i = 0; i < photos.length; i += batchSize) {
           const batch = photos.slice(i, i + batchSize);
           const isFirst = pageIdx === 0;
           const pageKey = `${step.id}-${pageIdx}`;
+          const useFullBleed = layout === "1-full" || batch.length === 1;
 
           if (useFullBleed) {
             // Single photo with safe printer margin + caption
@@ -423,15 +476,15 @@ const Photobook = () => {
               meta: { stepId: step.id, firstStep: pageIdx === 0 },
               node: (
                 <div className="h-full flex flex-col bg-[#f8f7f4] p-[5%]">
-                  <div className="flex-[3] min-h-0 overflow-hidden">
-                    <img src={batch[0].media_url} alt="" loading="lazy" className="w-full h-full object-cover" />
+                  <div className="flex-[3] min-h-0 overflow-hidden bg-[#f0efe9]">
+                    <img src={batch[0].media_url} alt="" loading="lazy" className="w-full h-full object-contain" />
                   </div>
                   {isFirst && (
                     <div className="flex-[1] min-h-0 pt-3 overflow-hidden">
                       <p className="text-[8px] uppercase tracking-[0.2em] text-accent font-bold mb-0.5">{chapterTitle}</p>
                       <p className="text-[8px] text-muted-foreground mb-1">{format(new Date(step.step_date), "d MMM yyyy", { locale: nl })}</p>
-                      <h2 className="text-lg font-bold font-serif leading-tight mb-1">{step.location_name}</h2>
-                      {hasDescription && <p className="text-[10px] text-foreground/70 italic leading-snug line-clamp-3">"{step.description}"</p>}
+                      <h2 className="text-lg font-bold font-serif leading-tight mb-1 [overflow-wrap:anywhere] line-clamp-2">{step.location_name}</h2>
+                      {hasDescription && <p className="text-[10px] text-foreground/70 italic leading-snug [overflow-wrap:anywhere] line-clamp-3">"{step.description}"</p>}
                     </div>
                   )}
                   <StepPageFooter step={step} stepIdx={stepIdx} totalSteps={totalVisible} cumulativeCost={cumulativeCost} budgetTotal={budgetTotal} />
@@ -444,6 +497,7 @@ const Photobook = () => {
               layout === "2-side" ? "grid-cols-2 grid-rows-1"
               : layout === "2-stack" ? "grid-cols-1 grid-rows-2"
               : layout === "grid" ? "grid-cols-2 grid-rows-[1fr_1fr]"
+              : batch.length === 3 ? "grid-cols-[1.35fr_1fr] grid-rows-2"
               : batch.length === 2 ? "grid-cols-2 grid-rows-1" : "grid-cols-2 grid-rows-[1fr_1fr]"; // auto
 
             list.push({
@@ -452,15 +506,24 @@ const Photobook = () => {
               node: (
                 <div className="h-full flex flex-col bg-card overflow-hidden p-[5%]">
                   <div className={`flex-1 overflow-hidden grid min-h-0 gap-[3%] ${gridClass}`}>
-                    {batch.map((m: any) => (
-                      <img key={m.id} src={m.media_url} loading="lazy" alt="" className="w-full h-full object-cover min-h-0 min-w-0 block" />
-                    ))}
+                    {layout === "auto" && batch.length === 3 ? (
+                      <>
+                        <img src={batch[0].media_url} loading="lazy" alt="" className="w-full h-full object-contain bg-[#f0efe9] min-h-0 min-w-0 block row-span-2" />
+                        {batch.slice(1).map((m: any) => (
+                          <img key={m.id} src={m.media_url} loading="lazy" alt="" className="w-full h-full object-contain bg-[#f0efe9] min-h-0 min-w-0 block" />
+                        ))}
+                      </>
+                    ) : (
+                      batch.map((m: any) => (
+                        <img key={m.id} src={m.media_url} loading="lazy" alt="" className="w-full h-full object-contain bg-[#f0efe9] min-h-0 min-w-0 block" />
+                      ))
+                    )}
                   </div>
                   {isFirst && (
                     <div className="pt-3">
                       <p className="text-[10px] uppercase tracking-widest text-accent mb-0.5 font-bold">{chapterTitle}</p>
-                      <h2 className="text-base font-bold font-serif leading-tight">{step.location_name}</h2>
-                      {hasDescription && <p className="text-xs text-foreground/70 mt-0.5 italic line-clamp-2">"{step.description}"</p>}
+                      <h2 className="text-base font-bold font-serif leading-tight [overflow-wrap:anywhere] line-clamp-2">{step.location_name}</h2>
+                      {hasDescription && <p className="text-xs text-foreground/70 mt-0.5 italic [overflow-wrap:anywhere] line-clamp-2">"{step.description}"</p>}
                     </div>
                   )}
                   <StepPageFooter step={step} stepIdx={stepIdx} totalSteps={totalVisible} cumulativeCost={cumulativeCost} budgetTotal={budgetTotal} />
@@ -473,6 +536,24 @@ const Photobook = () => {
         }
       }
     }
+
+    while (list.length + 1 < PEECHO_MIN_PAGES || (list.length + 1) % 2 !== 0) {
+      list.push({
+        key: `blank-${list.length}`,
+        node: <div className="h-full bg-[#f8f7f4]" />,
+      });
+    }
+
+    list.push({
+      key: "back-cover",
+      node: (
+        <div className="h-full flex flex-col items-center justify-center bg-[#121212] text-white p-12 text-center">
+          <p className="text-[10px] uppercase tracking-[0.32em] text-white/45 font-bold mb-5">Buildy</p>
+          <h2 className="text-3xl font-serif italic leading-tight max-w-[70%] [overflow-wrap:anywhere] line-clamp-3">{coverTitle}</h2>
+          <p className="mt-5 text-[10px] uppercase tracking-[0.2em] text-white/45">Gemaakt met Buildy</p>
+        </div>
+      ),
+    });
 
     return list;
   }, [trip, steps, settings, excludedMedia, excludedSteps, editing, stepBudgetMap]);
@@ -502,8 +583,9 @@ const Photobook = () => {
 
   const PRICE_PER_PAGE = 0.75;
   const BOOK_BASE = 12.95;
-  const CONTENT_PAGES = Math.max(0, pages.length - 1);
-  const totalPrice = BOOK_BASE + CONTENT_PAGES * PRICE_PER_PAGE;
+  const PRINT_PAGES = getPeechoPrintPageCount(pages.length);
+  const CONTENT_PAGES = Math.max(0, PRINT_PAGES - 2);
+  const totalPrice = BOOK_BASE + PRINT_PAGES * PRICE_PER_PAGE;
 
   if (loading) {
     return (
@@ -524,14 +606,14 @@ const Photobook = () => {
         <span className="text-sm text-muted-foreground">
           {isCover
             ? "Cover"
-            : `Pagina ${(safeSpread - 1) * 2 + 1}–${Math.min((safeSpread - 1) * 2 + 2, pages.length - 1)} / ${pages.length - 1}`}
+            : `Pagina ${safeSpread * 2}–${Math.min(safeSpread * 2 + 1, PRINT_PAGES)} / ${PRINT_PAGES}`}
         </span>
         <div className="ml-auto flex items-center gap-2">
-          {isOwner && (
+          {isOwner && !editing && (
             <Button
               variant="outline"
               size="sm"
-              onClick={() => { setPrintedPdfUrl(null); setPrintOpen(true); }}
+              onClick={() => { setPrintedPdfUrl(null); setPrintedOrderReference(null); setPrintOpen(true); }}
               className="gap-1.5"
             >
               <BookOpen className="h-4 w-4" />
@@ -755,7 +837,7 @@ const Photobook = () => {
             <p className="text-sm">
               <span className="font-semibold">{CONTENT_PAGES}</span>
               <span className="text-muted-foreground"> pagina's</span>
-              <span className="text-muted-foreground text-xs ml-2">(incl. cover: {pages.length})</span>
+              <span className="text-muted-foreground text-xs ml-2">(printklaar: {PRINT_PAGES}, min. Peecho: {PEECHO_MIN_PAGES})</span>
             </p>
             <p className="text-sm text-muted-foreground">
               Schatting:{" "}
@@ -780,7 +862,7 @@ const Photobook = () => {
           >
 
             {pages[pageIdx] ? (
-              <div className="absolute inset-0">
+              <div className="absolute inset-0" data-photobook-page>
                 {pages[pageIdx].node}
                 {editing && pages[pageIdx].meta?.chapter && (
                   <ChapterEditOverlay
@@ -796,13 +878,13 @@ const Photobook = () => {
           </div>
           {/* Mobile nav */}
           <div className="flex items-center gap-3 mt-5">
-            <button onClick={() => setPageIdx(0)} disabled={pageIdx === 0} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center text-white transition"><ChevronsLeft className="h-4 w-4" /></button>
-            <button onClick={() => setPageIdx(Math.max(0, pageIdx - 1))} disabled={pageIdx === 0} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center text-white transition"><ChevronLeft className="h-4 w-4" /></button>
+            <button aria-label="Eerste pagina" title="Eerste pagina" onClick={() => setPageIdx(0)} disabled={pageIdx === 0} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center text-white transition"><ChevronsLeft className="h-4 w-4" /></button>
+            <button aria-label="Vorige pagina" title="Vorige pagina" onClick={() => setPageIdx(Math.max(0, pageIdx - 1))} disabled={pageIdx === 0} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center text-white transition"><ChevronLeft className="h-4 w-4" /></button>
             <span className="text-white/60 text-sm min-w-[110px] text-center tabular-nums">
-              {pageIdx === 0 ? "Cover" : `${pageIdx} / ${pages.length - 1}`}
+              {pageIdx === 0 ? "Cover" : `${pageIdx + 1} / ${PRINT_PAGES}`}
             </span>
-            <button onClick={() => setPageIdx(Math.min(pages.length - 1, pageIdx + 1))} disabled={pageIdx >= pages.length - 1} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center text-white transition"><ChevronRight className="h-4 w-4" /></button>
-            <button onClick={() => setPageIdx(pages.length - 1)} disabled={pageIdx >= pages.length - 1} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center text-white transition"><ChevronsRight className="h-4 w-4" /></button>
+            <button aria-label="Volgende pagina" title="Volgende pagina" onClick={() => setPageIdx(Math.min(pages.length - 1, pageIdx + 1))} disabled={pageIdx >= pages.length - 1} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center text-white transition"><ChevronRight className="h-4 w-4" /></button>
+            <button aria-label="Laatste pagina" title="Laatste pagina" onClick={() => setPageIdx(pages.length - 1)} disabled={pageIdx >= pages.length - 1} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center text-white transition"><ChevronsRight className="h-4 w-4" /></button>
           </div>
           <p className="text-white/30 text-xs mt-2 text-center">Elke pagina zoals hij gedrukt wordt</p>
         </div>
@@ -819,7 +901,7 @@ const Photobook = () => {
                 style={{ boxShadow: "inset -8px 0 24px rgba(0,0,0,0.12)" }}
               >
                 {leftPage ? (
-                  <div className="absolute inset-0">
+                  <div className="absolute inset-0" data-photobook-page>
                     {leftPage.node}
                     {editing && leftPage.meta?.chapter && (
                       <ChapterEditOverlay
@@ -846,7 +928,7 @@ const Photobook = () => {
                 style={{ boxShadow: "inset 8px 0 24px rgba(0,0,0,0.12)" }}
               >
                 {rightPage ? (
-                  <div className="absolute inset-0">
+                  <div className="absolute inset-0" data-photobook-page>
                     {rightPage.node}
                     {editing && rightPage.meta?.chapter && (
                       <ChapterEditOverlay
@@ -869,7 +951,7 @@ const Photobook = () => {
           <button onClick={goToFirstSpread} disabled={safeSpread === 0} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center text-white transition" title="Eerste pagina"><ChevronsLeft className="h-4 w-4" /></button>
           <button onClick={goToPrevSpread} disabled={safeSpread === 0} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center text-white transition" title="Vorige spread"><ChevronLeft className="h-4 w-4" /></button>
           <span className="text-white/60 text-sm min-w-[120px] text-center tabular-nums">
-            {isCover ? "Cover" : `${(safeSpread - 1) * 2 + 1}\u2013${Math.min((safeSpread - 1) * 2 + 2, pages.length - 1)} / ${pages.length - 1}`}
+            {isCover ? "Cover" : `${safeSpread * 2}\u2013${Math.min(safeSpread * 2 + 1, PRINT_PAGES)} / ${PRINT_PAGES}`}
           </span>
           <button onClick={goToNextSpread} disabled={safeSpread >= spreads.length - 1} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center text-white transition" title="Volgende spread"><ChevronRight className="h-4 w-4" /></button>
           <button onClick={goToLastSpread} disabled={safeSpread >= spreads.length - 1} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center text-white transition" title="Laatste pagina"><ChevronsRight className="h-4 w-4" /></button>
@@ -884,7 +966,7 @@ const Photobook = () => {
       )}
 
 
-      <Dialog open={printOpen} onOpenChange={(open) => { setPrintOpen(open); if (!open) setPrintedPdfUrl(null); }}>
+      <Dialog open={printOpen} onOpenChange={(open) => { setPrintOpen(open); if (!open) { setPrintedPdfUrl(null); setPrintedOrderReference(null); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Bestel als hardcover Bouwboek</DialogTitle>
@@ -893,40 +975,13 @@ const Photobook = () => {
             </DialogDescription>
           </DialogHeader>
 
-          {!isPro ? (
-            <div className="space-y-3 rounded-md border border-accent/40 bg-accent/5 p-4">
-              <div className="flex items-start gap-2">
-                <div className="text-xs font-bold uppercase tracking-widest bg-accent text-accent-foreground px-2 py-0.5 rounded-full">Buildy Pro</div>
-              </div>
-              <p className="text-sm font-medium leading-snug">
-                Een hardcover Bouwboek laten drukken is een Buildy Pro-functie.
-              </p>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Stuur ons een berichtje — we activeren Pro handmatig voor jouw account en je kunt meteen bestellen.
-              </p>
-              <Button asChild className="w-full">
-                <a href="mailto:hi@buildy.app?subject=Buildy%20Pro%20activeren&body=Hoi%2C%20ik%20wil%20graag%20mijn%20verbouwing%20als%20Bouwboek%20bestellen!">
-                  Vraag Pro aan
-                </a>
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">Formaat</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {(Object.keys(PEECHO_FORMATS) as PeechoFormat[]).map((k) => (
-                    <button
-                      key={k}
-                      onClick={() => { setPrintFormat(k); setPrintedPdfUrl(null); }}
-                      disabled={printBusy}
-                      className={`rounded-md border p-2 text-left text-xs transition ${printFormat === k ? "border-primary bg-primary/5" : "border-border hover:bg-muted"}`}
-                    >
-                      <p className="font-semibold">{PEECHO_FORMATS[k].label}</p>
-                      <p className="text-muted-foreground">{PEECHO_FORMATS[k].w} × {PEECHO_FORMATS[k].h} mm</p>
-                    </button>
-                  ))}
-                </div>
+          <div className="space-y-4">
+              <div className="rounded-md border bg-muted/35 p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Formaat</p>
+                <p className="mt-1 text-sm font-semibold">{PEECHO_FORMATS[printFormat].label}</p>
+                <p className="text-xs text-muted-foreground">
+                  {PEECHO_FORMATS[printFormat].w} × {PEECHO_FORMATS[printFormat].h} mm, vast liggend voor brede fotocomposities.
+                </p>
               </div>
 
               {!printedPdfUrl ? (
@@ -937,25 +992,95 @@ const Photobook = () => {
               ) : (
                 <PeechoPrintWidget
                   pdfUrl={printedPdfUrl}
-                  pages={pages.length}
+                  pages={PRINT_PAGES}
                   format={PEECHO_FORMATS[printFormat]}
                   coverUrl={trip?.cover_image_url ?? undefined}
                   title={settings.cover_title || trip?.title || "Bouwboek"}
                   scriptUrl={PEECHO_SCRIPT_URL}
+                  reference={printedOrderReference}
                 />
               )}
 
               <p className="text-[11px] text-muted-foreground text-center">
                 Betaling en verzending via Peecho. Levertijd ca. 7–14 werkdagen.
               </p>
-            </div>
-          )}
+              <PhotobookOrderHistory orders={photobookOrders} />
+          </div>
 
           <DialogFooter>
             <Button variant="ghost" onClick={() => setPrintOpen(false)}>Sluiten</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+};
+
+type OrderBadgeVariant = "default" | "secondary" | "destructive" | "outline";
+
+const getOrderStatusMeta = (status: string): { label: string; variant: OrderBadgeVariant } => {
+  const normalized = status.toLowerCase();
+  if (normalized.includes("ship") || normalized.includes("verzond")) return { label: "Verzonden", variant: "default" };
+  if (normalized.includes("production") || normalized.includes("print")) return { label: "In productie", variant: "secondary" };
+  if (normalized.includes("cancel") || normalized.includes("fail") || normalized.includes("error")) return { label: "Aandacht nodig", variant: "destructive" };
+  if (normalized === "ready_for_checkout") return { label: "Checkout klaar", variant: "outline" };
+  if (normalized.includes("submitted") || normalized.includes("paid") || normalized.includes("order")) return { label: "Besteld", variant: "secondary" };
+  return { label: status.replaceAll("_", " "), variant: "outline" };
+};
+
+const formatOrderDate = (value: string | null) => {
+  if (!value) return "Nog niet bevestigd";
+  try {
+    return format(new Date(value), "d MMM yyyy HH:mm", { locale: nl });
+  } catch {
+    return value;
+  }
+};
+
+const PhotobookOrderHistory = ({ orders }: { orders: PhotobookOrder[] }) => {
+  if (orders.length === 0) return null;
+
+  return (
+    <div className="rounded-md border bg-background/70 p-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <PackageCheck className="h-4 w-4 text-muted-foreground" />
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Bouwboek orders</p>
+      </div>
+      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+        {orders.map((order) => {
+          const status = getOrderStatusMeta(order.status);
+          const reference = order.merchant_reference.split("-").slice(-2).join("-");
+          return (
+            <div key={order.id} className="rounded-md border bg-card p-2.5 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium truncate">Referentie {reference}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {order.page_count} pagina's · {PEECHO_FORMATS[order.format as PeechoFormat]?.label ?? order.format}
+                  </p>
+                </div>
+                <Badge variant={status.variant} className="shrink-0">
+                  {status.label}
+                </Badge>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                <span>{formatOrderDate(order.ordered_at ?? order.status_updated_at ?? order.created_at)}</span>
+                {order.tracking_url && (
+                  <a
+                    href={order.tracking_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                  >
+                    Track & trace
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };
@@ -1008,7 +1133,7 @@ const PhotoManagePanel = ({
               src={m.media_url}
               alt=""
               draggable={false}
-              className={`w-14 h-14 object-cover rounded-md transition ${out ? "opacity-40 grayscale" : ""} ${isOver ? "ring-2 ring-primary" : ""}`}
+              className={`w-14 h-14 object-contain rounded-md bg-muted transition ${out ? "opacity-40 grayscale" : ""} ${isOver ? "ring-2 ring-primary" : ""}`}
             />
             {out && (
               <>
@@ -1084,7 +1209,7 @@ const PhotoEditOverlay = ({
                 src={m.media_url}
                 alt=""
                 draggable={false}
-                className={`w-12 h-12 object-cover rounded transition ${out ? "opacity-40 grayscale" : ""} ${isOver ? "ring-2 ring-white ring-offset-1 ring-offset-black/70" : ""}`}
+                className={`w-12 h-12 object-contain rounded bg-muted transition ${out ? "opacity-40 grayscale" : ""} ${isOver ? "ring-2 ring-white ring-offset-1 ring-offset-black/70" : ""}`}
               />
               {out && (
                 <>
@@ -1130,17 +1255,17 @@ const StepPageFooter = ({
   const progressPct = totalSteps > 0 ? ((stepIdx + 1) / totalSteps) * 100 : 0;
 
   return (
-    <div className="flex-shrink-0 flex items-center gap-2 px-4 py-1.5 bg-[#f4f3ef] border-t border-black/[0.06]">
+    <div className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1 bg-[#f4f3ef] border-t border-black/[0.05]">
       {/* Step counter */}
-      <span className="text-[7px] text-muted-foreground/50 font-medium tabular-nums shrink-0">
+      <span className="text-[6px] text-muted-foreground/45 font-medium tabular-nums shrink-0">
         {stepIdx + 1}/{totalSteps}
       </span>
       {/* Thin progress line */}
-      <div className="flex-1 h-[2px] rounded-full bg-black/[0.07] overflow-hidden">
+      <div className="flex-1 h-px rounded-full bg-black/[0.06] overflow-hidden">
         <div className="h-full rounded-full bg-accent/50 transition-all" style={{ width: `${progressPct}%` }} />
       </div>
       {/* Date */}
-      <span className="text-[7px] text-muted-foreground/50 shrink-0">
+      <span className="text-[6px] text-muted-foreground/45 shrink-0">
         {format(new Date(step.step_date), "d MMM ''yy", { locale: nl })}
       </span>
     </div>
@@ -1172,6 +1297,7 @@ const PeechoPrintWidget = ({
   coverUrl,
   title,
   scriptUrl,
+  reference,
 }: {
   pdfUrl: string;
   pages: number;
@@ -1179,6 +1305,7 @@ const PeechoPrintWidget = ({
   coverUrl?: string;
   title: string;
   scriptUrl: string;
+  reference: string | null;
 }) => {
   const containerRef = React.useRef<HTMLDivElement>(null);
 
@@ -1222,27 +1349,34 @@ const PeechoPrintWidget = ({
         Klik op de knop hieronder. Peecho opent een bestelscherm waar je je adres invult en betaalt. Wij zorgen voor druk en verzending.
       </p>
       <div ref={containerRef} className="flex justify-center py-2">
-        {/* Peecho Print Button — Peecho's JS replaces this anchor with their branded button */}
-        <a
-          title="Bouwboek bestellen"
-          href="https://www.peecho.com/"
-          className="peecho-print-button"
-          data-filetype="pdf"
-          data-width={format.w}
-          data-height={format.h}
-          data-pages={pages}
-          data-src={pdfUrl}
-          data-thumbnail={coverUrl || ""}
-          data-locale="nl_NL"
-          data-currency="EUR"
-          data-text="Bestel Bouwboek"
-        >
-          Bouwboek bestellen via Peecho
-        </a>
+        {scriptUrl ? (
+          <a
+            title="Bouwboek bestellen"
+            href="https://www.peecho.com/"
+            className="peecho-print-button"
+            data-filetype="pdf"
+            data-title={title}
+            data-width={format.w}
+            data-height={format.h}
+            data-pages={pages}
+            data-src={pdfUrl}
+            data-thumbnail={coverUrl || ""}
+            data-reference={reference || ""}
+            data-locale="nl_NL"
+            data-currency="EUR"
+            data-text="Bestel Bouwboek"
+          >
+            Bouwboek bestellen via Peecho
+          </a>
+        ) : (
+          <Button disabled className="w-full">
+            Peecho niet geconfigureerd
+          </Button>
+        )}
       </div>
       {!scriptUrl && (
         <p className="text-[10px] text-destructive text-center">
-          Configureer <code>VITE_PEECHO_SCRIPT_URL</code> in je .env om het bestelwidget te activeren.
+          Configureer <code>VITE_PEECHO_BUTTON_KEY</code> of <code>VITE_PEECHO_SCRIPT_URL</code> om het bestelwidget te activeren.
         </p>
       )}
     </div>
