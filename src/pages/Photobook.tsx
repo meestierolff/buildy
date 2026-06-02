@@ -1101,6 +1101,37 @@ const PhotobookOrderHistory = ({ orders }: { orders: PhotobookOrder[] }) => {
   );
 };
 
+const PhotoFrame = ({ src, className = "" }: { src: string; className?: string }) => (
+  <div className={`min-h-0 min-w-0 overflow-hidden bg-secondary flex items-center justify-center ${className}`}>
+    <img src={src} alt="" loading="lazy" className="block h-full w-full object-contain" />
+  </div>
+);
+
+const StepCaption = ({
+  chapterTitle,
+  date,
+  locationName,
+  description,
+  compact = false,
+}: {
+  chapterTitle: string;
+  date: string;
+  locationName: string | null;
+  description?: string | null;
+  compact?: boolean;
+}) => (
+  <div className={`${compact ? "pt-2.5 pb-1.5" : "pt-3 pb-2"} min-h-0 overflow-hidden`}>
+    <p className={`${compact ? "text-[8px]" : "text-[9px]"} uppercase tracking-[0.2em] text-accent font-bold leading-none mb-1`}>{chapterTitle}</p>
+    <p className="text-[8px] text-muted-foreground leading-none mb-1.5">{format(new Date(date), "d MMM yyyy", { locale: nl })}</p>
+    <h2 className={`${compact ? "text-base" : "text-lg"} font-bold font-serif leading-tight [overflow-wrap:anywhere] line-clamp-1`}>{locationName || "Update"}</h2>
+    {description && (
+      <p className={`${compact ? "text-[10px] line-clamp-1" : "text-[10px] line-clamp-2"} text-foreground/70 mt-1 italic leading-snug [overflow-wrap:anywhere]`}>
+        "{description}"
+      </p>
+    )}
+  </div>
+);
+
 /** Panel-style photo manager rendered outside the page (in the edit controls panel) */
 const PhotoManagePanel = ({
   stepId,
