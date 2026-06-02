@@ -144,7 +144,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) 
                 </button>
                 {/* Thumbnail strip for extra photos */}
                 {visuals.length > 1 && (
-                  <div className={`grid gap-0.5 mt-0.5 ${visuals.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
+                  <div className={`grid gap-0.5 mt-0.5 ${visuals.length === 2 ? "grid-cols-1" : visuals.length === 3 ? "grid-cols-2" : "grid-cols-3"}`}>
                     {visuals.slice(1, 4).map((m, mi) => {
                       const origIdx = sortedMedia.findIndex((x) => x.id === m.id);
                       const isOverflow = mi === 2 && visuals.length > 4;
