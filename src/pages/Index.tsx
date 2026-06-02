@@ -5,13 +5,17 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Plus, Home, Hammer, Search, X } from "lucide-react";
 import EmptyState from "@/components/EmptyState";
+import ProjectCard from "@/components/ProjectCard";
+import { applyProjectMediaSummaries, loadProjectMediaSummaries } from "@/lib/projectMedia";
+import { usePageMeta } from "@/hooks/usePageMeta";
 
-interface ProjectCard {
+interface Project {
   id: string;
   title: string;
   project_type: string | null;
   progress_percentage: number | null;
   cover_image_url: string | null;
+  cover_media_type?: string | null;
   user_id: string;
   is_public: boolean;
   profile_name?: string;
@@ -19,56 +23,7 @@ interface ProjectCard {
   follower_count: number;
 }
 
-const Card = ({ p }: { p: ProjectCard }) => {
-  const pct = Math.max(0, Math.min(100, p.progress_percentage ?? 0));
-  return (
-    <Link to={`/trip/${p.id}`} className="group block">
-      <div className="relative aspect-[4/5] overflow-hidden rounded-sm bg-muted mb-5">
-        {p.cover_image_url ? (
-          <img
-            src={p.cover_image_url}
-            alt={p.title}
-            loading="lazy"
-            decoding="async"
-            className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center blueprint-grid">
-            <Home className="h-12 w-12 text-muted-foreground/40" strokeWidth={1.5} />
-          </div>
-        )}
-        {p.project_type && (
-          <div className="absolute top-5 left-5">
-            <span className="bg-background/95 backdrop-blur-md px-3 py-1.5 rounded-sm text-[9px] font-bold uppercase tracking-[0.2em] text-foreground shadow-sm">
-              {p.project_type}
-            </span>
-          </div>
-        )}
-      </div>
-      <div className="space-y-3">
-        <div className="flex justify-between items-baseline gap-3">
-          <h3 className="font-serif italic text-2xl leading-tight truncate">{p.title}</h3>
-          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest tabular-nums shrink-0">{pct}%</span>
-        </div>
-        <div className="space-y-2">
-          <div className="w-full h-0.5 bg-muted">
-            <div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} />
-          </div>
-        </div>
-        <div className="flex items-center justify-between pt-1">
-          <span className="text-[11px] text-muted-foreground font-medium">
-            {p.profile_name ? `door ${p.profile_name}` : ""}
-          </span>
-          <span className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
-            {p.step_count} updates
-          </span>
-        </div>
-      </div>
-    </Link>
-  );
-};
-
-const Grid = ({ projects, loading, emptyState }: { projects: ProjectCard[]; loading: boolean; emptyState: React.ReactNode }) => {
+const Grid = ({ projects, loading, emptyState }: { projects: Project[]; loading: boolean; emptyState: React.ReactNode }) => {
   if (loading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
@@ -85,34 +40,43 @@ const Grid = ({ projects, loading, emptyState }: { projects: ProjectCard[]; load
   if (projects.length === 0) return <>{emptyState}</>;
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
-      {projects.map((p) => <Card key={p.id} p={p} />)}
+      {projects.map((p) => (
+        <ProjectCard
+          key={p.id}
+          id={p.id}
+          title={p.title}
+          projectType={p.project_type}
+          progressPercentage={p.progress_percentage}
+          coverUrl={p.cover_image_url}
+          coverMediaType={p.cover_media_type}
+          profileName={p.profile_name}
+          stepCount={p.step_count}
+        />
+      ))}
     </div>
   );
 };
 
-const enrich = async (rows: any[]): Promise<ProjectCard[]> => {
+const enrich = async (rows: any[]): Promise<Project[]> => {
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
   const userIds = Array.from(new Set(rows.map((r) => r.user_id)));
 
-  const [stepsRes, favRes, profRes] = await Promise.all([
-    supabase.from("steps").select("trip_id").in("trip_id", ids),
+  const [mediaSummaries, favRes, profRes] = await Promise.all([
+    loadProjectMediaSummaries(ids),
     supabase.from("favorites").select("project_id").in("project_id", ids),
     supabase.from("profiles").select("user_id, display_name").in("user_id", userIds),
   ]);
 
-  const stepCounts = new Map<string, number>();
-  (stepsRes.data || []).forEach((s: any) => stepCounts.set(s.trip_id, (stepCounts.get(s.trip_id) || 0) + 1));
   const favCounts = new Map<string, number>();
   (favRes.data || []).forEach((f: any) => favCounts.set(f.project_id, (favCounts.get(f.project_id) || 0) + 1));
   const profMap = new Map<string, string>();
   (profRes.data || []).forEach((p: any) => profMap.set(p.user_id, p.display_name));
 
   // Trip visibility is controlled by trips.is_public — profiles stay publicly findable
-  return rows
+  return applyProjectMediaSummaries(rows, mediaSummaries)
     .map((t: any) => ({
       ...t,
-      step_count: stepCounts.get(t.id) || 0,
       follower_count: favCounts.get(t.id) || 0,
       profile_name: profMap.get(t.user_id) || undefined,
     }));
@@ -120,11 +84,16 @@ const enrich = async (rows: any[]): Promise<ProjectCard[]> => {
 
 const Index = () => {
   const { user } = useAuth();
+  usePageMeta({
+    title: "Buildy — Verbouwingsdagboek en Bouwboek maken",
+    description: "Houd je verbouwing bij met foto's, updates, budget en mijlpalen. Deel je renovatie en maak aan het einde automatisch een gedrukt Bouwboek.",
+    path: "/",
+  });
   const [tab, setTab] = useState<"discover" | "mine">(user ? "mine" : "discover");
   const [search, setSearch] = useState("");
   const [selectedType, setSelectedType] = useState("");
-  const [discover, setDiscover] = useState<ProjectCard[]>([]);
-  const [mine, setMine] = useState<ProjectCard[]>([]);
+  const [discover, setDiscover] = useState<Project[]>([]);
+  const [mine, setMine] = useState<Project[]>([]);
   const [loadingD, setLoadingD] = useState(true);
   const [loadingM, setLoadingM] = useState(true);
 
@@ -182,8 +151,8 @@ const Index = () => {
           <span className="text-accent">stap voor stap.</span>
         </h1>
         <p className="max-w-xl mx-auto text-base md:text-lg text-muted-foreground leading-relaxed mb-10 font-light">
-          Leg elke fase van je verbouwing vast met foto's en verhalen.{" "}<br className="hidden md:block" />
-          Een digitaal dagboek voor de architectuur van je leven.
+          Houd updates, foto's, mijlpalen en budget bij op een plek.{" "}<br className="hidden md:block" />
+          Aan het einde maak je er automatisch een gedrukt Bouwboek van.
         </p>
         {user ? (
           <Link to="/trips/new">
@@ -326,6 +295,25 @@ const Index = () => {
             }
           />
         )}
+
+        <section className="mt-24 border-t border-border pt-16 grid gap-10 md:grid-cols-[0.9fr_1.1fr]">
+          <div>
+            <p className="eyebrow mb-3">Verbouwingsdagboek</p>
+            <h2 className="font-serif italic text-4xl md:text-5xl leading-tight">
+              Van losse foto's naar een verhaal dat blijft.
+            </h2>
+          </div>
+          <div className="space-y-5 text-sm md:text-base text-muted-foreground leading-relaxed font-light">
+            <p>
+              Buildy helpt je een verbouwing bijhouden zonder dat alles verdwijnt in WhatsApp, notities en fotomappen.
+              Maak per fase een update, leg keuzes en mijlpalen vast en laat vrienden of familie meekijken.
+            </p>
+            <p>
+              Of je nu een keuken, badkamer, aanbouw, zolder of volledige renovatie documenteert: je bouwt automatisch aan
+              een renovatiedagboek dat later geschikt is voor een fysiek fotoboek van je verbouwing.
+            </p>
+          </div>
+        </section>
       </section>
     </div>
   );

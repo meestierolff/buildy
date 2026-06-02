@@ -1,21 +1,24 @@
-import { useLocation } from "react-router-dom";
-import { useEffect } from "react";
+import { Link, useLocation } from "react-router-dom";
+import { usePageMeta } from "@/hooks/usePageMeta";
 
 const NotFound = () => {
   const location = useLocation();
-
-  useEffect(() => {
-    console.error("404 Error: User attempted to access non-existent route:", location.pathname);
-  }, [location.pathname]);
+  usePageMeta({
+    title: "Pagina niet gevonden — Buildy",
+    description: "Deze Buildy-pagina bestaat niet of is verplaatst.",
+    path: location.pathname,
+    noIndex: true,
+  });
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted">
+    <div className="flex min-h-screen items-center justify-center bg-background px-6">
       <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">404</h1>
-        <p className="mb-4 text-xl text-muted-foreground">Oops! Page not found</p>
-        <a href="/" className="text-primary underline hover:text-primary/90">
-          Return to Home
-        </a>
+        <p className="eyebrow mb-3">404</p>
+        <h1 className="mb-4 font-serif italic text-4xl md:text-5xl">Pagina niet gevonden.</h1>
+        <p className="mb-8 text-sm text-muted-foreground">Deze pagina bestaat niet of is verplaatst.</p>
+        <Link to="/" className="text-[11px] font-bold uppercase tracking-widest underline underline-offset-4 hover:text-accent">
+          Terug naar ontdekken
+        </Link>
       </div>
     </div>
   );

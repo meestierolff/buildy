@@ -147,8 +147,8 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <Label>Titel *</Label>
-            <Input value={locationName} onChange={(e) => setLocationName(e.target.value)} required placeholder="Bijv. Sloop begane grond" />
+            <Label>Update-titel *</Label>
+            <Input value={locationName} onChange={(e) => setLocationName(e.target.value)} required placeholder="Bijv. Sloop begane grond, eerste keukenwand eruit" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -169,7 +169,7 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
           </div>
           <div>
             <Label>Verhaal</Label>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Vertel wat er deze dag is gebeurd..." rows={4} />
+            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Wat is er gedaan, welke keuze heb je gemaakt en wat wil je later nog weten?" rows={4} />
           </div>
 
           <div className="rounded-lg border p-3 space-y-3 bg-secondary/30">
@@ -246,7 +246,7 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
             <Label>Foto's, video's & PDF's</Label>
             <label className="mt-1 flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-4 cursor-pointer hover:border-accent transition-colors">
               <Upload className="h-5 w-5 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Klik om bestanden te selecteren</span>
+              <span className="text-sm text-muted-foreground">Klik om foto's, video's of documenten toe te voegen</span>
               <input type="file" multiple accept="image/*,video/*,application/pdf" className="hidden" onChange={handleFileChange} />
             </label>
             {files.length > 0 && (

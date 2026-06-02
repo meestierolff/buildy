@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,8 +10,11 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { MapPin, Hammer, Camera, Pencil, Lock, UserPlus, UserCheck, Users, BarChart2, Loader2 } from "lucide-react";
+import { MapPin, Hammer, Camera, Pencil, Lock, UserPlus, UserCheck, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import ProjectCard from "@/components/ProjectCard";
+import { applyProjectMediaSummaries, loadProjectMediaSummaries } from "@/lib/projectMedia";
+import { usePageMeta } from "@/hooks/usePageMeta";
 
 interface FollowProfile {
   user_id: string;
@@ -37,6 +39,14 @@ const Profile = () => {
   const [draft, setDraft] = useState({ display_name: "", bio: "", location: "", is_private: false });
 
   const isMe = user?.id === userId;
+  usePageMeta({
+    title: profile?.display_name ? `${profile.display_name} — Buildy` : "Profiel — Buildy",
+    description: profile?.bio
+      ? `${profile.bio.slice(0, 140)}${profile.bio.length > 140 ? "..." : ""}`
+      : "Bekijk renovatieprojecten, updates en Bouwboeken van deze bouwer op Buildy.",
+    path: userId ? `/profile/${userId}` : undefined,
+    noIndex: !!profile?.is_private,
+  });
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
 
@@ -91,36 +101,31 @@ const Profile = () => {
       .order("created_at", { ascending: false });
     if (!isMe) tripsQuery = tripsQuery.eq("is_public", true);
     const { data: tripsData } = await tripsQuery;
-    setTrips(tripsData || []);
+    const rawTrips = tripsData || [];
+    const tripIds = rawTrips.map((t: any) => t.id);
+    const mediaSummaries = await loadProjectMediaSummaries(tripIds);
+    const tripsWithMedia = applyProjectMediaSummaries(rawTrips, mediaSummaries);
+    setTrips(tripsWithMedia);
 
-    const completedProjects = (tripsData || []).filter((t: any) => (t.progress_percentage || 0) >= 100).length;
-    const budgetTotal = (tripsData || []).reduce((sum: number, t: any) => sum + (t.budget_total || 0), 0);
-    const upcomingProject = (tripsData || []).find((t: any) => t.start_date && new Date(t.start_date) > new Date()) || null;
+    const completedProjects = rawTrips.filter((t: any) => (t.progress_percentage || 0) >= 100).length;
+    const budgetTotal = rawTrips.reduce((sum: number, t: any) => sum + (t.budget_total || 0), 0);
+    const upcomingProject = rawTrips.find((t: any) => t.start_date && new Date(t.start_date) > new Date()) || null;
     setStatsExtra({ budgetTotal, completedProjects, upcomingProject });
 
-    const tripIds = (tripsData || []).map((t: any) => t.id);
-    if (tripIds.length) {
-      const [{ count: updates }, { count: photos }] = await Promise.all([
-        supabase.from("steps").select("*", { count: "exact", head: true }).in("trip_id", tripIds),
-        supabase.from("step_media").select("*", { count: "exact", head: true }).eq("user_id", userId),
-      ]);
-      setStats({ updates: updates || 0, photos: photos || 0 });
-    } else {
-      setStats({ updates: 0, photos: 0 });
-    }
+    const totals = Array.from(mediaSummaries.values()).reduce(
+      (acc, item) => ({
+        updates: acc.updates + item.stepCount,
+        photos: acc.photos + item.mediaCount,
+      }),
+      { updates: 0, photos: 0 },
+    );
+    setStats(totals);
 
     await loadFollows(userId);
     setLoading(false);
   }, [isMe, loadFollows, userId]);
 
   useEffect(() => { load(); }, [load]);
-
-  useEffect(() => {
-    if (profile?.display_name) {
-      document.title = `${profile.display_name} — Buildy`;
-    }
-    return () => { document.title = "Buildy — Verbeter je huis, stap voor stap"; };
-  }, [profile?.display_name]);
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -304,38 +309,18 @@ const Profile = () => {
             <p className="text-center text-sm text-muted-foreground py-10">Nog geen projecten.</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
-              {trips.map((trip) => {
-                const pct = Math.max(0, Math.min(100, trip.progress_percentage ?? 0));
-                return (
-                  <Link key={trip.id} to={`/trip/${trip.id}`} className="group block">
-                    <div className="relative aspect-[4/5] overflow-hidden rounded-sm bg-muted mb-5">
-                      {trip.cover_image_url ? (
-                        <img src={trip.cover_image_url} alt={trip.title} loading="lazy" className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center blueprint-grid">
-                          <Hammer className="h-12 w-12 text-muted-foreground/40" strokeWidth={1.5} />
-                        </div>
-                      )}
-                      {trip.project_type && (
-                        <div className="absolute top-5 left-5">
-                          <span className="bg-background/95 backdrop-blur-md px-3 py-1.5 rounded-sm text-[9px] font-bold uppercase tracking-[0.2em] text-foreground shadow-sm">
-                            {trip.project_type}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-baseline gap-3">
-                        <h3 className="font-serif italic text-2xl leading-tight truncate">{trip.title}</h3>
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest tabular-nums shrink-0">{pct}%</span>
-                      </div>
-                      <div className="w-full h-0.5 bg-muted">
-                        <div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} />
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })}
+              {trips.map((trip) => (
+                <ProjectCard
+                  key={trip.id}
+                  id={trip.id}
+                  title={trip.title}
+                  projectType={trip.project_type}
+                  progressPercentage={trip.progress_percentage}
+                  coverUrl={trip.cover_image_url}
+                  coverMediaType={trip.cover_media_type}
+                  placeholderIcon={Hammer}
+                />
+              ))}
             </div>
           )}
         </TabsContent>

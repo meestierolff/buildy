@@ -227,9 +227,13 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<Blob> {
 
   // ====== COVER (page 1) ======
   addPage();
+  const firstVisiblePhoto = steps
+    .filter((step) => !excludedSteps.has(step.id))
+    .flatMap((step) => step.step_media || [])
+    .find((media) => !excludedMedia.has(media.id) && media.media_type !== "video" && media.media_type !== "pdf");
   const coverMedia = settings.cover_media_id
     ? steps.flatMap(s => s.step_media || []).find(m => m.id === settings.cover_media_id)?.media_url
-    : trip.cover_image_url;
+    : trip.cover_image_url || firstVisiblePhoto?.media_url;
 
   if (coverMedia) {
     const data = await loadImageAsJpeg(coverMedia, W, H);

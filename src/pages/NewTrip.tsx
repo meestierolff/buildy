@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
+import { usePageMeta } from "@/hooks/usePageMeta";
 
 const PROJECT_TYPES = [
   "Volledige renovatie",
@@ -24,6 +25,12 @@ const PROJECT_TYPES = [
 
 const NewTrip = () => {
   const { user, loading: authLoading } = useAuth();
+  usePageMeta({
+    title: "Nieuw project starten — Buildy",
+    description: "Start een nieuw verbouwingsdagboek en leg de basis van je renovatie vast.",
+    path: "/trips/new",
+    noIndex: true,
+  });
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [title, setTitle] = useState("");
@@ -86,7 +93,7 @@ const NewTrip = () => {
             Leg de basis voor je verbouwing.
           </h1>
           <p className="text-sm text-muted-foreground mt-4 font-light max-w-md">
-            Geef je project een naam en je kunt later updates, foto's en plattegronden toevoegen.
+            Geef je project een naam. Daarna voeg je updates, foto's, budget en plattegronden toe voor je tijdlijn en Bouwboek.
           </p>
         </div>
 
@@ -114,7 +121,7 @@ const NewTrip = () => {
 
           <div className="space-y-2">
             <Label htmlFor="description" className="eyebrow">Beschrijving</Label>
-            <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Wat is het verhaal van dit project?" rows={3} />
+            <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Wat ga je verbouwen, waarom en wat hoop je straks terug te zien?" rows={3} />
           </div>
 
           <div className="grid grid-cols-2 gap-4">

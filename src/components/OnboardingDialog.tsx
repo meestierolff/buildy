@@ -87,7 +87,7 @@ const OnboardingDialog = () => {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="bio" className="text-[11px] uppercase tracking-widest font-bold text-muted-foreground">Bio</Label>
-            <Textarea id="bio" value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Wat ga je verbouwen?" rows={3} />
+            <Textarea id="bio" value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Bijv. jaren-30 woning verduurzamen, keuken openbreken en straks alles bundelen in een Bouwboek." rows={3} />
           </div>
           <Button
             onClick={save}

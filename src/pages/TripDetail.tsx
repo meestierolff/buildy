@@ -30,6 +30,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { usePageMeta } from "@/hooks/usePageMeta";
 
 const TripDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -56,13 +57,19 @@ const TripDetail = () => {
   void adjustCover;
 
   const isOwner = user && trip?.user_id === user.id;
-
-  useEffect(() => {
-    if (trip?.title) {
-      document.title = `${trip.title} — Buildy`;
-    }
-    return () => { document.title = "Buildy — Verbeter je huis, stap voor stap"; };
-  }, [trip?.title]);
+  const fallbackCoverUrl = steps
+    .flatMap((s) => s.step_media || [])
+    .find((m: any) => m.media_type !== "video" && m.media_type !== "pdf")?.media_url;
+  const pageCoverUrl = trip?.cover_image_url || fallbackCoverUrl;
+  usePageMeta({
+    title: trip?.title ? `${trip.title} — Buildy` : "Project — Buildy",
+    description: trip?.description
+      ? `${trip.description.slice(0, 145)}${trip.description.length > 145 ? "..." : ""}`
+      : "Bekijk de updates, foto's, fases en mijlpalen van dit renovatieproject op Buildy.",
+    image: pageCoverUrl || undefined,
+    path: id ? `/trip/${id}` : undefined,
+    noIndex: !!trip && !trip.is_public && !isOwner,
+  });
 
   const fetchTrip = useCallback(async () => {
     if (!id) return;
@@ -259,6 +266,7 @@ const TripDetail = () => {
     : null;
   const totalPhotos = steps.reduce((sum, s) => sum + (s.step_media?.length ?? 0), 0);
   const milestones = steps.filter((s) => s.is_milestone).length;
+  const headerCoverUrl = pageCoverUrl;
 
   const effectiveFloorplans: FloorInfo[] =
     Array.isArray(trip.floorplans) && trip.floorplans.length > 0
@@ -271,10 +279,10 @@ const TripDetail = () => {
     <div className="min-h-screen">
       {/* Project header */}
       <section className="relative bg-primary text-primary-foreground overflow-hidden">
-        {trip.cover_image_url ? (
+        {headerCoverUrl ? (
           <>
             <img
-              src={trip.cover_image_url}
+              src={headerCoverUrl}
               alt=""
               style={{ objectPosition: `center ${coverY}%` }}
               className="absolute inset-0 w-full h-full object-cover opacity-40"

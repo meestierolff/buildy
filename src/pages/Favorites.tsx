@@ -8,9 +8,18 @@ import EmptyState from "@/components/EmptyState";
 import { formatDistanceToNow } from "date-fns";
 import { nl } from "date-fns/locale";
 import { phaseColor } from "@/components/PhaseSelect";
+import ProjectCard from "@/components/ProjectCard";
+import { applyProjectMediaSummaries, loadProjectMediaSummaries } from "@/lib/projectMedia";
+import { usePageMeta } from "@/hooks/usePageMeta";
 
 const Favorites = () => {
   const { user, loading: authLoading } = useAuth();
+  usePageMeta({
+    title: "Gevolgde projecten — Buildy",
+    description: "Bekijk updates van renovatieprojecten die je volgt.",
+    path: "/favorieten",
+    noIndex: true,
+  });
   const [projects, setProjects] = useState<any[]>([]);
   const [activity, setActivity] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,22 +46,24 @@ const Favorites = () => {
         .in("id", ids);
 
       if (trips) {
-        const enriched = await Promise.all(
-          trips.map(async (t: any) => {
-            const [{ count: stepCount }, { data: profile }] = await Promise.all([
-              supabase.from("steps").select("*", { count: "exact", head: true }).eq("trip_id", t.id),
-              supabase.from("profiles").select("display_name").eq("user_id", t.user_id).single(),
-            ]);
-            return { ...t, step_count: stepCount || 0, profile };
-          })
+        const userIds = Array.from(new Set(trips.map((t: any) => t.user_id)));
+        const [mediaSummaries, { data: profiles }] = await Promise.all([
+          loadProjectMediaSummaries(ids),
+          supabase.from("profiles").select("user_id, display_name").in("user_id", userIds),
+        ]);
+        const profileById = new Map((profiles || []).map((p: any) => [p.user_id, p]));
+        setProjects(
+          applyProjectMediaSummaries(trips, mediaSummaries).map((t: any) => ({
+            ...t,
+            profile: profileById.get(t.user_id),
+          })),
         );
-        setProjects(enriched);
       }
 
       // Activity feed: latest steps from followed projects
       const { data: recent } = await supabase
         .from("steps")
-        .select("id, location_name, description, step_date, trip_id, created_at, phase, is_milestone, step_media(media_url)")
+        .select("id, location_name, description, step_date, trip_id, created_at, phase, is_milestone, step_media(media_url, media_type, sort_order)")
         .in("trip_id", ids)
         .order("created_at", { ascending: false })
         .limit(20);
@@ -95,7 +106,9 @@ const Favorites = () => {
             ) : (
               <div className="max-w-lg divide-y divide-border/50 rounded-xl overflow-hidden border border-border/60">
                 {activity.map((s: any) => {
-                  const firstPhoto = s.step_media?.[0]?.media_url;
+                  const firstPhoto = [...(s.step_media || [])]
+                    .filter((m: any) => m.media_type !== "pdf" && m.media_type !== "video")
+                    .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0))[0]?.media_url;
                   return (
                     <Link key={s.id} to={`/trip/${s.trip_id}`} className="block hover:bg-muted/40 transition-colors bg-card">
                       {/* project name header */}
@@ -143,39 +156,18 @@ const Favorites = () => {
           <TabsContent value="projects">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
               {projects.map((p) => {
-                const pct = Math.max(0, Math.min(100, p.progress_percentage ?? 0));
                 return (
-                  <Link key={p.id} to={`/trip/${p.id}`} className="group block">
-                    <div className="relative aspect-[4/5] overflow-hidden rounded-sm bg-muted mb-5">
-                      {p.cover_image_url ? (
-                        <img src={p.cover_image_url} alt={p.title} loading="lazy" className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center blueprint-grid">
-                          <Home className="h-12 w-12 text-muted-foreground/40" strokeWidth={1.5} />
-                        </div>
-                      )}
-                      {p.project_type && (
-                        <div className="absolute top-5 left-5">
-                          <span className="bg-background/95 backdrop-blur-md px-3 py-1.5 rounded-sm text-[9px] font-bold uppercase tracking-[0.2em] text-foreground shadow-sm">
-                            {p.project_type}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="space-y-3">
-                      <div className="flex justify-between items-baseline gap-3">
-                        <h3 className="font-serif italic text-2xl leading-tight truncate">{p.title}</h3>
-                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest tabular-nums shrink-0">{pct}%</span>
-                      </div>
-                      <div className="w-full h-0.5 bg-muted">
-                        <div className="h-full bg-accent" style={{ width: `${pct}%` }} />
-                      </div>
-                      <div className="flex items-center justify-between pt-1">
-                        <span className="text-[11px] text-muted-foreground">{p.profile?.display_name && `door ${p.profile.display_name}`}</span>
-                        <span className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">{p.step_count} updates</span>
-                      </div>
-                    </div>
-                  </Link>
+                  <ProjectCard
+                    key={p.id}
+                    id={p.id}
+                    title={p.title}
+                    projectType={p.project_type}
+                    progressPercentage={p.progress_percentage}
+                    coverUrl={p.cover_image_url}
+                    coverMediaType={p.cover_media_type}
+                    profileName={p.profile?.display_name}
+                    stepCount={p.step_count}
+                  />
                 );
               })}
             </div>

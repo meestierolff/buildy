@@ -13,6 +13,7 @@ import { nl } from "date-fns/locale";
 import { toast } from "sonner";
 import { buildPeechoPdf, getPeechoPrintPageCount, PEECHO_FORMATS, PEECHO_MIN_PAGES, type PeechoFormat } from "@/lib/peechoExport";
 import { assertPeechoPdfReachable, createPeechoReference, getPeechoScriptUrl } from "@/lib/peecho";
+import { usePageMeta } from "@/hooks/usePageMeta";
 
 type StepLayout = "auto" | "1-full" | "2-side" | "2-stack" | "grid";
 type CoverTextPos = "bottom" | "top" | "center";
@@ -129,6 +130,18 @@ const Photobook = () => {
   const [photobookOrders, setPhotobookOrders] = useState<PhotobookOrder[]>([]);
   const [stepBudgetMap, setStepBudgetMap] = useState<Map<string, number>>(new Map());
   const PEECHO_SCRIPT_URL = getPeechoScriptUrl();
+  usePageMeta({
+    title: trip?.title ? `Bouwboek van ${trip.title} — Buildy` : "Bouwboek maken — Buildy",
+    description: "Bekijk en bestel het Bouwboek van deze verbouwing met foto's, fases en mijlpalen.",
+    path: id ? `/trip/${id}/photobook` : undefined,
+    noIndex: true,
+  });
+  const defaultCoverMedia = useMemo(() => {
+    if (trip?.cover_image_url) return { media_url: trip.cover_image_url, media_type: "image" };
+    return steps
+      .flatMap((s) => s.step_media || [])
+      .find((m: any) => m.media_type !== "video" && m.media_type !== "pdf") ?? null;
+  }, [steps, trip?.cover_image_url]);
 
   const handleGeneratePeechoPdf = async () => {
     if (!trip || !id) return;
@@ -287,11 +300,14 @@ const Photobook = () => {
     const allMedia = steps.flatMap((s) => (s.step_media || []).map((m: any) => ({ ...m, step: s })));
     const coverImage = settings.cover_media_id
       ? allMedia.find((m) => m.id === settings.cover_media_id)
-      : trip.cover_image_url
-      ? { media_url: trip.cover_image_url }
-      : null;
+      : defaultCoverMedia;
     const coverTitle = settings.cover_title || trip.title;
     const coverSubtitle = settings.cover_subtitle ?? trip.address ?? "";
+    const coverTitleSize = coverTitle.length > 36
+      ? "text-3xl"
+      : coverTitle.length > 22
+      ? "text-4xl"
+      : "text-4xl md:text-5xl";
 
     const coverTextPos: CoverTextPos = (settings.chapter_overrides["__cover_text_pos__"] as CoverTextPos) || "bottom";
 
@@ -325,9 +341,9 @@ const Photobook = () => {
             {trip.project_type && (
               <p className="text-[8px] uppercase tracking-[0.35em] text-white/70 mb-2 font-bold">{trip.project_type}</p>
             )}
-            <h1 className="text-5xl font-bold mb-3 font-serif drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)] [overflow-wrap:anywhere] line-clamp-3">{coverTitle}</h1>
+            <h1 className={`${coverTitleSize} font-bold leading-[0.95] mb-3 font-serif drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)] [overflow-wrap:break-word] [hyphens:none] line-clamp-3`}>{coverTitle}</h1>
             {coverSubtitle && (
-              <p className="text-sm mb-1 drop-shadow-[0_1px_4px_rgba(0,0,0,0.6)] [overflow-wrap:anywhere] line-clamp-2">{coverSubtitle}</p>
+              <p className="text-sm mb-1 drop-shadow-[0_1px_4px_rgba(0,0,0,0.6)] [overflow-wrap:break-word] line-clamp-2">{coverSubtitle}</p>
             )}
             {trip.start_date && trip.end_date && (
               <p className="text-sm drop-shadow-[0_1px_4px_rgba(0,0,0,0.6)]">
@@ -556,7 +572,7 @@ const Photobook = () => {
     });
 
     return list;
-  }, [trip, steps, settings, excludedMedia, excludedSteps, editing, stepBudgetMap]);
+  }, [trip, steps, settings, excludedMedia, excludedSteps, editing, stepBudgetMap, defaultCoverMedia]);
 
   // Build page spreads: spread 0 = [null, cover], spread n = [pages[2n-1], pages[2n]]
   const spreads = useMemo(() => {
@@ -658,8 +674,8 @@ const Photobook = () => {
                   className={`flex-shrink-0 w-14 h-14 rounded border-2 overflow-hidden relative ${!settings.cover_media_id ? "border-primary" : "border-transparent"}`}
                   title="Standaard: projectcover"
                 >
-                  {trip.cover_image_url ? (
-                    <img src={trip.cover_image_url} alt="" className="w-full h-full object-cover" />
+                  {defaultCoverMedia ? (
+                    <img src={defaultCoverMedia.media_url} alt="" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full bg-muted flex items-center justify-center text-[9px]">Geen</div>
                   )}

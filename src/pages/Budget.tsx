@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { ArrowLeft, Clock, Hammer, Briefcase, Users, EyeOff, Loader2, Pencil, Check } from "lucide-react";
 import EmptyState from "@/components/EmptyState";
 import { toast } from "sonner";
+import { usePageMeta } from "@/hooks/usePageMeta";
 
 const fmtEUR = (n: number) =>
   new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
@@ -27,6 +28,12 @@ const Budget = () => {
   const [loading, setLoading] = useState(true);
   const [editingBudget, setEditingBudget] = useState(false);
   const [budgetDraft, setBudgetDraft] = useState("");
+  usePageMeta({
+    title: trip?.title ? `Budget van ${trip.title} — Buildy` : "Budget — Buildy",
+    description: "Bekijk het verbouwingsbudget, kosten per fase en uren van dit Buildy-project.",
+    path: id ? `/trip/${id}/budget` : undefined,
+    noIndex: true,
+  });
 
   useEffect(() => {
     if (!id) return;

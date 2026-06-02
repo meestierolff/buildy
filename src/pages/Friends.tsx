@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Search, Users, Loader2, UserPlus, UserCheck, MapPin, Hammer } from "lucide-react";
 import EmptyState from "@/components/EmptyState";
 import { toast } from "sonner";
+import { usePageMeta } from "@/hooks/usePageMeta";
 
 interface ProfileResult {
   user_id: string;
@@ -23,6 +24,11 @@ const MAX_RESULTS = 200;
 
 const Friends = () => {
   const { user } = useAuth();
+  usePageMeta({
+    title: "Vrienden ontdekken — Buildy",
+    description: "Ontdek andere bouwers, volg renovatieprojecten en krijg inspiratie voor je eigen verbouwing.",
+    path: "/vrienden",
+  });
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [results, setResults] = useState<ProfileResult[]>([]);

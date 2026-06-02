@@ -4,14 +4,36 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { usePageMeta } from "@/hooks/usePageMeta";
 
 const Auth = () => {
+  usePageMeta({
+    title: "Inloggen of registreren — Buildy",
+    description: "Log in op Buildy of maak een account om je verbouwing bij te houden en later een Bouwboek te maken.",
+    path: "/auth",
+    noIndex: true,
+  });
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  const handleMagicLink = async () => {
+    if (!email.trim()) {
+      toast.error("Vul eerst je e-mailadres in.");
+      return;
+    }
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.origin },
+    });
+    if (error) toast.error("Kon geen magic link sturen. Controleer je e-mailadres.");
+    else toast.success("Magic link verstuurd. Check je inbox om in te loggen.");
+    setLoading(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,6 +88,17 @@ const Auth = () => {
           >
             {loading ? "Even wachten…" : isLogin ? "Inloggen" : "Account aanmaken"}
           </Button>
+          {isLogin && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={loading}
+              onClick={handleMagicLink}
+              className="w-full h-11 rounded-full text-[11px] font-bold uppercase tracking-[0.15em] border-border"
+            >
+              Stuur magic link
+            </Button>
+          )}
         </form>
 
         <p className="text-center text-sm text-muted-foreground mt-8">
