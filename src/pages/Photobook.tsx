@@ -458,12 +458,12 @@ const Photobook = () => {
             key: `${step.id}-0`,
             meta: { stepId: step.id, firstStep: true },
             node: (
-              <div className="h-full flex flex-col bg-card">
-                <div className="flex-1 flex flex-col justify-center p-10 md:p-16">
+              <div className="h-full grid grid-rows-[minmax(0,1fr)_auto] bg-card overflow-hidden">
+                <div className="min-h-0 flex flex-col justify-center overflow-hidden p-10 md:p-16">
                   <p className="text-xs uppercase tracking-widest text-accent mb-1 font-bold">{chapterTitle}</p>
                   <p className="text-xs text-muted-foreground mb-2">{format(new Date(step.step_date), "d MMM yyyy", { locale: nl })}</p>
                   <h2 className="text-3xl font-bold font-serif mb-3 [overflow-wrap:anywhere] line-clamp-2">{step.location_name}</h2>
-                  <p className="text-base leading-relaxed text-foreground/80 italic whitespace-pre-line [overflow-wrap:anywhere] line-clamp-[10]">"{step.description}"</p>
+                  <p className="text-base leading-relaxed text-foreground/80 italic whitespace-pre-line [overflow-wrap:anywhere] line-clamp-[8]">"{step.description}"</p>
                 </div>
                 <StepPageFooter step={step} stepIdx={stepIdx} totalSteps={totalVisible} cumulativeCost={cumulativeCost} budgetTotal={budgetTotal} />
               </div>
@@ -491,17 +491,15 @@ const Photobook = () => {
               key: pageKey,
               meta: { stepId: step.id, firstStep: pageIdx === 0 },
               node: (
-                <div className="h-full flex flex-col bg-[#f8f7f4] p-[5%]">
-                  <div className="flex-[3] min-h-0 overflow-hidden bg-[#f0efe9]">
-                    <img src={batch[0].media_url} alt="" loading="lazy" className="w-full h-full object-contain" />
-                  </div>
+                <div className="h-full grid grid-rows-[minmax(0,1fr)_auto_auto] bg-card overflow-hidden p-[5%]">
+                  <PhotoFrame src={batch[0].media_url} className="min-h-0" />
                   {isFirst && (
-                    <div className="flex-[1] min-h-0 pt-3 overflow-hidden">
-                      <p className="text-[8px] uppercase tracking-[0.2em] text-accent font-bold mb-0.5">{chapterTitle}</p>
-                      <p className="text-[8px] text-muted-foreground mb-1">{format(new Date(step.step_date), "d MMM yyyy", { locale: nl })}</p>
-                      <h2 className="text-lg font-bold font-serif leading-tight mb-1 [overflow-wrap:anywhere] line-clamp-2">{step.location_name}</h2>
-                      {hasDescription && <p className="text-[10px] text-foreground/70 italic leading-snug [overflow-wrap:anywhere] line-clamp-3">"{step.description}"</p>}
-                    </div>
+                    <StepCaption
+                      chapterTitle={chapterTitle}
+                      date={step.step_date}
+                      locationName={step.location_name}
+                      description={hasDescription ? step.description : null}
+                    />
                   )}
                   <StepPageFooter step={step} stepIdx={stepIdx} totalSteps={totalVisible} cumulativeCost={cumulativeCost} budgetTotal={budgetTotal} />
                 </div>
@@ -520,27 +518,29 @@ const Photobook = () => {
               key: pageKey,
               meta: { stepId: step.id, firstStep: pageIdx === 0 },
               node: (
-                <div className="h-full flex flex-col bg-card overflow-hidden p-[5%]">
-                  <div className={`flex-1 overflow-hidden grid min-h-0 gap-[3%] ${gridClass}`}>
+                <div className="h-full grid grid-rows-[minmax(0,1fr)_auto_auto] bg-card overflow-hidden p-[5%]">
+                  <div className={`min-h-0 overflow-hidden grid gap-[3%] ${gridClass}`}>
                     {layout === "auto" && batch.length === 3 ? (
                       <>
-                        <img src={batch[0].media_url} loading="lazy" alt="" className="w-full h-full object-contain bg-[#f0efe9] min-h-0 min-w-0 block row-span-2" />
+                        <PhotoFrame src={batch[0].media_url} className="row-span-2" />
                         {batch.slice(1).map((m: any) => (
-                          <img key={m.id} src={m.media_url} loading="lazy" alt="" className="w-full h-full object-contain bg-[#f0efe9] min-h-0 min-w-0 block" />
+                          <PhotoFrame key={m.id} src={m.media_url} />
                         ))}
                       </>
                     ) : (
                       batch.map((m: any) => (
-                        <img key={m.id} src={m.media_url} loading="lazy" alt="" className="w-full h-full object-contain bg-[#f0efe9] min-h-0 min-w-0 block" />
+                        <PhotoFrame key={m.id} src={m.media_url} />
                       ))
                     )}
                   </div>
                   {isFirst && (
-                    <div className="pt-3">
-                      <p className="text-[10px] uppercase tracking-widest text-accent mb-0.5 font-bold">{chapterTitle}</p>
-                      <h2 className="text-base font-bold font-serif leading-tight [overflow-wrap:anywhere] line-clamp-2">{step.location_name}</h2>
-                      {hasDescription && <p className="text-xs text-foreground/70 mt-0.5 italic [overflow-wrap:anywhere] line-clamp-2">"{step.description}"</p>}
-                    </div>
+                    <StepCaption
+                      chapterTitle={chapterTitle}
+                      date={step.step_date}
+                      locationName={step.location_name}
+                      description={hasDescription ? step.description : null}
+                      compact
+                    />
                   )}
                   <StepPageFooter step={step} stepIdx={stepIdx} totalSteps={totalVisible} cumulativeCost={cumulativeCost} budgetTotal={budgetTotal} />
                 </div>
