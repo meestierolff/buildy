@@ -146,7 +146,6 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
         floorplan_x: pinX,
         floorplan_y: pinY,
         floorplan_id: pinX != null ? (selectedFloorId === "__legacy__" ? null : selectedFloorId) : null,
-        floorplan_id: pinX != null ? (selectedFloorId === "__legacy__" ? null : selectedFloorId) : null,
       })
       .eq("id", step.id);
 
@@ -169,6 +168,16 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
       await supabase.from("step_contractor_info").delete().eq("step_id", step.id);
     }
 
+    const hasBudget = cost !== "" || hoursSpent !== "" || workType !== "" ||
+      diyCost !== "" || diyHours !== "" || outsourcedCost !== "" || outsourcedHours !== "";
+    if (hasBudget) {
+      const isMixed = workType === "mixed";
+      const totalCost = isMixed
+        ? (diyCost !== "" || outsourcedCost !== "" ? Number(diyCost || 0) + Number(outsourcedCost || 0) : null)
+        : (cost === "" ? null : Number(cost));
+      const totalHours = isMixed
+        ? (diyHours !== "" || outsourcedHours !== "" ? Number(diyHours || 0) + Number(outsourcedHours || 0) : null)
+        : (hoursSpent === "" ? null : Number(hoursSpent));
       await supabase.from("step_budget").upsert({
         step_id: step.id,
         trip_id: step.trip_id,
@@ -183,6 +192,7 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
     } else {
       await supabase.from("step_budget").delete().eq("step_id", step.id);
     }
+
 
     // Persist reorder of existing media
     await Promise.all(
