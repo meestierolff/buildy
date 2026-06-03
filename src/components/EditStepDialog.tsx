@@ -81,7 +81,19 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
           setOutsourcedHours(data.outsourced_hours != null ? String(data.outsourced_hours) : "");
         }
       });
+    supabase
+      .from("step_contractor_info")
+      .select("contractor_name, contractor_notes")
+      .eq("step_id", step.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setContractorName(data.contractor_name || "");
+          setContractorNotes(data.contractor_notes || "");
+        }
+      });
   }, [step.trip_id, step.id, step.floorplan_id]);
+
 
   const addCustomPhase = async (name: string) => {
     const next = Array.from(new Set([...customPhases, name]));
