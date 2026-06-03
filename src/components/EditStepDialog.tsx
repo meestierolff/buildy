@@ -33,8 +33,9 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
   const [diyHours, setDiyHours] = useState<string>("");
   const [outsourcedCost, setOutsourcedCost] = useState<string>("");
   const [outsourcedHours, setOutsourcedHours] = useState<string>("");
-  const [contractorName, setContractorName] = useState<string>(step.contractor_name || "");
-  const [contractorNotes, setContractorNotes] = useState<string>(step.contractor_notes || "");
+  const [contractorName, setContractorName] = useState<string>("");
+  const [contractorNotes, setContractorNotes] = useState<string>("");
+
   const [existingMedia, setExistingMedia] = useState<any[]>(
     [...(step.step_media || [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
   );
