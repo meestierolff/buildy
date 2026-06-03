@@ -105,11 +105,15 @@ const TripDetail = () => {
       if (stepIds.length === 0) {
         setSteps([]);
       } else {
-        const [likesRes, commentsRes, userLikesRes] = await Promise.all([
+        const isOwner = !!user && user.id === (tripData as any)?.user_id;
+        const [likesRes, commentsRes, userLikesRes, contractorRes] = await Promise.all([
           supabase.from("likes").select("step_id").in("step_id", stepIds),
           supabase.from("comments").select("step_id").in("step_id", stepIds),
           user
             ? supabase.from("likes").select("step_id").eq("user_id", user.id).in("step_id", stepIds)
+            : Promise.resolve({ data: [] }),
+          isOwner
+            ? supabase.from("step_contractor_info").select("step_id, contractor_name, contractor_notes").in("step_id", stepIds)
             : Promise.resolve({ data: [] }),
         ]);
 
@@ -124,13 +128,20 @@ const TripDetail = () => {
         });
 
         const likedByUser = new Set((userLikesRes.data || []).map((like: any) => like.step_id));
+        const contractorMap = new Map<string, { contractor_name: string | null; contractor_notes: string | null }>();
+        ((contractorRes as any).data || []).forEach((c: any) => {
+          contractorMap.set(c.step_id, { contractor_name: c.contractor_name, contractor_notes: c.contractor_notes });
+        });
 
         setSteps(stepsData.map((step) => ({
           ...step,
           like_count: likeCounts.get(step.id) || 0,
           comment_count: commentCounts.get(step.id) || 0,
           user_liked: likedByUser.has(step.id),
+          contractor_name: contractorMap.get(step.id)?.contractor_name ?? null,
+          contractor_notes: contractorMap.get(step.id)?.contractor_notes ?? null,
         })));
+
       }
     }
 
