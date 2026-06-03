@@ -77,8 +77,6 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
         is_milestone: isMilestone,
         description: description || null,
         step_date: stepDate,
-        contractor_name: contractorName.trim() || null,
-        contractor_notes: contractorNotes.trim() || null,
       })
       .select()
       .single();
@@ -89,6 +87,16 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
       setLoading(false);
       return;
     }
+
+    if (contractorName.trim() || contractorNotes.trim()) {
+      await supabase.from("step_contractor_info").insert({
+        step_id: step.id,
+        trip_id: tripId,
+        contractor_name: contractorName.trim() || null,
+        contractor_notes: contractorNotes.trim() || null,
+      });
+    }
+
 
     if (cost !== "" || hoursSpent !== "" || workType ||
         diyCost !== "" || diyHours !== "" || outsourcedCost !== "" || outsourcedHours !== "") {

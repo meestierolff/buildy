@@ -33,8 +33,9 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
   const [diyHours, setDiyHours] = useState<string>("");
   const [outsourcedCost, setOutsourcedCost] = useState<string>("");
   const [outsourcedHours, setOutsourcedHours] = useState<string>("");
-  const [contractorName, setContractorName] = useState<string>(step.contractor_name || "");
-  const [contractorNotes, setContractorNotes] = useState<string>(step.contractor_notes || "");
+  const [contractorName, setContractorName] = useState<string>("");
+  const [contractorNotes, setContractorNotes] = useState<string>("");
+
   const [existingMedia, setExistingMedia] = useState<any[]>(
     [...(step.step_media || [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
   );
@@ -80,7 +81,19 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
           setOutsourcedHours(data.outsourced_hours != null ? String(data.outsourced_hours) : "");
         }
       });
+    supabase
+      .from("step_contractor_info")
+      .select("contractor_name, contractor_notes")
+      .eq("step_id", step.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setContractorName(data.contractor_name || "");
+          setContractorNotes(data.contractor_notes || "");
+        }
+      });
   }, [step.trip_id, step.id, step.floorplan_id]);
+
 
   const addCustomPhase = async (name: string) => {
     const next = Array.from(new Set([...customPhases, name]));
@@ -133,8 +146,6 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
         floorplan_x: pinX,
         floorplan_y: pinY,
         floorplan_id: pinX != null ? (selectedFloorId === "__legacy__" ? null : selectedFloorId) : null,
-        contractor_name: contractorName.trim() || null,
-        contractor_notes: contractorNotes.trim() || null,
       })
       .eq("id", step.id);
 
@@ -143,6 +154,18 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
       toast.error("Kon update niet opslaan. Probeer het opnieuw.");
       setLoading(false);
       return;
+    }
+
+    if (contractorName.trim() || contractorNotes.trim()) {
+      await supabase.from("step_contractor_info").upsert({
+        step_id: step.id,
+        trip_id: step.trip_id,
+        contractor_name: contractorName.trim() || null,
+        contractor_notes: contractorNotes.trim() || null,
+        updated_at: new Date().toISOString(),
+      });
+    } else {
+      await supabase.from("step_contractor_info").delete().eq("step_id", step.id);
     }
 
     const hasBudget = cost !== "" || hoursSpent !== "" || workType !== "" ||
@@ -169,6 +192,7 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
     } else {
       await supabase.from("step_budget").delete().eq("step_id", step.id);
     }
+
 
     // Persist reorder of existing media
     await Promise.all(

@@ -413,6 +413,30 @@ export type Database = {
           },
         ]
       }
+      step_contractor_info: {
+        Row: {
+          contractor_name: string | null
+          contractor_notes: string | null
+          step_id: string
+          trip_id: string
+          updated_at: string
+        }
+        Insert: {
+          contractor_name?: string | null
+          contractor_notes?: string | null
+          step_id: string
+          trip_id: string
+          updated_at?: string
+        }
+        Update: {
+          contractor_name?: string | null
+          contractor_notes?: string | null
+          step_id?: string
+          trip_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       step_media: {
         Row: {
           compare_role: string | null
@@ -456,8 +480,6 @@ export type Database = {
       }
       steps: {
         Row: {
-          contractor_name: string | null
-          contractor_notes: string | null
           country: string | null
           created_at: string
           description: string | null
@@ -479,8 +501,6 @@ export type Database = {
           user_id: string
         }
         Insert: {
-          contractor_name?: string | null
-          contractor_notes?: string | null
           country?: string | null
           created_at?: string
           description?: string | null
@@ -502,8 +522,6 @@ export type Database = {
           user_id: string
         }
         Update: {
-          contractor_name?: string | null
-          contractor_notes?: string | null
           country?: string | null
           created_at?: string
           description?: string | null
