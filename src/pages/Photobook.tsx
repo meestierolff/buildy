@@ -476,8 +476,8 @@ const Photobook = () => {
             key: `${step.id}-text-${list.length}`,
             meta: { stepId: step.id, firstStep },
             node: (
-              <div className="h-full grid grid-rows-[minmax(0,1fr)_auto] bg-card overflow-hidden">
-                <div className="min-h-0 flex flex-col justify-center overflow-hidden p-10 md:p-16">
+              <div className="h-full bg-card overflow-hidden">
+                <div className="h-full flex flex-col justify-center overflow-hidden p-10 md:p-16">
                   <p className="text-xs uppercase tracking-widest text-accent mb-1 font-bold">{chapterTitle}</p>
                   <p className="text-xs text-muted-foreground mb-2">{format(new Date(step.step_date), "d MMM yyyy", { locale: nl })}</p>
                   {step.location_name && (
@@ -485,7 +485,6 @@ const Photobook = () => {
                   )}
                   <p className="text-base leading-relaxed text-foreground/80 italic whitespace-pre-line [overflow-wrap:anywhere] line-clamp-[24]">"{step.description}"</p>
                 </div>
-                <StepPageFooter step={step} stepIdx={stepIdx} totalSteps={totalVisible} cumulativeCost={cumulativeCost} budgetTotal={budgetTotal} />
               </div>
             ),
           });
