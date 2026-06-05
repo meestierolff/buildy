@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -17,6 +17,28 @@ import { usePageMeta } from "@/hooks/usePageMeta";
 
 type StepLayout = "auto" | "1-full" | "2-side" | "2-stack" | "grid";
 type CoverTextPos = "bottom" | "top" | "center";
+
+const PRINT_PAGE_WIDTH = 600;
+const PRINT_PAGE_HEIGHT = 400;
+
+const sortMediaByTimelineOrder = <T extends { sort_order?: number | null; created_at?: string | null }>(media: T[]) =>
+  [...media].sort((a, b) => {
+    const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0);
+    if (orderDiff !== 0) return orderDiff;
+    return (a.created_at ?? "").localeCompare(b.created_at ?? "");
+  });
+
+const getPageLayout = (
+  overrides: Record<string, StepLayout>,
+  pageKey: string,
+  stepId: string,
+): StepLayout => overrides[pageKey] ?? overrides[stepId] ?? "auto";
+
+const getPhotobookBatchSize = (layout: StepLayout, remainingPhotos: number) => {
+  if (layout === "1-full") return 1;
+  if (layout === "2-side" || layout === "2-stack") return Math.min(2, remainingPhotos);
+  return Math.min(4, remainingPhotos);
+};
 
 interface PhotobookSettings {
   cover_title: string | null;
@@ -46,7 +68,7 @@ const PHOTOBOOK_ORDER_SELECT = "id, merchant_reference, peecho_id, format, page_
 const STEP_LAYOUTS: { id: StepLayout; label: string; icon: React.ReactNode }[] = [
   {
     id: "auto",
-    label: "Auto",
+    label: "Buildy",
     icon: (
       <div className="w-9 h-7 border-2 border-current rounded-sm p-0.5 grid grid-cols-2 grid-rows-2 gap-0.5 opacity-80">
         <div className="bg-current/40 rounded-[1px] col-span-2" />
@@ -307,7 +329,7 @@ const Photobook = () => {
       ? "text-3xl"
       : coverTitle.length > 22
       ? "text-4xl"
-      : "text-4xl md:text-5xl";
+      : "text-5xl";
 
     const coverTextPos: CoverTextPos = (settings.chapter_overrides["__cover_text_pos__"] as CoverTextPos) || "bottom";
 
@@ -450,12 +472,13 @@ const Photobook = () => {
 
       for (const step of grouped.get(phase)!) {
         // Apply custom photo order, then filter out excluded media
-        const allStepPhotos = (step.step_media || []).filter((m: any) => m.media_type !== "video");
+        const allStepPhotos = sortMediaByTimelineOrder((step.step_media || []).filter((m: any) => m.media_type !== "video" && m.media_type !== "pdf"));
         const customOrder = settings.step_photo_order[step.id] as string[] | undefined;
         const orderedPhotos = customOrder?.length
           ? [...allStepPhotos].sort((a: any, b: any) => {
               const ai = customOrder.indexOf(a.id);
               const bi = customOrder.indexOf(b.id);
+              if (ai === -1 && bi === -1) return (a.sort_order ?? 0) - (b.sort_order ?? 0);
               return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
             })
           : allStepPhotos;
@@ -469,15 +492,13 @@ const Photobook = () => {
 
         const stepIdx = stepIdxMap.get(step.id) ?? 0;
         const cumulativeCost = cumulativeCostMap.get(step.id) ?? 0;
-        const layout: StepLayout = (settings.step_layout_overrides[step.id] as StepLayout) ?? "auto";
-
         const pushTextPage = (firstStep: boolean) => {
           list.push({
             key: `${step.id}-text-${list.length}`,
             meta: { stepId: step.id, firstStep },
             node: (
               <div className="h-full bg-card overflow-hidden">
-                <div className="h-full flex flex-col justify-center overflow-hidden p-10 md:p-16">
+                <div className="h-full flex flex-col justify-center overflow-hidden p-16">
                   <p className="text-xs uppercase tracking-widest text-accent mb-1 font-bold">{chapterTitle}</p>
                   <p className="text-xs text-muted-foreground mb-2">{format(new Date(step.step_date), "d MMM yyyy", { locale: nl })}</p>
                   {step.location_name && (
@@ -496,17 +517,14 @@ const Photobook = () => {
           continue;
         }
 
-        // Determine batch size from layout
-        const batchSize =
-          layout === "1-full" ? 1
-          : layout === "2-side" || layout === "2-stack" ? 2
-          : 4; // "grid" or "auto" → 4
-
         let pageIdx = 0;
-        for (let i = 0; i < photos.length; i += batchSize) {
-          const batch = photos.slice(i, i + batchSize);
+        let photoIdx = 0;
+        while (photoIdx < photos.length) {
           const isFirst = pageIdx === 0;
           const pageKey = `${step.id}-${pageIdx}`;
+          const layout = getPageLayout(settings.step_layout_overrides, pageKey, step.id);
+          const batchSize = getPhotobookBatchSize(layout, photos.length - photoIdx);
+          const batch = photos.slice(photoIdx, photoIdx + batchSize);
           const useFullBleed = layout === "1-full" || batch.length === 1;
 
           if (useFullBleed) {
@@ -530,12 +548,13 @@ const Photobook = () => {
             });
           } else {
             // Grid layout — with gap between photos and printer-safe margin
-            const gridClass =
-              layout === "2-side" ? "grid-cols-2 grid-rows-1"
-              : layout === "2-stack" ? "grid-cols-1 grid-rows-2"
-              : layout === "grid" ? "grid-cols-2 grid-rows-[1fr_1fr]"
-              : batch.length === 3 ? "grid-cols-[1.35fr_1fr] grid-rows-2"
-              : batch.length === 2 ? "grid-cols-2 grid-rows-1" : "grid-cols-2 grid-rows-[1fr_1fr]"; // auto
+              const gridClass =
+                layout === "2-side" ? "grid-cols-2 grid-rows-1"
+                : layout === "2-stack" ? "grid-cols-1 grid-rows-2"
+                : layout === "grid" ? "grid-cols-2 grid-rows-[1fr_1fr]"
+                : batch.length === 3 ? "grid-cols-[1.35fr_1fr] grid-rows-2"
+                : batch.length === 4 ? "grid-cols-4 grid-rows-1"
+                : batch.length === 2 ? "grid-cols-2 grid-rows-1" : "grid-cols-2 grid-rows-[1fr_1fr]"; // auto
 
             list.push({
               key: pageKey,
@@ -570,6 +589,7 @@ const Photobook = () => {
             });
           }
 
+          photoIdx += batchSize;
           pageIdx++;
         }
 
@@ -759,68 +779,107 @@ const Photobook = () => {
       )}
 
       {editing && !overviewMode && !isCover && (() => {
-        // On mobile: use the current single page's stepId; on desktop: use both spread pages
-        const currentStep = pages[pageIdx]?.meta?.stepId;
-        const visibleStepIds = Array.from(new Set(
-          [currentStep, leftPage?.meta?.stepId, rightPage?.meta?.stepId].filter(Boolean) as string[]
-        ));
-        if (visibleStepIds.length === 0) return null;
-        return (
-          <div className="container pb-3 space-y-2">
-            {visibleStepIds.map((stepId) => {
-              const step = steps.find((s: any) => s.id === stepId);
-              if (!step) return null;
-              const currentLayout: StepLayout = (settings.step_layout_overrides[stepId] as StepLayout) ?? "auto";
-              const isHidden = excludedSteps.has(stepId);
-              const photos = (step.step_media || []).filter((m: any) => m.media_type !== "video");
-              return (
-                <div key={stepId} className="rounded-lg border bg-card p-3 space-y-3">
-                  {/* Step header + include/exclude toggle */}
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-semibold truncate min-w-0">{step.location_name}</p>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-[10px] text-muted-foreground">{isHidden ? "Verborgen" : "In fotoboek"}</span>
-                      <Switch checked={!isHidden} onCheckedChange={() => toggleStep(stepId)} />
-                    </div>
-                  </div>
+        const renderControls = (visiblePages: (typeof pages[0] | null | undefined)[], className: string) => {
+          const pageEntries = visiblePages
+            .filter((page): page is typeof pages[0] => !!page?.meta?.stepId)
+            .filter((page, index, list) => list.findIndex((item) => item.key === page.key) === index)
+            .map((page) => ({
+              page,
+              pageNumber: pages.findIndex((item) => item.key === page.key) + 1,
+              step: steps.find((step: any) => step.id === page.meta?.stepId),
+            }))
+            .filter((entry) => !!entry.step);
 
-                  {/* Layout selector */}
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">Lay-out</p>
+          if (pageEntries.length === 0) return null;
+
+          const visibleStepIds = Array.from(new Set(pageEntries.map((entry) => entry.step.id)));
+
+          return (
+            <div className={`container pb-3 space-y-2 ${className}`}>
+              {visibleStepIds.map((stepId) => {
+                const step = steps.find((s: any) => s.id === stepId);
+                if (!step) return null;
+                const isHidden = excludedSteps.has(stepId);
+                const timelinePhotos = sortMediaByTimelineOrder((step.step_media || []).filter((m: any) => m.media_type !== "video" && m.media_type !== "pdf"));
+                const customOrder = settings.step_photo_order[stepId];
+                const photos = customOrder?.length
+                  ? [...timelinePhotos].sort((a: any, b: any) => {
+                      const ai = customOrder.indexOf(a.id);
+                      const bi = customOrder.indexOf(b.id);
+                      if (ai === -1 && bi === -1) return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+                      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+                    })
+                  : timelinePhotos;
+                return (
+                  <div key={stepId} className="rounded-lg border bg-card p-3 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold truncate">{step.location_name}</p>
+                        <p className="text-[10px] text-muted-foreground">Volgorde geldt als basis voor alle pagina's van deze update.</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[10px] text-muted-foreground">{isHidden ? "Verborgen" : "In fotoboek"}</span>
+                        <Switch checked={!isHidden} onCheckedChange={() => toggleStep(stepId)} />
+                      </div>
+                    </div>
+
+                    {photos.length > 0 && (
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
+                          Foto's — sleep om fotoboekvolgorde te wijzigen · klik om te verbergen
+                        </p>
+                        <PhotoManagePanel
+                          stepId={stepId}
+                          photos={photos}
+                          excludedMedia={excludedMedia}
+                          onToggleMedia={toggleMedia}
+                          onReorder={(sid, newOrder) => upsertSettings({ step_photo_order: { ...settings.step_photo_order, [sid]: newOrder } })}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {pageEntries.map(({ page, pageNumber, step }) => {
+                const currentLayout = getPageLayout(settings.step_layout_overrides, page.key, step.id);
+                const hasPageOverride = !!settings.step_layout_overrides[page.key];
+                return (
+                  <div key={page.key} className="rounded-lg border bg-card p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Lay-out pagina {pageNumber}</p>
+                        <p className="text-xs font-medium truncate">{step.location_name}</p>
+                      </div>
+                      {!hasPageOverride && settings.step_layout_overrides[step.id] && (
+                        <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">oude update-instelling</span>
+                      )}
+                    </div>
                     <div className="flex gap-2 flex-wrap">
-                      {STEP_LAYOUTS.map((l) => (
+                      {STEP_LAYOUTS.map((layoutOption) => (
                         <button
-                          key={l.id}
-                          onClick={() => upsertSettings({ step_layout_overrides: { ...settings.step_layout_overrides, [stepId]: l.id } })}
-                          title={l.label}
-                          className={`flex flex-col items-center gap-1 p-2 rounded border-2 transition ${currentLayout === l.id ? "border-primary bg-primary/5" : "border-transparent hover:border-muted-foreground/30"}`}
+                          key={layoutOption.id}
+                          onClick={() => upsertSettings({ step_layout_overrides: { ...settings.step_layout_overrides, [page.key]: layoutOption.id } })}
+                          title={layoutOption.label}
+                          className={`flex flex-col items-center gap-1 p-2 rounded border-2 transition ${currentLayout === layoutOption.id ? "border-primary bg-primary/5" : "border-transparent hover:border-muted-foreground/30"}`}
                         >
-                          {l.icon}
-                          <span className="text-[10px] text-muted-foreground">{l.label}</span>
+                          {layoutOption.icon}
+                          <span className="text-[10px] text-muted-foreground">{layoutOption.label}</span>
                         </button>
                       ))}
                     </div>
                   </div>
+                );
+              })}
+            </div>
+          );
+        };
 
-                  {/* Photo order/exclude — moved OUT of page overlay */}
-                  {photos.length > 0 && (
-                    <div>
-                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
-                        Foto's — sleep om volgorde te wijzigen · klik om te verbergen
-                      </p>
-                      <PhotoManagePanel
-                        stepId={stepId}
-                        photos={photos}
-                        excludedMedia={excludedMedia}
-                        onToggleMedia={toggleMedia}
-                        onReorder={(sid, newOrder) => upsertSettings({ step_photo_order: { ...settings.step_photo_order, [sid]: newOrder } })}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+        return (
+          <>
+            {renderControls([pages[pageIdx]], "md:hidden")}
+            {renderControls([leftPage, rightPage], "hidden md:block")}
+          </>
         );
       })()}
 
@@ -845,12 +904,12 @@ const Photobook = () => {
                     >
                       <div
                         className="rounded overflow-hidden border-2 border-transparent group-hover:border-white/50 transition relative bg-[#f8f7f4]"
-                        style={{ width: 150, height: 100 }}
+                        style={{ width: PRINT_PAGE_WIDTH / 4, height: PRINT_PAGE_HEIGHT / 4 }}
                       >
                         <div
                           style={{
-                            width: 600,
-                            height: 400,
+                            width: PRINT_PAGE_WIDTH,
+                            height: PRINT_PAGE_HEIGHT,
                             transformOrigin: "top left",
                             transform: "scale(0.25)",
                             position: "absolute",
@@ -900,26 +959,23 @@ const Photobook = () => {
 
         {/* ── MOBILE: single page portrait (shows exactly one printed page) ── */}
         <div className="md:hidden flex-1 flex flex-col items-center justify-center py-6 px-4">
-          <div
+          <PrintPagePreview
             className="mx-auto relative rounded-sm overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.8)] bg-[#f8f7f4]"
             style={{ width: "min(100%, calc((100vh - 220px) * 3 / 2))", aspectRatio: "3/2" }}
+            overlay={editing && pages[pageIdx]?.meta?.chapter ? (
+              <ChapterEditOverlay
+                phase={pages[pageIdx].meta!.chapter!}
+                value={settings.chapter_overrides[pages[pageIdx].meta!.chapter!] || ""}
+                onChange={(v) => upsertSettings({ chapter_overrides: { ...settings.chapter_overrides, ...(v ? { [pages[pageIdx].meta!.chapter!]: v } : {}) } })}
+              />
+            ) : undefined}
           >
-
             {pages[pageIdx] ? (
-              <div className="absolute inset-0" data-photobook-page>
-                {pages[pageIdx].node}
-                {editing && pages[pageIdx].meta?.chapter && (
-                  <ChapterEditOverlay
-                    phase={pages[pageIdx].meta!.chapter!}
-                    value={settings.chapter_overrides[pages[pageIdx].meta!.chapter!] || ""}
-                    onChange={(v) => upsertSettings({ chapter_overrides: { ...settings.chapter_overrides, ...(v ? { [pages[pageIdx].meta!.chapter!]: v } : {}) } })}
-                  />
-                )}
-              </div>
+              pages[pageIdx].node
             ) : (
               <div className="w-full h-full bg-[#e8e6df]" />
             )}
-          </div>
+          </PrintPagePreview>
           {/* Mobile nav */}
           <div className="flex items-center gap-3 mt-5">
             <button aria-label="Eerste pagina" title="Eerste pagina" onClick={() => setPageIdx(0)} disabled={pageIdx === 0} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center text-white transition"><ChevronsLeft className="h-4 w-4" /></button>
@@ -940,25 +996,23 @@ const Photobook = () => {
           <div className="relative h-full rounded-sm overflow-hidden shadow-[0_30px_80px_rgba(0,0,0,0.85)]">
             <div className="flex h-full">
               {/* Left page */}
-              <div
+              <PrintPagePreview
                 className="flex-1 relative overflow-hidden bg-[#f8f7f4]"
                 style={{ boxShadow: "inset -8px 0 24px rgba(0,0,0,0.12)" }}
+                overlay={editing && leftPage?.meta?.chapter ? (
+                  <ChapterEditOverlay
+                    phase={leftPage.meta.chapter}
+                    value={settings.chapter_overrides[leftPage.meta.chapter] || ""}
+                    onChange={(v) => upsertSettings({ chapter_overrides: { ...settings.chapter_overrides, ...(v ? { [leftPage.meta!.chapter!]: v } : {}) } })}
+                  />
+                ) : undefined}
               >
                 {leftPage ? (
-                  <div className="absolute inset-0" data-photobook-page>
-                    {leftPage.node}
-                    {editing && leftPage.meta?.chapter && (
-                      <ChapterEditOverlay
-                        phase={leftPage.meta.chapter}
-                        value={settings.chapter_overrides[leftPage.meta.chapter] || ""}
-                        onChange={(v) => upsertSettings({ chapter_overrides: { ...settings.chapter_overrides, ...(v ? { [leftPage.meta!.chapter!]: v } : {}) } })}
-                      />
-                    )}
-                  </div>
+                  leftPage.node
                 ) : (
                   <div className="w-full h-full bg-[#e8e6df]" />
                 )}
-              </div>
+              </PrintPagePreview>
 
               {/* Spine */}
               <div
@@ -967,25 +1021,23 @@ const Photobook = () => {
               />
 
               {/* Right page */}
-              <div
+              <PrintPagePreview
                 className="flex-1 relative overflow-hidden bg-[#f8f7f4]"
                 style={{ boxShadow: "inset 8px 0 24px rgba(0,0,0,0.12)" }}
+                overlay={editing && rightPage?.meta?.chapter ? (
+                  <ChapterEditOverlay
+                    phase={rightPage.meta.chapter}
+                    value={settings.chapter_overrides[rightPage.meta.chapter] || ""}
+                    onChange={(v) => upsertSettings({ chapter_overrides: { ...settings.chapter_overrides, ...(v ? { [rightPage.meta!.chapter!]: v } : {}) } })}
+                  />
+                ) : undefined}
               >
                 {rightPage ? (
-                  <div className="absolute inset-0" data-photobook-page>
-                    {rightPage.node}
-                    {editing && rightPage.meta?.chapter && (
-                      <ChapterEditOverlay
-                        phase={rightPage.meta.chapter}
-                        value={settings.chapter_overrides[rightPage.meta.chapter] || ""}
-                        onChange={(v) => upsertSettings({ chapter_overrides: { ...settings.chapter_overrides, ...(v ? { [rightPage.meta!.chapter!]: v } : {}) } })}
-                      />
-                    )}
-                  </div>
+                  rightPage.node
                 ) : (
                   <div className="w-full h-full bg-[#f0efe9]" />
                 )}
-              </div>
+              </PrintPagePreview>
             </div>
           </div>
         </div>
@@ -1125,6 +1177,86 @@ const PhotobookOrderHistory = ({ orders }: { orders: PhotobookOrder[] }) => {
           );
         })}
       </div>
+    </div>
+  );
+};
+
+const usePrintPageScale = () => {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    let animationFrame = 0;
+    const measureScale = () => {
+      const { width, height } = element.getBoundingClientRect();
+      if (width <= 0 || height <= 0) return;
+
+      const nextScale = Math.min(width / PRINT_PAGE_WIDTH, height / PRINT_PAGE_HEIGHT);
+      setScale((currentScale) =>
+        Math.abs(currentScale - nextScale) < 0.001 ? currentScale : nextScale,
+      );
+    };
+
+    const scheduleScaleMeasurement = () => {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = requestAnimationFrame(measureScale);
+    };
+
+    measureScale();
+
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleScaleMeasurement);
+    observer?.observe(element);
+    window.addEventListener("resize", scheduleScaleMeasurement);
+
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      observer?.disconnect();
+      window.removeEventListener("resize", scheduleScaleMeasurement);
+    };
+  }, []);
+
+  return { ref, scale };
+};
+
+const PrintPagePreview = ({
+  children,
+  className = "",
+  style,
+  overlay,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
+  overlay?: React.ReactNode;
+}) => {
+  const { ref, scale } = usePrintPageScale();
+
+  return (
+    <div
+      ref={ref}
+      className={`relative overflow-hidden ${className}`}
+      style={{
+        aspectRatio: `${PRINT_PAGE_WIDTH} / ${PRINT_PAGE_HEIGHT}`,
+        ...style,
+      }}
+    >
+      <div
+        className="absolute left-1/2 top-1/2"
+        style={{
+          width: PRINT_PAGE_WIDTH,
+          height: PRINT_PAGE_HEIGHT,
+          transform: `translate(-50%, -50%) scale(${scale})`,
+          transformOrigin: "center",
+        }}
+      >
+        <div className="absolute inset-0" data-photobook-page>
+          {children}
+        </div>
+      </div>
+      {overlay}
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -16,6 +16,22 @@ interface AddStepDialogProps {
   onClose: () => void;
   onAdded: () => void;
 }
+
+type CompareRole = "before" | "after";
+
+interface PendingUpload {
+  id: string;
+  file: File;
+  previewUrl: string | null;
+  compareRole: CompareRole | null;
+}
+
+const createUploadId = () => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+};
 
 // Re-export so existing imports keep working
 export const PHASES = DEFAULT_PHASES;
@@ -37,14 +53,22 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
   const [outsourcedHours, setOutsourcedHours] = useState<string>("");
   const [contractorName, setContractorName] = useState("");
   const [contractorNotes, setContractorNotes] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<PendingUpload[]>([]);
   const [customPhases, setCustomPhases] = useState<string[]>([]);
+  const previewUrlsRef = useRef<string[]>([]);
 
   useEffect(() => {
     supabase.from("trips").select("custom_phases").eq("id", tripId).single().then(({ data }) => {
       setCustomPhases((data?.custom_phases as string[]) || []);
     });
   }, [tripId]);
+
+  useEffect(() => {
+    return () => {
+      previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      previewUrlsRef.current = [];
+    };
+  }, []);
 
   const addCustomPhase = async (name: string) => {
     const next = Array.from(new Set([...customPhases, name]));
@@ -53,13 +77,45 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
-    }
+    if (!e.target.files) return;
+
+    const nextUploads = Array.from(e.target.files).map((file) => {
+      const previewUrl = file.type.startsWith("image") ? URL.createObjectURL(file) : null;
+      if (previewUrl) previewUrlsRef.current.push(previewUrl);
+
+      return {
+        id: createUploadId(),
+        file,
+        previewUrl,
+        compareRole: null,
+      };
+    });
+
+    setFiles((prev) => [...prev, ...nextUploads]);
+    e.target.value = "";
   };
 
-  const removeFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
+  const removeFile = (id: string) => {
+    const removed = files.find((upload) => upload.id === id);
+    if (removed?.previewUrl) {
+      URL.revokeObjectURL(removed.previewUrl);
+      previewUrlsRef.current = previewUrlsRef.current.filter((url) => url !== removed.previewUrl);
+    }
+    setFiles((prev) => prev.filter((upload) => upload.id !== id));
+  };
+
+  const setCompareRole = (id: string, role: CompareRole) => {
+    setFiles((prev) =>
+      prev.map((upload) => {
+        if (upload.id === id) {
+          return { ...upload, compareRole: upload.compareRole === role ? null : role };
+        }
+        if (upload.compareRole === role) {
+          return { ...upload, compareRole: null };
+        }
+        return upload;
+      })
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -121,7 +177,8 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
     }
 
     for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+      const upload = files[i];
+      const file = upload.file;
       const ext = file.name.split(".").pop();
       const path = `${user.id}/${step.id}/${i}.${ext}`;
 
@@ -136,6 +193,7 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
           user_id: user.id,
           media_url: urlData.publicUrl,
           media_type: file.type === "application/pdf" ? "pdf" : file.type.startsWith("video") ? "video" : "image",
+          compare_role: file.type.startsWith("image") ? upload.compareRole : null,
           sort_order: i,
         });
       }
@@ -258,30 +316,68 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
               <input type="file" multiple accept="image/*,video/*,application/pdf" className="hidden" onChange={handleFileChange} />
             </label>
             {files.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-2">
-                {files.map((f, i) => (
-                  <div key={i} className="relative group">
-                    <div className="w-16 h-16 rounded-md bg-muted flex items-center justify-center overflow-hidden text-center px-1">
-                      {f.type.startsWith("image") ? (
-                        <img src={URL.createObjectURL(f)} alt="" className="w-full h-full object-contain bg-muted" />
-                      ) : f.type === "application/pdf" ? (
-                        <span className="flex flex-col items-center gap-1 text-[10px] leading-tight break-all text-muted-foreground">
-                          <FileText className="h-4 w-4" />
-                          {f.name.length > 14 ? `${f.name.slice(0, 12)}...` : f.name}
-                        </span>
-                      ) : (
-                        <Video className="h-5 w-5 text-muted-foreground" />
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeFile(i)}
-                      className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full p-0.5"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ))}
+              <div className="mt-2 space-y-2">
+                <p className="text-[11px] text-muted-foreground">
+                  Kies eventueel één <strong>Voor</strong> en één <strong>Na</strong> foto voor de vergelijking-slider.
+                </p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {files.map((upload, i) => {
+                    const file = upload.file;
+                    const isImage = file.type.startsWith("image");
+                    return (
+                      <div key={upload.id} className={`relative rounded-lg border bg-background p-1.5 transition ${upload.compareRole ? "ring-2 ring-accent" : ""}`}>
+                        <div className="relative aspect-square rounded-md bg-muted flex items-center justify-center overflow-hidden text-center px-1">
+                          {isImage && upload.previewUrl ? (
+                            <img src={upload.previewUrl} alt="" className="w-full h-full object-contain bg-muted" />
+                          ) : file.type === "application/pdf" ? (
+                            <span className="flex flex-col items-center gap-1 text-[10px] leading-tight break-all text-muted-foreground">
+                              <FileText className="h-4 w-4" />
+                              {file.name.length > 14 ? `${file.name.slice(0, 12)}...` : file.name}
+                            </span>
+                          ) : (
+                            <Video className="h-5 w-5 text-muted-foreground" />
+                          )}
+                          <span className="absolute left-1 top-1 rounded bg-background/90 px-1.5 py-0.5 text-[9px] font-bold tabular-nums text-foreground shadow-sm">
+                            {i + 1}
+                          </span>
+                          {upload.compareRole && (
+                            <span className="absolute bottom-1 left-1 rounded bg-accent px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent-foreground">
+                              {upload.compareRole === "before" ? "Voor" : "Na"}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeFile(upload.id)}
+                          className="absolute right-0 top-0 -translate-y-1/2 translate-x-1/2 rounded-full bg-destructive p-0.5 text-destructive-foreground shadow"
+                          aria-label="Bestand verwijderen"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                        {isImage && (
+                          <div className="mt-1 grid grid-cols-2 gap-1">
+                            <button
+                              type="button"
+                              aria-pressed={upload.compareRole === "before"}
+                              onClick={() => setCompareRole(upload.id, "before")}
+                              className={`rounded py-1 text-[11px] ${upload.compareRole === "before" ? "bg-accent text-accent-foreground" : "bg-muted hover:bg-muted-foreground/20"}`}
+                            >
+                              Voor
+                            </button>
+                            <button
+                              type="button"
+                              aria-pressed={upload.compareRole === "after"}
+                              onClick={() => setCompareRole(upload.id, "after")}
+                              className={`rounded py-1 text-[11px] ${upload.compareRole === "after" ? "bg-accent text-accent-foreground" : "bg-muted hover:bg-muted-foreground/20"}`}
+                            >
+                              Na
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>

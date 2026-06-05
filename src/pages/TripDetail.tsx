@@ -32,6 +32,22 @@ import {
 } from "@/components/ui/alert-dialog";
 import { usePageMeta } from "@/hooks/usePageMeta";
 
+const toSortableTime = (value?: string | null) => {
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+};
+
+const sortStepsNewestFirst = <T extends { step_date: string; step_order?: number | null; created_at?: string | null }>(items: T[]) =>
+  [...items].sort((a, b) => {
+    const dateDiff = toSortableTime(b.step_date) - toSortableTime(a.step_date);
+    if (dateDiff !== 0) return dateDiff;
+
+    const orderDiff = (b.step_order ?? 0) - (a.step_order ?? 0);
+    if (orderDiff !== 0) return orderDiff;
+
+    return toSortableTime(b.created_at) - toSortableTime(a.created_at);
+  });
+
 const TripDetail = () => {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
@@ -67,8 +83,10 @@ const TripDetail = () => {
       ? `${trip.description.slice(0, 145)}${trip.description.length > 145 ? "..." : ""}`
       : "Bekijk de updates, foto's, fases en mijlpalen van dit renovatieproject op Buildy.",
     image: pageCoverUrl || undefined,
+    imageAlt: trip?.title ? `Renovatieproject ${trip.title} op Buildy` : "Renovatieproject op Buildy",
     path: id ? `/trip/${id}` : undefined,
     noIndex: !!trip && !trip.is_public && !isOwner,
+    type: "article",
   });
 
   const fetchTrip = useCallback(async () => {
@@ -175,6 +193,40 @@ const TripDetail = () => {
     );
   };
 
+  const handleReorderMedia = async (stepId: string, orderedMediaIds: string[]) => {
+    if (!isOwner) return;
+    const step = steps.find((s) => s.id === stepId);
+    if (!step) return;
+
+    const sortedMedia = [...(step.step_media || [])].sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+    const mediaById = new Map(sortedMedia.map((media: any) => [media.id, media]));
+    const orderedVisuals = orderedMediaIds
+      .map((mediaId) => mediaById.get(mediaId))
+      .filter(Boolean);
+    const remainingVisuals = sortedMedia.filter((media: any) => media.media_type !== "pdf" && !orderedMediaIds.includes(media.id));
+    const pdfs = sortedMedia.filter((media: any) => media.media_type === "pdf");
+    const nextMedia = [...orderedVisuals, ...remainingVisuals, ...pdfs].map((media: any, index) => ({
+      ...media,
+      sort_order: index,
+    }));
+
+    setSteps((current) =>
+      current.map((item) => item.id === stepId ? { ...item, step_media: nextMedia } : item),
+    );
+
+    const results = await Promise.all(
+      nextMedia.map((media: any) =>
+        supabase.from("step_media").update({ sort_order: media.sort_order }).eq("id", media.id),
+      ),
+    );
+    const error = results.find((result) => result.error)?.error;
+    if (error) {
+      console.error("Reorder media failed:", error);
+      toast.error("Kon fotovolgorde niet opslaan");
+      fetchTrip();
+    }
+  };
+
   const handleDelete = async () => {
     if (!deletingStepId) return;
     const { error } = await supabase.from("steps").delete().eq("id", deletingStepId);
@@ -278,6 +330,7 @@ const TripDetail = () => {
   const totalPhotos = steps.reduce((sum, s) => sum + (s.step_media?.length ?? 0), 0);
   const milestones = steps.filter((s) => s.is_milestone).length;
   const headerCoverUrl = pageCoverUrl;
+  const timelineSteps = sortStepsNewestFirst(steps);
 
   const effectiveFloorplans: FloorInfo[] =
     Array.isArray(trip.floorplans) && trip.floorplans.length > 0
@@ -476,7 +529,7 @@ const TripDetail = () => {
                 </div>
               )}
               {(() => {
-                const visible = milestonesOnly ? steps.filter((s) => s.is_milestone) : steps;
+                const visible = milestonesOnly ? timelineSteps.filter((s) => s.is_milestone) : timelineSteps;
                 return visible.length === 0 ? (
                   <div className="py-20 text-center text-muted-foreground">
                     <Hammer className="h-12 w-12 mx-auto mb-3 opacity-40" />
@@ -489,6 +542,7 @@ const TripDetail = () => {
                     onLike={handleLike}
                     onEdit={setEditingStep}
                     onDelete={setDeletingStepId}
+                    onReorderMedia={handleReorderMedia}
                     isOwner={!!isOwner}
                   />
                 );

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Heart, MessageCircle, Pencil, Trash2, Star } from "lucide-react";
+import { GripVertical, Heart, MessageCircle, Pencil, Trash2, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { nl } from "date-fns/locale";
@@ -36,17 +36,22 @@ interface Props {
   onLike?: (stepId: string) => void;
   onEdit?: (step: Step) => void;
   onDelete?: (stepId: string) => void;
+  onReorderMedia?: (stepId: string, orderedMediaIds: string[]) => void;
   isOwner?: boolean;
 }
 
-const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) => {
+const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, isOwner }: Props) => {
   const [openComments, setOpenComments] = useState<string | null>(null);
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [lightbox, setLightbox] = useState<{ items: LightboxItem[]; idx: number } | null>(null);
+  const [mediaDrafts, setMediaDrafts] = useState<Record<string, StepMedia[]>>({});
+  const [draggingMedia, setDraggingMedia] = useState<{ stepId: string; mediaId: string } | null>(null);
+  const [dragOverMediaId, setDragOverMediaId] = useState<string | null>(null);
   const cc = (id: string, base: number) => commentCounts[id] ?? base;
 
   const openLightboxForStep = (step: Step, mediaIdx: number) => {
-    const items: LightboxItem[] = [...step.step_media].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)).map((m) => ({
+    const orderedMedia = mediaDrafts[step.id] ?? [...step.step_media].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+    const items: LightboxItem[] = orderedMedia.map((m) => ({
       id: m.id,
       url: m.media_url,
       type: m.media_type,
@@ -57,11 +62,26 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) 
     }));
     setLightbox({ items, idx: mediaIdx });
   };
+
+  const reorderMedia = (step: Step, targetMediaId: string) => {
+    if (!draggingMedia || draggingMedia.stepId !== step.id || draggingMedia.mediaId === targetMediaId) return;
+    const current = mediaDrafts[step.id] ?? [...step.step_media].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+    const next = [...current];
+    const from = next.findIndex((m) => m.id === draggingMedia.mediaId);
+    const to = next.findIndex((m) => m.id === targetMediaId);
+    if (from < 0 || to < 0) return;
+
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setMediaDrafts((drafts) => ({ ...drafts, [step.id]: next }));
+    onReorderMedia?.(step.id, next.filter((m) => m.media_type !== "pdf").map((m) => m.id));
+  };
+
   return (
     <div className="divide-y divide-border/50 pb-16">
       {steps.map((step) => {
         // Sort media by sort_order to match edit dialog order
-        const sortedMedia = [...step.step_media].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+        const sortedMedia = mediaDrafts[step.id] ?? [...step.step_media].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
         const before = sortedMedia.find((m) => m.compare_role === "before");
         const after = sortedMedia.find((m) => m.compare_role === "after");
         const hasCompare = !!before && !!after;
@@ -169,6 +189,64 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, isOwner }: Props) 
                         </button>
                       );
                     })}
+                  </div>
+                )}
+                {isOwner && sortedMedia.filter((m) => m.media_type !== "pdf").length > 1 && (
+                  <div className="border-t border-border/60 bg-secondary/30 px-3 py-2">
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Foto's ordenen</p>
+                      <p className="text-[10px] text-muted-foreground">Sleep om de tijdlijn en Bouwboek-volgorde aan te passen</p>
+                    </div>
+                    <div className="flex gap-1.5 overflow-x-auto pb-1">
+                      {sortedMedia.filter((m) => m.media_type !== "pdf").map((m, mediaIdx) => {
+                        const isDragging = draggingMedia?.mediaId === m.id;
+                        const isOver = dragOverMediaId === m.id && !isDragging;
+                        return (
+                          <div
+                            key={m.id}
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.effectAllowed = "move";
+                              setDraggingMedia({ stepId: step.id, mediaId: m.id });
+                            }}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.dataTransfer.dropEffect = "move";
+                              setDragOverMediaId(m.id);
+                            }}
+                            onDragLeave={() => setDragOverMediaId(null)}
+                            onDrop={() => {
+                              reorderMedia(step, m.id);
+                              setDraggingMedia(null);
+                              setDragOverMediaId(null);
+                            }}
+                            onDragEnd={() => {
+                              setDraggingMedia(null);
+                              setDragOverMediaId(null);
+                            }}
+                            className={`relative h-14 w-14 shrink-0 cursor-grab overflow-hidden rounded-md border bg-background active:cursor-grabbing ${isDragging ? "opacity-40" : ""} ${isOver ? "border-accent ring-2 ring-accent/35" : "border-border"}`}
+                            title="Sleep om te ordenen"
+                          >
+                            {m.media_type === "video" ? (
+                              <video src={m.media_url} className="h-full w-full object-cover" />
+                            ) : (
+                              <img src={m.media_url} alt="" className="h-full w-full object-cover" loading="lazy" draggable={false} />
+                            )}
+                            <span className="absolute left-1 top-1 rounded bg-background/90 px-1 text-[9px] font-bold tabular-nums text-foreground shadow-sm">
+                              {mediaIdx + 1}
+                            </span>
+                            {m.compare_role && (
+                              <span className="absolute bottom-1 left-1 rounded bg-accent px-1 text-[8px] font-bold uppercase tracking-wider text-accent-foreground">
+                                {m.compare_role === "before" ? "Voor" : "Na"}
+                              </span>
+                            )}
+                            <span className="absolute right-1 top-1 rounded bg-background/90 p-0.5 text-muted-foreground shadow-sm">
+                              <GripVertical className="h-3 w-3" />
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>

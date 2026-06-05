@@ -100,7 +100,7 @@ interface Step {
   location_name: string | null;
   description: string | null;
   phase: string | null;
-  step_media?: Array<{ id: string; media_url: string; media_type: string }>;
+  step_media?: Array<{ id: string; media_url: string; media_type: string; sort_order?: number | null; created_at?: string | null }>;
 }
 
 interface Trip {
@@ -181,24 +181,31 @@ const getOrderedPhotos = (
   settings: Settings,
   excludedMedia: Set<string>,
 ) => {
-  const allPhotos = (step.step_media || []).filter(
-    (m) => m.media_type !== "video" && !excludedMedia.has(m.id),
-  );
+  const allPhotos = [...(step.step_media || [])]
+    .filter((m) => m.media_type !== "video" && m.media_type !== "pdf" && !excludedMedia.has(m.id))
+    .sort((a, b) => {
+      const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0);
+      if (orderDiff !== 0) return orderDiff;
+      return (a.created_at ?? "").localeCompare(b.created_at ?? "");
+    });
   const customOrder = settings.step_photo_order?.[step.id];
   if (!customOrder?.length) return allPhotos;
 
   return [...allPhotos].sort((a, b) => {
     const ai = customOrder.indexOf(a.id);
     const bi = customOrder.indexOf(b.id);
+    if (ai === -1 && bi === -1) return (a.sort_order ?? 0) - (b.sort_order ?? 0);
     return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
   });
 };
 
-const getBatchSize = (layout: PeechoStepLayout, photoCount: number) => {
+const getPageLayout = (settings: Settings, stepId: string, pageKey: string): PeechoStepLayout =>
+  settings.step_layout_overrides?.[pageKey] || settings.step_layout_overrides?.[stepId] || "auto";
+
+const getBatchSize = (layout: PeechoStepLayout, remainingPhotos: number) => {
   if (layout === "1-full") return 1;
-  if (layout === "2-side" || layout === "2-stack") return 2;
-  if (layout === "auto" && photoCount === 1) return 1;
-  return 4;
+  if (layout === "2-side" || layout === "2-stack") return Math.min(2, remainingPhotos);
+  return Math.min(4, remainingPhotos);
 };
 
 export async function buildPeechoPdf(args: BuildArgs): Promise<Blob> {
@@ -349,8 +356,6 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<Blob> {
       if (photos.length === 0 && !hasDescription) continue;
 
       const dateLabel = format(new Date(step.step_date), "d MMM yyyy", { locale: nl });
-      const layout = settings.step_layout_overrides?.[step.id] || "auto";
-
       if (photos.length === 0) {
         // Text-only page
         addPage();
@@ -376,10 +381,14 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<Blob> {
         const desc = `"${step.description}"`;
         pdf.text(clampLines(pdf, desc, innerW, 8), MARGIN, MARGIN + 58);
       } else {
-        const batchSize = getBatchSize(layout, photos.length);
-        for (let i = 0; i < photos.length; i += batchSize) {
-          const batch = photos.slice(i, i + batchSize);
-          const isFirstBatch = i === 0;
+        let pageIdx = 0;
+        let photoIdx = 0;
+        while (photoIdx < photos.length) {
+          const pageKey = `${step.id}-${pageIdx}`;
+          const layout = getPageLayout(settings, step.id, pageKey);
+          const batchSize = getBatchSize(layout, photos.length - photoIdx);
+          const batch = photos.slice(photoIdx, photoIdx + batchSize);
+          const isFirstBatch = photoIdx === 0;
           addPage();
           pdf.setFillColor(248, 247, 244);
           pdf.rect(0, 0, W, H, "F");
@@ -416,6 +425,12 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<Blob> {
               const data = await loadImageAsJpeg(batch[j].media_url, rightW, rightH, "contain");
               if (data) pdf.addImage(data, "JPEG", MARGIN + leftW + gap, gridTop + (j - 1) * (rightH + gap), rightW, rightH, undefined, "FAST");
             }
+          } else if (layout === "auto" && batch.length === 4) {
+            const cellW = (gridW - gap * 3) / 4;
+            for (let j = 0; j < batch.length; j++) {
+              const data = await loadImageAsJpeg(batch[j].media_url, cellW, gridH, "contain");
+              if (data) pdf.addImage(data, "JPEG", MARGIN + j * (cellW + gap), gridTop, cellW, gridH, undefined, "FAST");
+            }
           } else {
             const cellW = (gridW - gap) / 2;
             const cellH = (gridH - gap) / 2;
@@ -439,6 +454,9 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<Blob> {
               compact: captionH <= 26,
             });
           }
+
+          photoIdx += batchSize;
+          pageIdx++;
         }
       }
     }

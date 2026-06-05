@@ -4,13 +4,16 @@ const DEFAULT_TITLE = "Buildy — Verbouwingsdagboek en Bouwboek maken";
 const DEFAULT_DESCRIPTION =
   "Houd je verbouwing bij met foto's, updates, mijlpalen en budget. Maak van je renovatie automatisch een gedrukt Bouwboek.";
 const DEFAULT_IMAGE = "/og-image.png";
+const DEFAULT_IMAGE_ALT = "Buildy toont een renovatieproject als tijdlijn en gedrukt Bouwboek.";
 
 interface PageMeta {
   title?: string;
   description?: string;
   image?: string;
+  imageAlt?: string;
   path?: string;
   noIndex?: boolean;
+  type?: "website" | "article" | "profile";
 }
 
 const siteUrl = () => {
@@ -48,8 +51,10 @@ export const usePageMeta = ({
   title = DEFAULT_TITLE,
   description = DEFAULT_DESCRIPTION,
   image = DEFAULT_IMAGE,
+  imageAlt = DEFAULT_IMAGE_ALT,
   path,
   noIndex = false,
+  type = "website",
 }: PageMeta) => {
   useEffect(() => {
     const pageTitle = title.includes("Buildy") ? title : `${title} — Buildy`;
@@ -60,12 +65,19 @@ export const usePageMeta = ({
     upsertCanonical(pageUrl);
     upsertMeta('meta[name="description"]', { name: "description", content: description });
     upsertMeta('meta[name="robots"]', { name: "robots", content: noIndex ? "noindex,follow" : "index,follow" });
+    upsertMeta('meta[property="og:type"]', { property: "og:type", content: type });
+    upsertMeta('meta[property="og:locale"]', { property: "og:locale", content: "nl_NL" });
+    upsertMeta('meta[property="og:site_name"]', { property: "og:site_name", content: "Buildy" });
     upsertMeta('meta[property="og:title"]', { property: "og:title", content: pageTitle });
     upsertMeta('meta[property="og:description"]', { property: "og:description", content: description });
     upsertMeta('meta[property="og:url"]', { property: "og:url", content: pageUrl });
     upsertMeta('meta[property="og:image"]', { property: "og:image", content: imageUrl });
+    upsertMeta('meta[property="og:image:secure_url"]', { property: "og:image:secure_url", content: imageUrl });
+    upsertMeta('meta[property="og:image:alt"]', { property: "og:image:alt", content: imageAlt });
+    upsertMeta('meta[name="twitter:card"]', { name: "twitter:card", content: "summary_large_image" });
     upsertMeta('meta[name="twitter:title"]', { name: "twitter:title", content: pageTitle });
     upsertMeta('meta[name="twitter:description"]', { name: "twitter:description", content: description });
     upsertMeta('meta[name="twitter:image"]', { name: "twitter:image", content: imageUrl });
-  }, [description, image, noIndex, path, title]);
+    upsertMeta('meta[name="twitter:image:alt"]', { name: "twitter:image:alt", content: imageAlt });
+  }, [description, image, imageAlt, noIndex, path, title, type]);
 };

@@ -8,7 +8,7 @@ interface Step {
   location_name: string;
   step_date: string;
   phase: string | null;
-  step_media: { id: string; media_url: string; media_type: string }[];
+  step_media: { id: string; media_url: string; media_type: string; sort_order?: number | null }[];
 }
 
 interface Props {
@@ -26,17 +26,20 @@ const AllPhotosTab = ({ tripId, steps }: Props) => {
       .sort((a, b) => +new Date(b.step_date) - +new Date(a.step_date))
       .forEach((s) => {
         if (phaseFilter && s.phase !== phaseFilter) return;
-        s.step_media.forEach((m) => {
-          arr.push({
-            id: m.id,
-            url: m.media_url,
-            type: m.media_type,
-            stepId: s.id,
-            stepTitle: s.location_name,
-            stepDate: s.step_date,
-            phase: s.phase,
+        [...s.step_media]
+          .filter((m) => m.media_type !== "pdf")
+          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+          .forEach((m) => {
+            arr.push({
+              id: m.id,
+              url: m.media_url,
+              type: m.media_type,
+              stepId: s.id,
+              stepTitle: s.location_name,
+              stepDate: s.step_date,
+              phase: s.phase,
+            });
           });
-        });
       });
     return arr;
   }, [steps, phaseFilter]);
@@ -66,7 +69,7 @@ const AllPhotosTab = ({ tripId, steps }: Props) => {
               phaseFilter === null ? "bg-accent text-accent-foreground border-accent" : "border-border hover:border-accent"
             }`}
           >
-            Alle ({steps.reduce((n, s) => n + s.step_media.length, 0)})
+            Alle ({steps.reduce((n, s) => n + s.step_media.filter((m) => m.media_type !== "pdf").length, 0)})
           </button>
           {phases.map((p) => (
             <button

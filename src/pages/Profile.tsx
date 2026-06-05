@@ -39,13 +39,19 @@ const Profile = () => {
   const [draft, setDraft] = useState({ display_name: "", bio: "", location: "", is_private: false });
 
   const isMe = user?.id === userId;
+  const profileName = profile?.display_name || "Deze bouwer";
+  const profileDescription = profile?.bio && profile.bio.trim().length >= 50
+    ? `${profile.bio.slice(0, 140)}${profile.bio.length > 140 ? "..." : ""}`
+    : `${profileName} deelt renovatieprojecten, updates, foto's en Bouwboeken op Buildy.${profile?.location ? ` Vanuit ${profile.location}.` : ""}`;
+
   usePageMeta({
     title: profile?.display_name ? `${profile.display_name} — Buildy` : "Profiel — Buildy",
-    description: profile?.bio
-      ? `${profile.bio.slice(0, 140)}${profile.bio.length > 140 ? "..." : ""}`
-      : "Bekijk renovatieprojecten, updates en Bouwboeken van deze bouwer op Buildy.",
+    description: profileDescription,
+    image: profile?.avatar_url || undefined,
+    imageAlt: profile?.display_name ? `Profiel van ${profile.display_name} op Buildy` : "Bouwersprofiel op Buildy",
     path: userId ? `/profile/${userId}` : undefined,
     noIndex: !!profile?.is_private,
+    type: "profile",
   });
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
@@ -296,7 +302,7 @@ const Profile = () => {
 
 
       <Tabs defaultValue="projects" className="w-full">
-        <TabsList className="bg-transparent border-b border-border rounded-none p-0 h-auto gap-8 w-full justify-start mb-8">
+        <TabsList className="grid grid-cols-2 sm:inline-flex bg-transparent sm:border-b sm:border-border rounded-none p-0 h-auto gap-x-6 gap-y-2 sm:gap-8 w-full justify-start mb-8">
           <TabsTrigger value="projects" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Projecten</TabsTrigger>
           <TabsTrigger value="stats" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Statistieken</TabsTrigger>
           <TabsTrigger value="followers" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Volgers ({followers.length})</TabsTrigger>
