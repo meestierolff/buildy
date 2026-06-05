@@ -541,7 +541,7 @@ const Photobook = () => {
               key: pageKey,
               meta: { stepId: step.id, firstStep: pageIdx === 0 },
               node: (
-                <div className="h-full grid grid-rows-[minmax(0,1fr)_auto_auto] bg-card overflow-hidden p-[5%]">
+                <div className="h-full grid grid-rows-[minmax(0,1fr)_auto] bg-card overflow-hidden p-[5%]">
                   <div className={`min-h-0 overflow-hidden grid gap-[3%] ${gridClass}`}>
                     {layout === "auto" && batch.length === 3 ? (
                       <>
@@ -565,7 +565,6 @@ const Photobook = () => {
                       compact
                     />
                   )}
-                  <StepPageFooter step={step} stepIdx={stepIdx} totalSteps={totalVisible} cumulativeCost={cumulativeCost} budgetTotal={budgetTotal} />
                 </div>
               ),
             });
