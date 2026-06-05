@@ -420,17 +420,33 @@ const Photobook = () => {
 
     for (const phase of sortedPhases) {
       const chapterTitle = settings.chapter_overrides[phase] || phase;
+      const chapterSteps = grouped.get(phase)!;
+      const firstChapterStep = chapterSteps[0];
+      const chapterStepIdx = firstChapterStep ? (stepIdxMap.get(firstChapterStep.id) ?? 0) : 0;
+      const chapterCumCost = firstChapterStep ? (cumulativeCostMap.get(firstChapterStep.id) ?? 0) : 0;
       list.push({
         key: `ch-${phase}`,
         meta: { chapter: phase },
         node: (
-          <div className="h-full flex flex-col items-center justify-center p-12 bg-secondary text-center">
-            <p className="text-xs uppercase tracking-[0.3em] text-accent font-bold mb-4">Hoofdstuk</p>
-            <h2 className="text-5xl font-bold font-serif [overflow-wrap:anywhere] line-clamp-3">{chapterTitle}</h2>
-            <div className="w-16 h-1 bg-accent mt-6" />
+          <div className="h-full grid grid-rows-[minmax(0,1fr)_auto] bg-secondary overflow-hidden">
+            <div className="flex flex-col items-center justify-center p-12 text-center min-h-0">
+              <p className="text-xs uppercase tracking-[0.3em] text-accent font-bold mb-4">Hoofdstuk</p>
+              <h2 className="text-5xl font-bold font-serif [overflow-wrap:anywhere] line-clamp-3">{chapterTitle}</h2>
+              <div className="w-16 h-1 bg-accent mt-6" />
+            </div>
+            {firstChapterStep && (
+              <StepPageFooter
+                step={firstChapterStep}
+                stepIdx={chapterStepIdx}
+                totalSteps={totalVisible}
+                cumulativeCost={chapterCumCost}
+                budgetTotal={budgetTotal}
+              />
+            )}
           </div>
         ),
       });
+
 
       for (const step of grouped.get(phase)!) {
         // Apply custom photo order, then filter out excluded media
