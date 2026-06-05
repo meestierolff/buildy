@@ -445,6 +445,9 @@ const Photobook = () => {
           : allStepPhotos;
         const photos = orderedPhotos.filter((m: any) => !excludedMedia.has(m.id));
         const hasDescription = !!step.description;
+        const DESC_CAPTION_LIMIT = 160;
+        const longDescription = hasDescription && (step.description as string).length > DESC_CAPTION_LIMIT;
+        const captionDescription = hasDescription && !longDescription ? (step.description as string) : null;
 
         if (photos.length === 0 && !hasDescription) continue;
 
@@ -452,23 +455,29 @@ const Photobook = () => {
         const cumulativeCost = cumulativeCostMap.get(step.id) ?? 0;
         const layout: StepLayout = (settings.step_layout_overrides[step.id] as StepLayout) ?? "auto";
 
-        // Text-only
-        if (photos.length === 0) {
+        const pushTextPage = (firstStep: boolean) => {
           list.push({
-            key: `${step.id}-0`,
-            meta: { stepId: step.id, firstStep: true },
+            key: `${step.id}-text-${list.length}`,
+            meta: { stepId: step.id, firstStep },
             node: (
               <div className="h-full grid grid-rows-[minmax(0,1fr)_auto] bg-card overflow-hidden">
                 <div className="min-h-0 flex flex-col justify-center overflow-hidden p-10 md:p-16">
                   <p className="text-xs uppercase tracking-widest text-accent mb-1 font-bold">{chapterTitle}</p>
                   <p className="text-xs text-muted-foreground mb-2">{format(new Date(step.step_date), "d MMM yyyy", { locale: nl })}</p>
-                  <h2 className="text-3xl font-bold font-serif mb-3 [overflow-wrap:anywhere] line-clamp-2">{step.location_name}</h2>
-                  <p className="text-base leading-relaxed text-foreground/80 italic whitespace-pre-line [overflow-wrap:anywhere] line-clamp-[8]">"{step.description}"</p>
+                  {step.location_name && (
+                    <h2 className="text-3xl font-bold font-serif mb-3 [overflow-wrap:anywhere] line-clamp-2">{step.location_name}</h2>
+                  )}
+                  <p className="text-base leading-relaxed text-foreground/80 italic whitespace-pre-line [overflow-wrap:anywhere] line-clamp-[24]">"{step.description}"</p>
                 </div>
                 <StepPageFooter step={step} stepIdx={stepIdx} totalSteps={totalVisible} cumulativeCost={cumulativeCost} budgetTotal={budgetTotal} />
               </div>
             ),
           });
+        };
+
+        // Text-only step
+        if (photos.length === 0) {
+          pushTextPage(true);
           continue;
         }
 
@@ -498,7 +507,7 @@ const Photobook = () => {
                       chapterTitle={chapterTitle}
                       date={step.step_date}
                       locationName={step.location_name}
-                      description={hasDescription ? step.description : null}
+                      description={captionDescription}
                     />
                   )}
                   <StepPageFooter step={step} stepIdx={stepIdx} totalSteps={totalVisible} cumulativeCost={cumulativeCost} budgetTotal={budgetTotal} />
@@ -538,7 +547,7 @@ const Photobook = () => {
                       chapterTitle={chapterTitle}
                       date={step.step_date}
                       locationName={step.location_name}
-                      description={hasDescription ? step.description : null}
+                      description={captionDescription}
                       compact
                     />
                   )}
@@ -550,8 +559,14 @@ const Photobook = () => {
 
           pageIdx++;
         }
+
+        // Long description gets its own dedicated text page after the photos
+        if (longDescription) {
+          pushTextPage(false);
+        }
       }
     }
+
 
     while (list.length + 1 < PEECHO_MIN_PAGES || (list.length + 1) % 2 !== 0) {
       list.push({
