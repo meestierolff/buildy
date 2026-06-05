@@ -515,7 +515,7 @@ const Photobook = () => {
               key: pageKey,
               meta: { stepId: step.id, firstStep: pageIdx === 0 },
               node: (
-                <div className="h-full grid grid-rows-[minmax(0,1fr)_auto_auto] bg-card overflow-hidden p-[5%]">
+                <div className="h-full grid grid-rows-[minmax(0,1fr)_auto] bg-card overflow-hidden p-[5%]">
                   <PhotoFrame src={batch[0].media_url} className="min-h-0" />
                   {isFirst && (
                     <StepCaption
@@ -525,7 +525,6 @@ const Photobook = () => {
                       description={captionDescription}
                     />
                   )}
-                  <StepPageFooter step={step} stepIdx={stepIdx} totalSteps={totalVisible} cumulativeCost={cumulativeCost} budgetTotal={budgetTotal} />
                 </div>
               ),
             });
