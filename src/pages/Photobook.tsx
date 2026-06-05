@@ -574,11 +574,11 @@ const Photobook = () => {
     return list;
   }, [trip, steps, settings, excludedMedia, excludedSteps, editing, stepBudgetMap, defaultCoverMedia]);
 
-  // Build page spreads: spread 0 = [null, cover], spread n = [pages[2n-1], pages[2n]]
+  // Build page spreads: spread 0 = [cover, null], spread n = [pages[2n-1], pages[2n]]
   const spreads = useMemo(() => {
     if (pages.length === 0) return [[null, null]];
     const result: (typeof pages[0] | null)[][] = [];
-    result.push([null, pages[0]]);
+    result.push([pages[0], null]);
     for (let i = 1; i < pages.length; i += 2) {
       result.push([pages[i] ?? null, pages[i + 1] ?? null]);
     }
