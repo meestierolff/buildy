@@ -420,17 +420,33 @@ const Photobook = () => {
 
     for (const phase of sortedPhases) {
       const chapterTitle = settings.chapter_overrides[phase] || phase;
+      const chapterSteps = grouped.get(phase)!;
+      const firstChapterStep = chapterSteps[0];
+      const chapterStepIdx = firstChapterStep ? (stepIdxMap.get(firstChapterStep.id) ?? 0) : 0;
+      const chapterCumCost = firstChapterStep ? (cumulativeCostMap.get(firstChapterStep.id) ?? 0) : 0;
       list.push({
         key: `ch-${phase}`,
         meta: { chapter: phase },
         node: (
-          <div className="h-full flex flex-col items-center justify-center p-12 bg-secondary text-center">
-            <p className="text-xs uppercase tracking-[0.3em] text-accent font-bold mb-4">Hoofdstuk</p>
-            <h2 className="text-5xl font-bold font-serif [overflow-wrap:anywhere] line-clamp-3">{chapterTitle}</h2>
-            <div className="w-16 h-1 bg-accent mt-6" />
+          <div className="h-full grid grid-rows-[minmax(0,1fr)_auto] bg-secondary overflow-hidden">
+            <div className="flex flex-col items-center justify-center p-12 text-center min-h-0">
+              <p className="text-xs uppercase tracking-[0.3em] text-accent font-bold mb-4">Hoofdstuk</p>
+              <h2 className="text-5xl font-bold font-serif [overflow-wrap:anywhere] line-clamp-3">{chapterTitle}</h2>
+              <div className="w-16 h-1 bg-accent mt-6" />
+            </div>
+            {firstChapterStep && (
+              <StepPageFooter
+                step={firstChapterStep}
+                stepIdx={chapterStepIdx}
+                totalSteps={totalVisible}
+                cumulativeCost={chapterCumCost}
+                budgetTotal={budgetTotal}
+              />
+            )}
           </div>
         ),
       });
+
 
       for (const step of grouped.get(phase)!) {
         // Apply custom photo order, then filter out excluded media
@@ -460,8 +476,8 @@ const Photobook = () => {
             key: `${step.id}-text-${list.length}`,
             meta: { stepId: step.id, firstStep },
             node: (
-              <div className="h-full grid grid-rows-[minmax(0,1fr)_auto] bg-card overflow-hidden">
-                <div className="min-h-0 flex flex-col justify-center overflow-hidden p-10 md:p-16">
+              <div className="h-full bg-card overflow-hidden">
+                <div className="h-full flex flex-col justify-center overflow-hidden p-10 md:p-16">
                   <p className="text-xs uppercase tracking-widest text-accent mb-1 font-bold">{chapterTitle}</p>
                   <p className="text-xs text-muted-foreground mb-2">{format(new Date(step.step_date), "d MMM yyyy", { locale: nl })}</p>
                   {step.location_name && (
@@ -469,7 +485,6 @@ const Photobook = () => {
                   )}
                   <p className="text-base leading-relaxed text-foreground/80 italic whitespace-pre-line [overflow-wrap:anywhere] line-clamp-[24]">"{step.description}"</p>
                 </div>
-                <StepPageFooter step={step} stepIdx={stepIdx} totalSteps={totalVisible} cumulativeCost={cumulativeCost} budgetTotal={budgetTotal} />
               </div>
             ),
           });
@@ -500,7 +515,7 @@ const Photobook = () => {
               key: pageKey,
               meta: { stepId: step.id, firstStep: pageIdx === 0 },
               node: (
-                <div className="h-full grid grid-rows-[minmax(0,1fr)_auto_auto] bg-card overflow-hidden p-[5%]">
+                <div className="h-full grid grid-rows-[minmax(0,1fr)_auto] bg-card overflow-hidden p-[5%]">
                   <PhotoFrame src={batch[0].media_url} className="min-h-0" />
                   {isFirst && (
                     <StepCaption
@@ -510,7 +525,6 @@ const Photobook = () => {
                       description={captionDescription}
                     />
                   )}
-                  <StepPageFooter step={step} stepIdx={stepIdx} totalSteps={totalVisible} cumulativeCost={cumulativeCost} budgetTotal={budgetTotal} />
                 </div>
               ),
             });
@@ -527,7 +541,7 @@ const Photobook = () => {
               key: pageKey,
               meta: { stepId: step.id, firstStep: pageIdx === 0 },
               node: (
-                <div className="h-full grid grid-rows-[minmax(0,1fr)_auto_auto] bg-card overflow-hidden p-[5%]">
+                <div className="h-full grid grid-rows-[minmax(0,1fr)_auto] bg-card overflow-hidden p-[5%]">
                   <div className={`min-h-0 overflow-hidden grid gap-[3%] ${gridClass}`}>
                     {layout === "auto" && batch.length === 3 ? (
                       <>
@@ -551,7 +565,6 @@ const Photobook = () => {
                       compact
                     />
                   )}
-                  <StepPageFooter step={step} stepIdx={stepIdx} totalSteps={totalVisible} cumulativeCost={cumulativeCost} budgetTotal={budgetTotal} />
                 </div>
               ),
             });
