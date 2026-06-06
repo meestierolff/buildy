@@ -524,7 +524,7 @@ const Photobook = () => {
           const pageKey = `${step.id}-${pageIdx}`;
           const layout = getPageLayout(settings.step_layout_overrides, pageKey, step.id);
           const batchSize = getPhotobookBatchSize(layout, photos.length - photoIdx);
-          const batch = photos.slice(photoIdx, photoIdx + batchSize);
+          const batch = photos.slice(photoIdx, photoIdx + batchSize) as any[];
           const useFullBleed = layout === "1-full" || batch.length === 1;
 
           if (useFullBleed) {
