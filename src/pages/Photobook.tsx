@@ -484,43 +484,43 @@ const Photobook = () => {
           : allStepPhotos;
         const photos = orderedPhotos.filter((m: any) => !excludedMedia.has(m.id));
         const hasDescription = !!step.description;
-        const DESC_CAPTION_LIMIT = 160;
-        const longDescription = hasDescription && (step.description as string).length > DESC_CAPTION_LIMIT;
-        const captionDescription = hasDescription && !longDescription ? (step.description as string) : null;
 
-        if (photos.length === 0 && !hasDescription) continue;
+        if (photos.length === 0 && !hasDescription && !step.location_name) continue;
 
         const stepIdx = stepIdxMap.get(step.id) ?? 0;
         const cumulativeCost = cumulativeCostMap.get(step.id) ?? 0;
-        const pushTextPage = (firstStep: boolean) => {
-          list.push({
-            key: `${step.id}-text-${list.length}`,
-            meta: { stepId: step.id, firstStep },
-            node: (
-              <div className="h-full bg-card overflow-hidden">
-                <div className="h-full flex flex-col justify-center overflow-hidden p-16">
-                  <p className="text-xs uppercase tracking-widest text-accent mb-1 font-bold">{chapterTitle}</p>
-                  <p className="text-xs text-muted-foreground mb-2">{format(new Date(step.step_date), "d MMM yyyy", { locale: nl })}</p>
-                  {step.location_name && (
-                    <h2 className="text-3xl font-bold font-serif mb-3 [overflow-wrap:anywhere] line-clamp-2">{step.location_name}</h2>
-                  )}
-                  <p className="text-base leading-relaxed text-foreground/80 italic whitespace-pre-line [overflow-wrap:anywhere] line-clamp-[24]">"{step.description}"</p>
-                </div>
+
+        // First page of every step: title + text + progress bar (no photo)
+        list.push({
+          key: `${step.id}-intro`,
+          meta: { stepId: step.id, firstStep: true },
+          node: (
+            <div className="h-full grid grid-rows-[minmax(0,1fr)_auto] bg-card overflow-hidden">
+              <div className="min-h-0 overflow-hidden flex flex-col justify-center px-[10%] py-[8%]">
+                <p className="text-[9px] uppercase tracking-[0.25em] text-accent mb-1.5 font-bold">{chapterTitle}</p>
+                <p className="text-[10px] text-muted-foreground mb-3">{format(new Date(step.step_date), "d MMM yyyy", { locale: nl })}</p>
+                {step.location_name && (
+                  <h2 className="text-xl font-bold font-serif mb-3 leading-tight [overflow-wrap:anywhere] line-clamp-2">{step.location_name}</h2>
+                )}
+                {hasDescription && (
+                  <p className="text-[11px] leading-[1.55] text-foreground/80 italic whitespace-pre-line [overflow-wrap:anywhere] line-clamp-[28]">"{step.description}"</p>
+                )}
               </div>
-            ),
-          });
-        };
+              <StepPageFooter
+                step={step}
+                stepIdx={stepIdx}
+                totalSteps={totalVisible}
+                cumulativeCost={cumulativeCost}
+                budgetTotal={budgetTotal}
+              />
+            </div>
+          ),
+        });
 
-        // Text-only step
-        if (photos.length === 0) {
-          pushTextPage(true);
-          continue;
-        }
-
+        // Subsequent pages: photos only, no captions
         let pageIdx = 0;
         let photoIdx = 0;
         while (photoIdx < photos.length) {
-          const isFirst = pageIdx === 0;
           const pageKey = `${step.id}-${pageIdx}`;
           const layout = getPageLayout(settings.step_layout_overrides, pageKey, step.id);
           const batchSize = getPhotobookBatchSize(layout, photos.length - photoIdx);
@@ -528,40 +528,30 @@ const Photobook = () => {
           const useFullBleed = layout === "1-full" || batch.length === 1;
 
           if (useFullBleed) {
-            // Single photo with safe printer margin + caption
             list.push({
               key: pageKey,
-              meta: { stepId: step.id, firstStep: pageIdx === 0 },
+              meta: { stepId: step.id, firstStep: false },
               node: (
-                <div className="h-full grid grid-rows-[minmax(0,1fr)_auto] bg-card overflow-hidden p-[5%]">
-                  <PhotoFrame src={batch[0].media_url} className="min-h-0" />
-                  {isFirst && (
-                    <StepCaption
-                      chapterTitle={chapterTitle}
-                      date={step.step_date}
-                      locationName={step.location_name}
-                      description={captionDescription}
-                    />
-                  )}
+                <div className="h-full bg-card overflow-hidden p-[5%]">
+                  <PhotoFrame src={batch[0].media_url} className="h-full" />
                 </div>
               ),
             });
           } else {
-            // Grid layout — with gap between photos and printer-safe margin
-              const gridClass =
-                layout === "2-side" ? "grid-cols-2 grid-rows-1"
-                : layout === "2-stack" ? "grid-cols-1 grid-rows-2"
-                : layout === "grid" ? "grid-cols-2 grid-rows-[1fr_1fr]"
-                : batch.length === 3 ? "grid-cols-[1.35fr_1fr] grid-rows-2"
-                : batch.length === 4 ? "grid-cols-4 grid-rows-1"
-                : batch.length === 2 ? "grid-cols-2 grid-rows-1" : "grid-cols-2 grid-rows-[1fr_1fr]"; // auto
+            const gridClass =
+              layout === "2-side" ? "grid-cols-2 grid-rows-1"
+              : layout === "2-stack" ? "grid-cols-1 grid-rows-2"
+              : layout === "grid" ? "grid-cols-2 grid-rows-[1fr_1fr]"
+              : batch.length === 3 ? "grid-cols-[1.35fr_1fr] grid-rows-2"
+              : batch.length === 4 ? "grid-cols-4 grid-rows-1"
+              : batch.length === 2 ? "grid-cols-2 grid-rows-1" : "grid-cols-2 grid-rows-[1fr_1fr]";
 
             list.push({
               key: pageKey,
-              meta: { stepId: step.id, firstStep: pageIdx === 0 },
+              meta: { stepId: step.id, firstStep: false },
               node: (
-                <div className="h-full grid grid-rows-[minmax(0,1fr)_auto] bg-card overflow-hidden p-[5%]">
-                  <div className={`min-h-0 overflow-hidden grid gap-[3%] ${gridClass}`}>
+                <div className="h-full bg-card overflow-hidden p-[5%]">
+                  <div className={`h-full overflow-hidden grid gap-[3%] ${gridClass}`}>
                     {layout === "auto" && batch.length === 3 ? (
                       <>
                         <PhotoFrame src={batch[0].media_url} className="row-span-2" />
@@ -575,15 +565,6 @@ const Photobook = () => {
                       ))
                     )}
                   </div>
-                  {isFirst && (
-                    <StepCaption
-                      chapterTitle={chapterTitle}
-                      date={step.step_date}
-                      locationName={step.location_name}
-                      description={captionDescription}
-                      compact
-                    />
-                  )}
                 </div>
               ),
             });
@@ -591,11 +572,6 @@ const Photobook = () => {
 
           photoIdx += batchSize;
           pageIdx++;
-        }
-
-        // Long description gets its own dedicated text page after the photos
-        if (longDescription) {
-          pushTextPage(false);
         }
       }
     }
