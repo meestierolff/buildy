@@ -817,36 +817,38 @@ const Photobook = () => {
                 );
               })}
 
-              {pageEntries.map(({ page, pageNumber, step }) => {
-                const currentLayout = getPageLayout(settings.step_layout_overrides, page.key, step.id);
-                const hasPageOverride = !!settings.step_layout_overrides[page.key];
-                return (
-                  <div key={page.key} className="rounded-lg border bg-card p-3">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Lay-out pagina {pageNumber}</p>
-                        <p className="text-xs font-medium truncate">{step.location_name}</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {pageEntries.map(({ page, pageNumber, step }) => {
+                  const currentLayout = getPageLayout(settings.step_layout_overrides, page.key, step.id);
+                  const hasPageOverride = !!settings.step_layout_overrides[page.key];
+                  return (
+                    <div key={page.key} className="rounded-lg border bg-card p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Lay-out pagina {pageNumber}</p>
+                          <p className="text-xs font-medium truncate">{step.location_name}</p>
+                        </div>
+                        {!hasPageOverride && settings.step_layout_overrides[step.id] && (
+                          <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">oude update-instelling</span>
+                        )}
                       </div>
-                      {!hasPageOverride && settings.step_layout_overrides[step.id] && (
-                        <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[10px] text-muted-foreground">oude update-instelling</span>
-                      )}
+                      <div className="flex gap-2 flex-wrap">
+                        {STEP_LAYOUTS.map((layoutOption) => (
+                          <button
+                            key={layoutOption.id}
+                            onClick={() => upsertSettings({ step_layout_overrides: { ...settings.step_layout_overrides, [page.key]: layoutOption.id } })}
+                            title={layoutOption.label}
+                            className={`flex flex-col items-center gap-1 p-2 rounded border-2 transition ${currentLayout === layoutOption.id ? "border-primary bg-primary/5" : "border-transparent hover:border-muted-foreground/30"}`}
+                          >
+                            {layoutOption.icon}
+                            <span className="text-[10px] text-muted-foreground">{layoutOption.label}</span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <div className="flex gap-2 flex-wrap">
-                      {STEP_LAYOUTS.map((layoutOption) => (
-                        <button
-                          key={layoutOption.id}
-                          onClick={() => upsertSettings({ step_layout_overrides: { ...settings.step_layout_overrides, [page.key]: layoutOption.id } })}
-                          title={layoutOption.label}
-                          className={`flex flex-col items-center gap-1 p-2 rounded border-2 transition ${currentLayout === layoutOption.id ? "border-primary bg-primary/5" : "border-transparent hover:border-muted-foreground/30"}`}
-                        >
-                          {layoutOption.icon}
-                          <span className="text-[10px] text-muted-foreground">{layoutOption.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           );
         };
