@@ -193,12 +193,19 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                     })}
                   </div>
                 )}
-                {isOwner && sortedMedia.filter((m) => m.media_type !== "pdf").length > 1 && (
+                {isOwner && sortedMedia.filter((m) => m.media_type !== "pdf").length > 1 && reorderOpenFor === step.id && (
                   <div className="border-t border-border/60 bg-secondary/30 px-3 py-2">
                     <div className="mb-1.5 flex items-center justify-between gap-2">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Foto's ordenen</p>
-                      <p className="text-[10px] text-muted-foreground">Sleep om de tijdlijn en Bouwboek-volgorde aan te passen</p>
+                      <button
+                        type="button"
+                        onClick={() => setReorderOpenFor(null)}
+                        className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+                      >
+                        Sluiten
+                      </button>
                     </div>
+
                     <div className="flex gap-1.5 overflow-x-auto pb-1">
                       {sortedMedia.filter((m) => m.media_type !== "pdf").map((m, mediaIdx) => {
                         const isDragging = draggingMedia?.mediaId === m.id;
