@@ -1342,7 +1342,12 @@ const PhotoManagePanel = ({
             key={m.id}
             className={`relative group cursor-grab active:cursor-grabbing transition-opacity select-none ${isDragging ? "opacity-30" : ""}`}
             draggable
-            onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDragIdx(idx); }}
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData(PHOTO_DND_MIME, JSON.stringify({ stepId, photoId: m.id }));
+              setDragIdx(idx);
+            }}
+
             onDragOver={(e) => { e.preventDefault(); setDragOverIdx(idx); }}
             onDragLeave={() => setDragOverIdx(null)}
             onDrop={() => handleDrop(idx)}
