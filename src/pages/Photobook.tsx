@@ -316,9 +316,36 @@ const Photobook = () => {
     setExcludedSteps(next);
   };
 
+  // Reorder photos within a step by drag & drop on the page preview.
+  // Inserts dragged photo at the target's position in the step's visible photo order.
+  const reorderPhotoTo = (stepId: string, draggedPhotoId: string, targetPhotoId: string) => {
+    const step: any = steps.find((s: any) => s.id === stepId);
+    if (!step) return;
+    const baseTimeline = sortMediaByTimelineOrder(
+      (step.step_media || []).filter((m: any) => m.media_type !== "video" && m.media_type !== "pdf")
+    );
+    const customOrder = settings.step_photo_order[stepId];
+    const ordered = customOrder?.length
+      ? [...baseTimeline].sort((a: any, b: any) => {
+          const ai = customOrder.indexOf(a.id);
+          const bi = customOrder.indexOf(b.id);
+          if (ai === -1 && bi === -1) return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+          return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+        })
+      : baseTimeline;
+    const ids = ordered.map((m: any) => m.id);
+    const from = ids.indexOf(draggedPhotoId);
+    const to = ids.indexOf(targetPhotoId);
+    if (from === -1 || to === -1 || from === to) return;
+    ids.splice(from, 1);
+    ids.splice(to, 0, draggedPhotoId);
+    upsertSettings({ step_photo_order: { ...settings.step_photo_order, [stepId]: ids } });
+  };
+
   // Build pages (memoized)
   const pages = useMemo(() => {
     if (!trip) return [];
+
 
     const list: { key: string; node: React.ReactNode; meta?: { stepId?: string; chapter?: string; firstStep?: boolean } }[] = [];
 
