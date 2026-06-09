@@ -1218,11 +1218,66 @@ const PrintPagePreview = ({
   );
 };
 
-const PhotoFrame = ({ src, className = "" }: { src: string; className?: string }) => (
-  <div className={`min-h-0 min-w-0 overflow-hidden bg-secondary flex items-center justify-center ${className}`}>
-    <img src={src} alt="" loading="lazy" className="block h-full w-full object-contain" />
-  </div>
-);
+const PhotoFrame = ({
+  src,
+  className = "",
+  stepId,
+  photoId,
+  editing = false,
+  onMovePhoto,
+}: {
+  src: string;
+  className?: string;
+  stepId?: string;
+  photoId?: string;
+  editing?: boolean;
+  onMovePhoto?: (targetStepId: string, draggedPhotoId: string, targetPhotoId: string) => void;
+}) => {
+  const [isOver, setIsOver] = useState(false);
+  const interactive = editing && !!stepId && !!photoId && !!onMovePhoto;
+
+  return (
+    <div
+      className={`relative min-h-0 min-w-0 overflow-hidden bg-secondary flex items-center justify-center ${className} ${interactive ? "cursor-grab active:cursor-grabbing" : ""}`}
+      draggable={interactive}
+      onDragStart={(e) => {
+        if (!interactive) return;
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData(PHOTO_DND_MIME, JSON.stringify({ stepId, photoId }));
+      }}
+      onDragOver={(e) => {
+        if (!interactive) return;
+        if (!Array.from(e.dataTransfer.types).includes(PHOTO_DND_MIME)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setIsOver(true);
+      }}
+      onDragLeave={() => setIsOver(false)}
+      onDrop={(e) => {
+        if (!interactive) return;
+        setIsOver(false);
+        const raw = e.dataTransfer.getData(PHOTO_DND_MIME);
+        if (!raw) return;
+        e.preventDefault();
+        try {
+          const data = JSON.parse(raw) as { stepId: string; photoId: string };
+          if (data.stepId !== stepId) {
+            toast.error("Foto's kunnen alleen binnen dezelfde update verplaatst worden");
+            return;
+          }
+          if (data.photoId === photoId) return;
+          onMovePhoto!(stepId!, data.photoId, photoId!);
+        } catch {/* ignore */}
+      }}
+    >
+      <img src={src} alt="" loading="lazy" draggable={false} className="block h-full w-full object-contain pointer-events-none" />
+      {interactive && isOver && (
+        <div className="absolute inset-0 ring-4 ring-primary ring-inset bg-primary/10 pointer-events-none" />
+      )}
+    </div>
+  );
+};
+
 
 const StepCaption = ({
   chapterTitle,
