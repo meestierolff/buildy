@@ -21,6 +21,9 @@ type CoverTextPos = "bottom" | "top" | "center";
 const PRINT_PAGE_WIDTH = 600;
 const PRINT_PAGE_HEIGHT = 400;
 
+const PHOTO_DND_MIME = "application/x-buildy-photo";
+
+
 const sortMediaByTimelineOrder = <T extends { sort_order?: number | null; created_at?: string | null }>(media: T[]) =>
   [...media].sort((a, b) => {
     const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0);
@@ -313,9 +316,36 @@ const Photobook = () => {
     setExcludedSteps(next);
   };
 
+  // Reorder photos within a step by drag & drop on the page preview.
+  // Inserts dragged photo at the target's position in the step's visible photo order.
+  const reorderPhotoTo = (stepId: string, draggedPhotoId: string, targetPhotoId: string) => {
+    const step: any = steps.find((s: any) => s.id === stepId);
+    if (!step) return;
+    const baseTimeline = sortMediaByTimelineOrder(
+      (step.step_media || []).filter((m: any) => m.media_type !== "video" && m.media_type !== "pdf")
+    );
+    const customOrder = settings.step_photo_order[stepId];
+    const ordered = customOrder?.length
+      ? [...baseTimeline].sort((a: any, b: any) => {
+          const ai = customOrder.indexOf(a.id);
+          const bi = customOrder.indexOf(b.id);
+          if (ai === -1 && bi === -1) return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+          return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+        })
+      : baseTimeline;
+    const ids = ordered.map((m: any) => m.id);
+    const from = ids.indexOf(draggedPhotoId);
+    const to = ids.indexOf(targetPhotoId);
+    if (from === -1 || to === -1 || from === to) return;
+    ids.splice(from, 1);
+    ids.splice(to, 0, draggedPhotoId);
+    upsertSettings({ step_photo_order: { ...settings.step_photo_order, [stepId]: ids } });
+  };
+
   // Build pages (memoized)
   const pages = useMemo(() => {
     if (!trip) return [];
+
 
     const list: { key: string; node: React.ReactNode; meta?: { stepId?: string; chapter?: string; firstStep?: boolean } }[] = [];
 
@@ -509,7 +539,14 @@ const Photobook = () => {
               meta: { stepId: step.id, firstStep: false },
               node: (
                 <div className="h-full bg-card overflow-hidden p-[5%]">
-                  <PhotoFrame src={batch[0].media_url} className="h-full" />
+                  <PhotoFrame
+                    src={batch[0].media_url}
+                    className="h-full"
+                    stepId={step.id}
+                    photoId={batch[0].id}
+                    editing={editing}
+                    onMovePhoto={reorderPhotoTo}
+                  />
                 </div>
               ),
             });
@@ -530,14 +567,35 @@ const Photobook = () => {
                   <div className={`h-full overflow-hidden grid gap-[3%] ${gridClass}`}>
                     {layout === "auto" && batch.length === 3 ? (
                       <>
-                        <PhotoFrame src={batch[0].media_url} className="row-span-2" />
+                        <PhotoFrame
+                          src={batch[0].media_url}
+                          className="row-span-2"
+                          stepId={step.id}
+                          photoId={batch[0].id}
+                          editing={editing}
+                          onMovePhoto={reorderPhotoTo}
+                        />
                         {batch.slice(1).map((m: any) => (
-                          <PhotoFrame key={m.id} src={m.media_url} />
+                          <PhotoFrame
+                            key={m.id}
+                            src={m.media_url}
+                            stepId={step.id}
+                            photoId={m.id}
+                            editing={editing}
+                            onMovePhoto={reorderPhotoTo}
+                          />
                         ))}
                       </>
                     ) : (
                       batch.map((m: any) => (
-                        <PhotoFrame key={m.id} src={m.media_url} />
+                        <PhotoFrame
+                          key={m.id}
+                          src={m.media_url}
+                          stepId={step.id}
+                          photoId={m.id}
+                          editing={editing}
+                          onMovePhoto={reorderPhotoTo}
+                        />
                       ))
                     )}
                   </div>
@@ -545,6 +603,7 @@ const Photobook = () => {
               ),
             });
           }
+
 
           photoIdx += batchSize;
           pageIdx++;
@@ -778,8 +837,9 @@ const Photobook = () => {
                     {photos.length > 0 && (
                       <div>
                         <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
-                          Foto's — sleep om fotoboekvolgorde te wijzigen · klik om te verbergen
+                          Foto's — sleep om volgorde te wijzigen of sleep op een pagina · klik om te verbergen
                         </p>
+
                         <PhotoManagePanel
                           stepId={stepId}
                           photos={photos}
@@ -1215,11 +1275,66 @@ const PrintPagePreview = ({
   );
 };
 
-const PhotoFrame = ({ src, className = "" }: { src: string; className?: string }) => (
-  <div className={`min-h-0 min-w-0 overflow-hidden bg-secondary flex items-center justify-center ${className}`}>
-    <img src={src} alt="" loading="lazy" className="block h-full w-full object-contain" />
-  </div>
-);
+const PhotoFrame = ({
+  src,
+  className = "",
+  stepId,
+  photoId,
+  editing = false,
+  onMovePhoto,
+}: {
+  src: string;
+  className?: string;
+  stepId?: string;
+  photoId?: string;
+  editing?: boolean;
+  onMovePhoto?: (targetStepId: string, draggedPhotoId: string, targetPhotoId: string) => void;
+}) => {
+  const [isOver, setIsOver] = useState(false);
+  const interactive = editing && !!stepId && !!photoId && !!onMovePhoto;
+
+  return (
+    <div
+      className={`relative min-h-0 min-w-0 overflow-hidden bg-secondary flex items-center justify-center ${className} ${interactive ? "cursor-grab active:cursor-grabbing" : ""}`}
+      draggable={interactive}
+      onDragStart={(e) => {
+        if (!interactive) return;
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData(PHOTO_DND_MIME, JSON.stringify({ stepId, photoId }));
+      }}
+      onDragOver={(e) => {
+        if (!interactive) return;
+        if (!Array.from(e.dataTransfer.types).includes(PHOTO_DND_MIME)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setIsOver(true);
+      }}
+      onDragLeave={() => setIsOver(false)}
+      onDrop={(e) => {
+        if (!interactive) return;
+        setIsOver(false);
+        const raw = e.dataTransfer.getData(PHOTO_DND_MIME);
+        if (!raw) return;
+        e.preventDefault();
+        try {
+          const data = JSON.parse(raw) as { stepId: string; photoId: string };
+          if (data.stepId !== stepId) {
+            toast.error("Foto's kunnen alleen binnen dezelfde update verplaatst worden");
+            return;
+          }
+          if (data.photoId === photoId) return;
+          onMovePhoto!(stepId!, data.photoId, photoId!);
+        } catch {/* ignore */}
+      }}
+    >
+      <img src={src} alt="" loading="lazy" draggable={false} className="block h-full w-full object-contain pointer-events-none" />
+      {interactive && isOver && (
+        <div className="absolute inset-0 ring-4 ring-primary ring-inset bg-primary/10 pointer-events-none" />
+      )}
+    </div>
+  );
+};
+
 
 const StepCaption = ({
   chapterTitle,
@@ -1284,7 +1399,12 @@ const PhotoManagePanel = ({
             key={m.id}
             className={`relative group cursor-grab active:cursor-grabbing transition-opacity select-none ${isDragging ? "opacity-30" : ""}`}
             draggable
-            onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDragIdx(idx); }}
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData(PHOTO_DND_MIME, JSON.stringify({ stepId, photoId: m.id }));
+              setDragIdx(idx);
+            }}
+
             onDragOver={(e) => { e.preventDefault(); setDragOverIdx(idx); }}
             onDragLeave={() => setDragOverIdx(null)}
             onDrop={() => handleDrop(idx)}
