@@ -47,6 +47,8 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
   const [mediaDrafts, setMediaDrafts] = useState<Record<string, StepMedia[]>>({});
   const [draggingMedia, setDraggingMedia] = useState<{ stepId: string; mediaId: string } | null>(null);
   const [dragOverMediaId, setDragOverMediaId] = useState<string | null>(null);
+  const [reorderOpenFor, setReorderOpenFor] = useState<string | null>(null);
+
   const cc = (id: string, base: number) => commentCounts[id] ?? base;
 
   const openLightboxForStep = (step: Step, mediaIdx: number) => {
