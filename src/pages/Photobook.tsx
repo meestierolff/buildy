@@ -539,7 +539,14 @@ const Photobook = () => {
               meta: { stepId: step.id, firstStep: false },
               node: (
                 <div className="h-full bg-card overflow-hidden p-[5%]">
-                  <PhotoFrame src={batch[0].media_url} className="h-full" />
+                  <PhotoFrame
+                    src={batch[0].media_url}
+                    className="h-full"
+                    stepId={step.id}
+                    photoId={batch[0].id}
+                    editing={editing}
+                    onMovePhoto={reorderPhotoTo}
+                  />
                 </div>
               ),
             });
@@ -560,14 +567,35 @@ const Photobook = () => {
                   <div className={`h-full overflow-hidden grid gap-[3%] ${gridClass}`}>
                     {layout === "auto" && batch.length === 3 ? (
                       <>
-                        <PhotoFrame src={batch[0].media_url} className="row-span-2" />
+                        <PhotoFrame
+                          src={batch[0].media_url}
+                          className="row-span-2"
+                          stepId={step.id}
+                          photoId={batch[0].id}
+                          editing={editing}
+                          onMovePhoto={reorderPhotoTo}
+                        />
                         {batch.slice(1).map((m: any) => (
-                          <PhotoFrame key={m.id} src={m.media_url} />
+                          <PhotoFrame
+                            key={m.id}
+                            src={m.media_url}
+                            stepId={step.id}
+                            photoId={m.id}
+                            editing={editing}
+                            onMovePhoto={reorderPhotoTo}
+                          />
                         ))}
                       </>
                     ) : (
                       batch.map((m: any) => (
-                        <PhotoFrame key={m.id} src={m.media_url} />
+                        <PhotoFrame
+                          key={m.id}
+                          src={m.media_url}
+                          stepId={step.id}
+                          photoId={m.id}
+                          editing={editing}
+                          onMovePhoto={reorderPhotoTo}
+                        />
                       ))
                     )}
                   </div>
@@ -575,6 +603,7 @@ const Photobook = () => {
               ),
             });
           }
+
 
           photoIdx += batchSize;
           pageIdx++;
