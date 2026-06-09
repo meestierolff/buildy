@@ -837,8 +837,9 @@ const Photobook = () => {
                     {photos.length > 0 && (
                       <div>
                         <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
-                          Foto's — sleep om fotoboekvolgorde te wijzigen · klik om te verbergen
+                          Foto's — sleep om volgorde te wijzigen of sleep op een pagina · klik om te verbergen
                         </p>
+
                         <PhotoManagePanel
                           stepId={stepId}
                           photos={photos}
