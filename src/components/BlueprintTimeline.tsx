@@ -116,6 +116,17 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
               </div>
               {isOwner && (
                 <div className="flex items-center gap-0.5 shrink-0">
+                  {sortedMedia.filter((m) => m.media_type !== "pdf").length > 1 && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={`h-7 w-7 ${reorderOpenFor === step.id ? "text-accent" : ""}`}
+                      onClick={() => setReorderOpenFor(reorderOpenFor === step.id ? null : step.id)}
+                      title="Foto's ordenen"
+                    >
+                      <GripVertical className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit?.(step)}>
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
@@ -124,6 +135,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                   </Button>
                 </div>
               )}
+
             </div>
 
             {/* Title */}
