@@ -21,6 +21,9 @@ type CoverTextPos = "bottom" | "top" | "center";
 const PRINT_PAGE_WIDTH = 600;
 const PRINT_PAGE_HEIGHT = 400;
 
+const PHOTO_DND_MIME = "application/x-buildy-photo";
+
+
 const sortMediaByTimelineOrder = <T extends { sort_order?: number | null; created_at?: string | null }>(media: T[]) =>
   [...media].sort((a, b) => {
     const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0);
