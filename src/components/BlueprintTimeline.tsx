@@ -47,6 +47,8 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
   const [mediaDrafts, setMediaDrafts] = useState<Record<string, StepMedia[]>>({});
   const [draggingMedia, setDraggingMedia] = useState<{ stepId: string; mediaId: string } | null>(null);
   const [dragOverMediaId, setDragOverMediaId] = useState<string | null>(null);
+  const [reorderOpenFor, setReorderOpenFor] = useState<string | null>(null);
+
   const cc = (id: string, base: number) => commentCounts[id] ?? base;
 
   const openLightboxForStep = (step: Step, mediaIdx: number) => {
@@ -114,6 +116,17 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
               </div>
               {isOwner && (
                 <div className="flex items-center gap-0.5 shrink-0">
+                  {sortedMedia.filter((m) => m.media_type !== "pdf").length > 1 && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={`h-7 w-7 ${reorderOpenFor === step.id ? "text-accent" : ""}`}
+                      onClick={() => setReorderOpenFor(reorderOpenFor === step.id ? null : step.id)}
+                      title="Foto's ordenen"
+                    >
+                      <GripVertical className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit?.(step)}>
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
@@ -122,6 +135,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                   </Button>
                 </div>
               )}
+
             </div>
 
             {/* Title */}
@@ -191,12 +205,19 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                     })}
                   </div>
                 )}
-                {isOwner && sortedMedia.filter((m) => m.media_type !== "pdf").length > 1 && (
+                {isOwner && sortedMedia.filter((m) => m.media_type !== "pdf").length > 1 && reorderOpenFor === step.id && (
                   <div className="border-t border-border/60 bg-secondary/30 px-3 py-2">
                     <div className="mb-1.5 flex items-center justify-between gap-2">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Foto's ordenen</p>
-                      <p className="text-[10px] text-muted-foreground">Sleep om de tijdlijn en Bouwboek-volgorde aan te passen</p>
+                      <button
+                        type="button"
+                        onClick={() => setReorderOpenFor(null)}
+                        className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+                      >
+                        Sluiten
+                      </button>
                     </div>
+
                     <div className="flex gap-1.5 overflow-x-auto pb-1">
                       {sortedMedia.filter((m) => m.media_type !== "pdf").map((m, mediaIdx) => {
                         const isDragging = draggingMedia?.mediaId === m.id;
