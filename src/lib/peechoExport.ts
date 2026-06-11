@@ -15,7 +15,7 @@ import { nl } from "date-fns/locale";
  */
 
 export type PeechoFormat = "A4_LANDSCAPE" | "A4_PORTRAIT" | "SQUARE_210";
-export type PeechoStepLayout = "auto" | "1-full" | "2-side" | "2-stack" | "grid";
+export type PeechoStepLayout = "auto" | "1-full" | "2-side" | "2-stack" | "3-mixed" | "grid";
 
 const FORMATS: Record<PeechoFormat, { w: number; h: number; label: string }> = {
   A4_LANDSCAPE: { w: 297, h: 210, label: "A4 liggend" },
@@ -205,7 +205,60 @@ const getPageLayout = (settings: Settings, stepId: string, pageKey: string): Pee
 const getBatchSize = (layout: PeechoStepLayout, remainingPhotos: number) => {
   if (layout === "1-full") return 1;
   if (layout === "2-side" || layout === "2-stack") return Math.min(2, remainingPhotos);
+  if (layout === "3-mixed") return Math.min(3, remainingPhotos);
   return Math.min(4, remainingPhotos);
+};
+
+const drawStepTextPages = (
+  pdf: jsPDF,
+  params: {
+    addPage: () => void;
+    W: number;
+    H: number;
+    innerW: number;
+    chapterTitle: string;
+    dateLabel: string;
+    locationName: string;
+    description: string;
+  },
+) => {
+  const { addPage, W, H, innerW, chapterTitle, dateLabel, locationName, description } = params;
+  const lines = pdf.splitTextToSize(description, innerW) as string[];
+  const lineHeight = 5.8;
+  let cursor = 0;
+  let textPageIdx = 0;
+
+  while (cursor < lines.length || textPageIdx === 0) {
+    addPage();
+    pdf.setFillColor(255, 255, 255);
+    pdf.rect(0, 0, W, H, "F");
+
+    pdf.setTextColor(180, 90, 50);
+    pdf.setFont("helvetica", "bold");
+    pdf.setFontSize(8);
+    pdf.text(chapterTitle.toUpperCase(), MARGIN, MARGIN + 8);
+    pdf.setTextColor(120, 120, 120);
+    pdf.setFont("helvetica", "normal");
+    pdf.text(textPageIdx === 0 ? dateLabel : `${dateLabel} · vervolg`, MARGIN, MARGIN + 14);
+
+    pdf.setFont("times", "bold");
+    pdf.setTextColor(20, 20, 20);
+    pdf.setFontSize(22);
+    const titleLines = clampLines(pdf, locationName || "Update", innerW, 2);
+    pdf.text(titleLines, MARGIN, MARGIN + 42);
+
+    const textY = MARGIN + 54 + titleLines.length * 7;
+    const maxLines = Math.max(1, Math.floor((H - MARGIN - textY) / lineHeight));
+    const chunk = lines.slice(cursor, cursor + maxLines);
+
+    pdf.setFont("times", "italic");
+    pdf.setFontSize(12);
+    pdf.setTextColor(60, 60, 60);
+    pdf.text(chunk, MARGIN, textY, { lineHeightFactor: 1.3, maxWidth: innerW });
+
+    cursor += chunk.length;
+    textPageIdx++;
+  }
 };
 
 export async function buildPeechoPdf(args: BuildArgs): Promise<Blob> {
@@ -353,33 +406,21 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<Blob> {
     for (const step of grouped.get(phase)!) {
       const photos = getOrderedPhotos(step, settings, excludedMedia);
       const hasDescription = !!step.description;
+      const description = step.description || "";
       if (photos.length === 0 && !hasDescription) continue;
 
       const dateLabel = format(new Date(step.step_date), "d MMM yyyy", { locale: nl });
       if (photos.length === 0) {
-        // Text-only page
-        addPage();
-        pdf.setFillColor(255, 255, 255);
-        pdf.rect(0, 0, W, H, "F");
-
-        pdf.setTextColor(180, 90, 50);
-        pdf.setFont("helvetica", "bold");
-        pdf.setFontSize(8);
-        pdf.text(chapterTitle.toUpperCase(), MARGIN, MARGIN + 8);
-        pdf.setTextColor(120, 120, 120);
-        pdf.setFont("helvetica", "normal");
-        pdf.text(dateLabel, MARGIN, MARGIN + 14);
-
-        pdf.setFont("times", "bold");
-        pdf.setTextColor(20, 20, 20);
-        pdf.setFontSize(22);
-        const loc = step.location_name || "Update";
-        pdf.text(clampLines(pdf, loc, innerW, 2), MARGIN, MARGIN + 42);
-        pdf.setFont("times", "italic");
-        pdf.setFontSize(12);
-        pdf.setTextColor(60, 60, 60);
-        const desc = `"${step.description}"`;
-        pdf.text(clampLines(pdf, desc, innerW, 8), MARGIN, MARGIN + 58);
+        drawStepTextPages(pdf, {
+          addPage,
+          W,
+          H,
+          innerW,
+          chapterTitle,
+          dateLabel,
+          locationName: step.location_name || "Update",
+          description,
+        });
       } else {
         let pageIdx = 0;
         let photoIdx = 0;
@@ -394,7 +435,8 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<Blob> {
           pdf.rect(0, 0, W, H, "F");
 
           const shouldCaption = isFirstBatch;
-          const captionH = shouldCaption ? (hasDescription ? 36 : 26) : 0;
+          const shouldShowCaptionDescription = hasDescription && description.length <= 160;
+          const captionH = shouldCaption ? (shouldShowCaptionDescription ? 36 : 26) : 0;
           const gridTop = MARGIN;
           const gridH = innerH - captionH - (shouldCaption ? 4 : 0);
           const gridW = innerW;
@@ -415,7 +457,7 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<Blob> {
               const data = await loadImageAsJpeg(batch[j].media_url, cellW, gridH, "contain");
               if (data) pdf.addImage(data, "JPEG", MARGIN + j * (cellW + gap), gridTop, cellW, gridH, undefined, "FAST");
             }
-          } else if (batch.length === 3) {
+          } else if (layout === "3-mixed" || batch.length === 3) {
             const leftW = gridW * 0.58;
             const rightW = gridW - leftW - gap;
             const rightH = (gridH - gap) / 2;
@@ -450,13 +492,26 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<Blob> {
               chapterTitle,
               dateLabel,
               locationName: step.location_name || "Update",
-              description: step.description,
+              description: shouldShowCaptionDescription ? description : null,
               compact: captionH <= 26,
             });
           }
 
           photoIdx += batchSize;
           pageIdx++;
+        }
+
+        if (description.length > 160) {
+          drawStepTextPages(pdf, {
+            addPage,
+            W,
+            H,
+            innerW,
+            chapterTitle,
+            dateLabel,
+            locationName: step.location_name || "Update",
+            description,
+          });
         }
       }
     }

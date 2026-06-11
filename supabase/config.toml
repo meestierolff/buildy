@@ -5,3 +5,9 @@ verify_jwt = false
 
 [functions.peecho-pingback]
 verify_jwt = false
+
+[functions.create-photobook-checkout]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false

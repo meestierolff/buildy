@@ -1,5 +1,5 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useParams, Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Badge } from "@/components/ui/badge";
@@ -12,14 +12,15 @@ import { format } from "date-fns";
 import { nl } from "date-fns/locale";
 import { toast } from "sonner";
 import { buildPeechoPdf, getPeechoPrintPageCount, PEECHO_FORMATS, PEECHO_MIN_PAGES, type PeechoFormat } from "@/lib/peechoExport";
-import { assertPeechoPdfReachable, createPeechoReference, getPeechoScriptUrl } from "@/lib/peecho";
+import { assertPeechoPdfReachable, createPeechoReference } from "@/lib/peecho";
 import { usePageMeta } from "@/hooks/usePageMeta";
 
-type StepLayout = "auto" | "1-full" | "2-side" | "2-stack" | "grid";
+type StepLayout = "auto" | "1-full" | "2-side" | "2-stack" | "3-mixed" | "grid";
 type CoverTextPos = "bottom" | "top" | "center";
 
 const PRINT_PAGE_WIDTH = 600;
 const PRINT_PAGE_HEIGHT = 400;
+const TEXT_CHARS_PER_PAGE = 900;
 
 const PHOTO_DND_MIME = "application/x-buildy-photo";
 
@@ -40,8 +41,52 @@ const getPageLayout = (
 const getPhotobookBatchSize = (layout: StepLayout, remainingPhotos: number) => {
   if (layout === "1-full") return 1;
   if (layout === "2-side" || layout === "2-stack") return Math.min(2, remainingPhotos);
+  if (layout === "3-mixed") return Math.min(3, remainingPhotos);
   return Math.min(4, remainingPhotos);
 };
+
+const layoutForPhotoCount = (count: number, preferred?: StepLayout): StepLayout => {
+  if (count <= 1) return "1-full";
+  if (count === 2) return preferred === "2-stack" ? "2-stack" : "2-side";
+  if (count === 3) return "3-mixed";
+  return "grid";
+};
+
+const splitTextIntoPages = (text: string, maxChars = TEXT_CHARS_PER_PAGE) => {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+
+  const pages: string[] = [];
+  let current = "";
+  const words = trimmed.split(/(\s+)/);
+
+  for (const word of words) {
+    if (!word) continue;
+    const next = `${current}${word}`;
+    if (current && next.length > maxChars) {
+      pages.push(current.trim());
+      current = word.trimStart();
+    } else {
+      current = next;
+    }
+  }
+
+  if (current.trim()) pages.push(current.trim());
+  return pages;
+};
+
+interface PhotobookPageMeta {
+  stepId?: string;
+  chapter?: string;
+  firstStep?: boolean;
+  photoIds?: string[];
+}
+
+interface PhotobookPage {
+  key: string;
+  node: React.ReactNode;
+  meta?: PhotobookPageMeta;
+}
 
 interface PhotobookSettings {
   cover_title: string | null;
@@ -59,6 +104,11 @@ interface PhotobookOrder {
   format: string;
   page_count: number;
   status: string;
+  payment_status?: string;
+  payment_amount_cents?: number | null;
+  payment_currency?: string;
+  fulfillment_status?: string;
+  fulfillment_error?: string | null;
   tracking_code: string | null;
   tracking_url: string | null;
   created_at: string;
@@ -66,7 +116,23 @@ interface PhotobookOrder {
   status_updated_at: string | null;
 }
 
-const PHOTOBOOK_ORDER_SELECT = "id, merchant_reference, peecho_id, format, page_count, status, tracking_code, tracking_url, created_at, ordered_at, status_updated_at";
+const PHOTOBOOK_ORDER_SELECT_BASE = "id, merchant_reference, peecho_id, format, page_count, status, tracking_code, tracking_url, created_at, ordered_at, status_updated_at";
+const PHOTOBOOK_ORDER_SELECT_EXTENDED = "id, merchant_reference, peecho_id, format, page_count, status, payment_status, payment_amount_cents, payment_currency, fulfillment_status, fulfillment_error, tracking_code, tracking_url, created_at, ordered_at, status_updated_at";
+
+const fetchPhotobookOrders = async (tripId: string) => {
+  const legacy = await supabase
+    .from("photobook_orders")
+    .select(PHOTOBOOK_ORDER_SELECT_BASE)
+    .eq("trip_id", tripId)
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  if (legacy.error) {
+    console.error("Could not fetch photobook order history:", legacy.error);
+    return [];
+  }
+  return legacy.data || [];
+};
 
 const STEP_LAYOUTS: { id: StepLayout; label: string; icon: React.ReactNode }[] = [
   {
@@ -110,6 +176,17 @@ const STEP_LAYOUTS: { id: StepLayout; label: string; icon: React.ReactNode }[] =
     ),
   },
   {
+    id: "3-mixed",
+    label: "3 mix",
+    icon: (
+      <div className="w-9 h-7 border-2 border-current rounded-sm p-0.5 grid grid-cols-[1.35fr_1fr] grid-rows-2 gap-0.5">
+        <div className="bg-current/40 rounded-[1px] row-span-2" />
+        <div className="bg-current/40 rounded-[1px]" />
+        <div className="bg-current/40 rounded-[1px]" />
+      </div>
+    ),
+  },
+  {
     id: "grid",
     label: "2×2 grid",
     icon: (
@@ -125,6 +202,7 @@ const STEP_LAYOUTS: { id: StepLayout; label: string; icon: React.ReactNode }[] =
 
 const Photobook = () => {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const [trip, setTrip] = useState<any>(null);
   const [steps, setSteps] = useState<any[]>([]);
@@ -150,11 +228,10 @@ const Photobook = () => {
   const [printOpen, setPrintOpen] = useState(false);
   const printFormat: PeechoFormat = "A4_LANDSCAPE";
   const [printBusy, setPrintBusy] = useState(false);
-  const [printedPdfUrl, setPrintedPdfUrl] = useState<string | null>(null);
-  const [printedOrderReference, setPrintedOrderReference] = useState<string | null>(null);
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const [photobookOrders, setPhotobookOrders] = useState<PhotobookOrder[]>([]);
   const [stepBudgetMap, setStepBudgetMap] = useState<Map<string, number>>(new Map());
-  const PEECHO_SCRIPT_URL = getPeechoScriptUrl();
+  const checkoutToastShown = useRef(false);
   usePageMeta({
     title: trip?.title ? `Bouwboek van ${trip.title} — Buildy` : "Bouwboek maken — Buildy",
     description: "Bekijk en bestel het Bouwboek van deze verbouwing met foto's, fases en mijlpalen.",
@@ -168,11 +245,22 @@ const Photobook = () => {
       .find((m: any) => m.media_type !== "video" && m.media_type !== "pdf") ?? null;
   }, [steps, trip?.cover_image_url]);
 
+  useEffect(() => {
+    if (checkoutToastShown.current) return;
+    const checkout = searchParams.get("checkout");
+    if (checkout === "success") {
+      checkoutToastShown.current = true;
+      toast.success("Betaling ontvangen — we verwerken je Bouwboek order");
+    } else if (checkout === "cancelled") {
+      checkoutToastShown.current = true;
+      toast.info("Betaling geannuleerd. Je kunt je Bouwboek opnieuw klaarmaken wanneer je wilt.");
+    }
+  }, [searchParams]);
+
   const handleGeneratePeechoPdf = async () => {
     if (!trip || !id) return;
     setPrintBusy(true);
-    setPrintedPdfUrl(null);
-    setPrintedOrderReference(null);
+    setCheckoutUrl(null);
     let uploadedPdfPath: string | null = null;
     let pdfReadyForCheckout = false;
     try {
@@ -202,20 +290,25 @@ const Photobook = () => {
           pdf_url: pub.publicUrl,
           format: printFormat,
           page_count: pageCount,
-          status: "ready_for_checkout",
+          status: "pdf_ready",
+          payment_status: "unpaid",
+          payment_currency: "eur",
+          fulfillment_status: "not_started",
         })
-        .select(PHOTOBOOK_ORDER_SELECT)
+        .select(PHOTOBOOK_ORDER_SELECT_EXTENDED)
         .single();
-      if (orderErr) {
-        console.error("Could not register Peecho order tracking:", orderErr);
-      }
+      if (orderErr || !orderData) throw orderErr || new Error("Order kon niet worden aangemaakt");
 
-      setPrintedPdfUrl(pub.publicUrl);
-      setPrintedOrderReference(orderReference);
-      if (!orderErr && orderData) {
-        setPhotobookOrders((current) => [orderData as PhotobookOrder, ...current.filter((order) => order.id !== orderData.id)].slice(0, 5));
-      }
-      toast.success("Boek klaar — klik hieronder om te bestellen");
+      const { data: checkoutData, error: checkoutErr } = await supabase.functions.invoke("create-photobook-checkout", {
+        body: { orderId: orderData.id },
+      });
+      if (checkoutErr) throw checkoutErr;
+      if (!checkoutData?.checkoutUrl) throw new Error("Checkout-url ontbreekt");
+
+      setCheckoutUrl(checkoutData.checkoutUrl);
+      setPhotobookOrders((current) => [orderData as PhotobookOrder, ...current.filter((order) => order.id !== orderData.id)].slice(0, 5));
+      toast.success("Boek klaar — je gaat nu naar de beveiligde betaling");
+      window.location.assign(checkoutData.checkoutUrl);
     } catch (e: any) {
       if (uploadedPdfPath && !pdfReadyForCheckout) {
         const { error: cleanupErr } = await supabase.storage.from("trip-media").remove([uploadedPdfPath]);
@@ -233,7 +326,7 @@ const Photobook = () => {
   useEffect(() => {
     const fetchData = async () => {
       if (!id) return;
-      const [{ data: tripData }, { data: stepsData }, { data: settingsData }, { data: exMedia }, { data: exSteps }, { data: privInfo }, { data: budgetData }, { data: orderData }] = await Promise.all([
+      const [{ data: tripData }, { data: stepsData }, { data: settingsData }, { data: exMedia }, { data: exSteps }, { data: privInfo }, { data: budgetData }, orderData] = await Promise.all([
         supabase.from("trips").select("*").eq("id", id).single(),
         supabase.from("steps").select("*, step_media(*)").eq("trip_id", id).order("step_date", { ascending: true }),
         supabase.from("photobook_settings").select("*").eq("trip_id", id).maybeSingle(),
@@ -241,7 +334,7 @@ const Photobook = () => {
         supabase.from("photobook_excluded_steps").select("step_id").eq("trip_id", id),
         supabase.from("trip_private_info").select("address").eq("trip_id", id).maybeSingle(),
         supabase.from("step_budget").select("step_id, cost").eq("trip_id", id),
-        supabase.from("photobook_orders").select(PHOTOBOOK_ORDER_SELECT).eq("trip_id", id).order("created_at", { ascending: false }).limit(5),
+        fetchPhotobookOrders(id),
       ]);
       setStepBudgetMap(new Map((budgetData || []).map((r: any) => [r.step_id, Number(r.cost) || 0])));
       setTrip(tripData ? { ...tripData, address: privInfo?.address ?? null } : null);
@@ -264,7 +357,7 @@ const Photobook = () => {
     fetchData();
   }, [id, user?.id]);
 
-  const upsertSettings = async (patch: Partial<PhotobookSettings>) => {
+  const upsertSettings = useCallback(async (patch: Partial<PhotobookSettings>) => {
     if (!id) return;
     const next = { ...settings, ...patch };
     setSettings(next);
@@ -278,7 +371,7 @@ const Photobook = () => {
       step_photo_order: next.step_photo_order as any,
     });
     if (error) toast.error("Kon niet opslaan");
-  };
+  }, [id, settings]);
 
   const updateTripField = async (patch: Record<string, any>) => {
     if (!id) return;
@@ -318,7 +411,7 @@ const Photobook = () => {
 
   // Reorder photos within a step by drag & drop on the page preview.
   // Inserts dragged photo at the target's position in the step's visible photo order.
-  const reorderPhotoTo = (stepId: string, draggedPhotoId: string, targetPhotoId: string) => {
+  const reorderPhotoTo = useCallback((stepId: string, draggedPhotoId: string, targetPhotoId: string) => {
     const step: any = steps.find((s: any) => s.id === stepId);
     if (!step) return;
     const baseTimeline = sortMediaByTimelineOrder(
@@ -340,14 +433,13 @@ const Photobook = () => {
     ids.splice(from, 1);
     ids.splice(to, 0, draggedPhotoId);
     upsertSettings({ step_photo_order: { ...settings.step_photo_order, [stepId]: ids } });
-  };
+  }, [settings.step_photo_order, steps, upsertSettings]);
 
   // Build pages (memoized)
   const pages = useMemo(() => {
     if (!trip) return [];
 
-
-    const list: { key: string; node: React.ReactNode; meta?: { stepId?: string; chapter?: string; firstStep?: boolean } }[] = [];
+    const list: PhotobookPage[] = [];
 
     const allMedia = steps.flatMap((s) => (s.step_media || []).map((m: any) => ({ ...m, step: s })));
     const coverImage = settings.cover_media_id
@@ -490,38 +582,47 @@ const Photobook = () => {
           : allStepPhotos;
         const photos = orderedPhotos.filter((m: any) => !excludedMedia.has(m.id));
         const hasDescription = !!step.description;
+        const descriptionPages = hasDescription ? splitTextIntoPages(step.description as string) : [];
 
         if (photos.length === 0 && !hasDescription && !step.location_name) continue;
 
         const stepIdx = stepIdxMap.get(step.id) ?? 0;
         const cumulativeCost = cumulativeCostMap.get(step.id) ?? 0;
-
-        // First page of every step: title + text + progress bar (no photo)
-        list.push({
-          key: `${step.id}-intro`,
-          meta: { stepId: step.id, firstStep: true },
-          node: (
-            <div className="h-full grid grid-rows-[minmax(0,1fr)_auto] bg-card overflow-hidden">
-              <div className="min-h-0 overflow-hidden flex flex-col justify-center px-[10%] py-[8%]">
-                <p className="text-[9px] uppercase tracking-[0.25em] text-accent mb-1.5 font-bold">{chapterTitle}</p>
-                <p className="text-[10px] text-muted-foreground mb-3">{format(new Date(step.step_date), "d MMM yyyy", { locale: nl })}</p>
-                {step.location_name && (
-                  <h2 className="text-xl font-bold font-serif mb-3 leading-tight [overflow-wrap:anywhere] line-clamp-2">{step.location_name}</h2>
-                )}
-                {hasDescription && (
-                  <p className="text-[11px] leading-[1.55] text-foreground/80 italic whitespace-pre-line [overflow-wrap:anywhere] line-clamp-[28]">"{step.description}"</p>
-                )}
+        const introTextPages: (string | null)[] = descriptionPages.length ? descriptionPages : [null];
+        introTextPages.forEach((descriptionPage, textPageIdx) => {
+          list.push({
+            key: textPageIdx === 0 ? `${step.id}-intro` : `${step.id}-text-${textPageIdx}`,
+            meta: { stepId: step.id, firstStep: textPageIdx === 0 },
+            node: (
+              <div className="h-full grid grid-rows-[minmax(0,1fr)_auto] bg-card overflow-hidden">
+                <div className="min-h-0 overflow-hidden flex flex-col justify-center px-[10%] py-[8%]">
+                  <p className="text-[9px] uppercase tracking-[0.25em] text-accent mb-1.5 font-bold">{chapterTitle}</p>
+                  <p className="text-[10px] text-muted-foreground mb-3">
+                    {format(new Date(step.step_date), "d MMM yyyy", { locale: nl })}
+                    {textPageIdx > 0 ? " · vervolg" : ""}
+                  </p>
+                  {step.location_name && (
+                    <h2 className="text-xl font-bold font-serif mb-3 leading-tight [overflow-wrap:anywhere] line-clamp-2">{step.location_name}</h2>
+                  )}
+                  {descriptionPage && (
+                    <p className="text-[11px] leading-[1.55] text-foreground/80 italic whitespace-pre-line [overflow-wrap:anywhere]">
+                      &quot;{descriptionPage}&quot;
+                    </p>
+                  )}
+                </div>
+                <StepPageFooter
+                  step={step}
+                  stepIdx={stepIdx}
+                  totalSteps={totalVisible}
+                  cumulativeCost={cumulativeCost}
+                  budgetTotal={budgetTotal}
+                />
               </div>
-              <StepPageFooter
-                step={step}
-                stepIdx={stepIdx}
-                totalSteps={totalVisible}
-                cumulativeCost={cumulativeCost}
-                budgetTotal={budgetTotal}
-              />
-            </div>
-          ),
+            ),
+          });
         });
+
+        if (photos.length === 0) continue;
 
         // Subsequent pages: photos only, no captions
         let pageIdx = 0;
@@ -536,7 +637,7 @@ const Photobook = () => {
           if (useFullBleed) {
             list.push({
               key: pageKey,
-              meta: { stepId: step.id, firstStep: false },
+              meta: { stepId: step.id, firstStep: false, photoIds: batch.map((m: any) => m.id) },
               node: (
                 <div className="h-full bg-card overflow-hidden p-[5%]">
                   <PhotoFrame
@@ -554,6 +655,7 @@ const Photobook = () => {
             const gridClass =
               layout === "2-side" ? "grid-cols-2 grid-rows-1"
               : layout === "2-stack" ? "grid-cols-1 grid-rows-2"
+              : layout === "3-mixed" ? "grid-cols-[1.35fr_1fr] grid-rows-2"
               : layout === "grid" ? "grid-cols-2 grid-rows-[1fr_1fr]"
               : batch.length === 3 ? "grid-cols-[1.35fr_1fr] grid-rows-2"
               : batch.length === 4 ? "grid-cols-4 grid-rows-1"
@@ -561,11 +663,11 @@ const Photobook = () => {
 
             list.push({
               key: pageKey,
-              meta: { stepId: step.id, firstStep: false },
+              meta: { stepId: step.id, firstStep: false, photoIds: batch.map((m: any) => m.id) },
               node: (
                 <div className="h-full bg-card overflow-hidden p-[5%]">
                   <div className={`h-full overflow-hidden grid gap-[3%] ${gridClass}`}>
-                    {layout === "auto" && batch.length === 3 ? (
+                    {(layout === "auto" || layout === "3-mixed") && batch.length === 3 ? (
                       <>
                         <PhotoFrame
                           src={batch[0].media_url}
@@ -631,28 +733,27 @@ const Photobook = () => {
     });
 
     return list;
-  }, [trip, steps, settings, excludedMedia, excludedSteps, editing, stepBudgetMap, defaultCoverMedia]);
+  }, [trip, steps, settings, excludedMedia, excludedSteps, editing, stepBudgetMap, defaultCoverMedia, reorderPhotoTo]);
 
-  // Build page spreads: spread 0 = [cover, null], spread n = [pages[2n-1], pages[2n]]
+  // Build page spreads: spread 0 = [cover, page 2], spread n = [pages[2n], pages[2n + 1]]
   const spreads = useMemo(() => {
     if (pages.length === 0) return [[null, null]];
     const result: (typeof pages[0] | null)[][] = [];
-    result.push([pages[0], null]);
-    for (let i = 1; i < pages.length; i += 2) {
+    for (let i = 0; i < pages.length; i += 2) {
       result.push([pages[i] ?? null, pages[i + 1] ?? null]);
     }
     return result;
   }, [pages]);
 
   // Derive spread index from flat page index
-  const spreadIdx = pageIdx === 0 ? 0 : Math.ceil(pageIdx / 2);
+  const spreadIdx = Math.floor(pageIdx / 2);
   const safeSpread = Math.min(spreadIdx, Math.max(0, spreads.length - 1));
   const [leftPage, rightPage] = spreads[safeSpread];
-  const isCover = safeSpread === 0;
+  const isCover = pageIdx === 0 || leftPage?.key === "cover";
 
   // Spread navigation helpers (desktop)
-  const goToPrevSpread = () => setPageIdx(safeSpread <= 1 ? 0 : (safeSpread - 1) * 2 - 1);
-  const goToNextSpread = () => setPageIdx(Math.min(pages.length - 1, safeSpread * 2 + 1));
+  const goToPrevSpread = () => setPageIdx(Math.max(0, (safeSpread - 1) * 2));
+  const goToNextSpread = () => setPageIdx(Math.min(pages.length - 1, (safeSpread + 1) * 2));
   const goToFirstSpread = () => setPageIdx(0);
   const goToLastSpread = () => setPageIdx(Math.max(0, pages.length - 1));
 
@@ -680,15 +781,15 @@ const Photobook = () => {
         </Link>
         <span className="text-sm text-muted-foreground">
           {isCover
-            ? "Cover"
-            : `Pagina ${safeSpread * 2}–${Math.min(safeSpread * 2 + 1, PRINT_PAGES)} / ${PRINT_PAGES}`}
+            ? pages[1] ? "Cover + pagina 2" : "Cover"
+            : `Pagina ${safeSpread * 2 + 1}–${Math.min(safeSpread * 2 + 2, PRINT_PAGES)} / ${PRINT_PAGES}`}
         </span>
         <div className="ml-auto flex items-center gap-2">
           {isOwner && !editing && (
             <Button
               variant="outline"
               size="sm"
-              onClick={() => { setPrintedPdfUrl(null); setPrintedOrderReference(null); setPrintOpen(true); }}
+              onClick={() => { setCheckoutUrl(null); setPrintOpen(true); }}
               className="gap-1.5"
             >
               <BookOpen className="h-4 w-4" />
@@ -789,7 +890,7 @@ const Photobook = () => {
         </div>
       )}
 
-      {editing && !overviewMode && !isCover && (() => {
+      {editing && !overviewMode && (() => {
         const renderControls = (visiblePages: (typeof pages[0] | null | undefined)[], className: string) => {
           const pageEntries = visiblePages
             .filter((page): page is typeof pages[0] => !!page?.meta?.stepId)
@@ -798,6 +899,7 @@ const Photobook = () => {
               page,
               pageNumber: pages.findIndex((item) => item.key === page.key) + 1,
               step: steps.find((step: any) => step.id === page.meta?.stepId),
+              photoIds: page.meta?.photoIds ?? [],
             }))
             .filter((entry) => !!entry.step);
 
@@ -821,6 +923,53 @@ const Photobook = () => {
                       return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
                     })
                   : timelinePhotos;
+                const allStepPhotoPages = pages
+                  .map((page, pageIndex) => ({
+                    key: page.key,
+                    pageNumber: pageIndex + 1,
+                    photoIds: page.meta?.photoIds ?? [],
+                    layout: getPageLayout(settings.step_layout_overrides, page.key, stepId),
+                    stepId: page.meta?.stepId,
+                  }))
+                  .filter((page) => page.stepId === stepId && page.photoIds.length > 0);
+                const movePhotoToPage = (photoId: string, sourcePageKey: string, targetPageKey: string) => {
+                  if (sourcePageKey === targetPageKey) return;
+                  const sourcePage = allStepPhotoPages.find((page) => page.key === sourcePageKey);
+                  const targetPage = allStepPhotoPages.find((page) => page.key === targetPageKey);
+                  if (!sourcePage || !targetPage) return;
+                  if (targetPage.photoIds.length >= 4) {
+                    toast.error("Maximaal vier foto's per pagina");
+                    return;
+                  }
+
+                  const currentPhotoIds = photos.map((photo: any) => photo.id);
+                  const includedIds = currentPhotoIds.filter((id: string) => !excludedMedia.has(id));
+                  const hiddenIds = currentPhotoIds.filter((id: string) => excludedMedia.has(id));
+                  const withoutMoved = includedIds.filter((id: string) => id !== photoId);
+                  const targetAnchor = [...targetPage.photoIds].reverse().find((id) => withoutMoved.includes(id));
+                  const insertAt = targetAnchor ? withoutMoved.indexOf(targetAnchor) + 1 : withoutMoved.length;
+                  const nextIncluded = [...withoutMoved];
+                  nextIncluded.splice(insertAt, 0, photoId);
+
+                  const nextLayoutOverrides = { ...settings.step_layout_overrides };
+                  const sourceLayout = getPageLayout(settings.step_layout_overrides, sourcePageKey, stepId);
+                  const targetLayout = getPageLayout(settings.step_layout_overrides, targetPageKey, stepId);
+                  const sourceCount = sourcePage.photoIds.length - 1;
+                  const targetCount = targetPage.photoIds.length + 1;
+
+                  if (sourceCount > 0) {
+                    nextLayoutOverrides[sourcePageKey] = layoutForPhotoCount(sourceCount, sourceLayout);
+                  } else {
+                    delete nextLayoutOverrides[sourcePageKey];
+                  }
+                  nextLayoutOverrides[targetPageKey] = layoutForPhotoCount(targetCount, targetLayout);
+
+                  upsertSettings({
+                    step_photo_order: { ...settings.step_photo_order, [stepId]: [...nextIncluded, ...hiddenIds] },
+                    step_layout_overrides: nextLayoutOverrides,
+                  });
+                };
+
                 return (
                   <div key={stepId} className="rounded-lg border bg-card p-3 space-y-3">
                     <div className="flex items-center justify-between gap-2">
@@ -847,6 +996,14 @@ const Photobook = () => {
                           onToggleMedia={toggleMedia}
                           onReorder={(sid, newOrder) => upsertSettings({ step_photo_order: { ...settings.step_photo_order, [sid]: newOrder } })}
                         />
+                        {allStepPhotoPages.length > 1 && (
+                          <PhotoPageBuckets
+                            pages={allStepPhotoPages}
+                            photos={photos}
+                            excludedMedia={excludedMedia}
+                            onMovePhoto={movePhotoToPage}
+                          />
+                        )}
                       </div>
                     )}
                   </div>
@@ -1061,7 +1218,9 @@ const Photobook = () => {
           <button onClick={goToFirstSpread} disabled={safeSpread === 0} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center text-white transition" title="Eerste pagina"><ChevronsLeft className="h-4 w-4" /></button>
           <button onClick={goToPrevSpread} disabled={safeSpread === 0} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center text-white transition" title="Vorige spread"><ChevronLeft className="h-4 w-4" /></button>
           <span className="text-white/60 text-sm min-w-[120px] text-center tabular-nums">
-            {isCover ? "Cover" : `${safeSpread * 2}\u2013${Math.min(safeSpread * 2 + 1, PRINT_PAGES)} / ${PRINT_PAGES}`}
+            {isCover
+              ? pages[1] ? "Cover–2" : "Cover"
+              : `${safeSpread * 2 + 1}\u2013${Math.min(safeSpread * 2 + 2, PRINT_PAGES)} / ${PRINT_PAGES}`}
           </span>
           <button onClick={goToNextSpread} disabled={safeSpread >= spreads.length - 1} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center text-white transition" title="Volgende spread"><ChevronRight className="h-4 w-4" /></button>
           <button onClick={goToLastSpread} disabled={safeSpread >= spreads.length - 1} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center text-white transition" title="Laatste pagina"><ChevronsRight className="h-4 w-4" /></button>
@@ -1076,12 +1235,12 @@ const Photobook = () => {
       )}
 
 
-      <Dialog open={printOpen} onOpenChange={(open) => { setPrintOpen(open); if (!open) { setPrintedPdfUrl(null); setPrintedOrderReference(null); } }}>
+      <Dialog open={printOpen} onOpenChange={(open) => { setPrintOpen(open); if (!open) setCheckoutUrl(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Bestel als hardcover Bouwboek</DialogTitle>
             <DialogDescription>
-              Wij maken een print-klare PDF van jouw verbouwing en sturen die direct naar Peecho. Zij zorgen voor druk en verzending aan huis.
+              Wij maken een printklare PDF, rekenen veilig af via Stripe en sturen je betaalde order daarna door naar Peecho voor druk en verzending.
             </DialogDescription>
           </DialogHeader>
 
@@ -1094,25 +1253,22 @@ const Photobook = () => {
                 </p>
               </div>
 
-              {!printedPdfUrl ? (
+              {!checkoutUrl ? (
                 <Button onClick={handleGeneratePeechoPdf} disabled={printBusy} className="w-full gap-2">
                   {printBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookOpen className="h-4 w-4" />}
-                  {printBusy ? "Boek voorbereiden…" : "Boek klaarmaken voor bestelling"}
+                  {printBusy ? "Checkout voorbereiden…" : "Boek klaarmaken en betalen"}
                 </Button>
               ) : (
-                <PeechoPrintWidget
-                  pdfUrl={printedPdfUrl}
-                  pages={PRINT_PAGES}
-                  format={PEECHO_FORMATS[printFormat]}
-                  coverUrl={trip?.cover_image_url ?? undefined}
-                  title={settings.cover_title || trip?.title || "Bouwboek"}
-                  scriptUrl={PEECHO_SCRIPT_URL}
-                  reference={printedOrderReference}
-                />
+                <a href={checkoutUrl} className="block">
+                  <Button className="w-full gap-2">
+                    <ExternalLink className="h-4 w-4" />
+                    Ga naar beveiligde betaling
+                  </Button>
+                </a>
               )}
 
               <p className="text-[11px] text-muted-foreground text-center">
-                Betaling en verzending via Peecho. Levertijd ca. 7–14 werkdagen.
+                Na betaling maken we de Peecho-order aan. Levertijd is afhankelijk van printproductie en verzending.
               </p>
               <PhotobookOrderHistory orders={photobookOrders} />
           </div>
@@ -1133,6 +1289,9 @@ const getOrderStatusMeta = (status: string): { label: string; variant: OrderBadg
   if (normalized.includes("ship") || normalized.includes("verzond")) return { label: "Verzonden", variant: "default" };
   if (normalized.includes("production") || normalized.includes("print")) return { label: "In productie", variant: "secondary" };
   if (normalized.includes("cancel") || normalized.includes("fail") || normalized.includes("error")) return { label: "Aandacht nodig", variant: "destructive" };
+  if (normalized === "payment_pending") return { label: "Betaling open", variant: "outline" };
+  if (normalized === "pdf_ready") return { label: "PDF klaar", variant: "outline" };
+  if (normalized === "paid_pending_fulfillment") return { label: "Betaald, verwerking volgt", variant: "secondary" };
   if (normalized === "ready_for_checkout") return { label: "Checkout klaar", variant: "outline" };
   if (normalized.includes("submitted") || normalized.includes("paid") || normalized.includes("order")) return { label: "Besteld", variant: "secondary" };
   return { label: status.replace(/_/g, " "), variant: "outline" };
@@ -1167,7 +1326,11 @@ const PhotobookOrderHistory = ({ orders }: { orders: PhotobookOrder[] }) => {
                   <p className="text-xs font-medium truncate">Referentie {reference}</p>
                   <p className="text-[11px] text-muted-foreground">
                     {order.page_count} pagina's · {PEECHO_FORMATS[order.format as PeechoFormat]?.label ?? order.format}
+                    {order.payment_amount_cents ? ` · €${(order.payment_amount_cents / 100).toFixed(2).replace(".", ",")}` : ""}
                   </p>
+                  {order.fulfillment_error && (
+                    <p className="mt-1 text-[11px] text-destructive">{order.fulfillment_error}</p>
+                  )}
                 </div>
                 <Badge variant={status.variant} className="shrink-0">
                   {status.label}
@@ -1335,32 +1498,6 @@ const PhotoFrame = ({
   );
 };
 
-
-const StepCaption = ({
-  chapterTitle,
-  date,
-  locationName,
-  description,
-  compact = false,
-}: {
-  chapterTitle: string;
-  date: string;
-  locationName: string | null;
-  description?: string | null;
-  compact?: boolean;
-}) => (
-  <div className={`${compact ? "pt-2.5 pb-1.5" : "pt-3 pb-2"} min-h-0 overflow-hidden`}>
-    <p className={`${compact ? "text-[8px]" : "text-[9px]"} uppercase tracking-[0.2em] text-accent font-bold leading-none mb-1`}>{chapterTitle}</p>
-    <p className="text-[8px] text-muted-foreground leading-none mb-1.5">{format(new Date(date), "d MMM yyyy", { locale: nl })}</p>
-    <h2 className={`${compact ? "text-base" : "text-lg"} font-bold font-serif leading-tight [overflow-wrap:anywhere] line-clamp-1`}>{locationName || "Update"}</h2>
-    {description && (
-      <p className={`${compact ? "text-[10px] line-clamp-1" : "text-[10px] line-clamp-2"} text-foreground/70 mt-1 italic leading-snug [overflow-wrap:anywhere]`}>
-        "{description}"
-      </p>
-    )}
-  </div>
-);
-
 /** Panel-style photo manager rendered outside the page (in the edit controls panel) */
 const PhotoManagePanel = ({
   stepId,
@@ -1436,6 +1573,91 @@ const PhotoManagePanel = ({
           </div>
         );
       })}
+    </div>
+  );
+};
+
+const PhotoPageBuckets = ({
+  pages,
+  photos,
+  excludedMedia,
+  onMovePhoto,
+}: {
+  pages: Array<{ key: string; pageNumber: number; photoIds: string[]; layout: StepLayout }>;
+  photos: any[];
+  excludedMedia: Set<string>;
+  onMovePhoto: (photoId: string, sourcePageKey: string, targetPageKey: string) => void;
+}) => {
+  const [dragging, setDragging] = useState<{ photoId: string; sourcePageKey: string } | null>(null);
+  const [dragOverPageKey, setDragOverPageKey] = useState<string | null>(null);
+  const photoMap = new Map(photos.map((photo: any) => [photo.id, photo]));
+
+  return (
+    <div className="mt-3 space-y-2">
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        Pagina's van deze update — sleep foto's naar een pagina
+      </p>
+      <div className="grid gap-2 md:grid-cols-2">
+        {pages.map((page) => {
+          const visiblePhotoIds = page.photoIds.filter((photoId) => !excludedMedia.has(photoId));
+          const isOver = dragOverPageKey === page.key;
+          return (
+            <div
+              key={page.key}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                setDragOverPageKey(page.key);
+              }}
+              onDragLeave={() => setDragOverPageKey(null)}
+              onDrop={() => {
+                if (dragging) onMovePhoto(dragging.photoId, dragging.sourcePageKey, page.key);
+                setDragging(null);
+                setDragOverPageKey(null);
+              }}
+              className={`min-h-24 rounded-md border bg-secondary/30 p-2 transition ${
+                isOver ? "border-primary ring-2 ring-primary/20" : "border-border"
+              }`}
+            >
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Pagina {page.pageNumber}
+                </p>
+                <span className="rounded-full bg-background px-2 py-0.5 text-[9px] text-muted-foreground">
+                  {visiblePhotoIds.length} foto{visiblePhotoIds.length === 1 ? "" : "'s"}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {visiblePhotoIds.map((photoId) => {
+                  const photo = photoMap.get(photoId);
+                  if (!photo) return null;
+                  const isDragging = dragging?.photoId === photoId;
+                  return (
+                    <div
+                      key={photoId}
+                      draggable
+                      onDragStart={(event) => {
+                        event.dataTransfer.effectAllowed = "move";
+                        setDragging({ photoId, sourcePageKey: page.key });
+                      }}
+                      onDragEnd={() => {
+                        setDragging(null);
+                        setDragOverPageKey(null);
+                      }}
+                      className={`h-14 w-14 shrink-0 cursor-grab overflow-hidden rounded-md border bg-background active:cursor-grabbing ${
+                        isDragging ? "opacity-40" : ""
+                      }`}
+                      title="Sleep naar een andere pagina"
+                    >
+                      <img src={photo.media_url} alt="" className="h-full w-full object-cover" loading="lazy" draggable={false} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };

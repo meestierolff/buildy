@@ -82,11 +82,18 @@ bunx playwright open --save-storage=tests/e2e/.auth/user.json http://127.0.0.1:8
 PLAYWRIGHT_STORAGE_STATE=tests/e2e/.auth/user.json bunx playwright test
 ```
 
-### Peecho Bouwboek checkout
+### Buildy Bouwboek checkout
 
-The app uses Peecho's Print Button flow: Buildy generates a print-ready PDF in the browser, uploads it to the public `trip-media` bucket, and renders Peecho's checkout button with the public PDF URL.
+The app now uses a Buildy-owned checkout flow:
 
-Client-side env:
+1. Buildy generates a print-ready PDF in the browser.
+2. The PDF is uploaded to the public `trip-media` bucket so Peecho can fetch it.
+3. Buildy creates a local `photobook_orders` row.
+4. `create-photobook-checkout` creates a Stripe Checkout Session for the customer.
+5. `stripe-webhook` verifies Stripe's signature, marks the order as paid, and attempts Peecho fulfillment.
+6. If Peecho API credentials are missing, the order stays in `paid_pending_fulfillment` so it can be picked up operationally instead of failing silently.
+
+Legacy client-side Peecho button env is still supported by helper code but no longer shown in the main order dialog:
 
 ```sh
 VITE_PEECHO_SCRIPT_URL="https://d3aln0nj58oevo.cloudfront.net/button/script/YOUR_BUTTON_KEY.js"
@@ -94,22 +101,45 @@ VITE_PEECHO_SCRIPT_URL="https://d3aln0nj58oevo.cloudfront.net/button/script/YOUR
 VITE_PEECHO_BUTTON_KEY="YOUR_BUTTON_KEY"
 ```
 
-Server-side Supabase secret for Peecho status webhooks:
+Server-side Supabase secrets for Stripe checkout:
+
+```sh
+supabase secrets set STRIPE_SECRET_KEY="sk_live_..."
+supabase secrets set STRIPE_WEBHOOK_SECRET="whsec_..."
+supabase secrets set SITE_URL="https://buildy.app"
+supabase secrets set PHOTOBOOK_CURRENCY="eur"
+supabase secrets set PHOTOBOOK_BASE_PRICE_CENTS="1295"
+supabase secrets set PHOTOBOOK_PRICE_PER_PAGE_CENTS="75"
+supabase secrets set STRIPE_SHIPPING_COUNTRIES="NL,BE,DE"
+```
+
+Server-side Supabase secrets for Peecho fulfillment and status webhooks:
 
 ```sh
 supabase secrets set PEECHO_SECRET_KEY="..."
+supabase secrets set PEECHO_ORDER_API_URL="https://www.peecho.com/rest/v3/order/"
+supabase secrets set PEECHO_MERCHANT_API_KEY="..."
+supabase secrets set PEECHO_OFFERING_ID="..."
+supabase secrets set PEECHO_CONTENT_WIDTH_MM="297"
+supabase secrets set PEECHO_CONTENT_HEIGHT_MM="210"
 ```
 
-`PEECHO_MERCHANT_API_KEY` is not required for the Print Button checkout. Keep it server-side only if you later add direct REST API order creation.
-
-Deploy the webhook after setting secrets:
+Deploy the functions after setting secrets:
 
 ```sh
 supabase db push
+supabase functions deploy create-photobook-checkout
+supabase functions deploy stripe-webhook
 supabase functions deploy peecho-pingback
 ```
 
-Configure Peecho's `Status update URL` webhook to:
+Configure Stripe's webhook endpoint for `checkout.session.completed`, `checkout.session.async_payment_succeeded`, and `checkout.session.expired`:
+
+```txt
+https://YOUR_PROJECT_REF.supabase.co/functions/v1/stripe-webhook
+```
+
+Configure Peecho's `Status update URL` webhook to keep delivery status synced:
 
 ```txt
 https://YOUR_PROJECT_REF.supabase.co/functions/v1/peecho-pingback

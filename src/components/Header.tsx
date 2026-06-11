@@ -65,11 +65,6 @@ const Header = () => {
                       <User className="h-4 w-4" /> Profiel
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to="/favorieten" className="flex items-center gap-2 cursor-pointer">
-                      <Heart className="h-4 w-4" /> Gevolgd
-                    </Link>
-                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={signOut} className="flex items-center gap-2 cursor-pointer">
                     <LogOut className="h-4 w-4" /> Uitloggen
                   </DropdownMenuItem>
