@@ -199,26 +199,15 @@ export type Database = {
         Row: {
           created_at: string
           format: string
-          fulfillment_error: string | null
-          fulfillment_status: string
           id: string
           merchant_reference: string
           ordered_at: string | null
           page_count: number
-          paid_at: string | null
-          payment_amount_cents: number | null
-          payment_currency: string
-          payment_provider: string
-          payment_status: string
           pdf_url: string
           peecho_id: string | null
-          peecho_order_request: Json
           peecho_payload: Json
           status: string
           status_updated_at: string | null
-          stripe_checkout_session_id: string | null
-          stripe_payload: Json
-          stripe_payment_intent_id: string | null
           tracking_code: string | null
           tracking_url: string | null
           trip_id: string
@@ -228,26 +217,15 @@ export type Database = {
         Insert: {
           created_at?: string
           format: string
-          fulfillment_error?: string | null
-          fulfillment_status?: string
           id?: string
           merchant_reference: string
           ordered_at?: string | null
           page_count: number
-          paid_at?: string | null
-          payment_amount_cents?: number | null
-          payment_currency?: string
-          payment_provider?: string
-          payment_status?: string
           pdf_url: string
           peecho_id?: string | null
-          peecho_order_request?: Json
           peecho_payload?: Json
           status?: string
           status_updated_at?: string | null
-          stripe_checkout_session_id?: string | null
-          stripe_payload?: Json
-          stripe_payment_intent_id?: string | null
           tracking_code?: string | null
           tracking_url?: string | null
           trip_id: string
@@ -257,26 +235,15 @@ export type Database = {
         Update: {
           created_at?: string
           format?: string
-          fulfillment_error?: string | null
-          fulfillment_status?: string
           id?: string
           merchant_reference?: string
           ordered_at?: string | null
           page_count?: number
-          paid_at?: string | null
-          payment_amount_cents?: number | null
-          payment_currency?: string
-          payment_provider?: string
-          payment_status?: string
           pdf_url?: string
           peecho_id?: string | null
-          peecho_order_request?: Json
           peecho_payload?: Json
           status?: string
           status_updated_at?: string | null
-          stripe_checkout_session_id?: string | null
-          stripe_payload?: Json
-          stripe_payment_intent_id?: string | null
           tracking_code?: string | null
           tracking_url?: string | null
           trip_id?: string
@@ -289,38 +256,6 @@ export type Database = {
             columns: ["trip_id"]
             isOneToOne: false
             referencedRelation: "trips"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      photobook_order_events: {
-        Row: {
-          created_at: string
-          event_type: string
-          id: string
-          order_id: string
-          payload: Json
-        }
-        Insert: {
-          created_at?: string
-          event_type: string
-          id?: string
-          order_id: string
-          payload?: Json
-        }
-        Update: {
-          created_at?: string
-          event_type?: string
-          id?: string
-          order_id?: string
-          payload?: Json
-        }
-        Relationships: [
-          {
-            foreignKeyName: "photobook_order_events_order_id_fkey"
-            columns: ["order_id"]
-            isOneToOne: false
-            referencedRelation: "photobook_orders"
             referencedColumns: ["id"]
           },
         ]
