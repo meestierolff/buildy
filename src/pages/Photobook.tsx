@@ -298,15 +298,16 @@ const Photobook = () => {
         .select(PHOTOBOOK_ORDER_SELECT_EXTENDED)
         .single();
       if (orderErr || !orderData) throw orderErr || new Error("Order kon niet worden aangemaakt");
+      const newOrder = orderData as unknown as PhotobookOrder;
 
       const { data: checkoutData, error: checkoutErr } = await supabase.functions.invoke("create-photobook-checkout", {
-        body: { orderId: orderData.id },
+        body: { orderId: newOrder.id },
       });
       if (checkoutErr) throw checkoutErr;
       if (!checkoutData?.checkoutUrl) throw new Error("Checkout-url ontbreekt");
 
       setCheckoutUrl(checkoutData.checkoutUrl);
-      setPhotobookOrders((current) => [orderData as PhotobookOrder, ...current.filter((order) => order.id !== orderData.id)].slice(0, 5));
+      setPhotobookOrders((current) => [newOrder, ...current.filter((order) => order.id !== newOrder.id)].slice(0, 5));
       toast.success("Boek klaar — je gaat nu naar de beveiligde betaling");
       window.location.assign(checkoutData.checkoutUrl);
     } catch (e: any) {
