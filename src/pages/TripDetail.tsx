@@ -121,6 +121,7 @@ const TripDetail = () => {
       .order("step_order", { ascending: true });
 
     if (stepsData) {
+      await hydrateStepsMedia(stepsData as any);
       const stepIds = stepsData.map((step) => step.id);
       if (stepIds.length === 0) {
         setSteps([]);
