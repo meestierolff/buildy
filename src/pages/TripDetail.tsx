@@ -21,6 +21,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { MapPin, Plus, BookOpen, Share2, Hammer, LayoutGrid, Map as MapIcon, Images, Wallet, Settings, Flag, Upload, Sparkles, Loader2, ChevronDown, MoreHorizontal } from "lucide-react";
 import { differenceInDays } from "date-fns";
 import { toast } from "sonner";
+import { hydrateStepsMedia } from "@/lib/mediaUrl";
 import {
   AlertDialog,
   AlertDialogAction,
