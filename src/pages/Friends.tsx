@@ -251,7 +251,7 @@ const Friends = () => {
         ) : (
           <>
             <div>
-              {results.map((p) => <Row key={p.user_id} p={p} isFollowing={following.has(p.user_id)} />)}
+              {results.map((p) => <Row key={p.user_id} p={p} isFollowing={following.has(p.user_id)} isPending={pending.has(p.user_id)} />)}
             </div>
             <div className="mt-10 flex justify-center">
               {hasMore && results.length < MAX_RESULTS ? (
