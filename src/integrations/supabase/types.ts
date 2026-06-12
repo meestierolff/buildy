@@ -446,6 +446,7 @@ export type Database = {
           media_url: string
           sort_order: number
           step_id: string
+          storage_path: string | null
           user_id: string
         }
         Insert: {
@@ -456,6 +457,7 @@ export type Database = {
           media_url: string
           sort_order?: number
           step_id: string
+          storage_path?: string | null
           user_id: string
         }
         Update: {
@@ -466,6 +468,7 @@ export type Database = {
           media_url?: string
           sort_order?: number
           step_id?: string
+          storage_path?: string | null
           user_id?: string
         }
         Relationships: [
