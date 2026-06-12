@@ -46,21 +46,28 @@ const Friends = () => {
     return () => clearTimeout(t);
   }, [query]);
 
+  const [pending, setPending] = useState<Set<string>>(new Set());
+
   useEffect(() => {
     if (!user) return;
     setLoadingFollowed(true);
     (async () => {
-      const { data } = await supabase.from("user_follows").select("following_id").eq("follower_id", user.id);
-      const ids = (data || []).map((r: any) => r.following_id);
-      setFollowing(new Set(ids));
-      if (ids.length === 0) { setFollowedProfiles([]); setLoadingFollowed(false); return; }
+      const { data } = await supabase
+        .from("user_follows")
+        .select("following_id, status")
+        .eq("follower_id", user.id);
+      const accepted = (data || []).filter((r: any) => r.status === "accepted").map((r: any) => r.following_id);
+      const pend = (data || []).filter((r: any) => r.status === "pending").map((r: any) => r.following_id);
+      setFollowing(new Set(accepted));
+      setPending(new Set(pend));
+      if (accepted.length === 0) { setFollowedProfiles([]); setLoadingFollowed(false); return; }
       const { data: profiles } = await supabase
         .from("profiles")
         .select("user_id, display_name, avatar_url, bio, location")
-        .in("user_id", ids)
+        .in("user_id", accepted)
         .order("display_name", { ascending: true });
       if (profiles) {
-        const { data: trips } = await supabase.from("trips").select("user_id").in("user_id", ids).eq("is_public", true);
+        const { data: trips } = await supabase.from("trips").select("user_id").in("user_id", accepted).eq("is_public", true);
         const counts: Record<string, number> = {};
         (trips || []).forEach((t: any) => { counts[t.user_id] = (counts[t.user_id] || 0) + 1; });
         setFollowedProfiles(profiles.map((p: any) => ({ ...p, project_count: counts[p.user_id] || 0 })));
@@ -68,6 +75,7 @@ const Friends = () => {
       setLoadingFollowed(false);
     })();
   }, [user]);
+
 
   const fetchPage = useCallback(async (search: string, from: number, reqId: number): Promise<ProfileResult[]> => {
     let q = supabase
