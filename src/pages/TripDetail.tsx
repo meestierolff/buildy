@@ -12,6 +12,7 @@ import ProjectStats from "@/components/ProjectStats";
 import FloorplanView, { type FloorInfo } from "@/components/FloorplanView";
 import FloorplanScrollView from "@/components/FloorplanScrollView";
 import AllPhotosTab from "@/components/AllPhotosTab";
+import TripRouteMap from "@/components/TripRouteMap";
 import CoverPickerDialog from "@/components/CoverPickerDialog";
 import ProjectSettingsSheet from "@/components/ProjectSettingsSheet";
 import { Button } from "@/components/ui/button";
