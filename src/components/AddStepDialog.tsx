@@ -183,15 +183,20 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
       const path = `${user.id}/${step.id}/${i}.${ext}`;
 
       const { error: uploadError } = await supabase.storage
-        .from("trip-media")
+        .from("trip-private")
         .upload(path, file);
 
       if (!uploadError) {
-        const { data: urlData } = supabase.storage.from("trip-media").getPublicUrl(path);
+        // Generate a signed URL so the row is immediately usable; bg loaders will
+        // re-sign as needed via hydrateMediaUrls.
+        const { data: signed } = await supabase.storage
+          .from("trip-private")
+          .createSignedUrl(path, 60 * 60);
         await supabase.from("step_media").insert({
           step_id: step.id,
           user_id: user.id,
-          media_url: urlData.publicUrl,
+          media_url: signed?.signedUrl ?? "",
+          storage_path: path,
           media_type: file.type === "application/pdf" ? "pdf" : file.type.startsWith("video") ? "video" : "image",
           compare_role: file.type.startsWith("image") ? upload.compareRole : null,
           sort_order: i,
