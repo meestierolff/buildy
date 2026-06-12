@@ -232,7 +232,7 @@ const Friends = () => {
                 <div className="flex-1 h-px bg-border" />
               </div>
               <div>
-                {followedProfiles.map((p) => <Row key={p.user_id} p={p} isFollowing={true} />)}
+                {followedProfiles.map((p) => <Row key={p.user_id} p={p} isFollowing={true} isPending={false} />)}
               </div>
             </div>
           ) : (
