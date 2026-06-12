@@ -1,51 +1,65 @@
+# Trip-media bucket splitsen
+
 ## Doel
-Alle binnenpagina's krijgen dezelfde visuele taal als de landing page: Instrument Serif italic koppen, Inter body, near-black/cream achtergrond, terracotta accent, eyebrow-labels (`text-[11px] font-bold uppercase tracking-[0.2em]`), dunne 1px borders, ronde pill-buttons, `aspect-[4/5]` cards met 0.5px accent voortgangsstreepje.
-
-## Design-systeem (al aanwezig in `index.css`)
-- Tokens: `background`, `foreground`, `accent` (terracotta), `muted`, `border` — geen hardcoded kleuren toevoegen.
-- Koppen: `font-serif italic` met grote schaal (5xl–8xl voor hero, 2xl–3xl voor sectie-titels).
-- Eyebrows: bestaande `.eyebrow` utility of `text-[11px] font-bold uppercase tracking-[0.2em]`.
-- Buttons: `rounded-full px-5/8 text-[11px] font-bold uppercase tracking-widest`.
-- Sectie-headers: eyebrow + flex-1 h-px bg-border lijn.
-
-## Pagina-voor-pagina
-
-### 1. `src/pages/TripDetail.tsx`
-- Hero: groot serif-italic project-titel, eyebrow met fase + datum, dunne metadata-rij (locatie · stappen · volgers).
-- Tabs (Tijdlijn / Plattegrond / Foto's / Budget): eyebrow-style met onderstreepte actieve tab (zoals Index "Ontdekken/Mijn projecten").
-- Knoppen-rij in pill-style.
-
-### 2. `src/pages/Photobook.tsx`
-- Sticky header in landing-stijl (witte achtergrond, dunne border-b, serif titel + eyebrow "Fotoboek").
-- Format-dialogen: serif h2, body in Inter, pill-buttons.
-- Behoud bestaande paginering/layout-overrides functionaliteit.
-
-### 3. `src/pages/Profile.tsx`
-- Profiel-hero: cirkel-avatar groot, serif italic naam, eyebrow met locatie, dunne stats-rij (projecten · volgers · volgend).
-- Project-grid identiek aan Index-cards.
-
-### 4. `src/pages/Friends.tsx`
-- Tabs (Volgers / Volgend / Ontdekken) in eyebrow-style.
-- Lijst-rijen met dunne border-b, avatar, naam in serif, FollowButton pill rechts.
-
-### 5. `src/pages/Budget.tsx`
-- Eyebrow "Budget" + serif totaal-bedrag, dunne uitsplitsing per fase, geen kleurrijke kaarten.
-
-### 6. `src/pages/Auth.tsx`
-- Gecentreerd, serif italic "Welkom bij Buildy", Inter body-tekst, pill submit-knop.
-
-### 7. `src/pages/Favorites.tsx` & `src/pages/NewTrip.tsx`
-- Eyebrow + serif page-titel, identieke card-grid / form-styling.
-
-### 8. Gedeelde componenten
-- `EmptyState`: serif kop, eyebrow sub.
-- `ProjectStats`, `ProgressBar`, `NotificationBell`, `OnboardingDialog`: alleen kleuren/typografie afstemmen, geen functionele wijzigingen.
-- Dialogen (AddStep/EditStep/CoverPicker/ProjectSettingsSheet): serif titels, pill-actions.
-
-## Wat NIET wijzigt
-- Backend, RLS, routes, props/contracts.
-- Functionaliteit van Photobook layout-engine, Floorplan-view, Map, Before/After slider.
-- Geen nieuwe libraries.
+De finding "Private trip media files are publicly accessible via direct URL" oplossen zonder Peecho-bestellingen of bestaande publieke trips te breken.
 
 ## Aanpak
-Eén ronde gerichte edits per pagina, semantic tokens overal, geen hardcoded `text-white`/`bg-black` etc. Visueel valideren in preview na elke 2–3 pagina's.
+
+### 1. Twee buckets naast elkaar
+- **`trip-media`** (blijft publiek) — voor inherent publieke assets: profielfoto's (avatar), trip-cover, plattegronden, Peecho PDF's. Ook alle reeds bestaande bestanden blijven hier, dus geen brekende migratie van URL's in de database.
+- **`trip-private`** (nieuw, privé) — voor alle **nieuwe** step-media (foto's en video's van updates). Bestaande step-media blijft via de publieke bucket; alleen nieuwe uploads krijgen de strenge gating.
+
+### 2. Storage-RLS op `trip-private`
+Pad-schema: `{userId}/{stepId}/{i}.{ext}` — `stepId` is het 2e padsegment.
+- SELECT: eigenaar van het object, of `public.can_view_step((storage.foldername(name))[2]::uuid)`
+- INSERT/UPDATE/DELETE: eigenaar (`auth.uid()` = bucket-folder eerste segment)
+
+### 3. Schema-wijziging
+`step_media` krijgt nullable kolom `storage_path text`. Bij nieuwe uploads vullen we `storage_path` met het pad in `trip-private`; `media_url` blijft leeg voor nieuwe rows. Voor legacy rows blijft `media_url` de bron.
+
+### 4. Client-side render-helper
+Nieuwe `src/lib/mediaUrl.ts` met `resolveMediaUrl(row)`:
+- Heeft `storage_path` → `createSignedUrl("trip-private", path, 3600)` met in-memory cache per pad.
+- Anders → bestaande `media_url`.
+
+Alle plekken die `step_media.media_url` renderen (Timeline, Lightbox, AllPhotosTab, Photobook preview, BlueprintTimeline, ProjectCard, FloorplanScrollView, peecho-export) gaan via deze helper.
+
+### 5. Upload-paden aanpassen
+- `AddStepDialog` en `EditStepDialog`: uploaden naar `trip-private`, slaan `storage_path` op in `step_media`, laten `media_url` leeg.
+- `CoverPickerDialog`, `Profile` (avatar), `TripDetail` (floorplan + blueprint), `Photobook` (PDF): blijven `trip-media` publiek.
+
+### 6. Geen migratie van bestaande bestanden
+Bestaande step-media blijft publiek bereikbaar — accepteren als bekend legacy risico, vastleggen in `security-memory`. Vanaf nu lekt nieuwe content niet meer.
+
+## Bestanden
+
+**Migratie**
+- `supabase/migrations/<timestamp>_trip_private_storage.sql` — bucket via tool, RLS policies op `storage.objects` voor `trip-private`, `ALTER TABLE step_media ADD COLUMN storage_path text`.
+
+**Nieuw**
+- `src/lib/mediaUrl.ts`
+
+**Aanpassen (uploads naar `trip-private` + `storage_path`)**
+- `src/components/AddStepDialog.tsx`
+- `src/components/EditStepDialog.tsx`
+
+**Aanpassen (render via helper)**
+- `src/components/StepTimeline.tsx`
+- `src/components/BlueprintTimeline.tsx`
+- `src/components/MediaLightbox.tsx`
+- `src/components/AllPhotosTab.tsx`
+- `src/components/ProjectCard.tsx`
+- `src/components/BeforeAfterSlider.tsx` (indien direct media_url consumeert)
+- `src/pages/Photobook.tsx` (preview)
+- `src/lib/peechoExport.ts` (PDF embedding via signed URL)
+- `src/lib/projectMedia.ts`
+
+**Security-memory update** — markeer de finding als opgelost voor nieuwe uploads en documenteer dat legacy bestanden in de publieke bucket bewust niet gemigreerd worden.
+
+## Niet in scope
+- Migratie van bestaande publieke step-media naar de private bucket.
+- Avatar/cover/floorplan/PDF private maken (blijven publiek; floorplan-privacy kan separaat opgepakt worden als je dat ook wil).
+
+## Risico's
+- Signed-URL helper moet 401's bij verlopen URLs netjes opvangen (cache met TTL korter dan signed-URL geldigheid).
+- Peecho-export moet plaatjes als data-URL of via signed URL embedden, niet als publieke URL.

@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { buildPeechoPdf, getPeechoPrintPageCount, PEECHO_FORMATS, PEECHO_MIN_PAGES, type PeechoFormat } from "@/lib/peechoExport";
 import { assertPeechoPdfReachable, createPeechoReference } from "@/lib/peecho";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { hydrateStepsMedia } from "@/lib/mediaUrl";
 
 type StepLayout = "auto" | "1-full" | "2-side" | "2-stack" | "3-mixed" | "grid";
 type CoverTextPos = "bottom" | "top" | "center";
@@ -339,6 +340,7 @@ const Photobook = () => {
       ]);
       setStepBudgetMap(new Map((budgetData || []).map((r: any) => [r.step_id, Number(r.cost) || 0])));
       setTrip(tripData ? { ...tripData, address: privInfo?.address ?? null } : null);
+      await hydrateStepsMedia(stepsData as any);
       setSteps(stepsData || []);
       if (settingsData) {
         setSettings({

@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { hydrateMediaUrls } from "@/lib/mediaUrl";
 
 export interface ProjectMediaSummary {
   stepCount: number;
@@ -9,6 +10,7 @@ export interface ProjectMediaSummary {
 
 interface StepMediaRow {
   media_url: string;
+  storage_path?: string | null;
   media_type: string | null;
   sort_order: number | null;
 }
@@ -42,12 +44,19 @@ export const loadProjectMediaSummaries = async (tripIds: string[]) => {
 
   const { data, error } = await supabase
     .from("steps")
-    .select("trip_id, step_date, step_order, step_media(media_url, media_type, sort_order)")
+    .select("trip_id, step_date, step_order, step_media(media_url, storage_path, media_type, sort_order)")
     .in("trip_id", tripIds)
     .order("step_date", { ascending: true })
     .order("step_order", { ascending: true });
 
   if (error || !data) return summaries;
+
+  // Sign private-bucket URLs in one batched pass.
+  const allMedia = (data as StepWithMedia[]).flatMap((s) =>
+    Array.isArray(s.step_media) ? s.step_media : s.step_media ? [s.step_media] : [],
+  );
+  await hydrateMediaUrls(allMedia as any);
+
 
   const fallbackVideos = new Map<string, StepMediaRow>();
 

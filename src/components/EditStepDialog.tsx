@@ -110,11 +110,16 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
       return;
     }
     try {
-      const url = new URL(m.media_url);
-      const idx = url.pathname.indexOf("/trip-media/");
-      if (idx >= 0) {
-        const path = url.pathname.slice(idx + "/trip-media/".length);
-        await supabase.storage.from("trip-media").remove([decodeURIComponent(path)]);
+      // Prefer the canonical storage_path; fall back to parsing legacy public URLs.
+      if (m.storage_path) {
+        await supabase.storage.from("trip-private").remove([m.storage_path]);
+      } else if (m.media_url) {
+        const url = new URL(m.media_url);
+        const idx = url.pathname.indexOf("/trip-media/");
+        if (idx >= 0) {
+          const path = url.pathname.slice(idx + "/trip-media/".length);
+          await supabase.storage.from("trip-media").remove([decodeURIComponent(path)]);
+        }
       }
     } catch { /* ignore */ }
     setExistingMedia((prev) => prev.filter((x) => x.id !== m.id));
@@ -208,13 +213,16 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
       const file = newFiles[i];
       const ext = file.name.split(".").pop();
       const path = `${user.id}/${step.id}/${Date.now()}-${i}.${ext}`;
-      const { error: upErr } = await supabase.storage.from("trip-media").upload(path, file);
+      const { error: upErr } = await supabase.storage.from("trip-private").upload(path, file);
       if (!upErr) {
-        const { data: urlData } = supabase.storage.from("trip-media").getPublicUrl(path);
+        const { data: signed } = await supabase.storage
+          .from("trip-private")
+          .createSignedUrl(path, 60 * 60);
         await supabase.from("step_media").insert({
           step_id: step.id,
           user_id: user.id,
-          media_url: urlData.publicUrl,
+          media_url: signed?.signedUrl ?? "",
+          storage_path: path,
           media_type: file.type === "application/pdf" ? "pdf" : file.type.startsWith("video") ? "video" : "image",
           sort_order: baseOrder + i,
         });
