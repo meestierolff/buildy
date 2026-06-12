@@ -30,12 +30,17 @@ const FitBounds = ({ positions }: { positions: L.LatLngTuple[] }) => {
   const map = useMap();
   useEffect(() => {
     if (positions.length === 0) return;
-    if (positions.length === 1) {
-      map.setView(positions[0], 13);
-      return;
-    }
-    const bounds = L.latLngBounds(positions);
-    map.fitBounds(bounds, { padding: [40, 40] });
+    // Ensure correct sizing before fitting (sticky/grid containers can mis-measure on mount)
+    const t = setTimeout(() => {
+      map.invalidateSize();
+      if (positions.length === 1) {
+        map.setView(positions[0], 14, { animate: true });
+        return;
+      }
+      const bounds = L.latLngBounds(positions);
+      map.fitBounds(bounds.pad(0.15), { padding: [60, 60], maxZoom: 14, animate: true });
+    }, 50);
+    return () => clearTimeout(t);
   }, [positions, map]);
   return null;
 };
