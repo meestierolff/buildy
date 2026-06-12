@@ -110,11 +110,16 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
       return;
     }
     try {
-      const url = new URL(m.media_url);
-      const idx = url.pathname.indexOf("/trip-media/");
-      if (idx >= 0) {
-        const path = url.pathname.slice(idx + "/trip-media/".length);
-        await supabase.storage.from("trip-media").remove([decodeURIComponent(path)]);
+      // Prefer the canonical storage_path; fall back to parsing legacy public URLs.
+      if (m.storage_path) {
+        await supabase.storage.from("trip-private").remove([m.storage_path]);
+      } else if (m.media_url) {
+        const url = new URL(m.media_url);
+        const idx = url.pathname.indexOf("/trip-media/");
+        if (idx >= 0) {
+          const path = url.pathname.slice(idx + "/trip-media/".length);
+          await supabase.storage.from("trip-media").remove([decodeURIComponent(path)]);
+        }
       }
     } catch { /* ignore */ }
     setExistingMedia((prev) => prev.filter((x) => x.id !== m.id));
