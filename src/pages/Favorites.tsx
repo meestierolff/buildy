@@ -64,11 +64,12 @@ const Favorites = () => {
       // Activity feed: latest steps from followed projects
       const { data: recent } = await supabase
         .from("steps")
-        .select("id, location_name, description, step_date, trip_id, created_at, phase, is_milestone, step_media(media_url, media_type, sort_order)")
+        .select("id, location_name, description, step_date, trip_id, created_at, phase, is_milestone, step_media(media_url, storage_path, media_type, sort_order)")
         .in("trip_id", ids)
         .order("created_at", { ascending: false })
         .limit(20);
       if (recent) {
+        await hydrateStepsMedia(recent as any);
         const tMap = new Map((trips || []).map((t: any) => [t.id, t]));
         setActivity(recent.map((s: any) => ({ ...s, trip: tMap.get(s.trip_id) })));
       }
