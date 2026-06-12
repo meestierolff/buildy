@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { hydrateMediaUrls } from "@/lib/mediaUrl";
 
 export interface ProjectMediaSummary {
   stepCount: number;
@@ -9,6 +10,7 @@ export interface ProjectMediaSummary {
 
 interface StepMediaRow {
   media_url: string;
+  storage_path?: string | null;
   media_type: string | null;
   sort_order: number | null;
 }
