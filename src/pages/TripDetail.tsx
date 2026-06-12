@@ -494,7 +494,7 @@ const TripDetail = () => {
       {/* Tabs: timeline / floorplan */}
       <section className="relative">
         <BlueprintBackground />
-        <div className="container relative max-w-5xl">
+        <div className="container relative max-w-7xl">
           <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); if (v !== "timeline") setMilestonesOnly(false); }} className="pt-6">
             <div className="flex flex-wrap items-center gap-2 mb-2">
               <TabsList>
