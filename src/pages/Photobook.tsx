@@ -340,6 +340,7 @@ const Photobook = () => {
       ]);
       setStepBudgetMap(new Map((budgetData || []).map((r: any) => [r.step_id, Number(r.cost) || 0])));
       setTrip(tripData ? { ...tripData, address: privInfo?.address ?? null } : null);
+      await hydrateStepsMedia(stepsData as any);
       setSteps(stepsData || []);
       if (settingsData) {
         setSettings({
