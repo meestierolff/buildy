@@ -531,6 +531,13 @@ const TripDetail = () => {
               )}
               {(() => {
                 const visible = milestonesOnly ? timelineSteps.filter((s) => s.is_milestone) : timelineSteps;
+                const routeSteps = (milestonesOnly ? steps.filter((s) => s.is_milestone) : steps).map((s) => ({
+                  id: s.id,
+                  latitude: s.latitude ?? null,
+                  longitude: s.longitude ?? null,
+                  location_name: s.location_name,
+                  step_date: s.step_date,
+                }));
                 return visible.length === 0 ? (
                   <div className="py-20 text-center text-muted-foreground">
                     <Hammer className="h-12 w-12 mx-auto mb-3 opacity-40" />
@@ -538,14 +545,21 @@ const TripDetail = () => {
                     {isOwner && !milestonesOnly && <p className="text-sm mt-1">Voeg je eerste 'voor'-foto toe om te starten!</p>}
                   </div>
                 ) : (
-                  <BlueprintTimeline
-                    steps={visible}
-                    onLike={handleLike}
-                    onEdit={setEditingStep}
-                    onDelete={setDeletingStepId}
-                    onReorderMedia={handleReorderMedia}
-                    isOwner={!!isOwner}
-                  />
+                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+                    <BlueprintTimeline
+                      steps={visible}
+                      onLike={handleLike}
+                      onEdit={setEditingStep}
+                      onDelete={setDeletingStepId}
+                      onReorderMedia={handleReorderMedia}
+                      isOwner={!!isOwner}
+                    />
+                    <aside className="hidden lg:block">
+                      <div className="sticky top-4 h-[calc(100vh-6rem)]">
+                        <TripRouteMap steps={routeSteps} />
+                      </div>
+                    </aside>
+                  </div>
                 );
               })()}
             </TabsContent>
