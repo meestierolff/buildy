@@ -213,13 +213,16 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
       const file = newFiles[i];
       const ext = file.name.split(".").pop();
       const path = `${user.id}/${step.id}/${Date.now()}-${i}.${ext}`;
-      const { error: upErr } = await supabase.storage.from("trip-media").upload(path, file);
+      const { error: upErr } = await supabase.storage.from("trip-private").upload(path, file);
       if (!upErr) {
-        const { data: urlData } = supabase.storage.from("trip-media").getPublicUrl(path);
+        const { data: signed } = await supabase.storage
+          .from("trip-private")
+          .createSignedUrl(path, 60 * 60);
         await supabase.from("step_media").insert({
           step_id: step.id,
           user_id: user.id,
-          media_url: urlData.publicUrl,
+          media_url: signed?.signedUrl ?? "",
+          storage_path: path,
           media_type: file.type === "application/pdf" ? "pdf" : file.type.startsWith("video") ? "video" : "image",
           sort_order: baseOrder + i,
         });
