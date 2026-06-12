@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Heart } from "lucide-react";
+import { Heart, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -12,20 +12,25 @@ interface FollowButtonProps {
   className?: string;
 }
 
+type FollowStatus = "none" | "pending" | "accepted";
+
 const FollowButton = ({ projectId, size = "sm", variant = "outline", className }: FollowButtonProps) => {
   const { user } = useAuth();
-  const [following, setFollowing] = useState(false);
+  const [status, setStatus] = useState<FollowStatus>("none");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) { setStatus("none"); return; }
     supabase
       .from("follows")
-      .select("id")
+      .select("status")
       .eq("user_id", user.id)
       .eq("project_id", projectId)
       .maybeSingle()
-      .then(({ data }) => setFollowing(!!data));
+      .then(({ data }) => {
+        if (!data) setStatus("none");
+        else setStatus((data as any).status === "accepted" ? "accepted" : "pending");
+      });
   }, [user, projectId]);
 
   const toggle = async (e: React.MouseEvent) => {
@@ -36,29 +41,44 @@ const FollowButton = ({ projectId, size = "sm", variant = "outline", className }
       return;
     }
     setLoading(true);
-    if (following) {
-      await supabase.from("follows").delete().eq("user_id", user.id).eq("project_id", projectId);
-      setFollowing(false);
-      toast.success("Niet meer gevolgd");
+    if (status !== "none") {
+      const { error } = await supabase.from("follows").delete().eq("user_id", user.id).eq("project_id", projectId);
+      if (error) toast.error("Kon niet bijwerken");
+      else {
+        setStatus("none");
+        toast.success(status === "pending" ? "Verzoek ingetrokken" : "Niet meer gevolgd");
+      }
     } else {
-      await supabase.from("follows").insert({ user_id: user.id, project_id: projectId });
-      setFollowing(true);
-      toast.success("Je volgt dit project nu");
+      const { data, error } = await supabase
+        .from("follows")
+        .insert({ user_id: user.id, project_id: projectId })
+        .select("status")
+        .single();
+      if (error) {
+        toast.error("Volgen mislukt");
+      } else {
+        const newStatus = (data as any).status === "accepted" ? "accepted" : "pending";
+        setStatus(newStatus);
+        toast.success(newStatus === "accepted" ? "Je volgt dit project nu" : "Volgverzoek verstuurd");
+      }
     }
     setLoading(false);
   };
+
+  const label = status === "accepted" ? "Gevolgd" : status === "pending" ? "In afwachting" : "Volgen";
+  const Icon = status === "pending" ? Clock : Heart;
 
   return (
     <Button
       type="button"
       size={size}
-      variant={following ? "default" : variant}
+      variant={status === "accepted" ? "default" : variant}
       onClick={toggle}
       disabled={loading}
-      className={`gap-1.5 ${following ? "bg-accent text-accent-foreground hover:bg-accent/90" : (className ?? "")}`}
+      className={`gap-1.5 ${status === "accepted" ? "bg-accent text-accent-foreground hover:bg-accent/90" : (className ?? "")}`}
     >
-      <Heart className={`h-4 w-4 ${following ? "fill-current" : ""}`} />
-      {following ? "Gevolgd" : "Volgen"}
+      <Icon className={`h-4 w-4 ${status === "accepted" ? "fill-current" : ""}`} />
+      {label}
     </Button>
   );
 };

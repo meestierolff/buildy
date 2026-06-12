@@ -183,10 +183,20 @@ export default function ProjectSettingsSheet({
               </div>
             </div>
 
-            <div className="flex items-center gap-3 py-1">
-              <Switch id="s-public" checked={isPublicDraft} onCheckedChange={setIsPublicDraft} />
-              <Label htmlFor="s-public" className="cursor-pointer">Publiek zichtbaar (anderen kunnen volgen)</Label>
+            <div className="space-y-1.5 py-1">
+              <div className="flex items-center gap-3">
+                <Switch id="s-public" checked={isPublicDraft} onCheckedChange={setIsPublicDraft} />
+                <Label htmlFor="s-public" className="cursor-pointer">
+                  {isPublicDraft ? "Publiek project" : "Privé project"}
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground pl-12">
+                {isPublicDraft
+                  ? "Iedereen kan dit project bekijken en direct volgen."
+                  : "Alleen jij ziet dit project. Anderen kunnen een volgverzoek sturen dat jij eerst moet goedkeuren."}
+              </p>
             </div>
+
 
             <Button
               size="sm"
