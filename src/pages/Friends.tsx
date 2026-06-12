@@ -125,26 +125,41 @@ const Friends = () => {
   const toggleFollow = async (uid: string) => {
     if (!user) { toast.error("Log in om te volgen"); return; }
     setBusyId(uid);
-    if (following.has(uid)) {
+    const isFollowing = following.has(uid);
+    const isPending = pending.has(uid);
+    if (isFollowing || isPending) {
       const { error } = await supabase.from("user_follows").delete().eq("follower_id", user.id).eq("following_id", uid);
       if (!error) {
         setFollowing((prev) => { const n = new Set(prev); n.delete(uid); return n; });
+        setPending((prev) => { const n = new Set(prev); n.delete(uid); return n; });
         setFollowedProfiles((prev) => prev.filter((p) => p.user_id !== uid));
-      } else toast.error("Kon niet ontvolgen");
+        toast.success(isPending ? "Verzoek ingetrokken" : "Niet meer gevolgd");
+      } else toast.error("Kon niet bijwerken");
     } else {
-      const { error } = await supabase.from("user_follows").insert({ follower_id: user.id, following_id: uid });
-      if (!error) {
-        setFollowing((prev) => new Set(prev).add(uid));
-        const profile = results.find((p) => p.user_id === uid);
-        if (profile) {
-          setFollowedProfiles((prev) => [...prev, profile].sort((a, b) => (a.display_name || "").localeCompare(b.display_name || "")));
+      const { data, error } = await supabase
+        .from("user_follows")
+        .insert({ follower_id: user.id, following_id: uid })
+        .select("status")
+        .single();
+      if (!error && data) {
+        const accepted = (data as any).status === "accepted";
+        if (accepted) {
+          setFollowing((prev) => new Set(prev).add(uid));
+          const profile = results.find((p) => p.user_id === uid);
+          if (profile) {
+            setFollowedProfiles((prev) => [...prev, profile].sort((a, b) => (a.display_name || "").localeCompare(b.display_name || "")));
+          }
+          toast.success("Je volgt nu");
+        } else {
+          setPending((prev) => new Set(prev).add(uid));
+          toast.success("Volgverzoek verstuurd");
         }
       } else toast.error("Kon niet volgen");
     }
     setBusyId(null);
   };
 
-  const Row = ({ p, isFollowing }: { p: ProfileResult; isFollowing: boolean }) => (
+  const Row = ({ p, isFollowing, isPending }: { p: ProfileResult; isFollowing: boolean; isPending: boolean }) => (
     <div className="flex items-center gap-4 py-5 border-b border-border last:border-b-0 group">
       <Link to={`/profile/${p.user_id}`} className="flex items-center gap-4 min-w-0 flex-1">
         <Avatar className="h-12 w-12 shrink-0">
@@ -173,11 +188,16 @@ const Friends = () => {
           disabled={busyId === p.user_id}
           className={`rounded-full px-4 text-[10px] font-bold uppercase tracking-widest border-border ${isFollowing ? "bg-foreground text-background hover:bg-foreground/90 border-foreground" : ""}`}
         >
-          {isFollowing ? <><UserCheck className="h-3 w-3 mr-1" />Volgend</> : <><UserPlus className="h-3 w-3 mr-1" />Volg</>}
+          {isFollowing
+            ? <><UserCheck className="h-3 w-3 mr-1" />Volgend</>
+            : isPending
+              ? <><UserCheck className="h-3 w-3 mr-1" />In afwachting</>
+              : <><UserPlus className="h-3 w-3 mr-1" />Volg</>}
         </Button>
       )}
     </div>
   );
+
 
   return (
     <div className="min-h-screen bg-background">
