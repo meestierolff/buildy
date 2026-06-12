@@ -10,6 +10,7 @@ import { nl } from "date-fns/locale";
 import { phaseColor } from "@/components/PhaseSelect";
 import ProjectCard from "@/components/ProjectCard";
 import { applyProjectMediaSummaries, loadProjectMediaSummaries } from "@/lib/projectMedia";
+import { hydrateStepsMedia } from "@/lib/mediaUrl";
 import { usePageMeta } from "@/hooks/usePageMeta";
 
 const Favorites = () => {
