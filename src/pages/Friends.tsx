@@ -61,16 +61,13 @@ const Friends = () => {
       setFollowing(new Set(accepted));
       setPending(new Set(pend));
       if (accepted.length === 0) { setFollowedProfiles([]); setLoadingFollowed(false); return; }
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("user_id, display_name, avatar_url, bio, location")
-        .in("user_id", accepted)
-        .order("display_name", { ascending: true });
+      const { data: profiles } = await supabase.rpc("get_profiles_basic", { _ids: accepted });
       if (profiles) {
         const { data: trips } = await supabase.from("trips").select("user_id").in("user_id", accepted).eq("is_public", true);
         const counts: Record<string, number> = {};
         (trips || []).forEach((t: any) => { counts[t.user_id] = (counts[t.user_id] || 0) + 1; });
-        setFollowedProfiles(profiles.map((p: any) => ({ ...p, project_count: counts[p.user_id] || 0 })));
+        const sorted = [...profiles].sort((a: any, b: any) => (a.display_name || "").localeCompare(b.display_name || ""));
+        setFollowedProfiles(sorted.map((p: any) => ({ ...p, bio: null, location: null, project_count: counts[p.user_id] || 0 })));
       }
       setLoadingFollowed(false);
     })();
