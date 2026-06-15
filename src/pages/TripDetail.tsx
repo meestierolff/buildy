@@ -18,7 +18,7 @@ import ProjectSettingsSheet from "@/components/ProjectSettingsSheet";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { MapPin, Plus, BookOpen, Share2, Hammer, LayoutGrid, Map as MapIcon, Images, Wallet, Settings, Flag, Upload, Sparkles, Loader2, ChevronDown, MoreHorizontal } from "lucide-react";
+import { MapPin, Plus, BookOpen, Share2, Hammer, LayoutGrid, Map as MapIcon, Images, Wallet, Settings, Flag, Upload, Sparkles, Loader2, ChevronDown } from "lucide-react";
 import { differenceInDays } from "date-fns";
 import { toast } from "sonner";
 import { hydrateStepsMedia } from "@/lib/mediaUrl";
@@ -64,15 +64,11 @@ const TripDetail = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [activeTab, setActiveTab] = useState("timeline");
   const [milestonesOnly, setMilestonesOnly] = useState(false);
-  const [adjustCover, setAdjustCover] = useState(false);
   const [coverY, setCoverY] = useState<number>(50);
   const [uploadingFloorplan, setUploadingFloorplan] = useState(false);
   const [generatingBlueprint, setGeneratingBlueprint] = useState(false);
   const floorFileRef = useRef<HTMLInputElement>(null);
   const addFloorFileRef = useRef<HTMLInputElement>(null);
-
-  // suppress unused warning — adjustCover kept for potential future use
-  void adjustCover;
 
   const isOwner = user && trip?.user_id === user.id;
   const fallbackCoverUrl = steps

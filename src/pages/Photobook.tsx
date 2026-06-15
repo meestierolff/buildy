@@ -376,13 +376,6 @@ const Photobook = () => {
     if (error) toast.error("Kon niet opslaan");
   }, [id, settings]);
 
-  const updateTripField = async (patch: Record<string, any>) => {
-    if (!id) return;
-    setTrip((t: any) => ({ ...t, ...patch }));
-    const { error } = await supabase.from("trips").update(patch).eq("id", id);
-    if (error) toast.error("Kon niet opslaan");
-  };
-
 
   const toggleMedia = async (mediaId: string) => {
     if (!id) return;
@@ -1067,7 +1060,6 @@ const Photobook = () => {
               </p>
               <div className="flex flex-wrap gap-4">
                 {pages.map((page, idx) => {
-                  const targetSpreadIdx = idx === 0 ? 0 : Math.ceil(idx / 2);
                   const isStepHidden = page.meta?.stepId ? excludedSteps.has(page.meta.stepId) : false;
                   return (
                     <button
@@ -1665,98 +1657,17 @@ const PhotoPageBuckets = ({
   );
 };
 
-const PhotoEditOverlay = ({
-  step,
-  excludedMedia,
-  onToggleMedia,
-  onReorder,
-}: {
-  step: any;
-  excludedMedia: Set<string>;
-  onToggleMedia: (id: string) => void;
-  onReorder: (stepId: string, newOrder: string[]) => void;
-}) => {
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
-  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
-
-  if (!step) return null;
-  const photos = (step.step_media || []).filter((m: any) => m.media_type !== "video");
-
-  const handleDrop = (targetIdx: number) => {
-    if (dragIdx === null || dragIdx === targetIdx) return;
-    const newOrder = photos.map((m: any) => m.id);
-    const [moved] = newOrder.splice(dragIdx, 1);
-    newOrder.splice(targetIdx, 0, moved);
-    onReorder(step.id, newOrder);
-    setDragIdx(null);
-    setDragOverIdx(null);
-  };
-
-  return (
-    <div className="absolute bottom-2 left-2 right-2 z-10 bg-black/70 backdrop-blur rounded-lg p-2">
-      <p className="text-[9px] text-white/50 mb-1.5 select-none">Sleep om volgorde te wijzigen · Hover voor toon/verberg</p>
-      <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
-        {photos.map((m: any, idx: number) => {
-          const out = excludedMedia.has(m.id);
-          const isDragging = dragIdx === idx;
-          const isOver = dragOverIdx === idx && dragIdx !== idx;
-          return (
-            <div
-              key={m.id}
-              className={`relative group cursor-grab active:cursor-grabbing transition-opacity select-none ${isDragging ? "opacity-30" : ""}`}
-              draggable
-              onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDragIdx(idx); }}
-              onDragOver={(e) => { e.preventDefault(); setDragOverIdx(idx); }}
-              onDragLeave={() => setDragOverIdx(null)}
-              onDrop={() => handleDrop(idx)}
-              onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
-            >
-              <img
-                src={m.media_url}
-                alt=""
-                draggable={false}
-                className={`w-12 h-12 object-contain rounded bg-muted transition ${out ? "opacity-40 grayscale" : ""} ${isOver ? "ring-2 ring-white ring-offset-1 ring-offset-black/70" : ""}`}
-              />
-              {out && (
-                <>
-                  <div className="absolute inset-0 rounded ring-2 ring-destructive" />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <EyeOff className="h-4 w-4 text-destructive drop-shadow" />
-                  </div>
-                  <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-[8px] font-bold uppercase tracking-wide px-1 py-0.5 rounded">
-                    Uit
-                  </span>
-                </>
-              )}
-              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 rounded">
-                <button
-                  onClick={() => onToggleMedia(m.id)}
-                  className="text-white p-1 hover:bg-white/20 rounded"
-                  title={out ? "Terugzetten in fotoboek" : "Verberg uit fotoboek"}
-                >
-                  {out ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
 const StepPageFooter = ({
   step,
   stepIdx,
   totalSteps,
-  cumulativeCost,
-  budgetTotal,
 }: {
   step: any;
   stepIdx: number;
   totalSteps: number;
-  cumulativeCost: number;
-  budgetTotal: number | null;
+  // Accepted for forward-compat; cost/budget footer UI not yet rendered.
+  cumulativeCost?: number;
+  budgetTotal?: number | null;
 }) => {
   const progressPct = totalSteps > 0 ? ((stepIdx + 1) / totalSteps) * 100 : 0;
 
@@ -1787,104 +1698,6 @@ const ChapterEditOverlay = ({ phase, value, onChange }: { phase: string; value: 
         placeholder={`Standaard: ${phase}`}
         className="bg-background/95 backdrop-blur"
       />
-    </div>
-  );
-};
-
-/**
- * Renders Peecho's Print Button JS widget for direct ordering.
- * The widget loads Peecho's checkout in a popup when clicked.
- * data-src must be a publicly accessible PDF URL (Supabase public storage).
- */
-const PeechoPrintWidget = ({
-  pdfUrl,
-  pages,
-  format,
-  coverUrl,
-  title,
-  scriptUrl,
-  reference,
-}: {
-  pdfUrl: string;
-  pages: number;
-  format: { w: number; h: number; label: string };
-  coverUrl?: string;
-  title: string;
-  scriptUrl: string;
-  reference: string | null;
-}) => {
-  const containerRef = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    if (!containerRef.current) return;
-
-    // Inject Peecho JS script once per page lifecycle
-    const scriptId = "peecho-print-script";
-    if (!document.getElementById(scriptId) && scriptUrl) {
-      const s = document.createElement("script");
-      s.id = scriptId;
-      s.type = "text/javascript";
-      s.async = true;
-      s.src = scriptUrl;
-      document.head.appendChild(s);
-    }
-
-    // When the script loads (or is already loaded), re-init the button
-    const reinit = () => {
-      if ((window as any).peecho?.init) {
-        (window as any).peecho.init();
-      }
-    };
-    const existing = document.getElementById(scriptId);
-    if (existing) {
-      existing.addEventListener("load", reinit);
-      reinit(); // try immediately in case already loaded
-    }
-    return () => {
-      existing?.removeEventListener("load", reinit);
-    };
-  }, [pdfUrl, scriptUrl]);
-
-  return (
-    <div className="rounded-md border bg-secondary/30 p-4 space-y-3">
-      <div className="flex items-center gap-2">
-        <div className="h-2 w-2 rounded-full bg-accent animate-pulse" />
-        <p className="text-xs font-medium text-accent">Bouwboek klaar voor bestelling</p>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Klik op de knop hieronder. Peecho opent een bestelscherm waar je je adres invult en betaalt. Wij zorgen voor druk en verzending.
-      </p>
-      <div ref={containerRef} className="flex justify-center py-2">
-        {scriptUrl ? (
-          <a
-            title="Bouwboek bestellen"
-            href="https://www.peecho.com/"
-            className="peecho-print-button"
-            data-filetype="pdf"
-            data-title={title}
-            data-width={format.w}
-            data-height={format.h}
-            data-pages={pages}
-            data-src={pdfUrl}
-            data-thumbnail={coverUrl || ""}
-            data-reference={reference || ""}
-            data-locale="nl_NL"
-            data-currency="EUR"
-            data-text="Bestel Bouwboek"
-          >
-            Bouwboek bestellen via Peecho
-          </a>
-        ) : (
-          <Button disabled className="w-full">
-            Peecho niet geconfigureerd
-          </Button>
-        )}
-      </div>
-      {!scriptUrl && (
-        <p className="text-[10px] text-destructive text-center">
-          Configureer <code>VITE_PEECHO_BUTTON_KEY</code> of <code>VITE_PEECHO_SCRIPT_URL</code> om het bestelwidget te activeren.
-        </p>
-      )}
     </div>
   );
 };

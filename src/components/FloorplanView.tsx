@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
 import { Hammer, Move } from "lucide-react";
 import { toast } from "sonner";
 
@@ -29,7 +28,7 @@ interface Props {
   onChanged: () => void;
 }
 
-const FloorplanView = ({ tripId, isOwner, floorplans, steps, onChanged }: Props) => {
+const FloorplanView = ({ isOwner, floorplans, steps, onChanged }: Props) => {
   const [activeFloorIdx, setActiveFloorIdx] = useState(0);
   const activeFloor = floorplans[activeFloorIdx];
   const containerRef = useRef<HTMLDivElement>(null);
