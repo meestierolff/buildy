@@ -75,13 +75,11 @@ const Friends = () => {
 
 
   const fetchPage = useCallback(async (search: string, from: number, reqId: number): Promise<ProfileResult[]> => {
-    let q = supabase
-      .from("profiles")
-      .select("user_id, display_name, avatar_url, bio, location")
-      .order("display_name", { ascending: true })
-      .range(from, from + PAGE_SIZE - 1);
-    if (search) q = q.ilike("display_name", `%${search}%`);
-    const { data, error } = await q;
+    const { data, error } = await supabase.rpc("search_profiles", {
+      _q: search || "",
+      _limit: PAGE_SIZE,
+      _offset: from,
+    });
 
     if (error || !data || reqId !== reqIdRef.current) return [];
     const ids = data.map((p: any) => p.user_id).filter((uid: string) => uid !== user?.id);
@@ -92,7 +90,7 @@ const Friends = () => {
       (trips || []).forEach((t: any) => { counts[t.user_id] = (counts[t.user_id] || 0) + 1; });
     }
     if (reqId !== reqIdRef.current) return [];
-    return filtered.map((p: any) => ({ ...p, project_count: counts[p.user_id] || 0 }));
+    return filtered.map((p: any) => ({ ...p, bio: null, location: null, project_count: counts[p.user_id] || 0 }));
   }, [user]);
 
   useEffect(() => {
