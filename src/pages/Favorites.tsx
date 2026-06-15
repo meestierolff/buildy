@@ -50,7 +50,7 @@ const Favorites = () => {
         const userIds = Array.from(new Set(trips.map((t: any) => t.user_id)));
         const [mediaSummaries, { data: profiles }] = await Promise.all([
           loadProjectMediaSummaries(ids),
-          supabase.from("profiles").select("user_id, display_name").in("user_id", userIds),
+          supabase.rpc("get_profiles_basic", { _ids: userIds }),
         ]);
         const profileById = new Map((profiles || []).map((p: any) => [p.user_id, p]));
         setProjects(

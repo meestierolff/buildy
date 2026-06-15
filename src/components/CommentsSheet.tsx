@@ -45,7 +45,7 @@ const CommentsSheet = ({
       .order("created_at", { ascending: true });
     if (!data) return;
     const ids = [...new Set(data.map((c) => c.user_id))];
-    const { data: profs } = await supabase.from("profiles").select("user_id, display_name").in("user_id", ids);
+    const { data: profs } = await supabase.rpc("get_profiles_basic", { _ids: ids });
     const map = new Map((profs || []).map((p) => [p.user_id, p]));
     setComments(data.map((c) => ({ ...c, profile: map.get(c.user_id) })));
   };

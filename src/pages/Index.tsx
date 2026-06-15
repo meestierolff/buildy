@@ -65,7 +65,7 @@ const enrich = async (rows: any[]): Promise<Project[]> => {
   const [mediaSummaries, favRes, profRes] = await Promise.all([
     loadProjectMediaSummaries(ids),
     supabase.from("favorites").select("project_id").in("project_id", ids),
-    supabase.from("profiles").select("user_id, display_name").in("user_id", userIds),
+    supabase.rpc("get_profiles_basic", { _ids: userIds }),
   ]);
 
   const favCounts = new Map<string, number>();
