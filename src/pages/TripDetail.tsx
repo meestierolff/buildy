@@ -97,14 +97,11 @@ const TripDetail = () => {
       .single();
 
     if (tripData) {
-      const [{ data: profileData }, { data: privInfo }] = await Promise.all([
-        supabase
-          .from("profiles")
-          .select("display_name, avatar_url")
-          .eq("user_id", tripData.user_id)
-          .single(),
+      const [{ data: profileRows }, { data: privInfo }] = await Promise.all([
+        supabase.rpc("get_profiles_basic", { _ids: [tripData.user_id] }),
         supabase.from("trip_private_info").select("address").eq("trip_id", id).maybeSingle(),
       ]);
+      const profileData = (profileRows && profileRows[0]) || null;
       setTrip({ ...tripData, profile: profileData, address: privInfo?.address ?? null });
       setCoverY(typeof (tripData as any).cover_position_y === "number" ? (tripData as any).cover_position_y : 50);
     }
