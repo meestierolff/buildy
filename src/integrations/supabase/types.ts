@@ -688,6 +688,23 @@ export type Database = {
       can_view_budget: { Args: { _trip_id: string }; Returns: boolean }
       can_view_step: { Args: { _step_id: string }; Returns: boolean }
       can_view_trip: { Args: { _trip_id: string }; Returns: boolean }
+      get_profiles_basic: {
+        Args: { _ids: string[] }
+        Returns: {
+          avatar_url: string
+          display_name: string
+          user_id: string
+        }[]
+      }
+      search_profiles: {
+        Args: { _limit?: number; _offset?: number; _q: string }
+        Returns: {
+          avatar_url: string
+          display_name: string
+          is_private: boolean
+          user_id: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
