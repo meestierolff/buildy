@@ -80,7 +80,10 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
   };
 
   return (
-    <div className="space-y-4 pb-16">
+    <div className="relative pb-16">
+      {/* Horizontale tijdlijn-lijn op de achtergrond */}
+      <div className="pointer-events-none absolute left-0 right-0 top-6 h-px bg-gradient-to-r from-transparent via-accent/40 to-transparent" />
+      <div className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-4 -mx-2 px-2 scroll-smooth">
       {steps.map((step) => {
         // Sort media by sort_order to match edit dialog order
         const sortedMedia = mediaDrafts[step.id] ?? [...step.step_media].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
@@ -95,7 +98,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
         const pdfs = sortedMedia.filter((m) => m.media_type === "pdf");
 
         return (
-          <article key={step.id} className="overflow-hidden rounded-md border border-white/25 bg-card/95 shadow-sm backdrop-blur-sm">
+          <article key={step.id} className="snap-start shrink-0 w-[320px] sm:w-[360px] flex flex-col overflow-hidden rounded-md border border-white/25 bg-card/95 shadow-sm backdrop-blur-sm">
             {/* Step meta row: date + phase + owner actions */}
             <div className="flex items-center justify-between px-4 pt-4 pb-2 gap-2">
               <div className="flex items-center gap-2 flex-wrap">
@@ -335,6 +338,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
           </article>
         );
       })}
+      </div>
       {lightbox && (
         <MediaLightbox
           items={lightbox.items}
