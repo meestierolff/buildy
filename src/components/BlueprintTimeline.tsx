@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { GripVertical, Heart, MessageCircle, Pencil, Trash2, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { format } from "date-fns";
+import { format, differenceInCalendarDays } from "date-fns";
 import { nl } from "date-fns/locale";
 import ReactionBar from "@/components/ReactionBar";
 import CommentsSheet from "@/components/CommentsSheet";
