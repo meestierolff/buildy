@@ -269,10 +269,12 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                   <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => onDelete?.(step.id)}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
-                </div>
+                </>
               )}
+              </div>
 
             </div>
+
 
             {/* Title */}
             <div className="px-4 pb-3">
