@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { GripVertical, Heart, MessageCircle, Pencil, Trash2, Star } from "lucide-react";
+import { GripVertical, Heart, Link2, MessageCircle, Pencil, Trash2, Star } from "lucide-react";
+import { toast } from "sonner";
+
 import { Button } from "@/components/ui/button";
 import { format, differenceInCalendarDays } from "date-fns";
 import { nl } from "date-fns/locale";
