@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GripVertical, Heart, MessageCircle, Pencil, Trash2, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format, differenceInCalendarDays } from "date-fns";
