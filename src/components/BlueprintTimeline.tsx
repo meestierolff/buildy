@@ -250,7 +250,6 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
               {isOwner && (
                 <>
 
-                <>
 
                   {sortedMedia.filter((m) => m.media_type !== "pdf").length > 1 && (
                     <Button
