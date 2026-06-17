@@ -360,7 +360,9 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
               }
             />
           </article>
+          </div>
         );
+
       })}
       </div>
       {lightbox && (
