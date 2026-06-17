@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GripVertical, Heart, MessageCircle, Pencil, Trash2, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format, differenceInCalendarDays } from "date-fns";
@@ -48,6 +48,40 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
   const [draggingMedia, setDraggingMedia] = useState<{ stepId: string; mediaId: string } | null>(null);
   const [dragOverMediaId, setDragOverMediaId] = useState<string | null>(null);
   const [reorderOpenFor, setReorderOpenFor] = useState<string | null>(null);
+  const [activeStepId, setActiveStepId] = useState<string | null>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const root = scrollerRef.current;
+    if (!root || steps.length === 0) return;
+    const cards = Array.from(root.querySelectorAll<HTMLElement>("[data-step-id]"));
+    if (cards.length === 0) return;
+
+    const visibility = new Map<string, number>();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const id = (entry.target as HTMLElement).dataset.stepId;
+          if (!id) continue;
+          visibility.set(id, entry.intersectionRatio);
+        }
+        let bestId: string | null = null;
+        let bestRatio = 0;
+        for (const [id, ratio] of visibility) {
+          if (ratio > bestRatio) {
+            bestRatio = ratio;
+            bestId = id;
+          }
+        }
+        if (bestId && bestRatio > 0) setActiveStepId(bestId);
+      },
+      { root, threshold: [0, 0.25, 0.5, 0.75, 1] }
+    );
+    cards.forEach((c) => observer.observe(c));
+    setActiveStepId(cards[0].dataset.stepId ?? null);
+    return () => observer.disconnect();
+  }, [steps]);
+
 
   const cc = (id: string, base: number) => commentCounts[id] ?? base;
 
@@ -87,7 +121,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
 
   return (
     <div className="relative pb-16">
-      <div className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-4 -mx-2 px-2 scroll-smooth">
+      <div ref={scrollerRef} className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-4 -mx-2 px-2 scroll-smooth">
       {steps.map((step) => {
         // Sort media by sort_order to match edit dialog order
         const sortedMedia = mediaDrafts[step.id] ?? [...step.step_media].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
@@ -105,17 +139,19 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
         const dayNumber = firstDate
           ? Math.max(1, differenceInCalendarDays(stepDate, firstDate) + 1)
           : 1;
+        const isActive = activeStepId === step.id;
 
         return (
           <div
             key={step.id}
             id={`step-${step.id}`}
+            data-step-id={step.id}
             className="snap-start shrink-0 w-[320px] sm:w-[360px] flex flex-col scroll-mx-4"
           >
             {/* Tijdlijn-label: Dag N + datum + marker (klikbaar) */}
             <div className="relative flex flex-col items-center pb-4">
               {/* Horizontale tijdlijn-lijn achter de marker */}
-              <div className="pointer-events-none absolute left-0 right-0 bottom-[7px] h-px bg-accent/40" />
+              <div className={`pointer-events-none absolute left-0 right-0 bottom-[7px] h-px transition-colors ${isActive ? "bg-accent/70" : "bg-accent/40"}`} />
               <button
                 type="button"
                 onClick={(e) => {
@@ -123,17 +159,19 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                     .closest(`#step-${step.id}`)
                     ?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
                 }}
-                className="group relative flex flex-col items-center rounded-md px-2 py-1 transition-colors hover:bg-accent/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+                className={`group relative flex flex-col items-center rounded-md px-2 py-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${isActive ? "bg-accent/10" : "hover:bg-accent/5"}`}
                 aria-label={`Spring naar ${step.location_name}`}
+                aria-current={isActive ? "step" : undefined}
                 title={`Spring naar ${step.location_name}`}
               >
-                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-accent">
+                <span className={`text-[10px] font-bold uppercase tracking-[0.18em] transition-colors ${isActive ? "text-accent" : "text-accent/70"}`}>
                   Dag {dayNumber}
                 </span>
                 <time className="mt-0.5 text-xs font-medium text-foreground/80 group-hover:text-foreground">
                   {format(stepDate, "EEE d MMM", { locale: nl })}
                 </time>
-                <span className="mt-2 h-3.5 w-3.5 rounded-full bg-accent ring-4 ring-background shadow-sm group-hover:scale-110 transition-transform" />
+                <span className={`mt-2 rounded-full bg-accent ring-4 ring-background shadow-sm transition-all ${isActive ? "h-4 w-4 scale-110" : "h-3.5 w-3.5 group-hover:scale-110"}`} />
+
               </button>
             </div>
 
