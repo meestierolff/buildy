@@ -48,6 +48,40 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
   const [draggingMedia, setDraggingMedia] = useState<{ stepId: string; mediaId: string } | null>(null);
   const [dragOverMediaId, setDragOverMediaId] = useState<string | null>(null);
   const [reorderOpenFor, setReorderOpenFor] = useState<string | null>(null);
+  const [activeStepId, setActiveStepId] = useState<string | null>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const root = scrollerRef.current;
+    if (!root || steps.length === 0) return;
+    const cards = Array.from(root.querySelectorAll<HTMLElement>("[data-step-id]"));
+    if (cards.length === 0) return;
+
+    const visibility = new Map<string, number>();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const id = (entry.target as HTMLElement).dataset.stepId;
+          if (!id) continue;
+          visibility.set(id, entry.intersectionRatio);
+        }
+        let bestId: string | null = null;
+        let bestRatio = 0;
+        for (const [id, ratio] of visibility) {
+          if (ratio > bestRatio) {
+            bestRatio = ratio;
+            bestId = id;
+          }
+        }
+        if (bestId && bestRatio > 0) setActiveStepId(bestId);
+      },
+      { root, threshold: [0, 0.25, 0.5, 0.75, 1] }
+    );
+    cards.forEach((c) => observer.observe(c));
+    setActiveStepId(cards[0].dataset.stepId ?? null);
+    return () => observer.disconnect();
+  }, [steps]);
+
 
   const cc = (id: string, base: number) => commentCounts[id] ?? base;
 
