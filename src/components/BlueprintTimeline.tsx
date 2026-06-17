@@ -237,7 +237,19 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                   </span>
                 )}
               </div>
+              <div className="flex items-center gap-0.5 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => copyStepLink(step.id)}
+                  title="Kopieer link naar deze step"
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                </Button>
               {isOwner && (
+                <>
+
                 <div className="flex items-center gap-0.5 shrink-0">
                   {sortedMedia.filter((m) => m.media_type !== "pdf").length > 1 && (
                     <Button
