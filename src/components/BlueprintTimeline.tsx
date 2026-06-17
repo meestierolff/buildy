@@ -121,7 +121,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
 
   return (
     <div className="relative pb-16">
-      <div className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-4 -mx-2 px-2 scroll-smooth">
+      <div ref={scrollerRef} className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-4 -mx-2 px-2 scroll-smooth">
       {steps.map((step) => {
         // Sort media by sort_order to match edit dialog order
         const sortedMedia = mediaDrafts[step.id] ?? [...step.step_media].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
@@ -139,17 +139,19 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
         const dayNumber = firstDate
           ? Math.max(1, differenceInCalendarDays(stepDate, firstDate) + 1)
           : 1;
+        const isActive = activeStepId === step.id;
 
         return (
           <div
             key={step.id}
             id={`step-${step.id}`}
+            data-step-id={step.id}
             className="snap-start shrink-0 w-[320px] sm:w-[360px] flex flex-col scroll-mx-4"
           >
             {/* Tijdlijn-label: Dag N + datum + marker (klikbaar) */}
             <div className="relative flex flex-col items-center pb-4">
               {/* Horizontale tijdlijn-lijn achter de marker */}
-              <div className="pointer-events-none absolute left-0 right-0 bottom-[7px] h-px bg-accent/40" />
+              <div className={`pointer-events-none absolute left-0 right-0 bottom-[7px] h-px transition-colors ${isActive ? "bg-accent/70" : "bg-accent/40"}`} />
               <button
                 type="button"
                 onClick={(e) => {
@@ -157,12 +159,15 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                     .closest(`#step-${step.id}`)
                     ?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
                 }}
-                className="group relative flex flex-col items-center rounded-md px-2 py-1 transition-colors hover:bg-accent/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+                className={`group relative flex flex-col items-center rounded-md px-2 py-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${isActive ? "bg-accent/10" : "hover:bg-accent/5"}`}
                 aria-label={`Spring naar ${step.location_name}`}
+                aria-current={isActive ? "step" : undefined}
                 title={`Spring naar ${step.location_name}`}
               >
-                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-accent">
+                <span className={`text-[10px] font-bold uppercase tracking-[0.18em] transition-colors ${isActive ? "text-accent" : "text-accent/70"}`}>
                   Dag {dayNumber}
+                </span>
+
                 </span>
                 <time className="mt-0.5 text-xs font-medium text-foreground/80 group-hover:text-foreground">
                   {format(stepDate, "EEE d MMM", { locale: nl })}
