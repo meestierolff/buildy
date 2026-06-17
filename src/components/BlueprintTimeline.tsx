@@ -250,7 +250,8 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
               {isOwner && (
                 <>
 
-                <div className="flex items-center gap-0.5 shrink-0">
+                <>
+
                   {sortedMedia.filter((m) => m.media_type !== "pdf").length > 1 && (
                     <Button
                       variant="ghost"
