@@ -107,19 +107,36 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
           : 1;
 
         return (
-          <div key={step.id} className="snap-start shrink-0 w-[320px] sm:w-[360px] flex flex-col">
-            {/* Tijdlijn-label: Dag N + datum + marker */}
+          <div
+            key={step.id}
+            id={`step-${step.id}`}
+            className="snap-start shrink-0 w-[320px] sm:w-[360px] flex flex-col scroll-mx-4"
+          >
+            {/* Tijdlijn-label: Dag N + datum + marker (klikbaar) */}
             <div className="relative flex flex-col items-center pb-4">
-              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-accent">
-                Dag {dayNumber}
-              </div>
-              <time className="mt-0.5 text-xs font-medium text-foreground/80">
-                {format(stepDate, "EEE d MMM", { locale: nl })}
-              </time>
               {/* Horizontale tijdlijn-lijn achter de marker */}
               <div className="pointer-events-none absolute left-0 right-0 bottom-[7px] h-px bg-accent/40" />
-              <div className="relative mt-2 h-3.5 w-3.5 rounded-full bg-accent ring-4 ring-background shadow-sm" />
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.currentTarget
+                    .closest(`#step-${step.id}`)
+                    ?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
+                }}
+                className="group relative flex flex-col items-center rounded-md px-2 py-1 transition-colors hover:bg-accent/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+                aria-label={`Spring naar ${step.location_name}`}
+                title={`Spring naar ${step.location_name}`}
+              >
+                <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-accent">
+                  Dag {dayNumber}
+                </span>
+                <time className="mt-0.5 text-xs font-medium text-foreground/80 group-hover:text-foreground">
+                  {format(stepDate, "EEE d MMM", { locale: nl })}
+                </time>
+                <span className="mt-2 h-3.5 w-3.5 rounded-full bg-accent ring-4 ring-background shadow-sm group-hover:scale-110 transition-transform" />
+              </button>
             </div>
+
 
             <article className="flex flex-col overflow-hidden rounded-md border border-white/25 bg-card/95 shadow-sm backdrop-blur-sm">
 
