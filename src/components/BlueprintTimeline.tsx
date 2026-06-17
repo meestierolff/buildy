@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { GripVertical, Heart, MessageCircle, Pencil, Trash2, Star } from "lucide-react";
+import { GripVertical, Heart, Link2, MessageCircle, Pencil, Trash2, Star } from "lucide-react";
+import { toast } from "sonner";
+
 import { Button } from "@/components/ui/button";
 import { format, differenceInCalendarDays } from "date-fns";
 import { nl } from "date-fns/locale";
@@ -51,6 +53,22 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
 
+  // Deep-link: scroll naar ?step=<id> bij eerste load
+  useEffect(() => {
+    if (steps.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const target = params.get("step");
+    if (!target || !steps.some((s) => s.id === target)) return;
+    // Wacht tot kaarten gerenderd zijn
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`step-${target}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
+        setActiveStepId(target);
+      }
+    });
+  }, [steps]);
+
   useEffect(() => {
     const root = scrollerRef.current;
     if (!root || steps.length === 0) return;
@@ -78,9 +96,32 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
       { root, threshold: [0, 0.25, 0.5, 0.75, 1] }
     );
     cards.forEach((c) => observer.observe(c));
-    setActiveStepId(cards[0].dataset.stepId ?? null);
     return () => observer.disconnect();
   }, [steps]);
+
+  // Sync ?step=<id> met actieve step (zonder history-spam)
+  useEffect(() => {
+    if (!activeStepId) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("step") === activeStepId) return;
+    params.set("step", activeStepId);
+    const url = `${window.location.pathname}?${params.toString()}${window.location.hash}`;
+    window.history.replaceState(null, "", url);
+  }, [activeStepId]);
+
+  const copyStepLink = async (stepId: string) => {
+    const params = new URLSearchParams(window.location.search);
+    params.set("step", stepId);
+    const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success("Link gekopieerd");
+    } catch {
+      toast.error("Kopiëren mislukt", { description: url });
+    }
+  };
+
+
 
 
   const cc = (id: string, base: number) => commentCounts[id] ?? base;
@@ -196,8 +237,20 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                   </span>
                 )}
               </div>
+              <div className="flex items-center gap-0.5 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  onClick={() => copyStepLink(step.id)}
+                  title="Kopieer link naar deze step"
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                </Button>
               {isOwner && (
-                <div className="flex items-center gap-0.5 shrink-0">
+                <>
+
+
                   {sortedMedia.filter((m) => m.media_type !== "pdf").length > 1 && (
                     <Button
                       variant="ghost"
@@ -215,10 +268,12 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                   <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => onDelete?.(step.id)}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
-                </div>
+                </>
               )}
+              </div>
 
             </div>
+
 
             {/* Title */}
             <div className="px-4 pb-3">
