@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { GripVertical, Heart, MessageCircle, Pencil, Trash2, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { format } from "date-fns";
+import { format, differenceInCalendarDays } from "date-fns";
 import { nl } from "date-fns/locale";
 import ReactionBar from "@/components/ReactionBar";
 import CommentsSheet from "@/components/CommentsSheet";
@@ -79,10 +79,14 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
     onReorderMedia?.(step.id, next.filter((m) => m.media_type !== "pdf").map((m) => m.id));
   };
 
+  // Earliest step date = Dag 1
+  const sortedByDate = [...steps].sort(
+    (a, b) => new Date(a.step_date).getTime() - new Date(b.step_date).getTime()
+  );
+  const firstDate = sortedByDate.length > 0 ? new Date(sortedByDate[0].step_date) : null;
+
   return (
     <div className="relative pb-16">
-      {/* Horizontale tijdlijn-lijn op de achtergrond */}
-      <div className="pointer-events-none absolute left-0 right-0 top-6 h-px bg-gradient-to-r from-transparent via-accent/40 to-transparent" />
       <div className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-4 -mx-2 px-2 scroll-smooth">
       {steps.map((step) => {
         // Sort media by sort_order to match edit dialog order
@@ -97,8 +101,28 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
         );
         const pdfs = sortedMedia.filter((m) => m.media_type === "pdf");
 
+        const stepDate = new Date(step.step_date);
+        const dayNumber = firstDate
+          ? Math.max(1, differenceInCalendarDays(stepDate, firstDate) + 1)
+          : 1;
+
         return (
-          <article key={step.id} className="snap-start shrink-0 w-[320px] sm:w-[360px] flex flex-col overflow-hidden rounded-md border border-white/25 bg-card/95 shadow-sm backdrop-blur-sm">
+          <div key={step.id} className="snap-start shrink-0 w-[320px] sm:w-[360px] flex flex-col">
+            {/* Tijdlijn-label: Dag N + datum + marker */}
+            <div className="relative flex flex-col items-center pb-4">
+              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-accent">
+                Dag {dayNumber}
+              </div>
+              <time className="mt-0.5 text-xs font-medium text-foreground/80">
+                {format(stepDate, "EEE d MMM", { locale: nl })}
+              </time>
+              {/* Horizontale tijdlijn-lijn achter de marker */}
+              <div className="pointer-events-none absolute left-0 right-0 bottom-[7px] h-px bg-accent/40" />
+              <div className="relative mt-2 h-3.5 w-3.5 rounded-full bg-accent ring-4 ring-background shadow-sm" />
+            </div>
+
+            <article className="flex flex-col overflow-hidden rounded-md border border-white/25 bg-card/95 shadow-sm backdrop-blur-sm">
+
             {/* Step meta row: date + phase + owner actions */}
             <div className="flex items-center justify-between px-4 pt-4 pb-2 gap-2">
               <div className="flex items-center gap-2 flex-wrap">
@@ -336,7 +360,9 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
               }
             />
           </article>
+          </div>
         );
+
       })}
       </div>
       {lightbox && (
