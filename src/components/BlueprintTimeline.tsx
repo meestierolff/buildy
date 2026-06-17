@@ -167,12 +167,11 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                 <span className={`text-[10px] font-bold uppercase tracking-[0.18em] transition-colors ${isActive ? "text-accent" : "text-accent/70"}`}>
                   Dag {dayNumber}
                 </span>
-
-                </span>
                 <time className="mt-0.5 text-xs font-medium text-foreground/80 group-hover:text-foreground">
                   {format(stepDate, "EEE d MMM", { locale: nl })}
                 </time>
-                <span className="mt-2 h-3.5 w-3.5 rounded-full bg-accent ring-4 ring-background shadow-sm group-hover:scale-110 transition-transform" />
+                <span className={`mt-2 rounded-full bg-accent ring-4 ring-background shadow-sm transition-all ${isActive ? "h-4 w-4 scale-110" : "h-3.5 w-3.5 group-hover:scale-110"}`} />
+
               </button>
             </div>
 
