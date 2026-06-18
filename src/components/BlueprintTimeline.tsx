@@ -69,6 +69,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
         const elRect = el.getBoundingClientRect();
         scroller.scrollTo({ left: scroller.scrollLeft + (elRect.left - scrollerRect.left), behavior: "smooth" });
         setActiveStepId(target);
+        setExpandedId(target);
       }
     });
   }, [steps]);
