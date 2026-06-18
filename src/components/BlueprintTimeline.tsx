@@ -51,6 +51,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
   const [dragOverMediaId, setDragOverMediaId] = useState<string | null>(null);
   const [reorderOpenFor, setReorderOpenFor] = useState<string | null>(null);
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
 
   // Deep-link: scroll naar ?step=<id> bij eerste load (alleen horizontaal)
