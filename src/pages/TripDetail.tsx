@@ -64,6 +64,7 @@ const TripDetail = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [activeTab, setActiveTab] = useState("timeline");
   const [milestonesOnly, setMilestonesOnly] = useState(false);
+  const [showRouteMap, setShowRouteMap] = useState(false);
   const [coverY, setCoverY] = useState<number>(50);
   const [uploadingFloorplan, setUploadingFloorplan] = useState(false);
   const [generatingBlueprint, setGeneratingBlueprint] = useState(false);
