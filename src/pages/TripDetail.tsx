@@ -64,6 +64,7 @@ const TripDetail = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [activeTab, setActiveTab] = useState("timeline");
   const [milestonesOnly, setMilestonesOnly] = useState(false);
+  const [showRouteMap, setShowRouteMap] = useState(false);
   const [coverY, setCoverY] = useState<number>(50);
   const [uploadingFloorplan, setUploadingFloorplan] = useState(false);
   const [generatingBlueprint, setGeneratingBlueprint] = useState(false);
@@ -540,20 +541,37 @@ const TripDetail = () => {
                     {isOwner && !milestonesOnly && <p className="text-sm mt-1">Voeg je eerste 'voor'-foto toe om te starten!</p>}
                   </div>
                 ) : (
-                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-                    <BlueprintTimeline
-                      steps={visible}
-                      onLike={handleLike}
-                      onEdit={setEditingStep}
-                      onDelete={setDeletingStepId}
-                      onReorderMedia={handleReorderMedia}
-                      isOwner={!!isOwner}
-                    />
-                    <aside className="hidden lg:block">
-                      <div className="sticky top-4 h-[calc(100vh-6rem)]">
-                        <TripRouteMap steps={routeSteps} />
-                      </div>
-                    </aside>
+                  <div className={`grid gap-4 ${showRouteMap ? "lg:grid-cols-[minmax(0,1fr)_320px]" : ""}`}>
+                    <div className="min-w-0">
+                      <BlueprintTimeline
+                        steps={visible}
+                        onLike={handleLike}
+                        onEdit={setEditingStep}
+                        onDelete={setDeletingStepId}
+                        onReorderMedia={handleReorderMedia}
+                        isOwner={!!isOwner}
+                      />
+                      {routeSteps.some((s) => s.latitude && s.longitude) && (
+                        <div className="mt-3">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setShowRouteMap((v) => !v)}
+                            className="gap-1.5 text-xs"
+                          >
+                            <MapIcon className="h-3.5 w-3.5" />
+                            {showRouteMap ? "Locatiekaart verbergen" : "Locatiekaart tonen"}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    {showRouteMap && (
+                      <aside className="hidden lg:block">
+                        <div className="sticky top-4 h-[calc(100vh-6rem)]">
+                          <TripRouteMap steps={routeSteps} />
+                        </div>
+                      </aside>
+                    )}
                   </div>
                 );
               })()}
