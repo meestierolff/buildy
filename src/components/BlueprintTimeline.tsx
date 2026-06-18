@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { GripVertical, Heart, Link2, MessageCircle, Pencil, Trash2, Star } from "lucide-react";
+import { ChevronDown, GripVertical, Heart, Image as ImageIcon, Link2, MessageCircle, Pencil, Trash2, Star } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
