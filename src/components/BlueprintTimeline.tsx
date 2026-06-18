@@ -162,7 +162,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
 
   return (
     <div className="relative pb-16">
-      <div ref={scrollerRef} className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-4 -mx-2 px-2 scroll-smooth">
+      <div ref={scrollerRef} className="flex gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x snap-x snap-mandatory pb-4 -mx-2 px-2 scroll-smooth">
       {steps.map((step) => {
         // Sort media by sort_order to match edit dialog order
         const sortedMedia = mediaDrafts[step.id] ?? [...step.step_media].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
