@@ -229,102 +229,119 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
             </div>
 
 
-            <article className="flex flex-col overflow-hidden rounded-md border border-white/25 bg-card/95 shadow-sm backdrop-blur-sm">
+            <article className={`flex flex-col overflow-hidden rounded-md border bg-card/95 shadow-sm backdrop-blur-sm transition-shadow ${isExpanded ? "border-accent/40 shadow-md" : "border-border/50 hover:shadow-md"}`}>
 
-            {/* Step meta row: date + phase + owner actions */}
-            <div className="flex items-center justify-between px-4 pt-4 pb-2 gap-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="w-2 h-2 rounded-full bg-accent shrink-0" />
-                <time className="text-xs font-medium text-muted-foreground">
-                  {format(new Date(step.step_date), "d MMMM yyyy", { locale: nl })}
-                </time>
-                {step.phase && (
-                  <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${phaseColor(step.phase)}`}>
-                    {step.phase}
-                  </span>
-                )}
-                {step.is_milestone && (
-                  <span className="flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-accent/15 text-accent">
-                    <Star className="h-2.5 w-2.5" /> Mijlpaal
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-0.5 shrink-0">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => copyStepLink(step.id)}
-                  title="Kopieer link naar deze step"
-                >
-                  <Link2 className="h-3.5 w-3.5" />
-                </Button>
-              {isOwner && (
-                <>
-
-
-                  {sortedMedia.filter((m) => m.media_type !== "pdf").length > 1 && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={`h-7 w-7 ${reorderOpenFor === step.id ? "text-accent" : ""}`}
-                      onClick={() => setReorderOpenFor(reorderOpenFor === step.id ? null : step.id)}
-                      title="Foto's ordenen"
-                    >
-                      <GripVertical className="h-3.5 w-3.5" />
-                    </Button>
+            {/* Compact preview: title + hero photo (always visible) */}
+            <button
+              type="button"
+              onClick={() => setExpandedId((cur) => (cur === step.id ? null : step.id))}
+              className="text-left w-full group"
+              aria-expanded={isExpanded}
+            >
+              <div className="flex items-center justify-between px-4 pt-4 pb-2 gap-2">
+                <div className="flex items-center gap-2 flex-wrap min-w-0">
+                  <time className="text-[11px] font-medium text-muted-foreground">
+                    {format(new Date(step.step_date), "d MMM yyyy", { locale: nl })}
+                  </time>
+                  {step.phase && (
+                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${phaseColor(step.phase)}`}>
+                      {step.phase}
+                    </span>
                   )}
-                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit?.(step)}>
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => onDelete?.(step.id)}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </>
-              )}
+                  {step.is_milestone && (
+                    <span className="flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-accent/15 text-accent">
+                      <Star className="h-2.5 w-2.5" /> Mijlpaal
+                    </span>
+                  )}
+                </div>
+                <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform shrink-0 ${isExpanded ? "rotate-180" : ""}`} />
               </div>
 
-            </div>
-
-
-            {/* Title */}
-            <div className="px-4 pb-3">
-              <h3 className="font-bold text-lg leading-tight">{step.location_name}</h3>
-            </div>
-
-            {/* Before/After slider */}
-            {hasCompare && (
               <div className="px-4 pb-3">
-                <BeforeAfterSlider
-                  beforeUrl={before!.media_url}
-                  afterUrl={after!.media_url}
-                  onBeforeClick={() => beforeIdx >= 0 && openLightboxForStep(step, beforeIdx)}
-                  onAfterClick={() => afterIdx >= 0 && openLightboxForStep(step, afterIdx)}
-                />
+                <h3 className="font-bold text-lg leading-tight group-hover:text-accent transition-colors">{step.location_name}</h3>
               </div>
-            )}
 
-            {/* Photos: hero + thumbnail strip */}
-            {visuals.length > 0 && (
-              <div className="mb-0">
-                {/* Hero photo — full card width, no padding */}
-                <button
-                  type="button"
-                  className="w-full block relative overflow-hidden bg-muted"
-                  style={{ aspectRatio: "4/3" }}
-                  onClick={() => openLightboxForStep(step, sortedMedia.findIndex((x) => x.id === visuals[0].id))}
-                >
+              {/* Hero photo — preview */}
+              {visuals.length > 0 && (
+                <div className="relative w-full overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
                   {visuals[0].media_type === "video" ? (
                     <video src={visuals[0].media_url} className="w-full h-full object-cover" />
                   ) : (
                     <img
                       src={visuals[0].media_url}
                       alt=""
-                      className="w-full h-full object-cover hover:scale-[1.02] transition-transform duration-700"
+                      className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-700"
                       loading="lazy"
                     />
                   )}
-                </button>
+                  {!isExpanded && totalVisuals > 1 && (
+                    <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm">
+                      <ImageIcon className="h-3 w-3" /> +{totalVisuals - 1}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!isExpanded && (
+                <div className="flex items-center justify-between px-4 py-3 text-[11px] text-muted-foreground">
+                  <span className="font-medium uppercase tracking-wider">Open update</span>
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center gap-1"><Heart className="h-3 w-3" /> {step.like_count}</span>
+                    <span className="flex items-center gap-1"><MessageCircle className="h-3 w-3" /> {cc(step.id, step.comment_count)}</span>
+                  </div>
+                </div>
+              )}
+            </button>
+
+            {/* Expanded content */}
+            {isExpanded && (
+              <>
+                {/* Owner actions row */}
+                <div className="flex items-center justify-end gap-0.5 px-3 pt-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => copyStepLink(step.id)}
+                    title="Kopieer link naar deze step"
+                  >
+                    <Link2 className="h-3.5 w-3.5" />
+                  </Button>
+                  {isOwner && (
+                    <>
+                      {sortedMedia.filter((m) => m.media_type !== "pdf").length > 1 && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={`h-7 w-7 ${reorderOpenFor === step.id ? "text-accent" : ""}`}
+                          onClick={() => setReorderOpenFor(reorderOpenFor === step.id ? null : step.id)}
+                          title="Foto's ordenen"
+                        >
+                          <GripVertical className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit?.(step)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 hover:text-destructive" onClick={() => onDelete?.(step.id)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </>
+                  )}
+                </div>
+
+                {/* Before/After slider */}
+                {hasCompare && (
+                  <div className="px-4 pt-2 pb-3">
+                    <BeforeAfterSlider
+                      beforeUrl={before!.media_url}
+                      afterUrl={after!.media_url}
+                      onBeforeClick={() => beforeIdx >= 0 && openLightboxForStep(step, beforeIdx)}
+                      onAfterClick={() => afterIdx >= 0 && openLightboxForStep(step, afterIdx)}
+                    />
+                  </div>
+                )}
+
                 {/* Thumbnail strip for extra photos */}
                 {visuals.length > 1 && (
                   <div className={`grid gap-0.5 mt-0.5 ${visuals.length === 2 ? "grid-cols-1" : visuals.length === 3 ? "grid-cols-2" : "grid-cols-3"}`}>
@@ -354,6 +371,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                     })}
                   </div>
                 )}
+
                 {isOwner && sortedMedia.filter((m) => m.media_type !== "pdf").length > 1 && reorderOpenFor === step.id && (
                   <div className="border-t border-border/60 bg-secondary/30 px-3 py-2">
                     <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -366,7 +384,6 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                         Sluiten
                       </button>
                     </div>
-
                     <div className="flex gap-1.5 overflow-x-auto pb-1">
                       {sortedMedia.filter((m) => m.media_type !== "pdf").map((m, mediaIdx) => {
                         const isDragging = draggingMedia?.mediaId === m.id;
@@ -419,68 +436,67 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                     </div>
                   </div>
                 )}
-              </div>
-            )}
 
-            {/* Description + PDFs */}
-            <div className="px-4 py-3 space-y-2">
-              {step.description && (
-                <p className="text-sm text-foreground/80 leading-relaxed">{step.description}</p>
-              )}
-              {step.contractor_name && (
-                <p className="text-[11px] text-muted-foreground font-medium">🔧 {step.contractor_name}</p>
-              )}
-              {pdfs.length > 0 && (
-                <div className="space-y-1.5">
-                  {pdfs.map((m) => {
-                    const name = decodeURIComponent(m.media_url.split("/").pop() || "document.pdf");
-                    return (
-                      <a
-                        key={m.id}
-                        href={m.media_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 rounded-md border bg-secondary/40 hover:bg-secondary px-3 py-2 text-sm transition-colors"
+                {/* Description + PDFs + reactions */}
+                <div className="px-4 py-3 space-y-2">
+                  {step.description && (
+                    <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-line">{step.description}</p>
+                  )}
+                  {step.contractor_name && (
+                    <p className="text-[11px] text-muted-foreground font-medium">🔧 {step.contractor_name}</p>
+                  )}
+                  {pdfs.length > 0 && (
+                    <div className="space-y-1.5">
+                      {pdfs.map((m) => {
+                        const name = decodeURIComponent(m.media_url.split("/").pop() || "document.pdf");
+                        return (
+                          <a
+                            key={m.id}
+                            href={m.media_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 rounded-md border bg-secondary/40 hover:bg-secondary px-3 py-2 text-sm transition-colors"
+                          >
+                            <span className="text-lg">📄</span>
+                            <span className="truncate flex-1">{name}</span>
+                            <span className="text-xs text-muted-foreground">PDF</span>
+                          </a>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between pt-2 border-t border-border/50">
+                    <ReactionBar stepId={step.id} />
+                    <div className="flex items-center gap-4">
+                      <button
+                        onClick={() => onLike?.(step.id)}
+                        className={`flex items-center gap-1.5 text-sm transition-colors ${step.user_liked ? "text-accent" : "text-muted-foreground hover:text-accent"}`}
                       >
-                        <span className="text-lg">📄</span>
-                        <span className="truncate flex-1">{name}</span>
-                        <span className="text-xs text-muted-foreground">PDF</span>
-                      </a>
-                    );
-                  })}
+                        <Heart className={`h-4 w-4 ${step.user_liked ? "fill-current" : ""}`} />
+                        <span className="text-xs">{step.like_count}</span>
+                      </button>
+                      <button
+                        onClick={() => setOpenComments(step.id)}
+                        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-accent transition-colors"
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                        <span className="text-xs">{cc(step.id, step.comment_count)}</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              )}
 
-              {/* Reactions + likes + comments */}
-              <div className="flex items-center justify-between pt-2 border-t border-border/50">
-                <ReactionBar stepId={step.id} />
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={() => onLike?.(step.id)}
-                    className={`flex items-center gap-1.5 text-sm transition-colors ${step.user_liked ? "text-accent" : "text-muted-foreground hover:text-accent"}`}
-                  >
-                    <Heart className={`h-4 w-4 ${step.user_liked ? "fill-current" : ""}`} />
-                    <span className="text-xs">{step.like_count}</span>
-                  </button>
-                  <button
-                    onClick={() => setOpenComments(step.id)}
-                    className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-accent transition-colors"
-                  >
-                    <MessageCircle className="h-4 w-4" />
-                    <span className="text-xs">{cc(step.id, step.comment_count)}</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <CommentsSheet
-              stepId={step.id}
-              open={openComments === step.id}
-              onOpenChange={(o) => setOpenComments(o ? step.id : null)}
-              onCountChange={(d) =>
-                setCommentCounts((p) => ({ ...p, [step.id]: cc(step.id, step.comment_count) + d }))
-              }
-            />
+                <CommentsSheet
+                  stepId={step.id}
+                  open={openComments === step.id}
+                  onOpenChange={(o) => setOpenComments(o ? step.id : null)}
+                  onCountChange={(d) =>
+                    setCommentCounts((p) => ({ ...p, [step.id]: cc(step.id, step.comment_count) + d }))
+                  }
+                />
+              </>
+            )}
           </article>
           </div>
         );
