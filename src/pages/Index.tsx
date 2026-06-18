@@ -169,6 +169,75 @@ const Index = () => {
         )}
       </header>
 
+      {/* Bouwboek teaser — laat het eindresultaat zien */}
+      <section className="max-w-6xl mx-auto px-6 md:px-8 pb-20">
+        <div className="grid md:grid-cols-2 gap-12 lg:gap-20 items-center">
+          {/* Tekst */}
+          <div>
+            <p className="eyebrow mb-3">Het eindresultaat</p>
+            <h2 className="font-serif italic text-4xl md:text-5xl leading-tight mb-5">
+              Jouw verbouwing als <span className="text-accent">echt boek.</span>
+            </h2>
+            <p className="text-muted-foreground leading-relaxed mb-6 font-light">
+              Elke update, elke foto, elke mijlpaal — automatisch gebundeld in een gedrukt
+              Bouwboek dat je trots op je salontafel legt. Geen losse mappen meer.
+            </p>
+            <Link to={user ? "/trips/new" : "/auth"}>
+              <Button size="lg" className="rounded-full px-7 text-[11px] font-bold uppercase tracking-[0.15em] bg-accent text-accent-foreground hover:bg-accent/90 gap-2">
+                <BookOpen className="h-4 w-4" /> Bekijk hoe het werkt <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
+
+          {/* Boek-mockup */}
+          <div className="relative perspective-[1400px]">
+            <div className="relative mx-auto w-full max-w-md group">
+              {/* Schaduw onder boek */}
+              <div className="absolute -bottom-6 left-6 right-6 h-6 bg-foreground/20 blur-2xl rounded-full" />
+
+              {/* Boek */}
+              <div
+                className="relative aspect-[4/5] rounded-r-sm rounded-l-md shadow-2xl overflow-hidden bg-card border border-border/60 transition-transform duration-500 group-hover:-rotate-y-2"
+                style={{ transform: "rotateY(-12deg) rotateX(2deg)", transformStyle: "preserve-3d" }}
+              >
+                {/* Boek-rug links */}
+                <div className="absolute left-0 top-0 bottom-0 w-3 bg-gradient-to-r from-foreground/30 via-foreground/10 to-transparent" />
+                {/* Bladwijzer */}
+                <div className="absolute right-6 -top-1 w-3 h-16 bg-accent shadow-md" />
+
+                {/* Cover-content */}
+                <div className="absolute inset-0 flex flex-col">
+                  {/* Foto bovenkant */}
+                  <div className="flex-1 bg-gradient-to-br from-stone-200 via-stone-300 to-stone-400 relative overflow-hidden">
+                    <svg className="absolute inset-0 w-full h-full opacity-20" xmlns="http://www.w3.org/2000/svg">
+                      <defs>
+                        <pattern id="bookgrid" width="20" height="20" patternUnits="userSpaceOnUse">
+                          <path d="M 20 0 H 0 V 20" fill="none" stroke="currentColor" strokeWidth="0.5" />
+                        </pattern>
+                      </defs>
+                      <rect width="100%" height="100%" fill="url(#bookgrid)" />
+                    </svg>
+                    <Hammer className="absolute inset-0 m-auto h-20 w-20 text-stone-600/60" strokeWidth={1.2} />
+                  </div>
+                  {/* Titel onderkant */}
+                  <div className="bg-card px-6 py-5 border-t-2 border-accent">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent mb-1">Bouwboek</p>
+                    <p className="font-serif italic text-xl leading-tight text-foreground">Onze verbouwing — 2026</p>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider mt-2">42 updates · 168 foto's</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tweede boek erachter — stapel-effect */}
+              <div
+                className="absolute -bottom-2 -right-2 -z-10 aspect-[4/5] w-[92%] rounded-sm bg-stone-300/70 border border-border/40"
+                style={{ transform: "rotateY(-12deg) rotateX(2deg) translateZ(-20px)" }}
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Projects */}
       <section className="max-w-7xl mx-auto px-6 md:px-8 pb-24">
         <div className="flex items-center gap-10 mb-12 border-b border-border">
