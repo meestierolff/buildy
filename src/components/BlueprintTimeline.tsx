@@ -53,7 +53,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
 
-  // Deep-link: scroll naar ?step=<id> bij eerste load
+  // Deep-link: scroll naar ?step=<id> bij eerste load (alleen horizontaal)
   useEffect(() => {
     if (steps.length === 0) return;
     const params = new URLSearchParams(window.location.search);
@@ -62,8 +62,11 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
     // Wacht tot kaarten gerenderd zijn
     requestAnimationFrame(() => {
       const el = document.getElementById(`step-${target}`);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
+      const scroller = scrollerRef.current;
+      if (el && scroller) {
+        const scrollerRect = scroller.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
+        scroller.scrollTo({ left: scroller.scrollLeft + (elRect.left - scrollerRect.left), behavior: "smooth" });
         setActiveStepId(target);
       }
     });
@@ -162,7 +165,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
 
   return (
     <div className="relative pb-16">
-      <div ref={scrollerRef} className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-4 -mx-2 px-2 scroll-smooth">
+      <div ref={scrollerRef} className="flex gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x snap-x snap-mandatory pb-4 -mx-2 px-2 scroll-smooth">
       {steps.map((step) => {
         // Sort media by sort_order to match edit dialog order
         const sortedMedia = mediaDrafts[step.id] ?? [...step.step_media].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
@@ -196,9 +199,13 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
               <button
                 type="button"
                 onClick={(e) => {
-                  e.currentTarget
-                    .closest(`#step-${step.id}`)
-                    ?.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
+                  const scroller = scrollerRef.current;
+                  const el = document.getElementById(`step-${step.id}`);
+                  if (scroller && el) {
+                    const scrollerRect = scroller.getBoundingClientRect();
+                    const elRect = el.getBoundingClientRect();
+                    scroller.scrollTo({ left: scroller.scrollLeft + (elRect.left - scrollerRect.left), behavior: "smooth" });
+                  }
                 }}
                 className={`group relative flex flex-col items-center rounded-md px-2 py-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${isActive ? "bg-accent/10" : "hover:bg-accent/5"}`}
                 aria-label={`Spring naar ${step.location_name}`}
