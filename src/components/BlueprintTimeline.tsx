@@ -202,7 +202,9 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                   const scroller = scrollerRef.current;
                   const el = document.getElementById(`step-${step.id}`);
                   if (scroller && el) {
-                    scroller.scrollTo({ left: el.offsetLeft - scroller.offsetLeft, behavior: "smooth" });
+                    const scrollerRect = scroller.getBoundingClientRect();
+                    const elRect = el.getBoundingClientRect();
+                    scroller.scrollTo({ left: scroller.scrollLeft + (elRect.left - scrollerRect.left), behavior: "smooth" });
                   }
                 }}
                 className={`group relative flex flex-col items-center rounded-md px-2 py-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${isActive ? "bg-accent/10" : "hover:bg-accent/5"}`}
