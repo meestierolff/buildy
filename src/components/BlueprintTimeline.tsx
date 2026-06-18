@@ -53,7 +53,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
 
-  // Deep-link: scroll naar ?step=<id> bij eerste load
+  // Deep-link: scroll naar ?step=<id> bij eerste load (alleen horizontaal)
   useEffect(() => {
     if (steps.length === 0) return;
     const params = new URLSearchParams(window.location.search);
@@ -62,8 +62,9 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
     // Wacht tot kaarten gerenderd zijn
     requestAnimationFrame(() => {
       const el = document.getElementById(`step-${target}`);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
+      const scroller = scrollerRef.current;
+      if (el && scroller) {
+        scroller.scrollTo({ left: el.offsetLeft - scroller.offsetLeft, behavior: "smooth" });
         setActiveStepId(target);
       }
     });
