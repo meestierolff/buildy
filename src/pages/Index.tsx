@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Plus, Home, Hammer, Search, X } from "lucide-react";
+import { Plus, Home, Hammer, Search, X, BookOpen, ArrowRight } from "lucide-react";
 import EmptyState from "@/components/EmptyState";
 import ProjectCard from "@/components/ProjectCard";
 import { applyProjectMediaSummaries, loadProjectMediaSummaries } from "@/lib/projectMedia";
