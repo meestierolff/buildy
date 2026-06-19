@@ -187,7 +187,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
           : 1;
         const isActive = activeStepId === step.id;
         const isExpanded = expandedId === step.id;
-        const totalVisuals = visuals.length + (hasCompare ? 2 : 0);
+        
 
         return (
           <div
