@@ -282,12 +282,12 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                     <ImageIcon className="h-10 w-10 text-muted-foreground/40" />
                   </div>
                 )}
-                {!isExpanded && (
-                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent p-4 pt-10">
-                    <h3 className="font-bold text-white text-lg leading-tight group-hover:text-accent/90 transition-colors">{step.location_name}</h3>
-                  </div>
-                )}
               </div>
+              {!isExpanded && (
+                <div className="px-4 py-3 border-t border-border/40">
+                  <h3 className="font-bold text-foreground text-lg leading-tight group-hover:text-accent transition-colors">{step.location_name}</h3>
+                </div>
+              )}
             </button>
 
             {/* Expanded content */}
