@@ -231,40 +231,43 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
 
             <article className={`flex flex-col overflow-hidden rounded-md border bg-card/95 shadow-sm backdrop-blur-sm transition-shadow ${isExpanded ? "border-accent/40 shadow-md" : "border-border/50 hover:shadow-md"}`}>
 
-            {/* Compact preview: title + hero photo (always visible) */}
+            {/* Compact preview: first photo + update name only */}
             <button
               type="button"
               onClick={() => setExpandedId((cur) => (cur === step.id ? null : step.id))}
               className="text-left w-full group"
               aria-expanded={isExpanded}
             >
-              <div className="flex items-center justify-between px-4 pt-4 pb-2 gap-2">
-                <div className="flex items-center gap-2 flex-wrap min-w-0">
-                  <time className="text-[11px] font-medium text-muted-foreground">
-                    {format(new Date(step.step_date), "d MMM yyyy", { locale: nl })}
-                  </time>
-                  {step.phase && (
-                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${phaseColor(step.phase)}`}>
-                      {step.phase}
-                    </span>
-                  )}
-                  {step.is_milestone && (
-                    <span className="flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-accent/15 text-accent">
-                      <Star className="h-2.5 w-2.5" /> Mijlpaal
-                    </span>
-                  )}
+              {isExpanded && (
+                <div className="flex items-center justify-between px-4 pt-4 pb-2 gap-2">
+                  <div className="flex items-center gap-2 flex-wrap min-w-0">
+                    <time className="text-[11px] font-medium text-muted-foreground">
+                      {format(new Date(step.step_date), "d MMM yyyy", { locale: nl })}
+                    </time>
+                    {step.phase && (
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${phaseColor(step.phase)}`}>
+                        {step.phase}
+                      </span>
+                    )}
+                    {step.is_milestone && (
+                      <span className="flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-accent/15 text-accent">
+                        <Star className="h-2.5 w-2.5" /> Mijlpaal
+                      </span>
+                    )}
+                  </div>
+                  <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform shrink-0 ${isExpanded ? "rotate-180" : ""}`} />
                 </div>
-                <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform shrink-0 ${isExpanded ? "rotate-180" : ""}`} />
-              </div>
+              )}
 
-              <div className="px-4 pb-3">
-                <h3 className="font-bold text-lg leading-tight group-hover:text-accent transition-colors">{step.location_name}</h3>
-              </div>
+              {isExpanded && (
+                <div className="px-4 pb-3">
+                  <h3 className="font-bold text-lg leading-tight group-hover:text-accent transition-colors">{step.location_name}</h3>
+                </div>
+              )}
 
-              {/* Hero photo — preview */}
-              {visuals.length > 0 && (
-                <div className="relative w-full overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
-                  {visuals[0].media_type === "video" ? (
+              <div className="relative w-full overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
+                {visuals.length > 0 ? (
+                  visuals[0].media_type === "video" ? (
                     <video src={visuals[0].media_url} className="w-full h-full object-cover" />
                   ) : (
                     <img
@@ -273,24 +276,18 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                       className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-700"
                       loading="lazy"
                     />
-                  )}
-                  {!isExpanded && totalVisuals > 1 && (
-                    <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm">
-                      <ImageIcon className="h-3 w-3" /> +{totalVisuals - 1}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {!isExpanded && (
-                <div className="flex items-center justify-between px-4 py-3 text-[11px] text-muted-foreground">
-                  <span className="font-medium uppercase tracking-wider">Open update</span>
-                  <div className="flex items-center gap-3">
-                    <span className="flex items-center gap-1"><Heart className="h-3 w-3" /> {step.like_count}</span>
-                    <span className="flex items-center gap-1"><MessageCircle className="h-3 w-3" /> {cc(step.id, step.comment_count)}</span>
+                  )
+                ) : (
+                  <div className="flex h-full items-center justify-center">
+                    <ImageIcon className="h-10 w-10 text-muted-foreground/40" />
                   </div>
-                </div>
-              )}
+                )}
+                {!isExpanded && (
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent p-4 pt-10">
+                    <h3 className="font-bold text-white text-lg leading-tight group-hover:text-accent/90 transition-colors">{step.location_name}</h3>
+                  </div>
+                )}
+              </div>
             </button>
 
             {/* Expanded content */}
