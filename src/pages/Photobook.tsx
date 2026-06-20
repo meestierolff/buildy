@@ -265,6 +265,7 @@ const Photobook = () => {
     if (!trip || !id) return;
     setPrintBusy(true);
     setCheckoutUrl(null);
+    setPrintStep("pdf");
     let uploadedPdfPath: string | null = null;
     let pdfReadyForCheckout = false;
     try {
@@ -272,6 +273,7 @@ const Photobook = () => {
       const blob = await buildPeechoPdf({
         trip, steps, settings, excludedMedia, excludedSteps, format: printFormat,
       });
+      setPrintStep("upload");
       // Upload to public storage so Peecho can fetch the PDF directly
       const path = `${trip.user_id}/peecho/${orderReference}.pdf`;
       const { error: upErr } = await supabase.storage.from("trip-media").upload(path, blob, {
@@ -285,6 +287,7 @@ const Photobook = () => {
       pdfReadyForCheckout = true;
       const pageCount = getPeechoPrintPageCount(pages.length);
 
+      setPrintStep("checkout");
       const { data: orderData, error: orderErr } = await supabase
         .from("photobook_orders")
         .insert({
@@ -310,6 +313,7 @@ const Photobook = () => {
       if (checkoutErr) throw checkoutErr;
       if (!checkoutData?.checkoutUrl) throw new Error("Checkout-url ontbreekt");
 
+      setPrintStep("done");
       setCheckoutUrl(checkoutData.checkoutUrl);
       setPhotobookOrders((current) => [newOrder, ...current.filter((order) => order.id !== newOrder.id)].slice(0, 5));
       toast.success("Boek klaar — je gaat nu naar de beveiligde betaling");
@@ -322,6 +326,7 @@ const Photobook = () => {
         }
       }
       console.error(e);
+      setPrintStep("idle");
       toast.error(e.message || "Genereren mislukt");
     } finally {
       setPrintBusy(false);
