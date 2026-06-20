@@ -574,13 +574,45 @@ const Photobook = () => {
     const totalVisible = visibleSteps.length;
     const budgetTotal = (trip.budget_total as number | null) ?? null;
 
-    for (const phase of sortedPhases) {
+    for (let phaseIdx = 0; phaseIdx < sortedPhases.length; phaseIdx++) {
+      const phase = sortedPhases[phaseIdx];
       const chapterTitle = settings.chapter_overrides[phase] || phase;
+      const phaseSteps = grouped.get(phase)!;
+      const phaseStart = phaseSteps.reduce((a, s: any) => !a || (s.step_date && s.step_date < a) ? s.step_date : a, "");
+      const phaseEnd = phaseSteps.reduce((a, s: any) => !a || (s.step_date && s.step_date > a) ? s.step_date : a, "");
 
+      // Chapter divider page — quiet blueprint feel
+      list.push({
+        key: `chapter-${phase}`,
+        meta: { chapter: phase, stepId: phaseSteps[0]?.id, firstStep: false },
+        node: (
+          <div className="h-full flex flex-col bg-[#f6f1e7] relative overflow-hidden">
+            <div className="absolute inset-0 opacity-[0.08] pointer-events-none" style={{
+              backgroundImage: "linear-gradient(to right, #1a3c2a 1px, transparent 1px), linear-gradient(to bottom, #1a3c2a 1px, transparent 1px)",
+              backgroundSize: "24px 24px",
+            }} />
+            <div className="flex-1 flex flex-col justify-center px-[12%]">
+              <p className="text-[9px] uppercase tracking-[0.4em] text-accent font-bold mb-4">Hoofdstuk {String(phaseIdx + 1).padStart(2, "0")}</p>
+              <div className="flex items-baseline gap-5">
+                <span className="text-[6rem] leading-none font-serif font-bold text-primary/15 tabular-nums">{String(phaseIdx + 1).padStart(2, "0")}</span>
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-3xl font-serif font-bold leading-tight [overflow-wrap:anywhere] line-clamp-2">{chapterTitle}</h2>
+                  {phaseStart && (
+                    <p className="text-[10px] text-muted-foreground mt-2 uppercase tracking-[0.15em]">
+                      {format(new Date(phaseStart), "MMM yyyy", { locale: nl })}
+                      {phaseEnd && phaseEnd !== phaseStart ? ` — ${format(new Date(phaseEnd), "MMM yyyy", { locale: nl })}` : ""}
+                      <span className="ml-3">· {phaseSteps.length} update{phaseSteps.length === 1 ? "" : "s"}</span>
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="mt-8 h-px w-24 bg-accent/40" />
+            </div>
+          </div>
+        ),
+      });
 
-
-
-      for (const step of grouped.get(phase)!) {
+      for (const step of phaseSteps) {
         // Apply custom photo order, then filter out excluded media
         const allStepPhotos = sortMediaByTimelineOrder((step.step_media || []).filter((m: any) => m.media_type !== "video" && m.media_type !== "pdf"));
         const customOrder = settings.step_photo_order[step.id] as string[] | undefined;
