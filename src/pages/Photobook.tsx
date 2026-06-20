@@ -227,11 +227,14 @@ const Photobook = () => {
   const isOwner = user && trip?.user_id === user.id;
 
   const [printOpen, setPrintOpen] = useState(false);
-  const printFormat: PeechoFormat = "A4_LANDSCAPE";
+  const [printFormat, setPrintFormat] = useState<PeechoFormat>("A4_LANDSCAPE");
   const [printBusy, setPrintBusy] = useState(false);
+  const [printStep, setPrintStep] = useState<"idle" | "pdf" | "upload" | "checkout" | "done">("idle");
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const [photobookOrders, setPhotobookOrders] = useState<PhotobookOrder[]>([]);
   const [stepBudgetMap, setStepBudgetMap] = useState<Map<string, number>>(new Map());
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const savedTimerRef = useRef<number | null>(null);
   const checkoutToastShown = useRef(false);
   usePageMeta({
     title: trip?.title ? `Bouwboek van ${trip.title} — Buildy` : "Bouwboek maken — Buildy",
