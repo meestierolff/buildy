@@ -372,6 +372,7 @@ const Photobook = () => {
     if (!id) return;
     const next = { ...settings, ...patch };
     setSettings(next);
+    setSaveState("saving");
     const { error } = await supabase.from("photobook_settings").upsert({
       trip_id: id,
       cover_title: next.cover_title,
@@ -381,7 +382,14 @@ const Photobook = () => {
       step_layout_overrides: next.step_layout_overrides as any,
       step_photo_order: next.step_photo_order as any,
     });
-    if (error) toast.error("Kon niet opslaan");
+    if (error) {
+      setSaveState("idle");
+      toast.error("Kon niet opslaan");
+      return;
+    }
+    setSaveState("saved");
+    if (savedTimerRef.current) window.clearTimeout(savedTimerRef.current);
+    savedTimerRef.current = window.setTimeout(() => setSaveState("idle"), 1800);
   }, [id, settings]);
 
 
