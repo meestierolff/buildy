@@ -1326,42 +1326,113 @@ const Photobook = () => {
       )}
 
 
-      <Dialog open={printOpen} onOpenChange={(open) => { setPrintOpen(open); if (!open) setCheckoutUrl(null); }}>
-        <DialogContent className="max-w-md">
+      <Dialog open={printOpen} onOpenChange={(open) => { setPrintOpen(open); if (!open) { setCheckoutUrl(null); setPrintStep("idle"); } }}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Bestel als hardcover Bouwboek</DialogTitle>
             <DialogDescription>
-              Wij maken een printklare PDF, rekenen veilig af via Stripe en sturen je betaalde order daarna door naar Peecho voor druk en verzending.
+              Printklare PDF, veilig afrekenen via Stripe, druk en verzending via Peecho.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
-              <div className="rounded-md border bg-muted/35 p-3">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Formaat</p>
-                <p className="mt-1 text-sm font-semibold">{PEECHO_FORMATS[printFormat].label}</p>
-                <p className="text-xs text-muted-foreground">
-                  {PEECHO_FORMATS[printFormat].w} × {PEECHO_FORMATS[printFormat].h} mm, vast liggend voor brede fotocomposities.
-                </p>
+            {pages.length < PEECHO_MIN_PAGES && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-900">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                <div className="text-xs">
+                  <p className="font-semibold">Nog te weinig pagina's</p>
+                  <p>Je boek heeft minstens {PEECHO_MIN_PAGES} pagina's nodig. Voeg meer updates of foto's toe — lege pagina's worden automatisch aangevuld, maar méér inhoud levert een mooier boek.</p>
+                </div>
               </div>
+            )}
 
-              {!checkoutUrl ? (
-                <Button onClick={handleGeneratePeechoPdf} disabled={printBusy} className="w-full gap-2">
-                  {printBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookOpen className="h-4 w-4" />}
-                  {printBusy ? "Checkout voorbereiden…" : "Boek klaarmaken en betalen"}
+            {!printBusy && !checkoutUrl && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Kies een formaat</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {(Object.keys(PEECHO_FORMATS) as PeechoFormat[]).map((fmt) => {
+                    const f = PEECHO_FORMATS[fmt];
+                    const active = printFormat === fmt;
+                    const ratio = f.w / f.h;
+                    return (
+                      <button
+                        key={fmt}
+                        onClick={() => setPrintFormat(fmt)}
+                        className={`group flex flex-col items-center gap-2 rounded-lg border-2 p-3 transition ${active ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/40"}`}
+                      >
+                        <div
+                          className="bg-card border border-muted-foreground/30 rounded-sm shadow-sm"
+                          style={{
+                            width: ratio >= 1 ? 56 : 56 * ratio,
+                            height: ratio >= 1 ? 56 / ratio : 56,
+                          }}
+                        />
+                        <span className="text-[10px] font-semibold leading-tight text-center">{f.label}</span>
+                        <span className="text-[9px] text-muted-foreground tabular-nums">{f.w}×{f.h}mm</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-md border bg-muted/35 p-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Samenvatting</p>
+                <p className="text-sm font-semibold">{PRINT_PAGES} pagina's · {PEECHO_FORMATS[printFormat].label}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">Geschat</p>
+                <p className="text-lg font-bold tabular-nums">€{totalPrice.toFixed(2).replace(".", ",")}</p>
+              </div>
+            </div>
+
+            {printBusy && (
+              <div className="rounded-md border bg-background p-3 space-y-2">
+                {[
+                  { key: "pdf", label: "Printklare PDF opbouwen", icon: FileText },
+                  { key: "upload", label: "Bestand veilig uploaden", icon: Upload },
+                  { key: "checkout", label: "Beveiligde betaling openen", icon: CreditCard },
+                ].map(({ key, label, icon: Icon }) => {
+                  const order = ["pdf", "upload", "checkout", "done"];
+                  const currentIdx = order.indexOf(printStep);
+                  const myIdx = order.indexOf(key);
+                  const done = currentIdx > myIdx;
+                  const active = currentIdx === myIdx;
+                  return (
+                    <div key={key} className="flex items-center gap-2.5 text-sm">
+                      <div className={`h-6 w-6 rounded-full flex items-center justify-center shrink-0 ${done ? "bg-emerald-500 text-white" : active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                        {done ? <Check className="h-3.5 w-3.5" /> : active ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icon className="h-3.5 w-3.5" />}
+                      </div>
+                      <span className={done ? "text-muted-foreground line-through" : active ? "font-medium" : "text-muted-foreground"}>{label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {!checkoutUrl ? (
+              <Button
+                onClick={handleGeneratePeechoPdf}
+                disabled={printBusy || pages.length < PEECHO_MIN_PAGES}
+                className="w-full gap-2"
+              >
+                {printBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookOpen className="h-4 w-4" />}
+                {printBusy ? "Bezig…" : "Boek klaarmaken en betalen"}
+              </Button>
+            ) : (
+              <a href={checkoutUrl} className="block">
+                <Button className="w-full gap-2">
+                  <ExternalLink className="h-4 w-4" />
+                  Ga naar beveiligde betaling
                 </Button>
-              ) : (
-                <a href={checkoutUrl} className="block">
-                  <Button className="w-full gap-2">
-                    <ExternalLink className="h-4 w-4" />
-                    Ga naar beveiligde betaling
-                  </Button>
-                </a>
-              )}
+              </a>
+            )}
 
-              <p className="text-[11px] text-muted-foreground text-center">
-                Na betaling maken we de Peecho-order aan. Levertijd is afhankelijk van printproductie en verzending.
-              </p>
-              <PhotobookOrderHistory orders={photobookOrders} />
+            <p className="text-[11px] text-muted-foreground text-center">
+              Na betaling maken we de Peecho-order aan. Levertijd hangt af van productie en verzending.
+            </p>
+            <PhotobookOrderHistory orders={photobookOrders} />
           </div>
 
           <DialogFooter>
