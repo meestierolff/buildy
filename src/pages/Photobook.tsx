@@ -862,6 +862,20 @@ const Photobook = () => {
             ? pages[1] ? "Cover + pagina 2" : "Cover"
             : `Pagina ${safeSpread * 2 + 1}–${Math.min(safeSpread * 2 + 2, PRINT_PAGES)} / ${PRINT_PAGES}`}
         </span>
+        {isOwner && editing && (
+          <span
+            className={`hidden sm:inline-flex items-center gap-1.5 text-[11px] font-medium transition-opacity ${saveState === "idle" ? "opacity-0" : "opacity-100"} ${saveState === "saved" ? "text-emerald-600" : "text-muted-foreground"}`}
+            aria-live="polite"
+          >
+            {saveState === "saving" ? (
+              <><Loader2 className="h-3 w-3 animate-spin" /> Opslaan…</>
+            ) : saveState === "saved" ? (
+              <><Cloud className="h-3 w-3" /> Opgeslagen</>
+            ) : (
+              <><CloudOff className="h-3 w-3" /> —</>
+            )}
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-2">
           {isOwner && !editing && (
             <Button
