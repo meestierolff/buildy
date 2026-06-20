@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { ArrowLeft, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, LayoutGrid, Pencil, Eye, EyeOff, Check, BookOpen, Loader2, ExternalLink, PackageCheck } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, LayoutGrid, Pencil, Eye, EyeOff, Check, BookOpen, Loader2, ExternalLink, PackageCheck, AlertTriangle, Cloud, CloudOff, FileText, Upload, CreditCard } from "lucide-react";
 import { format } from "date-fns";
 import { nl } from "date-fns/locale";
 import { toast } from "sonner";
@@ -227,11 +227,14 @@ const Photobook = () => {
   const isOwner = user && trip?.user_id === user.id;
 
   const [printOpen, setPrintOpen] = useState(false);
-  const printFormat: PeechoFormat = "A4_LANDSCAPE";
+  const [printFormat, setPrintFormat] = useState<PeechoFormat>("A4_LANDSCAPE");
   const [printBusy, setPrintBusy] = useState(false);
+  const [printStep, setPrintStep] = useState<"idle" | "pdf" | "upload" | "checkout" | "done">("idle");
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const [photobookOrders, setPhotobookOrders] = useState<PhotobookOrder[]>([]);
   const [stepBudgetMap, setStepBudgetMap] = useState<Map<string, number>>(new Map());
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const savedTimerRef = useRef<number | null>(null);
   const checkoutToastShown = useRef(false);
   usePageMeta({
     title: trip?.title ? `Bouwboek van ${trip.title} — Buildy` : "Bouwboek maken — Buildy",
@@ -262,6 +265,7 @@ const Photobook = () => {
     if (!trip || !id) return;
     setPrintBusy(true);
     setCheckoutUrl(null);
+    setPrintStep("pdf");
     let uploadedPdfPath: string | null = null;
     let pdfReadyForCheckout = false;
     try {
@@ -269,6 +273,7 @@ const Photobook = () => {
       const blob = await buildPeechoPdf({
         trip, steps, settings, excludedMedia, excludedSteps, format: printFormat,
       });
+      setPrintStep("upload");
       // Upload to public storage so Peecho can fetch the PDF directly
       const path = `${trip.user_id}/peecho/${orderReference}.pdf`;
       const { error: upErr } = await supabase.storage.from("trip-media").upload(path, blob, {
@@ -282,6 +287,7 @@ const Photobook = () => {
       pdfReadyForCheckout = true;
       const pageCount = getPeechoPrintPageCount(pages.length);
 
+      setPrintStep("checkout");
       const { data: orderData, error: orderErr } = await supabase
         .from("photobook_orders")
         .insert({
@@ -307,6 +313,7 @@ const Photobook = () => {
       if (checkoutErr) throw checkoutErr;
       if (!checkoutData?.checkoutUrl) throw new Error("Checkout-url ontbreekt");
 
+      setPrintStep("done");
       setCheckoutUrl(checkoutData.checkoutUrl);
       setPhotobookOrders((current) => [newOrder, ...current.filter((order) => order.id !== newOrder.id)].slice(0, 5));
       toast.success("Boek klaar — je gaat nu naar de beveiligde betaling");
@@ -319,6 +326,7 @@ const Photobook = () => {
         }
       }
       console.error(e);
+      setPrintStep("idle");
       toast.error(e.message || "Genereren mislukt");
     } finally {
       setPrintBusy(false);
@@ -364,6 +372,7 @@ const Photobook = () => {
     if (!id) return;
     const next = { ...settings, ...patch };
     setSettings(next);
+    setSaveState("saving");
     const { error } = await supabase.from("photobook_settings").upsert({
       trip_id: id,
       cover_title: next.cover_title,
@@ -373,7 +382,14 @@ const Photobook = () => {
       step_layout_overrides: next.step_layout_overrides as any,
       step_photo_order: next.step_photo_order as any,
     });
-    if (error) toast.error("Kon niet opslaan");
+    if (error) {
+      setSaveState("idle");
+      toast.error("Kon niet opslaan");
+      return;
+    }
+    setSaveState("saved");
+    if (savedTimerRef.current) window.clearTimeout(savedTimerRef.current);
+    savedTimerRef.current = window.setTimeout(() => setSaveState("idle"), 1800);
   }, [id, settings]);
 
 
@@ -558,13 +574,45 @@ const Photobook = () => {
     const totalVisible = visibleSteps.length;
     const budgetTotal = (trip.budget_total as number | null) ?? null;
 
-    for (const phase of sortedPhases) {
+    for (let phaseIdx = 0; phaseIdx < sortedPhases.length; phaseIdx++) {
+      const phase = sortedPhases[phaseIdx];
       const chapterTitle = settings.chapter_overrides[phase] || phase;
+      const phaseSteps = grouped.get(phase)!;
+      const phaseStart = phaseSteps.reduce((a, s: any) => !a || (s.step_date && s.step_date < a) ? s.step_date : a, "");
+      const phaseEnd = phaseSteps.reduce((a, s: any) => !a || (s.step_date && s.step_date > a) ? s.step_date : a, "");
 
+      // Chapter divider page — quiet blueprint feel
+      list.push({
+        key: `chapter-${phase}`,
+        meta: { chapter: phase, stepId: phaseSteps[0]?.id, firstStep: false },
+        node: (
+          <div className="h-full flex flex-col bg-[#f6f1e7] relative overflow-hidden">
+            <div className="absolute inset-0 opacity-[0.08] pointer-events-none" style={{
+              backgroundImage: "linear-gradient(to right, #1a3c2a 1px, transparent 1px), linear-gradient(to bottom, #1a3c2a 1px, transparent 1px)",
+              backgroundSize: "24px 24px",
+            }} />
+            <div className="flex-1 flex flex-col justify-center px-[12%]">
+              <p className="text-[9px] uppercase tracking-[0.4em] text-accent font-bold mb-4">Hoofdstuk {String(phaseIdx + 1).padStart(2, "0")}</p>
+              <div className="flex items-baseline gap-5">
+                <span className="text-[6rem] leading-none font-serif font-bold text-primary/15 tabular-nums">{String(phaseIdx + 1).padStart(2, "0")}</span>
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-3xl font-serif font-bold leading-tight [overflow-wrap:anywhere] line-clamp-2">{chapterTitle}</h2>
+                  {phaseStart && (
+                    <p className="text-[10px] text-muted-foreground mt-2 uppercase tracking-[0.15em]">
+                      {format(new Date(phaseStart), "MMM yyyy", { locale: nl })}
+                      {phaseEnd && phaseEnd !== phaseStart ? ` — ${format(new Date(phaseEnd), "MMM yyyy", { locale: nl })}` : ""}
+                      <span className="ml-3">· {phaseSteps.length} update{phaseSteps.length === 1 ? "" : "s"}</span>
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="mt-8 h-px w-24 bg-accent/40" />
+            </div>
+          </div>
+        ),
+      });
 
-
-
-      for (const step of grouped.get(phase)!) {
+      for (const step of phaseSteps) {
         // Apply custom photo order, then filter out excluded media
         const allStepPhotos = sortMediaByTimelineOrder((step.step_media || []).filter((m: any) => m.media_type !== "video" && m.media_type !== "pdf"));
         const customOrder = settings.step_photo_order[step.id] as string[] | undefined;
@@ -717,13 +765,47 @@ const Photobook = () => {
       });
     }
 
+    const totalUpdates = visibleSteps.length;
+    const totalPhotos = visibleSteps.reduce((sum, s: any) => sum + (s.step_media || []).filter((m: any) => m.media_type !== "video" && m.media_type !== "pdf" && !excludedMedia.has(m.id)).length, 0);
+    const projectStart = visibleSteps[0]?.step_date;
+    const projectEnd = visibleSteps[visibleSteps.length - 1]?.step_date;
+    const durationDays = projectStart && projectEnd
+      ? Math.max(1, Math.round((new Date(projectEnd).getTime() - new Date(projectStart).getTime()) / 86400000))
+      : 0;
+
     list.push({
       key: "back-cover",
       node: (
-        <div className="h-full flex flex-col items-center justify-center bg-[#121212] text-white p-12 text-center">
-          <p className="text-[10px] uppercase tracking-[0.32em] text-white/45 font-bold mb-5">Buildy</p>
-          <h2 className="text-3xl font-serif italic leading-tight max-w-[70%] [overflow-wrap:anywhere] line-clamp-3">{coverTitle}</h2>
-          <p className="mt-5 text-[10px] uppercase tracking-[0.2em] text-white/45">Gemaakt met Buildy</p>
+        <div className="h-full flex flex-col bg-[#121212] text-white p-12 relative overflow-hidden">
+          <div className="absolute inset-0 opacity-[0.04] pointer-events-none" style={{
+            backgroundImage: "linear-gradient(to right, #fff 1px, transparent 1px), linear-gradient(to bottom, #fff 1px, transparent 1px)",
+            backgroundSize: "20px 20px",
+          }} />
+          <div className="flex-1 flex flex-col items-center justify-center text-center relative">
+            <p className="text-[10px] uppercase tracking-[0.32em] text-white/45 font-bold mb-4">Bouwboek</p>
+            <h2 className="text-2xl font-serif italic leading-tight max-w-[75%] [overflow-wrap:anywhere] line-clamp-2">{coverTitle}</h2>
+            <div className="mt-6 h-px w-16 bg-accent/60" />
+            <div className="mt-6 grid grid-cols-3 gap-6 text-center">
+              <div>
+                <p className="text-2xl font-serif font-bold tabular-nums">{totalUpdates}</p>
+                <p className="text-[8px] uppercase tracking-[0.2em] text-white/45 mt-1">Updates</p>
+              </div>
+              <div>
+                <p className="text-2xl font-serif font-bold tabular-nums">{totalPhotos}</p>
+                <p className="text-[8px] uppercase tracking-[0.2em] text-white/45 mt-1">Foto's</p>
+              </div>
+              <div>
+                <p className="text-2xl font-serif font-bold tabular-nums">{durationDays > 0 ? durationDays : "—"}</p>
+                <p className="text-[8px] uppercase tracking-[0.2em] text-white/45 mt-1">Dagen</p>
+              </div>
+            </div>
+            {projectStart && projectEnd && (
+              <p className="mt-6 text-[10px] uppercase tracking-[0.2em] text-white/40">
+                {format(new Date(projectStart), "d MMM yyyy", { locale: nl })} — {format(new Date(projectEnd), "d MMM yyyy", { locale: nl })}
+              </p>
+            )}
+          </div>
+          <p className="text-[9px] uppercase tracking-[0.32em] text-white/35 text-center">Gemaakt met Buildy</p>
         </div>
       ),
     });
@@ -780,6 +862,20 @@ const Photobook = () => {
             ? pages[1] ? "Cover + pagina 2" : "Cover"
             : `Pagina ${safeSpread * 2 + 1}–${Math.min(safeSpread * 2 + 2, PRINT_PAGES)} / ${PRINT_PAGES}`}
         </span>
+        {isOwner && editing && (
+          <span
+            className={`hidden sm:inline-flex items-center gap-1.5 text-[11px] font-medium transition-opacity ${saveState === "idle" ? "opacity-0" : "opacity-100"} ${saveState === "saved" ? "text-emerald-600" : "text-muted-foreground"}`}
+            aria-live="polite"
+          >
+            {saveState === "saving" ? (
+              <><Loader2 className="h-3 w-3 animate-spin" /> Opslaan…</>
+            ) : saveState === "saved" ? (
+              <><Cloud className="h-3 w-3" /> Opgeslagen</>
+            ) : (
+              <><CloudOff className="h-3 w-3" /> —</>
+            )}
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-2">
           {isOwner && !editing && (
             <Button
@@ -1230,42 +1326,113 @@ const Photobook = () => {
       )}
 
 
-      <Dialog open={printOpen} onOpenChange={(open) => { setPrintOpen(open); if (!open) setCheckoutUrl(null); }}>
-        <DialogContent className="max-w-md">
+      <Dialog open={printOpen} onOpenChange={(open) => { setPrintOpen(open); if (!open) { setCheckoutUrl(null); setPrintStep("idle"); } }}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Bestel als hardcover Bouwboek</DialogTitle>
             <DialogDescription>
-              Wij maken een printklare PDF, rekenen veilig af via Stripe en sturen je betaalde order daarna door naar Peecho voor druk en verzending.
+              Printklare PDF, veilig afrekenen via Stripe, druk en verzending via Peecho.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
-              <div className="rounded-md border bg-muted/35 p-3">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Formaat</p>
-                <p className="mt-1 text-sm font-semibold">{PEECHO_FORMATS[printFormat].label}</p>
-                <p className="text-xs text-muted-foreground">
-                  {PEECHO_FORMATS[printFormat].w} × {PEECHO_FORMATS[printFormat].h} mm, vast liggend voor brede fotocomposities.
-                </p>
+            {pages.length < PEECHO_MIN_PAGES && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-900">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                <div className="text-xs">
+                  <p className="font-semibold">Nog te weinig pagina's</p>
+                  <p>Je boek heeft minstens {PEECHO_MIN_PAGES} pagina's nodig. Voeg meer updates of foto's toe — lege pagina's worden automatisch aangevuld, maar méér inhoud levert een mooier boek.</p>
+                </div>
               </div>
+            )}
 
-              {!checkoutUrl ? (
-                <Button onClick={handleGeneratePeechoPdf} disabled={printBusy} className="w-full gap-2">
-                  {printBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookOpen className="h-4 w-4" />}
-                  {printBusy ? "Checkout voorbereiden…" : "Boek klaarmaken en betalen"}
+            {!printBusy && !checkoutUrl && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Kies een formaat</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {(Object.keys(PEECHO_FORMATS) as PeechoFormat[]).map((fmt) => {
+                    const f = PEECHO_FORMATS[fmt];
+                    const active = printFormat === fmt;
+                    const ratio = f.w / f.h;
+                    return (
+                      <button
+                        key={fmt}
+                        onClick={() => setPrintFormat(fmt)}
+                        className={`group flex flex-col items-center gap-2 rounded-lg border-2 p-3 transition ${active ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/40"}`}
+                      >
+                        <div
+                          className="bg-card border border-muted-foreground/30 rounded-sm shadow-sm"
+                          style={{
+                            width: ratio >= 1 ? 56 : 56 * ratio,
+                            height: ratio >= 1 ? 56 / ratio : 56,
+                          }}
+                        />
+                        <span className="text-[10px] font-semibold leading-tight text-center">{f.label}</span>
+                        <span className="text-[9px] text-muted-foreground tabular-nums">{f.w}×{f.h}mm</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-md border bg-muted/35 p-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Samenvatting</p>
+                <p className="text-sm font-semibold">{PRINT_PAGES} pagina's · {PEECHO_FORMATS[printFormat].label}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">Geschat</p>
+                <p className="text-lg font-bold tabular-nums">€{totalPrice.toFixed(2).replace(".", ",")}</p>
+              </div>
+            </div>
+
+            {printBusy && (
+              <div className="rounded-md border bg-background p-3 space-y-2">
+                {[
+                  { key: "pdf", label: "Printklare PDF opbouwen", icon: FileText },
+                  { key: "upload", label: "Bestand veilig uploaden", icon: Upload },
+                  { key: "checkout", label: "Beveiligde betaling openen", icon: CreditCard },
+                ].map(({ key, label, icon: Icon }) => {
+                  const order = ["pdf", "upload", "checkout", "done"];
+                  const currentIdx = order.indexOf(printStep);
+                  const myIdx = order.indexOf(key);
+                  const done = currentIdx > myIdx;
+                  const active = currentIdx === myIdx;
+                  return (
+                    <div key={key} className="flex items-center gap-2.5 text-sm">
+                      <div className={`h-6 w-6 rounded-full flex items-center justify-center shrink-0 ${done ? "bg-emerald-500 text-white" : active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                        {done ? <Check className="h-3.5 w-3.5" /> : active ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Icon className="h-3.5 w-3.5" />}
+                      </div>
+                      <span className={done ? "text-muted-foreground line-through" : active ? "font-medium" : "text-muted-foreground"}>{label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {!checkoutUrl ? (
+              <Button
+                onClick={handleGeneratePeechoPdf}
+                disabled={printBusy || pages.length < PEECHO_MIN_PAGES}
+                className="w-full gap-2"
+              >
+                {printBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookOpen className="h-4 w-4" />}
+                {printBusy ? "Bezig…" : "Boek klaarmaken en betalen"}
+              </Button>
+            ) : (
+              <a href={checkoutUrl} className="block">
+                <Button className="w-full gap-2">
+                  <ExternalLink className="h-4 w-4" />
+                  Ga naar beveiligde betaling
                 </Button>
-              ) : (
-                <a href={checkoutUrl} className="block">
-                  <Button className="w-full gap-2">
-                    <ExternalLink className="h-4 w-4" />
-                    Ga naar beveiligde betaling
-                  </Button>
-                </a>
-              )}
+              </a>
+            )}
 
-              <p className="text-[11px] text-muted-foreground text-center">
-                Na betaling maken we de Peecho-order aan. Levertijd is afhankelijk van printproductie en verzending.
-              </p>
-              <PhotobookOrderHistory orders={photobookOrders} />
+            <p className="text-[11px] text-muted-foreground text-center">
+              Na betaling maken we de Peecho-order aan. Levertijd hangt af van productie en verzending.
+            </p>
+            <PhotobookOrderHistory orders={photobookOrders} />
           </div>
 
           <DialogFooter>
