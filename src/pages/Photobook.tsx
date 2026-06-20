@@ -1347,6 +1347,16 @@ const Photobook = () => {
             )}
 
             {!printBusy && !checkoutUrl && (
+              <CheckoutCoverPicker
+                trip={trip}
+                steps={steps}
+                settings={settings}
+                defaultCoverMedia={defaultCoverMedia}
+                onPick={(mediaId) => upsertSettings({ cover_media_id: mediaId })}
+              />
+            )}
+
+            {!printBusy && !checkoutUrl && (
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Kies een formaat</p>
                 <div className="grid grid-cols-3 gap-2">
@@ -1466,6 +1476,158 @@ const formatOrderDate = (value: string | null) => {
   } catch {
     return value;
   }
+};
+
+const CheckoutCoverPicker = ({
+  trip,
+  steps,
+  settings,
+  defaultCoverMedia,
+  onPick,
+}: {
+  trip: any;
+  steps: any[];
+  settings: PhotobookSettings;
+  defaultCoverMedia: any;
+  onPick: (mediaId: string | null) => void;
+}) => {
+  const [expanded, setExpanded] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+
+  const allPhotos = useMemo(
+    () =>
+      steps.flatMap((s: any) =>
+        (s.step_media || []).filter((m: any) => m.media_type !== "video" && m.media_type !== "pdf"),
+      ),
+    [steps],
+  );
+
+  const activeCover = settings.cover_media_id
+    ? allPhotos.find((m: any) => m.id === settings.cover_media_id) ?? defaultCoverMedia
+    : defaultCoverMedia;
+  const isCustom = !!settings.cover_media_id;
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const id = e.dataTransfer.getData(PHOTO_DND_MIME) || e.dataTransfer.getData("text/plain");
+    if (id && allPhotos.some((m: any) => m.id === id)) {
+      onPick(id);
+      toast.success("Omslagfoto bijgewerkt");
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Omslagfoto</p>
+        {isCustom && (
+          <button
+            type="button"
+            onClick={() => onPick(null)}
+            className="text-[11px] text-muted-foreground hover:text-foreground underline"
+          >
+            Standaard gebruiken
+          </button>
+        )}
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        className={`group relative w-full overflow-hidden rounded-lg border-2 transition ${
+          dragOver ? "border-primary ring-2 ring-primary/30" : "border-border hover:border-muted-foreground/50"
+        }`}
+        style={{ aspectRatio: "3 / 2" }}
+        aria-label="Klik om omslagfoto te kiezen of sleep een foto hierheen"
+      >
+        {activeCover ? (
+          <img src={activeCover.media_url} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        ) : (
+          <div className="absolute inset-0 bg-muted" />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 px-4 pb-3 pt-6 text-white text-center">
+          <p className="font-serif text-lg leading-tight line-clamp-2 drop-shadow">
+            {settings.cover_title || trip?.title}
+          </p>
+          {(settings.cover_subtitle || trip?.address) && (
+            <p className="text-[11px] mt-0.5 opacity-90 line-clamp-1">
+              {settings.cover_subtitle || trip?.address}
+            </p>
+          )}
+        </div>
+        <div className="absolute top-2 left-2 inline-flex items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
+          <Pencil className="h-3 w-3" />
+          {expanded ? "Verberg foto's" : "Wijzig omslag"}
+        </div>
+        {dragOver && (
+          <div className="absolute inset-0 flex items-center justify-center bg-primary/30 text-primary-foreground text-xs font-semibold">
+            Laat los om als omslag te gebruiken
+          </div>
+        )}
+      </button>
+
+      {expanded && (
+        <div className="rounded-md border bg-muted/30 p-2">
+          <p className="text-[11px] text-muted-foreground mb-2">
+            Klik op een foto of sleep er één naar de omslag-voorvertoning.
+          </p>
+          <div className="grid grid-cols-6 gap-1.5 max-h-44 overflow-y-auto pr-1">
+            <button
+              type="button"
+              onClick={() => onPick(null)}
+              className={`relative aspect-square overflow-hidden rounded border-2 ${
+                !settings.cover_media_id ? "border-primary" : "border-transparent hover:border-muted-foreground/40"
+              }`}
+              title="Standaardcover"
+            >
+              {defaultCoverMedia ? (
+                <img src={defaultCoverMedia.media_url} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full bg-muted" />
+              )}
+              <span className="absolute inset-x-0 bottom-0 bg-primary/80 text-primary-foreground text-[8px] py-0.5 text-center font-medium">
+                Standaard
+              </span>
+            </button>
+            {allPhotos.map((m: any) => {
+              const active = settings.cover_media_id === m.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData(PHOTO_DND_MIME, m.id);
+                    e.dataTransfer.setData("text/plain", m.id);
+                    e.dataTransfer.effectAllowed = "copy";
+                  }}
+                  onClick={() => onPick(m.id)}
+                  className={`relative aspect-square overflow-hidden rounded border-2 cursor-grab active:cursor-grabbing ${
+                    active ? "border-primary" : "border-transparent hover:border-muted-foreground/40"
+                  }`}
+                >
+                  <img src={m.media_url} alt="" className="w-full h-full object-cover" />
+                  {active && (
+                    <span className="absolute top-0.5 right-0.5 bg-primary text-primary-foreground rounded-full p-0.5">
+                      <Check className="h-2.5 w-2.5" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 const PhotobookOrderHistory = ({ orders }: { orders: PhotobookOrder[] }) => {
