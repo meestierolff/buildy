@@ -1347,6 +1347,16 @@ const Photobook = () => {
             )}
 
             {!printBusy && !checkoutUrl && (
+              <CheckoutCoverPicker
+                trip={trip}
+                steps={steps}
+                settings={settings}
+                defaultCoverMedia={defaultCoverMedia}
+                onPick={(mediaId) => upsertSettings({ cover_media_id: mediaId })}
+              />
+            )}
+
+            {!printBusy && !checkoutUrl && (
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Kies een formaat</p>
                 <div className="grid grid-cols-3 gap-2">
