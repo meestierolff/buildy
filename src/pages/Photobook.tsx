@@ -765,13 +765,47 @@ const Photobook = () => {
       });
     }
 
+    const totalUpdates = visibleSteps.length;
+    const totalPhotos = visibleSteps.reduce((sum, s: any) => sum + (s.step_media || []).filter((m: any) => m.media_type !== "video" && m.media_type !== "pdf" && !excludedMedia.has(m.id)).length, 0);
+    const projectStart = visibleSteps[0]?.step_date;
+    const projectEnd = visibleSteps[visibleSteps.length - 1]?.step_date;
+    const durationDays = projectStart && projectEnd
+      ? Math.max(1, Math.round((new Date(projectEnd).getTime() - new Date(projectStart).getTime()) / 86400000))
+      : 0;
+
     list.push({
       key: "back-cover",
       node: (
-        <div className="h-full flex flex-col items-center justify-center bg-[#121212] text-white p-12 text-center">
-          <p className="text-[10px] uppercase tracking-[0.32em] text-white/45 font-bold mb-5">Buildy</p>
-          <h2 className="text-3xl font-serif italic leading-tight max-w-[70%] [overflow-wrap:anywhere] line-clamp-3">{coverTitle}</h2>
-          <p className="mt-5 text-[10px] uppercase tracking-[0.2em] text-white/45">Gemaakt met Buildy</p>
+        <div className="h-full flex flex-col bg-[#121212] text-white p-12 relative overflow-hidden">
+          <div className="absolute inset-0 opacity-[0.04] pointer-events-none" style={{
+            backgroundImage: "linear-gradient(to right, #fff 1px, transparent 1px), linear-gradient(to bottom, #fff 1px, transparent 1px)",
+            backgroundSize: "20px 20px",
+          }} />
+          <div className="flex-1 flex flex-col items-center justify-center text-center relative">
+            <p className="text-[10px] uppercase tracking-[0.32em] text-white/45 font-bold mb-4">Bouwboek</p>
+            <h2 className="text-2xl font-serif italic leading-tight max-w-[75%] [overflow-wrap:anywhere] line-clamp-2">{coverTitle}</h2>
+            <div className="mt-6 h-px w-16 bg-accent/60" />
+            <div className="mt-6 grid grid-cols-3 gap-6 text-center">
+              <div>
+                <p className="text-2xl font-serif font-bold tabular-nums">{totalUpdates}</p>
+                <p className="text-[8px] uppercase tracking-[0.2em] text-white/45 mt-1">Updates</p>
+              </div>
+              <div>
+                <p className="text-2xl font-serif font-bold tabular-nums">{totalPhotos}</p>
+                <p className="text-[8px] uppercase tracking-[0.2em] text-white/45 mt-1">Foto's</p>
+              </div>
+              <div>
+                <p className="text-2xl font-serif font-bold tabular-nums">{durationDays > 0 ? durationDays : "—"}</p>
+                <p className="text-[8px] uppercase tracking-[0.2em] text-white/45 mt-1">Dagen</p>
+              </div>
+            </div>
+            {projectStart && projectEnd && (
+              <p className="mt-6 text-[10px] uppercase tracking-[0.2em] text-white/40">
+                {format(new Date(projectStart), "d MMM yyyy", { locale: nl })} — {format(new Date(projectEnd), "d MMM yyyy", { locale: nl })}
+              </p>
+            )}
+          </div>
+          <p className="text-[9px] uppercase tracking-[0.32em] text-white/35 text-center">Gemaakt met Buildy</p>
         </div>
       ),
     });
