@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Plus, LogOut, User, Heart, Compass, Users, UserCircle2 } from "lucide-react";
+import { Plus, LogOut, User, Heart, Compass, Users, UserCircle2, Settings } from "lucide-react";
 import NotificationBell from "@/components/NotificationBell";
 import OnboardingDialog from "@/components/OnboardingDialog";
 
@@ -63,6 +63,11 @@ const Header = () => {
                   <DropdownMenuItem asChild>
                     <Link to={`/profile/${user.id}`} className="flex items-center gap-2 cursor-pointer">
                       <User className="h-4 w-4" /> Profiel
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/account" className="flex items-center gap-2 cursor-pointer">
+                      <Settings className="h-4 w-4" /> Account
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={signOut} className="flex items-center gap-2 cursor-pointer">
