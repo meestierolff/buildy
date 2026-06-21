@@ -11,6 +11,9 @@ import Index from "./pages/Index";
 // Heavier / less-frequently visited routes are code-split so the initial bundle
 // stays small (e.g. jspdf + html2canvas only load on Photobook, leaflet on TripDetail).
 const Auth = lazy(() => import("./pages/Auth"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const AccountSettings = lazy(() => import("./pages/AccountSettings"));
 const NewTrip = lazy(() => import("./pages/NewTrip"));
 const TripDetail = lazy(() => import("./pages/TripDetail"));
 const Profile = lazy(() => import("./pages/Profile"));
@@ -41,6 +44,9 @@ const App = () => (
                 <Routes>
                   <Route path="/" element={<Index />} />
                   <Route path="/auth" element={<Auth />} />
+                  <Route path="/wachtwoord-vergeten" element={<ForgotPassword />} />
+                  <Route path="/wachtwoord-resetten" element={<ResetPassword />} />
+                  <Route path="/account" element={<AccountSettings />} />
                   <Route path="/trips/new" element={<NewTrip />} />
                   <Route path="/trip/:id" element={<TripDetail />} />
                   <Route path="/trip/:id/photobook" element={<Photobook />} />
