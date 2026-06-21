@@ -1493,6 +1493,15 @@ const CheckoutCoverPicker = ({
 }) => {
   const [expanded, setExpanded] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [cropRatio, setCropRatio] = useState<"landscape" | "square" | "portrait">("landscape");
+  const [focusX, setFocusX] = useState(50);
+  const [focusY, setFocusY] = useState(50);
+
+  const ratioStyle = {
+    landscape: "3 / 2",
+    square: "1 / 1",
+    portrait: "2 / 3",
+  }[cropRatio];
 
   const allPhotos = useMemo(
     () =>
@@ -1517,6 +1526,12 @@ const CheckoutCoverPicker = ({
     }
   };
 
+  const ratioOptions: { value: "landscape" | "square" | "portrait"; label: string; icon: string }[] = [
+    { value: "landscape", label: "Liggend", icon: "▭" },
+    { value: "square", label: "Vierkant", icon: "□" },
+    { value: "portrait", label: "Staand", icon: "▯" },
+  ];
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
@@ -1532,6 +1547,25 @@ const CheckoutCoverPicker = ({
         )}
       </div>
 
+      <div className="inline-flex rounded-md border bg-muted/40 p-0.5 text-[11px]">
+        {ratioOptions.map((opt) => (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => setCropRatio(opt.value)}
+            className={`px-2.5 py-1 rounded transition ${
+              cropRatio === opt.value
+                ? "bg-background shadow-sm font-medium text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            aria-pressed={cropRatio === opt.value}
+          >
+            <span className="mr-1" aria-hidden>{opt.icon}</span>
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -1544,11 +1578,16 @@ const CheckoutCoverPicker = ({
         className={`group relative w-full overflow-hidden rounded-lg border-2 transition ${
           dragOver ? "border-primary ring-2 ring-primary/30" : "border-border hover:border-muted-foreground/50"
         }`}
-        style={{ aspectRatio: "3 / 2" }}
+        style={{ aspectRatio: ratioStyle }}
         aria-label="Klik om omslagfoto te kiezen of sleep een foto hierheen"
       >
         {activeCover ? (
-          <img src={activeCover.media_url} alt="" className="absolute inset-0 w-full h-full object-cover" />
+          <img
+            src={activeCover.media_url}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{ objectPosition: `${focusX}% ${focusY}%` }}
+          />
         ) : (
           <div className="absolute inset-0 bg-muted" />
         )}
@@ -1573,6 +1612,35 @@ const CheckoutCoverPicker = ({
           </div>
         )}
       </button>
+
+      {activeCover && (
+        <div className="grid grid-cols-2 gap-3 rounded-md border bg-muted/20 p-2">
+          <label className="space-y-1 block">
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Horizontaal</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={focusX}
+              onChange={(e) => setFocusX(Number(e.target.value))}
+              className="w-full accent-primary"
+              aria-label="Horizontale uitsnede"
+            />
+          </label>
+          <label className="space-y-1 block">
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Verticaal</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={focusY}
+              onChange={(e) => setFocusY(Number(e.target.value))}
+              className="w-full accent-primary"
+              aria-label="Verticale uitsnede"
+            />
+          </label>
+        </div>
+      )}
 
       {expanded && (
         <div className="rounded-md border bg-muted/30 p-2">
