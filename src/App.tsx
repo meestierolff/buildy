@@ -6,7 +6,12 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import Header from "@/components/Header";
+import Footer from "@/components/Footer";
 import Index from "./pages/Index";
+
+const Terms = lazy(() => import("./pages/legal/Terms"));
+const Privacy = lazy(() => import("./pages/legal/Privacy"));
+const Withdrawal = lazy(() => import("./pages/legal/Withdrawal"));
 
 // Heavier / less-frequently visited routes are code-split so the initial bundle
 // stays small (e.g. jspdf + html2canvas only load on Photobook, leaflet on TripDetail).
@@ -56,11 +61,15 @@ const App = () => (
                   <Route path="/vrienden" element={<Friends />} />
                   <Route path="/profile/:userId" element={<Profile />} />
                   <Route path="/bestelling/:orderId" element={<OrderConfirmation />} />
+                  <Route path="/voorwaarden" element={<Terms />} />
+                  <Route path="/privacy" element={<Privacy />} />
+                  <Route path="/herroeping" element={<Withdrawal />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </Suspense>
             </ErrorBoundary>
           </main>
+          <Footer />
         </div>
       </AuthProvider>
     </BrowserRouter>
