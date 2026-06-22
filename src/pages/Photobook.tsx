@@ -232,6 +232,7 @@ const Photobook = () => {
   const [printStep, setPrintStep] = useState<"idle" | "pdf" | "upload" | "checkout" | "done">("idle");
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const [photobookOrders, setPhotobookOrders] = useState<PhotobookOrder[]>([]);
+  const [legalAccepted, setLegalAccepted] = useState(false);
   const [stepBudgetMap, setStepBudgetMap] = useState<Map<string, number>>(new Map());
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const savedTimerRef = useRef<number | null>(null);
@@ -1326,7 +1327,7 @@ const Photobook = () => {
       )}
 
 
-      <Dialog open={printOpen} onOpenChange={(open) => { setPrintOpen(open); if (!open) { setCheckoutUrl(null); setPrintStep("idle"); } }}>
+      <Dialog open={printOpen} onOpenChange={(open) => { setPrintOpen(open); if (!open) { setCheckoutUrl(null); setPrintStep("idle"); setLegalAccepted(false); } }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Bestel als hardcover Bouwboek</DialogTitle>
@@ -1421,10 +1422,30 @@ const Photobook = () => {
               </div>
             )}
 
+            {!checkoutUrl && !printBusy && (
+              <label className="flex items-start gap-2 rounded-md border border-border bg-background p-3 text-xs leading-relaxed cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={legalAccepted}
+                  onChange={(e) => setLegalAccepted(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                />
+                <span className="text-muted-foreground">
+                  Ik ga akkoord met de{" "}
+                  <a href="/voorwaarden" target="_blank" rel="noreferrer" className="text-foreground underline underline-offset-2">algemene voorwaarden</a>{" "}
+                  en de{" "}
+                  <a href="/privacy" target="_blank" rel="noreferrer" className="text-foreground underline underline-offset-2">privacyverklaring</a>.
+                  Ik bevestig dat mijn Bouwboek een gepersonaliseerd product is en doe uitdrukkelijk afstand van het{" "}
+                  <a href="/herroeping" target="_blank" rel="noreferrer" className="text-foreground underline underline-offset-2">herroepingsrecht</a>{" "}
+                  zodat de productie direct kan starten na betaling.
+                </span>
+              </label>
+            )}
+
             {!checkoutUrl ? (
               <Button
                 onClick={handleGeneratePeechoPdf}
-                disabled={printBusy || pages.length < PEECHO_MIN_PAGES}
+                disabled={printBusy || pages.length < PEECHO_MIN_PAGES || !legalAccepted}
                 className="w-full gap-2"
               >
                 {printBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookOpen className="h-4 w-4" />}
