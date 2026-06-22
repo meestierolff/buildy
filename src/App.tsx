@@ -21,6 +21,7 @@ const Photobook = lazy(() => import("./pages/Photobook"));
 const Budget = lazy(() => import("./pages/Budget"));
 const Favorites = lazy(() => import("./pages/Favorites"));
 const Friends = lazy(() => import("./pages/Friends"));
+const OrderConfirmation = lazy(() => import("./pages/OrderConfirmation"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const RouteFallback = () => (
@@ -54,6 +55,7 @@ const App = () => (
                   <Route path="/favorieten" element={<Favorites />} />
                   <Route path="/vrienden" element={<Friends />} />
                   <Route path="/profile/:userId" element={<Profile />} />
+                  <Route path="/bestelling/:orderId" element={<OrderConfirmation />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </Suspense>

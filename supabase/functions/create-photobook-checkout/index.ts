@@ -97,7 +97,7 @@ serve(async (req) => {
     const currency = (Deno.env.get("PHOTOBOOK_CURRENCY") || "eur").toLowerCase();
     const amountCents = baseCents + Number(order.page_count) * pageCents;
     const siteUrl = getSiteUrl();
-    const successUrl = `${siteUrl}/trip/${order.trip_id}/photobook?checkout=success&order=${order.id}`;
+    const successUrl = `${siteUrl}/bestelling/${order.id}?checkout=success`;
     const cancelUrl = `${siteUrl}/trip/${order.trip_id}/photobook?checkout=cancelled&order=${order.id}`;
 
     const params = new URLSearchParams();
