@@ -758,6 +758,15 @@ export type Database = {
           user_id: string
         }[]
       }
+      get_trip_access_info: {
+        Args: { _trip_id: string }
+        Returns: {
+          is_public: boolean
+          owner_id: string
+          title: string
+          trip_exists: boolean
+        }[]
+      }
       search_profiles: {
         Args: { _limit?: number; _offset?: number; _q: string }
         Returns: {
