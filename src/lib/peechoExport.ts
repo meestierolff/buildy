@@ -261,7 +261,13 @@ const drawStepTextPages = (
   }
 };
 
-export async function buildPeechoPdf(args: BuildArgs): Promise<Blob> {
+export interface BuildResult {
+  blob: Blob;
+  failedImages: number;
+  renderedPhotos: number;
+}
+
+export async function buildPeechoPdf(args: BuildArgs): Promise<BuildResult> {
   const fmt = FORMATS[args.format || "A4_LANDSCAPE"];
   const pdf = new jsPDF({
     unit: "mm",
@@ -275,6 +281,20 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<Blob> {
   const H = fmt.h;
   const innerW = W - MARGIN * 2;
   const innerH = H - MARGIN * 2;
+
+  let failedImages = 0;
+  let renderedPhotos = 0;
+  const loadImg = async (
+    url: string,
+    w: number,
+    h: number,
+    fit: "cover" | "contain" = "cover",
+  ) => {
+    const data = await loadImageAsJpeg(url, w, h, fit);
+    if (data) renderedPhotos++;
+    else failedImages++;
+    return data;
+  };
 
   let isFirst = true;
   const addPage = () => {
