@@ -290,7 +290,7 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<BuildResult> {
     h: number,
     fit: "cover" | "contain" = "cover",
   ) => {
-    const data = await loadImg(url, w, h, fit);
+    const data = await loadImageAsJpeg(url, w, h, fit);
     if (data) renderedPhotos++;
     else failedImages++;
     return data;
