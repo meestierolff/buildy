@@ -314,7 +314,7 @@ const TripDetail = () => {
   }
 
   if (!trip) {
-    return (
+    return id ? <RequestAccessCard tripId={id} /> : (
       <div className="container py-20 text-center">
         <p className="text-muted-foreground">Project niet gevonden.</p>
       </div>
