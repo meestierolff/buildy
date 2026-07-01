@@ -15,6 +15,7 @@ import AllPhotosTab from "@/components/AllPhotosTab";
 import TripRouteMap from "@/components/TripRouteMap";
 import CoverPickerDialog from "@/components/CoverPickerDialog";
 import ProjectSettingsSheet from "@/components/ProjectSettingsSheet";
+import RequestAccessCard from "@/components/RequestAccessCard";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
