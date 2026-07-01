@@ -211,7 +211,13 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
 
     const baseOrder = existingMedia.length;
     for (let i = 0; i < newFiles.length; i++) {
-      const file = newFiles[i];
+      let file: File;
+      try {
+        file = await prepareUpload(newFiles[i]);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Bestand overgeslagen");
+        continue;
+      }
       const ext = file.name.split(".").pop();
       const path = `${user.id}/${step.id}/${Date.now()}-${i}.${ext}`;
       const { error: upErr } = await supabase.storage.from("trip-private").upload(path, file);
