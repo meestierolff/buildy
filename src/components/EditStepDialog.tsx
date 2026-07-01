@@ -11,6 +11,7 @@ import PhaseSelect from "./PhaseSelect";
 import { toast } from "sonner";
 import { BriefcaseBusiness, FileText, Hammer, MapPin, Star, Trash2, Upload, Video, Wallet, X } from "lucide-react";
 import type { FloorInfo } from "./FloorplanView";
+import { prepareUpload } from "@/lib/compressImage";
 
 interface EditStepDialogProps {
   step: any;
