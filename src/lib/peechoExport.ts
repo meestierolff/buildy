@@ -290,7 +290,7 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<BuildResult> {
     h: number,
     fit: "cover" | "contain" = "cover",
   ) => {
-    const data = await loadImageAsJpeg(url, w, h, fit);
+    const data = await loadImg(url, w, h, fit);
     if (data) renderedPhotos++;
     else failedImages++;
     return data;
@@ -316,7 +316,7 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<BuildResult> {
     : trip.cover_image_url || firstVisiblePhoto?.media_url;
 
   if (coverMedia) {
-    const data = await loadImageAsJpeg(coverMedia, W, H);
+    const data = await loadImg(coverMedia, W, H);
     if (data) pdf.addImage(data, "JPEG", 0, 0, W, H, undefined, "FAST");
   } else {
     pdf.setFillColor(14, 27, 44);
@@ -382,7 +382,7 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<BuildResult> {
     }
     const imageTop = MARGIN + (trip.address ? 30 : 25);
     const imageH = H - imageTop - MARGIN;
-    const data = await loadImageAsJpeg(trip.floorplan_url, innerW, imageH, "contain");
+    const data = await loadImg(trip.floorplan_url, innerW, imageH, "contain");
     if (data) pdf.addImage(data, "JPEG", MARGIN, imageTop, innerW, imageH, undefined, "FAST");
   }
 
@@ -463,34 +463,34 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<BuildResult> {
           const gap = 3;
 
           if (batch.length === 1 || layout === "1-full") {
-            const data = await loadImageAsJpeg(batch[0].media_url, gridW, gridH, "contain");
+            const data = await loadImg(batch[0].media_url, gridW, gridH, "contain");
             if (data) pdf.addImage(data, "JPEG", MARGIN, gridTop, gridW, gridH, undefined, "FAST");
           } else if (layout === "2-stack" && batch.length >= 2) {
             const cellH = (gridH - gap) / 2;
             for (let j = 0; j < batch.length; j++) {
-              const data = await loadImageAsJpeg(batch[j].media_url, gridW, cellH, "contain");
+              const data = await loadImg(batch[j].media_url, gridW, cellH, "contain");
               if (data) pdf.addImage(data, "JPEG", MARGIN, gridTop + j * (cellH + gap), gridW, cellH, undefined, "FAST");
             }
           } else if (layout === "2-side" || batch.length === 2) {
             const cellW = (gridW - gap) / 2;
             for (let j = 0; j < batch.length; j++) {
-              const data = await loadImageAsJpeg(batch[j].media_url, cellW, gridH, "contain");
+              const data = await loadImg(batch[j].media_url, cellW, gridH, "contain");
               if (data) pdf.addImage(data, "JPEG", MARGIN + j * (cellW + gap), gridTop, cellW, gridH, undefined, "FAST");
             }
           } else if (layout === "3-mixed" || batch.length === 3) {
             const leftW = gridW * 0.58;
             const rightW = gridW - leftW - gap;
             const rightH = (gridH - gap) / 2;
-            const hero = await loadImageAsJpeg(batch[0].media_url, leftW, gridH, "contain");
+            const hero = await loadImg(batch[0].media_url, leftW, gridH, "contain");
             if (hero) pdf.addImage(hero, "JPEG", MARGIN, gridTop, leftW, gridH, undefined, "FAST");
             for (let j = 1; j < 3; j++) {
-              const data = await loadImageAsJpeg(batch[j].media_url, rightW, rightH, "contain");
+              const data = await loadImg(batch[j].media_url, rightW, rightH, "contain");
               if (data) pdf.addImage(data, "JPEG", MARGIN + leftW + gap, gridTop + (j - 1) * (rightH + gap), rightW, rightH, undefined, "FAST");
             }
           } else if (layout === "auto" && batch.length === 4) {
             const cellW = (gridW - gap * 3) / 4;
             for (let j = 0; j < batch.length; j++) {
-              const data = await loadImageAsJpeg(batch[j].media_url, cellW, gridH, "contain");
+              const data = await loadImg(batch[j].media_url, cellW, gridH, "contain");
               if (data) pdf.addImage(data, "JPEG", MARGIN + j * (cellW + gap), gridTop, cellW, gridH, undefined, "FAST");
             }
           } else {
@@ -499,7 +499,7 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<BuildResult> {
             for (let j = 0; j < batch.length; j++) {
               const col = j % 2;
               const row = Math.floor(j / 2);
-              const data = await loadImageAsJpeg(batch[j].media_url, cellW, cellH, "contain");
+              const data = await loadImg(batch[j].media_url, cellW, cellH, "contain");
               if (data) pdf.addImage(data, "JPEG", MARGIN + col * (cellW + gap), gridTop + row * (cellH + gap), cellW, cellH, undefined, "FAST");
             }
           }
