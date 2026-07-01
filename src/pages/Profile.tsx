@@ -38,6 +38,8 @@ const Profile = () => {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ display_name: "", bio: "", location: "", is_private: false });
 
+  const [activeTab, setActiveTab] = useState("projects");
+
   const isMe = user?.id === userId;
   const profileName = profile?.display_name || "Deze bouwer";
   const profileDescription = profile?.bio && profile.bio.trim().length >= 50
@@ -138,7 +140,7 @@ const Profile = () => {
     if (!file || !user) return;
     setAvatarUploading(true);
     const ext = file.name.split(".").pop();
-    const path = `avatars/${user.id}/avatar.${ext}`;
+    const path = `${user.id}/avatar-${Date.now()}.${ext}`;
     const { error: upErr } = await supabase.storage
       .from("trip-media")
       .upload(path, file, { upsert: true });
@@ -266,13 +268,17 @@ const Profile = () => {
 
             <div className="flex flex-wrap gap-x-8 gap-y-3 mt-6">
               {[
-                { label: "Projecten", value: trips.length },
-                { label: "Volgers", value: followers.length },
-                { label: "Volgend", value: following.length },
-                { label: "Updates", value: stats.updates },
-                { label: "Foto's", value: stats.photos },
+                { label: "Projecten", value: trips.length, tab: "projects" },
+                { label: "Volgers", value: followers.length, tab: "followers" },
+                { label: "Volgend", value: following.length, tab: "following" },
+                { label: "Updates", value: stats.updates, tab: "" },
+                { label: "Foto's", value: stats.photos, tab: "" },
               ].map((s) => (
-                <div key={s.label}>
+                <div 
+                  key={s.label} 
+                  className={s.tab ? "cursor-pointer hover:opacity-80 transition-opacity" : ""}
+                  onClick={() => s.tab && setActiveTab(s.tab)}
+                >
                   <p className="font-serif italic text-2xl leading-none tabular-nums">{s.value}</p>
                   <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-1">{s.label}</p>
                 </div>
@@ -301,7 +307,7 @@ const Profile = () => {
 
 
 
-      <Tabs defaultValue="projects" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid grid-cols-2 sm:inline-flex bg-transparent sm:border-b sm:border-border rounded-none p-0 h-auto gap-x-6 gap-y-2 sm:gap-8 w-full justify-start mb-8">
           <TabsTrigger value="projects" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Projecten</TabsTrigger>
           <TabsTrigger value="stats" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Statistieken</TabsTrigger>

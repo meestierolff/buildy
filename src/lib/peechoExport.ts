@@ -223,8 +223,13 @@ const drawStepTextPages = (
   },
 ) => {
   const { addPage, W, H, innerW, chapterTitle, dateLabel, locationName, description } = params;
+
+  // Set the correct font for the description text BEFORE calculating line splits
+  pdf.setFont("times", "italic");
+  pdf.setFontSize(12);
+
   const lines = pdf.splitTextToSize(description, innerW) as string[];
-  const lineHeight = 5.8;
+  const lineHeight = 5.5; // (12pt * 1.3 lineHeightFactor = 15.6pt = 5.5mm)
   let cursor = 0;
   let textPageIdx = 0;
 
@@ -254,7 +259,7 @@ const drawStepTextPages = (
     pdf.setFont("times", "italic");
     pdf.setFontSize(12);
     pdf.setTextColor(60, 60, 60);
-    pdf.text(chunk, MARGIN, textY, { lineHeightFactor: 1.3, maxWidth: innerW });
+    pdf.text(chunk, MARGIN, textY, { lineHeightFactor: 1.3 });
 
     cursor += chunk.length;
     textPageIdx++;
