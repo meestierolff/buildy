@@ -1355,6 +1355,44 @@ const Photobook = () => {
               </div>
             )}
 
+            {(() => {
+              const isMobile = typeof navigator !== "undefined" && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+              const heavy = pages.length > 60;
+              if (isMobile && heavy && !printBusy) {
+                return (
+                  <div className="flex items-start gap-2 rounded-md border border-blue-300 bg-blue-50 p-3 text-blue-900">
+                    <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                    <div className="text-xs">
+                      <p className="font-semibold">Groot boek — beste op desktop</p>
+                      <p>Dit boek heeft {pages.length} pagina's. Het opbouwen van de printklare PDF kan op mobiel lang duren of vastlopen. Bestel bij voorkeur vanaf een laptop of desktop.</p>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
+            {!printBusy && !checkoutUrl && (() => {
+              const previewPhotos = steps
+                .filter((s) => !excludedSteps.has(s.id))
+                .flatMap((s: any) => (s.step_media || []))
+                .filter((m: any) => m.media_type !== "video" && m.media_type !== "pdf" && !excludedMedia.has(m.id))
+                .slice(0, 4);
+              if (previewPhotos.length === 0) return null;
+              return (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Voorproefje binnenpagina's</p>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {previewPhotos.map((m: any) => (
+                      <div key={m.id} className="aspect-square overflow-hidden rounded-sm border bg-muted">
+                        <img src={m.media_url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             {!printBusy && !checkoutUrl && (
               <CheckoutCoverPicker
                 trip={trip}
