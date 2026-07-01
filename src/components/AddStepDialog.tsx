@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import PhaseSelect, { DEFAULT_PHASES } from "./PhaseSelect";
 import { toast } from "sonner";
 import { BriefcaseBusiness, FileText, Star, Upload, Video, Wallet, X } from "lucide-react";
+import { prepareUpload } from "@/lib/compressImage";
 
 interface AddStepDialogProps {
   tripId: string;
@@ -178,7 +179,13 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
 
     for (let i = 0; i < files.length; i++) {
       const upload = files[i];
-      const file = upload.file;
+      let file: File;
+      try {
+        file = await prepareUpload(upload.file);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Bestand overgeslagen");
+        continue;
+      }
       const ext = file.name.split(".").pop();
       const path = `${user.id}/${step.id}/${i}.${ext}`;
 
@@ -187,8 +194,6 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
         .upload(path, file);
 
       if (!uploadError) {
-        // Generate a signed URL so the row is immediately usable; bg loaders will
-        // re-sign as needed via hydrateMediaUrls.
         const { data: signed } = await supabase.storage
           .from("trip-private")
           .createSignedUrl(path, 60 * 60);
