@@ -271,9 +271,17 @@ const Photobook = () => {
     let pdfReadyForCheckout = false;
     try {
       const orderReference = createPeechoReference(id);
-      const blob = await buildPeechoPdf({
+      const { blob, failedImages, renderedPhotos } = await buildPeechoPdf({
         trip, steps, settings, excludedMedia, excludedSteps, format: printFormat,
       });
+      if (renderedPhotos === 0) {
+        throw new Error("Er zijn geen printbare foto's in je boek. Voeg minimaal één foto toe.");
+      }
+      if (failedImages > 0) {
+        throw new Error(
+          `${failedImages} foto${failedImages === 1 ? "" : "'s"} konden niet worden geladen (mogelijk verlopen link). Ververs de pagina en probeer opnieuw — we willen geen lege pagina's in je boek.`
+        );
+      }
       setPrintStep("upload");
       // Upload to public storage so Peecho can fetch the PDF directly
       const path = `${trip.user_id}/peecho/${orderReference}.pdf`;
