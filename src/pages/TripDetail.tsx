@@ -15,6 +15,7 @@ import AllPhotosTab from "@/components/AllPhotosTab";
 import TripRouteMap from "@/components/TripRouteMap";
 import CoverPickerDialog from "@/components/CoverPickerDialog";
 import ProjectSettingsSheet from "@/components/ProjectSettingsSheet";
+import RequestAccessCard from "@/components/RequestAccessCard";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -314,7 +315,7 @@ const TripDetail = () => {
   }
 
   if (!trip) {
-    return (
+    return id ? <RequestAccessCard tripId={id} /> : (
       <div className="container py-20 text-center">
         <p className="text-muted-foreground">Project niet gevonden.</p>
       </div>
