@@ -560,7 +560,7 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<BuildResult> {
   pdf.setFontSize(9);
   pdf.text("Gemaakt met Buildy", W / 2, H / 2 + backTitleLines.length * 8 + 6, { align: "center" });
 
-  return pdf.output("blob");
+  return { blob: pdf.output("blob"), failedImages, renderedPhotos };
 }
 
 export const PEECHO_FORMATS = FORMATS;
