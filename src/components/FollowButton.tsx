@@ -65,7 +65,7 @@ const FollowButton = ({ projectId, size = "sm", variant = "outline", className }
     setLoading(false);
   };
 
-  const label = status === "accepted" ? "Gevolgd" : status === "pending" ? "In afwachting" : "Volgen";
+  const label = status === "accepted" ? "Volgend" : status === "pending" ? "In afwachting" : "Volgen";
   const Icon = status === "pending" ? Clock : Heart;
 
   return (

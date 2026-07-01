@@ -16,7 +16,7 @@ import { usePageMeta } from "@/hooks/usePageMeta";
 const Favorites = () => {
   const { user, loading: authLoading } = useAuth();
   usePageMeta({
-    title: "Gevolgde projecten — Buildy",
+    title: "Projecten die ik volg — Buildy",
     description: "Bekijk updates van renovatieprojecten die je volgt.",
     path: "/favorieten",
     noIndex: true,
@@ -84,7 +84,7 @@ const Favorites = () => {
     <div className="max-w-7xl mx-auto px-6 md:px-8 py-16">
       <div className="mb-12">
         <p className="eyebrow mb-2">Jouw feed</p>
-        <h1 className="font-serif italic text-4xl md:text-5xl">Gevolgd</h1>
+        <h1 className="font-serif italic text-4xl md:text-5xl">Volgend</h1>
       </div>
 
       {loading ? (
@@ -92,7 +92,7 @@ const Favorites = () => {
       ) : projects.length === 0 ? (
         <EmptyState
           icon={Heart}
-          title="Nog niks gevolgd"
+          title="Je volgt nog niks"
           description="Ontdek projecten op de homepage en klik op 'Volgen' om updates hier terug te zien."
         />
       ) : (
@@ -104,7 +104,7 @@ const Favorites = () => {
 
           <TabsContent value="feed">
             {activity.length === 0 ? (
-              <p className="text-muted-foreground text-sm">Nog geen updates van gevolgde projecten.</p>
+              <p className="text-muted-foreground text-sm">Nog geen updates van projecten die je volgt.</p>
             ) : (
               <div className="max-w-lg divide-y divide-border/50 rounded-xl overflow-hidden border border-border/60">
                 {activity.map((s: any) => {

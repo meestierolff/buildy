@@ -37,6 +37,8 @@ const Friends = () => {
   const [hasMore, setHasMore] = useState(true);
   const [following, setFollowing] = useState<Set<string>>(new Set());
   const [followedProfiles, setFollowedProfiles] = useState<ProfileResult[]>([]);
+  const [followerProfiles, setFollowerProfiles] = useState<ProfileResult[]>([]);
+  const [activeTab, setActiveTab] = useState<"following" | "followers">("following");
   const [loadingFollowed, setLoadingFollowed] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const reqIdRef = useRef(0);
@@ -52,6 +54,7 @@ const Friends = () => {
     if (!user) return;
     setLoadingFollowed(true);
     (async () => {
+      // 1. Fetch people you follow
       const { data } = await supabase
         .from("user_follows")
         .select("following_id, status")
@@ -60,14 +63,41 @@ const Friends = () => {
       const pend = (data || []).filter((r: any) => r.status === "pending").map((r: any) => r.following_id);
       setFollowing(new Set(accepted));
       setPending(new Set(pend));
-      if (accepted.length === 0) { setFollowedProfiles([]); setLoadingFollowed(false); return; }
-      const { data: profiles } = await supabase.rpc("get_profiles_basic", { _ids: accepted });
+
+      // 2. Fetch your followers
+      const { data: followerData } = await supabase
+        .from("user_follows")
+        .select("follower_id, status")
+        .eq("following_id", user.id)
+        .eq("status", "accepted");
+      const followerIds = (followerData || []).map((r: any) => r.follower_id);
+
+      // Collect all unique IPs to fetch basic info + trips
+      const allIds = Array.from(new Set([...accepted, ...followerIds]));
+
+      if (allIds.length === 0) { 
+        setFollowedProfiles([]); 
+        setFollowerProfiles([]);
+        setLoadingFollowed(false); 
+        return; 
+      }
+
+      const { data: profiles } = await supabase.rpc("get_profiles_basic", { _ids: allIds });
       if (profiles) {
-        const { data: trips } = await supabase.from("trips").select("user_id").in("user_id", accepted).eq("is_public", true);
+        const { data: trips } = await supabase.from("trips").select("user_id").in("user_id", allIds);
         const counts: Record<string, number> = {};
         (trips || []).forEach((t: any) => { counts[t.user_id] = (counts[t.user_id] || 0) + 1; });
-        const sorted = [...profiles].sort((a: any, b: any) => (a.display_name || "").localeCompare(b.display_name || ""));
-        setFollowedProfiles(sorted.map((p: any) => ({ ...p, bio: null, location: null, project_count: counts[p.user_id] || 0 })));
+        
+        const sortedFollowing = [...profiles]
+          .filter((p: any) => accepted.includes(p.user_id))
+          .sort((a: any, b: any) => (a.display_name || "").localeCompare(b.display_name || ""));
+        
+        const sortedFollowers = [...profiles]
+          .filter((p: any) => followerIds.includes(p.user_id))
+          .sort((a: any, b: any) => (a.display_name || "").localeCompare(b.display_name || ""));
+
+        setFollowedProfiles(sortedFollowing.map((p: any) => ({ ...p, bio: null, location: null, project_count: counts[p.user_id] || 0 })));
+        setFollowerProfiles(sortedFollowers.map((p: any) => ({ ...p, bio: null, location: null, project_count: counts[p.user_id] || 0 })));
       }
       setLoadingFollowed(false);
     })();
@@ -86,7 +116,7 @@ const Friends = () => {
     const filtered = data.filter((p: any) => p.user_id !== user?.id);
     const counts: Record<string, number> = {};
     if (ids.length) {
-      const { data: trips } = await supabase.from("trips").select("user_id").in("user_id", ids).eq("is_public", true);
+      const { data: trips } = await supabase.from("trips").select("user_id").in("user_id", ids);
       (trips || []).forEach((t: any) => { counts[t.user_id] = (counts[t.user_id] || 0) + 1; });
     }
     if (reqId !== reqIdRef.current) return [];
@@ -220,22 +250,47 @@ const Friends = () => {
             <p className="text-center text-muted-foreground py-10 flex items-center justify-center gap-2 text-sm">
               <Loader2 className="h-4 w-4 animate-spin" /> Laden…
             </p>
-          ) : followedProfiles.length > 0 ? (
-            <div>
-              <div className="flex items-baseline gap-3 mb-2">
-                <h2 className="text-[11px] font-bold uppercase tracking-[0.2em]">Je volgt ({followedProfiles.length})</h2>
-                <div className="flex-1 h-px bg-border" />
-              </div>
-              <div>
-                {followedProfiles.map((p) => <Row key={p.user_id} p={p} isFollowing={true} isPending={false} />)}
-              </div>
-            </div>
           ) : (
-            <EmptyState
-              icon={Users}
-              title="Volg je eerste bouwer"
-              description="Zoek hierboven op naam om andere bouwers te ontdekken en hun verbouwingen te volgen."
-            />
+            <div>
+              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
+                <TabsList className="grid grid-cols-2 bg-transparent border-b border-border rounded-none p-0 h-auto w-full mb-8">
+                  <TabsTrigger value="following" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">
+                    Volgend ({followedProfiles.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="followers" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">
+                    Volgers ({followerProfiles.length})
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="following" className="mt-0">
+                  {followedProfiles.length > 0 ? (
+                    <div>
+                      {followedProfiles.map((p) => <Row key={p.user_id} p={p} isFollowing={true} isPending={false} />)}
+                    </div>
+                  ) : (
+                    <EmptyState
+                      icon={Users}
+                      title="Volg je eerste bouwer"
+                      description="Zoek hierboven op naam om andere bouwers te ontdekken en hun verbouwingen te volgen."
+                    />
+                  )}
+                </TabsContent>
+
+                <TabsContent value="followers" className="mt-0">
+                  {followerProfiles.length > 0 ? (
+                    <div>
+                      {followerProfiles.map((p) => <Row key={p.user_id} p={p} isFollowing={following.has(p.user_id)} isPending={pending.has(p.user_id)} />)}
+                    </div>
+                  ) : (
+                    <EmptyState
+                      icon={Users}
+                      title="Nog geen volgers"
+                      description="Andere bouwers die jou volgen verschijnen hier."
+                    />
+                  )}
+                </TabsContent>
+              </Tabs>
+            </div>
           )
         ) : loading ? (
           <p className="text-center text-muted-foreground py-10 flex items-center justify-center gap-2 text-sm">

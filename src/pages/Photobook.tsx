@@ -553,24 +553,19 @@ const Photobook = () => {
     }
 
 
-    const visibleSteps = editing ? steps : steps.filter((s) => !excludedSteps.has(s.id));
-    const grouped = new Map<string, any[]>();
+    const visibleSteps = (editing ? steps : steps.filter((s) => !excludedSteps.has(s.id)))
+      .slice()
+      .sort((a, b) => new Date(a.step_date || 0).getTime() - new Date(b.step_date || 0).getTime());
+
+    const segments: { phase: string; steps: any[] }[] = [];
     for (const step of visibleSteps) {
-      const key = step.phase || "Overige updates";
-      if (!grouped.has(key)) grouped.set(key, []);
-      grouped.get(key)!.push(step);
+      const phase = step.phase || "Overige updates";
+      if (segments.length === 0 || segments[segments.length - 1].phase !== phase) {
+        segments.push({ phase, steps: [step] });
+      } else {
+        segments[segments.length - 1].steps.push(step);
+      }
     }
-    // Sort phases by the earliest step_date within each phase (chronological)
-    const sortedPhases = Array.from(grouped.keys()).sort((a, b) => {
-      const firstDateForPhase = (phase: string) =>
-        grouped.get(phase)!.reduce((earliest, step) => {
-          const date = step.step_date ?? "";
-          return !earliest || (date && date < earliest) ? date : earliest;
-        }, "");
-      const aDate = firstDateForPhase(a);
-      const bDate = firstDateForPhase(b);
-      return aDate < bDate ? -1 : aDate > bDate ? 1 : 0;
-    });
 
     // Per-step index and cumulative budget cost
     const stepIdxMap = new Map(visibleSteps.map((s, i) => [s.id, i]));
@@ -583,16 +578,15 @@ const Photobook = () => {
     const totalVisible = visibleSteps.length;
     const budgetTotal = (trip.budget_total as number | null) ?? null;
 
-    for (let phaseIdx = 0; phaseIdx < sortedPhases.length; phaseIdx++) {
-      const phase = sortedPhases[phaseIdx];
+    for (let segmentIdx = 0; segmentIdx < segments.length; segmentIdx++) {
+      const { phase, steps: phaseSteps } = segments[segmentIdx];
       const chapterTitle = settings.chapter_overrides[phase] || phase;
-      const phaseSteps = grouped.get(phase)!;
-      const phaseStart = phaseSteps.reduce((a, s: any) => !a || (s.step_date && s.step_date < a) ? s.step_date : a, "");
-      const phaseEnd = phaseSteps.reduce((a, s: any) => !a || (s.step_date && s.step_date > a) ? s.step_date : a, "");
+      const phaseStart = phaseSteps[0]?.step_date || "";
+      const phaseEnd = phaseSteps[phaseSteps.length - 1]?.step_date || "";
 
       // Chapter divider page — quiet blueprint feel
       list.push({
-        key: `chapter-${phase}`,
+        key: `chapter-${segmentIdx}-${phase}`,
         meta: { chapter: phase, stepId: phaseSteps[0]?.id, firstStep: false },
         node: (
           <div className="h-full flex flex-col bg-[#f6f1e7] relative overflow-hidden">
@@ -601,9 +595,9 @@ const Photobook = () => {
               backgroundSize: "24px 24px",
             }} />
             <div className="flex-1 flex flex-col justify-center px-[12%]">
-              <p className="text-[9px] uppercase tracking-[0.4em] text-accent font-bold mb-4">Hoofdstuk {String(phaseIdx + 1).padStart(2, "0")}</p>
+              <p className="text-[9px] uppercase tracking-[0.4em] text-accent font-bold mb-4">Hoofdstuk {String(segmentIdx + 1).padStart(2, "0")}</p>
               <div className="flex items-baseline gap-5">
-                <span className="text-[6rem] leading-none font-serif font-bold text-primary/15 tabular-nums">{String(phaseIdx + 1).padStart(2, "0")}</span>
+                <span className="text-[6rem] leading-none font-serif font-bold text-primary/15 tabular-nums">{String(segmentIdx + 1).padStart(2, "0")}</span>
                 <div className="flex-1 min-w-0">
                   <h2 className="text-3xl font-serif font-bold leading-tight [overflow-wrap:anywhere] line-clamp-2">{chapterTitle}</h2>
                   {phaseStart && (
@@ -1084,27 +1078,14 @@ const Photobook = () => {
                       </div>
                     </div>
 
-                    {photos.length > 0 && (
+                    {photos.length > 0 && allStepPhotoPages.length > 1 && (
                       <div>
-                        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
-                          Foto's — sleep om volgorde te wijzigen of sleep op een pagina · klik om te verbergen
-                        </p>
-
-                        <PhotoManagePanel
-                          stepId={stepId}
+                        <PhotoPageBuckets
+                          pages={allStepPhotoPages}
                           photos={photos}
                           excludedMedia={excludedMedia}
-                          onToggleMedia={toggleMedia}
-                          onReorder={(sid, newOrder) => upsertSettings({ step_photo_order: { ...settings.step_photo_order, [sid]: newOrder } })}
+                          onMovePhoto={movePhotoToPage}
                         />
-                        {allStepPhotoPages.length > 1 && (
-                          <PhotoPageBuckets
-                            pages={allStepPhotoPages}
-                            photos={photos}
-                            excludedMedia={excludedMedia}
-                            onMovePhoto={movePhotoToPage}
-                          />
-                        )}
                       </div>
                     )}
                   </div>
@@ -1115,6 +1096,21 @@ const Photobook = () => {
                 {pageEntries.map(({ page, pageNumber, step }) => {
                   const currentLayout = getPageLayout(settings.step_layout_overrides, page.key, step.id);
                   const hasPageOverride = !!settings.step_layout_overrides[page.key];
+
+                  const timelinePhotos = sortMediaByTimelineOrder((step.step_media || []).filter((m: any) => m.media_type !== "video" && m.media_type !== "pdf"));
+                  const customOrder = settings.step_photo_order[step.id];
+                  const stepPhotos = customOrder?.length
+                    ? [...timelinePhotos].sort((a: any, b: any) => {
+                        const ai = customOrder.indexOf(a.id);
+                        const bi = customOrder.indexOf(b.id);
+                        if (ai === -1 && bi === -1) return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+                        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+                      })
+                    : timelinePhotos;
+                  
+                  // Filter to only show photos assigned to THIS specific page
+                  const pagePhotosForManager = stepPhotos.filter((p: any) => (page.meta?.photoIds || []).includes(p.id));
+
                   return (
                     <div key={page.key} className="rounded-lg border bg-card p-3">
                       <div className="mb-2 flex items-center justify-between gap-2">
@@ -1139,6 +1135,34 @@ const Photobook = () => {
                           </button>
                         ))}
                       </div>
+
+                      {pagePhotosForManager && pagePhotosForManager.length > 0 && (
+                        <div className="mt-4 pt-3 border-t">
+                          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">
+                            Sleep foto's om te verplaatsen · klik om te verbergen
+                          </p>
+                          <PhotoManagePanel
+                            stepId={step.id}
+                            photos={pagePhotosForManager}
+                            excludedMedia={excludedMedia}
+                            onToggleMedia={toggleMedia}
+                            onReorder={(sid, newOrderOfThisPage) => {
+                              const currentIds = stepPhotos.map((p: any) => p.id);
+                              const oldIdsOfThisPage = pagePhotosForManager.map((p: any) => p.id);
+                              const newGlobalOrder = [...currentIds];
+                              
+                              let newOrderIdx = 0;
+                              for (let i = 0; i < newGlobalOrder.length; i++) {
+                                if (oldIdsOfThisPage.includes(newGlobalOrder[i])) {
+                                   newGlobalOrder[i] = newOrderOfThisPage[newOrderIdx++];
+                                }
+                              }
+                              
+                              upsertSettings({ step_photo_order: { ...settings.step_photo_order, [sid]: newGlobalOrder } });
+                            }}
+                          />
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1738,6 +1762,7 @@ const CheckoutCoverPicker = ({
                 <button
                   key={m.id}
                   type="button"
+                  className="[-webkit-touch-callout:none]"
                   draggable
                   onDragStart={(e) => {
                     e.dataTransfer.setData(PHOTO_DND_MIME, m.id);
@@ -1917,7 +1942,7 @@ const PhotoFrame = ({
 
   return (
     <div
-      className={`relative min-h-0 min-w-0 overflow-hidden bg-secondary flex items-center justify-center ${className} ${interactive ? "cursor-grab active:cursor-grabbing" : ""}`}
+      className={`relative min-h-0 min-w-0 overflow-hidden bg-secondary flex items-center justify-center [-webkit-touch-callout:none] ${className} ${interactive ? "cursor-grab active:cursor-grabbing" : ""}`}
       draggable={interactive}
       onDragStart={(e) => {
         if (!interactive) return;
@@ -1993,7 +2018,7 @@ const PhotoManagePanel = ({
         return (
           <div
             key={m.id}
-            className={`relative group cursor-grab active:cursor-grabbing transition-opacity select-none ${isDragging ? "opacity-30" : ""}`}
+            className={`relative group cursor-grab active:cursor-grabbing transition-opacity select-none [-webkit-touch-callout:none] ${isDragging ? "opacity-30" : ""}`}
             draggable
             onDragStart={(e) => {
               e.dataTransfer.effectAllowed = "move";
@@ -2094,6 +2119,7 @@ const PhotoPageBuckets = ({
                   return (
                     <div
                       key={photoId}
+                      className="[-webkit-touch-callout:none]"
                       draggable
                       onDragStart={(event) => {
                         event.dataTransfer.effectAllowed = "move";

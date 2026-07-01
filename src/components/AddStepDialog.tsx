@@ -57,6 +57,8 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
   const [files, setFiles] = useState<PendingUpload[]>([]);
   const [customPhases, setCustomPhases] = useState<string[]>([]);
   const previewUrlsRef = useRef<string[]>([]);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
 
   useEffect(() => {
     supabase.from("trips").select("custom_phases").eq("id", tripId).single().then(({ data }) => {
@@ -335,23 +337,39 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
                     const file = upload.file;
                     const isImage = file.type.startsWith("image");
                     return (
-                      <div key={upload.id} className={`relative rounded-lg border bg-background p-1.5 transition ${upload.compareRole ? "ring-2 ring-accent" : ""}`}>
-                        <div className="relative aspect-square rounded-md bg-muted flex items-center justify-center overflow-hidden text-center px-1">
+                      <div 
+                        key={upload.id} 
+                        className={`relative rounded-lg border bg-background p-1.5 transition select-none [-webkit-touch-callout:none] ${dragIdx === i ? "opacity-30" : ""} ${dragOverIdx === i && dragIdx !== i ? "ring-2 ring-primary" : ""} ${upload.compareRole ? "ring-2 ring-accent" : ""}`}
+                        draggable
+                        onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDragIdx(i); }}
+                        onDragOver={(e) => { e.preventDefault(); setDragOverIdx(i); }}
+                        onDragLeave={() => setDragOverIdx(null)}
+                        onDrop={() => {
+                          if (dragIdx === null || dragIdx === i) return;
+                          setFiles((prev) => {
+                            const next = [...prev];
+                            const [moved] = next.splice(dragIdx, 1);
+                            next.splice(i, 0, moved);
+                            return next;
+                          });
+                          setDragIdx(null);
+                          setDragOverIdx(null);
+                        }}
+                        onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
+                      >
+                        <div className="relative aspect-square rounded-md bg-muted flex items-center justify-center overflow-hidden text-center cursor-grab active:cursor-grabbing">
                           {isImage && upload.previewUrl ? (
-                            <img src={upload.previewUrl} alt="" className="w-full h-full object-contain bg-muted" />
+                            <img src={upload.previewUrl} alt="" draggable={false} className="w-full h-full object-contain bg-muted pointer-events-none" />
                           ) : file.type === "application/pdf" ? (
-                            <span className="flex flex-col items-center gap-1 text-[10px] leading-tight break-all text-muted-foreground">
+                            <span className="flex flex-col items-center gap-1 text-[10px] leading-tight break-all text-muted-foreground pointer-events-none">
                               <FileText className="h-4 w-4" />
                               {file.name.length > 14 ? `${file.name.slice(0, 12)}...` : file.name}
                             </span>
                           ) : (
-                            <Video className="h-5 w-5 text-muted-foreground" />
+                            <Video className="h-5 w-5 text-muted-foreground pointer-events-none" />
                           )}
-                          <span className="absolute left-1 top-1 rounded bg-background/90 px-1.5 py-0.5 text-[9px] font-bold tabular-nums text-foreground shadow-sm">
-                            {i + 1}
-                          </span>
                           {upload.compareRole && (
-                            <span className="absolute bottom-1 left-1 rounded bg-accent px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent-foreground">
+                            <span className="absolute left-1 top-1 rounded bg-accent px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent-foreground pointer-events-none">
                               {upload.compareRole === "before" ? "Voor" : "Na"}
                             </span>
                           )}

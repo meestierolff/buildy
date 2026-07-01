@@ -388,6 +388,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                         return (
                           <div
                             key={m.id}
+                            className="[-webkit-touch-callout:none]"
                             draggable
                             onDragStart={(e) => {
                               e.dataTransfer.effectAllowed = "move";

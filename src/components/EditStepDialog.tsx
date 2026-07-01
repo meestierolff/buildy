@@ -373,7 +373,7 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
                   return (
                     <div
                       key={m.id}
-                      className={`select-none rounded-lg border bg-background p-1.5 transition ${dragIdx === i ? "opacity-30" : ""} ${dragOverIdx === i && dragIdx !== i ? "ring-2 ring-primary" : ""}`}
+                      className={`select-none [-webkit-touch-callout:none] rounded-lg border bg-background p-1.5 transition ${dragIdx === i ? "opacity-30" : ""} ${dragOverIdx === i && dragIdx !== i ? "ring-2 ring-primary" : ""}`}
                       draggable
                       onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDragIdx(i); }}
                       onDragOver={(e) => { e.preventDefault(); setDragOverIdx(i); }}
@@ -393,17 +393,17 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
                     >
                       <div className={`relative aspect-square cursor-grab active:cursor-grabbing overflow-hidden rounded-md bg-muted ${role ? "ring-2 ring-accent" : ""}`}>
                         {m.media_type === "video" ? (
-                          <video src={m.media_url} className="h-full w-full object-contain" />
+                          <video src={m.media_url} className="h-full w-full object-contain pointer-events-none" />
                         ) : m.media_type === "pdf" ? (
-                          <span className="flex h-full flex-col items-center justify-center gap-1 px-1 text-center text-[10px] leading-tight text-muted-foreground">
+                          <span className="flex h-full flex-col items-center justify-center gap-1 px-1 text-center text-[10px] leading-tight text-muted-foreground pointer-events-none">
                             <FileText className="h-4 w-4" />
                             PDF
                           </span>
                         ) : (
-                          <img src={m.media_url} alt="" className="h-full w-full object-contain" />
+                          <img src={m.media_url} alt="" draggable={false} className="h-full w-full object-contain pointer-events-none" />
                         )}
                         {role && (
-                          <span className="absolute left-1 top-1 rounded bg-accent px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent-foreground">
+                          <span className="absolute left-1 top-1 rounded bg-accent px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent-foreground pointer-events-none">
                             {role === "before" ? "Voor" : "Na"}
                           </span>
                         )}
@@ -415,9 +415,6 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
                         >
                           <Trash2 className="h-3 w-3" />
                         </button>
-                      </div>
-                      <div className="mt-1 rounded bg-muted py-0.5 text-center text-[10px] font-medium text-muted-foreground">
-                        {i + 1}
                       </div>
                       {m.media_type !== "pdf" && m.media_type !== "video" && (
                         <div className="mt-1 grid grid-cols-2 gap-1">

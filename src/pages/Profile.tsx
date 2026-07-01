@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { MapPin, Hammer, Camera, Pencil, Lock, UserPlus, UserCheck, Loader2 } from "lucide-react";
+import { MapPin, Hammer, Camera, Pencil, Lock, UserPlus, UserCheck, Loader2, LogOut } from "lucide-react";
 import { toast } from "sonner";
 import ProjectCard from "@/components/ProjectCard";
 import { applyProjectMediaSummaries, loadProjectMediaSummaries } from "@/lib/projectMedia";
@@ -25,7 +25,7 @@ interface FollowProfile {
 
 const Profile = () => {
   const { userId } = useParams<{ userId: string }>();
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [trips, setTrips] = useState<any[]>([]);
   const [stats, setStats] = useState({ updates: 0, photos: 0 });
@@ -107,7 +107,10 @@ const Profile = () => {
       .select("*")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
-    if (!isMe) tripsQuery = tripsQuery.eq("is_public", true);
+    
+    // Supabase RLS automatically filters out private trips the user is not allowed to see.
+    // By removing the hardcoded .eq("is_public", true) filter, we allow viewers to see 
+    // private trips that they are an accepted follower of.
     const { data: tripsData } = await tripsQuery;
     const rawTrips = tripsData || [];
     const tripIds = rawTrips.map((t: any) => t.id);
@@ -115,8 +118,16 @@ const Profile = () => {
     const tripsWithMedia = applyProjectMediaSummaries(rawTrips, mediaSummaries);
     setTrips(tripsWithMedia);
 
+    let budgetTotal = 0;
+    if (tripIds.length > 0) {
+      const { data: budgetData } = await supabase
+        .from("step_budget")
+        .select("cost")
+        .in("trip_id", tripIds);
+      budgetTotal = (budgetData || []).reduce((sum, row) => sum + (Number(row.cost) || 0), 0);
+    }
+
     const completedProjects = rawTrips.filter((t: any) => (t.progress_percentage || 0) >= 100).length;
-    const budgetTotal = rawTrips.reduce((sum: number, t: any) => sum + (t.budget_total || 0), 0);
     const upcomingProject = rawTrips.find((t: any) => t.start_date && new Date(t.start_date) > new Date()) || null;
     setStatsExtra({ budgetTotal, completedProjects, upcomingProject });
 
@@ -293,13 +304,18 @@ const Profile = () => {
                   disabled={followBusy}
                   className={`rounded-full px-5 text-[11px] font-bold uppercase tracking-widest gap-1.5 ${iFollow ? "bg-foreground text-background hover:bg-foreground/90" : "bg-accent text-accent-foreground hover:bg-accent/90"}`}
                 >
-                  {iFollow ? <><UserCheck className="h-3.5 w-3.5" /> Gevolgd</> : <><UserPlus className="h-3.5 w-3.5" /> Volgen</>}
+                  {iFollow ? <><UserCheck className="h-3.5 w-3.5" /> Volgend</> : <><UserPlus className="h-3.5 w-3.5" /> Volgen</>}
                 </Button>
               )}
               {isMe && (
-                <Button size="sm" variant="outline" onClick={() => setEditing(true)} className="rounded-full px-5 text-[11px] font-bold uppercase tracking-widest gap-1.5 border-border">
-                  <Pencil className="h-3.5 w-3.5" /> Bewerk profiel
-                </Button>
+                <>
+                  <Button size="sm" variant="outline" onClick={() => setEditing(true)} className="rounded-full px-5 text-[11px] font-bold uppercase tracking-widest gap-1.5 border-border">
+                    <Pencil className="h-3.5 w-3.5" /> Bewerk profiel
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={signOut} className="rounded-full px-5 text-[11px] font-bold uppercase tracking-widest gap-1.5 border-border text-muted-foreground hover:text-foreground">
+                    <LogOut className="h-3.5 w-3.5" /> Uitloggen
+                  </Button>
+                </>
               )}
             </div>
           </div>

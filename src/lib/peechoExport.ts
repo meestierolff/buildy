@@ -392,25 +392,24 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<BuildResult> {
   }
 
   // ====== CONTENT ======
-  const visibleSteps = steps.filter(s => !excludedSteps.has(s.id));
-  const grouped = new Map<string, Step[]>();
-  for (const s of visibleSteps) {
-    const k = s.phase || "Overige updates";
-    if (!grouped.has(k)) grouped.set(k, []);
-    grouped.get(k)!.push(s);
-  }
-  const sortedPhases = Array.from(grouped.keys()).sort((a, b) => {
-    const firstDateForPhase = (phase: string) =>
-      grouped.get(phase)!.reduce((earliest, step) => {
-        const date = step.step_date ?? "";
-        return !earliest || (date && date < earliest) ? date : earliest;
-      }, "");
-    const aDate = firstDateForPhase(a);
-    const bDate = firstDateForPhase(b);
-    return aDate < bDate ? -1 : aDate > bDate ? 1 : 0;
-  });
+  const visibleSteps = steps
+    .filter(s => !excludedSteps.has(s.id))
+    .sort((a, b) => new Date(a.step_date || 0).getTime() - new Date(b.step_date || 0).getTime());
 
-  for (const phase of sortedPhases) {
+  const segments: { phase: string; steps: Step[] }[] = [];
+  for (const step of visibleSteps) {
+    const phase = step.phase || "Overige updates";
+    if (segments.length === 0 || segments[segments.length - 1].phase !== phase) {
+      segments.push({ phase, steps: [step] });
+    } else {
+      segments[segments.length - 1].steps.push(step);
+    }
+  }
+
+  for (let segmentIdx = 0; segmentIdx < segments.length; segmentIdx++) {
+    const { phase, steps: phaseSteps } = segments[segmentIdx];
+    const chapterTitle = settings.chapter_overrides[phase] || phase;
+
     // Chapter divider page
     addPage();
     pdf.setFillColor(245, 243, 238);
@@ -422,13 +421,12 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<BuildResult> {
     pdf.setFont("times", "bold");
     pdf.setFontSize(40);
     pdf.setTextColor(30, 30, 30);
-    const chapterTitle = settings.chapter_overrides[phase] || phase;
     pdf.text(clampLines(pdf, chapterTitle, innerW * 0.8, 2), W / 2, H / 2 + 5, { align: "center" });
     pdf.setDrawColor(180, 90, 50);
     pdf.setLineWidth(0.8);
     pdf.line(W / 2 - 12, H / 2 + 12, W / 2 + 12, H / 2 + 12);
 
-    for (const step of grouped.get(phase)!) {
+    for (const step of phaseSteps) {
       const photos = getOrderedPhotos(step, settings, excludedMedia);
       const hasDescription = !!step.description;
       const description = step.description || "";

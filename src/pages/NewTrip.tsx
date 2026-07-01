@@ -125,12 +125,12 @@ const NewTrip = () => {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="start" className="eyebrow">Startdatum</Label>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="start" className="eyebrow min-h-[2rem] flex items-end">Startdatum</Label>
               <Input id="start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-11" />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="end" className="eyebrow">Verwachte einddatum</Label>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="end" className="eyebrow min-h-[2rem] flex items-end">Verwachte<br/>einddatum</Label>
               <Input id="end" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="h-11" />
             </div>
           </div>

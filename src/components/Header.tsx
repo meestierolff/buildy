@@ -29,7 +29,7 @@ const Header = () => {
 
         <nav className="hidden md:flex items-center gap-8">
           <NavLink to="/" end className={navLinkClass}>Ontdekken</NavLink>
-          {user && <NavLink to="/favorieten" className={navLinkClass}>Gevolgd</NavLink>}
+          {user && <NavLink to="/favorieten" className={navLinkClass}>Volgend</NavLink>}
           <NavLink to="/vrienden" className={navLinkClass}>Vrienden</NavLink>
         </nav>
 
@@ -91,7 +91,7 @@ const Header = () => {
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-border bg-background/95 backdrop-blur-md flex">
         {[
           { to: "/", end: true, icon: <Compass className="h-5 w-5" />, label: "Ontdekken" },
-          ...(user ? [{ to: "/favorieten", end: false, icon: <Heart className="h-5 w-5" />, label: "Gevolgd" }] : []),
+          ...(user ? [{ to: "/favorieten", end: false, icon: <Heart className="h-5 w-5" />, label: "Volgend" }] : []),
           { to: "/vrienden", end: false, icon: <Users className="h-5 w-5" />, label: "Vrienden" },
           ...(user ? [{ to: `/profile/${user.id}`, end: false, icon: <UserCircle2 className="h-5 w-5" />, label: "Profiel" }] : []),
         ].map(({ to, end, icon, label }) => (
