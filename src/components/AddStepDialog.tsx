@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import PhaseSelect, { DEFAULT_PHASES } from "./PhaseSelect";
 import { toast } from "sonner";
 import { BriefcaseBusiness, FileText, Star, Upload, Video, Wallet, X } from "lucide-react";
+import { prepareUpload } from "@/lib/compressImage";
 
 interface AddStepDialogProps {
   tripId: string;
