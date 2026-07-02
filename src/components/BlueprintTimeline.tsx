@@ -202,7 +202,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
               <div className={`pointer-events-none absolute left-0 right-0 bottom-[7px] h-px transition-colors ${isActive ? "bg-accent/70" : "bg-accent/40"}`} />
               <button
                 type="button"
-                onClick={(e) => {
+                onClick={() => {
                   const scroller = scrollerRef.current;
                   const el = document.getElementById(`step-${step.id}`);
                   if (scroller && el) {
@@ -388,7 +388,6 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                         return (
                           <div
                             key={m.id}
-                            className="[-webkit-touch-callout:none]"
                             draggable
                             onDragStart={(e) => {
                               e.dataTransfer.effectAllowed = "move";
@@ -409,7 +408,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                               setDraggingMedia(null);
                               setDragOverMediaId(null);
                             }}
-                            className={`relative h-14 w-14 shrink-0 cursor-grab overflow-hidden rounded-md border bg-background active:cursor-grabbing ${isDragging ? "opacity-40" : ""} ${isOver ? "border-accent ring-2 ring-accent/35" : "border-border"}`}
+                            className={`relative h-14 w-14 shrink-0 cursor-grab overflow-hidden rounded-md border bg-background active:cursor-grabbing [-webkit-touch-callout:none] ${isDragging ? "opacity-40" : ""} ${isOver ? "border-accent ring-2 ring-accent/35" : "border-border"}`}
                             title="Sleep om te ordenen"
                           >
                             {m.media_type === "video" ? (

@@ -102,7 +102,7 @@ const Profile = () => {
       is_private: !!profileData.is_private,
     });
 
-    let tripsQuery = supabase
+    const tripsQuery = supabase
       .from("trips")
       .select("*")
       .eq("user_id", userId)

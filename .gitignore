@@ -29,3 +29,4 @@ research/
 tests/e2e/.auth/
 playwright-report/
 test-results/
+.playwright-mcp/

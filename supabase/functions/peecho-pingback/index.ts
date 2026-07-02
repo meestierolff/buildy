@@ -108,8 +108,10 @@ serve(async (req) => {
         status: String(newStatus),
         ordered_at: existing.ordered_at ?? now,
         status_updated_at: now,
-        tracking_code: body.tracking_code ?? null,
-        tracking_url: body.tracking_url ?? null,
+        // Only overwrite tracking info when the pingback actually carries it,
+        // so a later status event can't erase earlier tracking data.
+        ...(body.tracking_code ? { tracking_code: body.tracking_code } : {}),
+        ...(body.tracking_url ? { tracking_url: body.tracking_url } : {}),
         peecho_payload: {
           event: Object.fromEntries(url.searchParams.entries()),
           body,

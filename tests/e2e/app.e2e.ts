@@ -26,8 +26,8 @@ test.describe("Index — ontdekken", () => {
   test("renders hero and projects grid", async ({ page }) => {
     await page.goto(BASE);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-    // Navigation tabs
-    await expect(page.getByRole("navigation")).toBeVisible();
+    // Header navigation tabs (footer also contains a nav element)
+    await expect(page.getByRole("banner").getByRole("navigation")).toBeVisible();
   });
 });
 

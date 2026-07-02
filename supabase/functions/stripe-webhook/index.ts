@@ -74,7 +74,8 @@ const splitName = (name: string | null | undefined) => {
 };
 
 const buildPeechoAddress = (session: Record<string, any>) => {
-  const shipping = session.shipping_details || {};
+  // Newer Stripe API versions expose shipping under collected_information.
+  const shipping = session.collected_information?.shipping_details || session.shipping_details || {};
   const customer = session.customer_details || {};
   const address = shipping.address || customer.address || {};
   const { firstName, lastName } = splitName(shipping.name || customer.name);
@@ -239,10 +240,21 @@ serve(async (req) => {
       return json({ ok: true });
     }
 
+    if (event.type === "checkout.session.async_payment_failed") {
+      await admin.from("photobook_orders").update({
+        status: "payment_failed",
+        payment_status: "failed",
+        stripe_payload: session,
+        status_updated_at: now,
+      }).eq("id", order.id);
+      return json({ ok: true });
+    }
+
+    // checkout.session.completed fires with payment_status "unpaid" for async
+    // payment methods (SEPA, bank transfer) — only payment_status is reliable.
     const isPaid =
-      event.type === "checkout.session.completed"
-      || event.type === "checkout.session.async_payment_succeeded"
-      || session.payment_status === "paid";
+      session.payment_status === "paid"
+      || session.payment_status === "no_payment_required";
 
     if (!isPaid) {
       await admin.from("photobook_orders").update({
@@ -261,17 +273,40 @@ serve(async (req) => {
       stripe_payment_intent_id: session.payment_intent || order.stripe_payment_intent_id,
       stripe_payload: session,
       paid_at: order.paid_at || now,
-      fulfillment_status: order.fulfillment_status === "submitted" ? "submitted" : "pending",
       status_updated_at: now,
     }).eq("id", order.id);
 
-    if (order.fulfillment_status !== "submitted") {
+    // Atomically claim fulfillment so concurrent or retried webhook deliveries
+    // can never submit the same book to Peecho twice. NULL needs the explicit
+    // is.null branch: NULL <> 'submitted' is not true in SQL.
+    const { data: claimed, error: claimError } = await admin
+      .from("photobook_orders")
+      .update({ fulfillment_status: "submitting", status_updated_at: now })
+      .eq("id", order.id)
+      .or("fulfillment_status.is.null,fulfillment_status.in.(pending,failed,needs_configuration)")
+      .select("id");
+
+    if (claimError) {
+      console.error("Fulfillment claim failed", claimError);
+      return json({ error: "Fulfillment claim failed" }, 500);
+    }
+    if (!claimed || claimed.length === 0) {
+      return json({ ok: true, alreadySubmitted: true });
+    }
+
+    try {
       const updatedOrder = { ...order, payment_status: "paid", stripe_payload: session, paid_at: order.paid_at || now };
       const fulfillment = await submitPeechoOrder(admin, updatedOrder, session);
       return json({ ok: true, fulfillment });
+    } catch (submitError) {
+      // Release the claim so a Stripe retry can attempt fulfillment again.
+      await admin.from("photobook_orders").update({
+        fulfillment_status: "failed",
+        fulfillment_error: submitError instanceof Error ? submitError.message : "Peecho submit crashed",
+        status_updated_at: new Date().toISOString(),
+      }).eq("id", order.id);
+      throw submitError;
     }
-
-    return json({ ok: true, alreadySubmitted: true });
   } catch (error) {
     console.error("stripe-webhook error", error);
     return json({ error: error instanceof Error ? error.message : "Stripe webhook failed" }, 500);

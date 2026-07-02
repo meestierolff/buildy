@@ -1762,7 +1762,6 @@ const CheckoutCoverPicker = ({
                 <button
                   key={m.id}
                   type="button"
-                  className="[-webkit-touch-callout:none]"
                   draggable
                   onDragStart={(e) => {
                     e.dataTransfer.setData(PHOTO_DND_MIME, m.id);
@@ -1770,7 +1769,7 @@ const CheckoutCoverPicker = ({
                     e.dataTransfer.effectAllowed = "copy";
                   }}
                   onClick={() => onPick(m.id)}
-                  className={`relative aspect-square overflow-hidden rounded border-2 cursor-grab active:cursor-grabbing ${
+                  className={`relative aspect-square overflow-hidden rounded border-2 cursor-grab active:cursor-grabbing [-webkit-touch-callout:none] ${
                     active ? "border-primary" : "border-transparent hover:border-muted-foreground/40"
                   }`}
                 >
@@ -2119,7 +2118,6 @@ const PhotoPageBuckets = ({
                   return (
                     <div
                       key={photoId}
-                      className="[-webkit-touch-callout:none]"
                       draggable
                       onDragStart={(event) => {
                         event.dataTransfer.effectAllowed = "move";
@@ -2129,7 +2127,7 @@ const PhotoPageBuckets = ({
                         setDragging(null);
                         setDragOverPageKey(null);
                       }}
-                      className={`h-14 w-14 shrink-0 cursor-grab overflow-hidden rounded-md border bg-background active:cursor-grabbing ${
+                      className={`h-14 w-14 shrink-0 cursor-grab overflow-hidden rounded-md border bg-background active:cursor-grabbing [-webkit-touch-callout:none] ${
                         isDragging ? "opacity-40" : ""
                       }`}
                       title="Sleep naar een andere pagina"
