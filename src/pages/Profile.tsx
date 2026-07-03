@@ -33,6 +33,7 @@ const Profile = () => {
   const [followers, setFollowers] = useState<FollowProfile[]>([]);
   const [following, setFollowing] = useState<FollowProfile[]>([]);
   const [iFollow, setIFollow] = useState(false);
+  const [followPending, setFollowPending] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -60,8 +61,8 @@ const Profile = () => {
 
   const loadFollows = useCallback(async (uid: string) => {
     const [{ data: fers }, { data: fing }] = await Promise.all([
-      supabase.from("user_follows").select("follower_id").eq("following_id", uid),
-      supabase.from("user_follows").select("following_id").eq("follower_id", uid),
+      supabase.from("user_follows").select("follower_id").eq("following_id", uid).eq("status", "accepted"),
+      supabase.from("user_follows").select("following_id").eq("follower_id", uid).eq("status", "accepted"),
     ]);
     const followerIds = (fers || []).map((r: any) => r.follower_id);
     const followingIds = (fing || []).map((r: any) => r.following_id);
@@ -79,11 +80,12 @@ const Profile = () => {
     if (user && !isMe) {
       const { data: rel } = await supabase
         .from("user_follows")
-        .select("id")
+        .select("id, status")
         .eq("follower_id", user.id)
         .eq("following_id", uid)
         .maybeSingle();
-      setIFollow(!!rel);
+      setIFollow(rel?.status === "accepted");
+      setFollowPending(rel?.status === "pending");
     }
   }, [isMe, user]);
 
@@ -146,6 +148,10 @@ const Profile = () => {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    setActiveTab("projects");
+  }, [userId]);
+
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
@@ -191,12 +197,18 @@ const Profile = () => {
     if (!user) { toast.error("Log in om te volgen"); return; }
     if (!userId || isMe) return;
     setFollowBusy(true);
-    if (iFollow) {
+    if (iFollow || followPending) {
       await supabase.from("user_follows").delete().eq("follower_id", user.id).eq("following_id", userId);
       setIFollow(false);
+      setFollowPending(false);
     } else {
-      await supabase.from("user_follows").insert({ follower_id: user.id, following_id: userId });
-      setIFollow(true);
+      const { data } = await supabase
+        .from("user_follows")
+        .insert({ follower_id: user.id, following_id: userId })
+        .select("status")
+        .single();
+      setIFollow(data?.status === "accepted");
+      setFollowPending(data?.status === "pending");
     }
     await loadFollows(userId);
     setFollowBusy(false);
@@ -302,9 +314,9 @@ const Profile = () => {
                   size="sm"
                   onClick={toggleFollow}
                   disabled={followBusy}
-                  className={`rounded-full px-5 text-[11px] font-bold uppercase tracking-widest gap-1.5 ${iFollow ? "bg-foreground text-background hover:bg-foreground/90" : "bg-accent text-accent-foreground hover:bg-accent/90"}`}
+                  className={`rounded-full px-5 text-[11px] font-bold uppercase tracking-widest gap-1.5 ${iFollow || followPending ? "bg-foreground text-background hover:bg-foreground/90" : "bg-accent text-accent-foreground hover:bg-accent/90"}`}
                 >
-                  {iFollow ? <><UserCheck className="h-3.5 w-3.5" /> Volgend</> : <><UserPlus className="h-3.5 w-3.5" /> Volgen</>}
+                  {iFollow ? <><UserCheck className="h-3.5 w-3.5" /> Volgend</> : followPending ? <><UserCheck className="h-3.5 w-3.5" /> In afwachting</> : <><UserPlus className="h-3.5 w-3.5" /> Volgen</>}
                 </Button>
               )}
               {isMe && (

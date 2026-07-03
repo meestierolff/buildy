@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -41,8 +41,36 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
     [...(step.step_media || [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
   );
   const [newFiles, setNewFiles] = useState<File[]>([]);
+  const [newFileDragIdx, setNewFileDragIdx] = useState<number | null>(null);
+  const [newFileDragOverIdx, setNewFileDragOverIdx] = useState<number | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  const reorderExistingMedia = (draggedId: string, targetId: string) => {
+    if (!draggedId || !targetId || draggedId === targetId) return;
+    setExistingMedia((prev) => {
+      const next = [...prev];
+      const from = next.findIndex((item) => item.id === draggedId);
+      const to = next.findIndex((item) => item.id === targetId);
+      if (from < 0 || to < 0) return prev;
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  };
+
+  const reorderNewFiles = (draggedKey: string, targetKey: string) => {
+    if (!draggedKey || !targetKey || draggedKey === targetKey) return;
+    setNewFiles((prev) => {
+      const next = [...prev];
+      const from = next.findIndex((item, index) => `${item.name}-${index}` === draggedKey || `${item.name}-${index}-${item.size}` === draggedKey);
+      const to = next.findIndex((item, index) => `${item.name}-${index}` === targetKey || `${item.name}-${index}-${item.size}` === targetKey);
+      if (from < 0 || to < 0) return prev;
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  };
   const [customPhases, setCustomPhases] = useState<string[]>([]);
   const [floorplans, setFloorplans] = useState<FloorInfo[]>([]);
   const [selectedFloorId, setSelectedFloorId] = useState<string>(step.floorplan_id ?? "__legacy__");
@@ -247,6 +275,9 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto z-[1000]">
         <DialogHeader>
           <DialogTitle>Update bewerken</DialogTitle>
+          <DialogDescription>
+            Werk de inhoud, media en volgorde van deze projectupdate bij.
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -375,21 +406,17 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
                       key={m.id}
                       className={`select-none [-webkit-touch-callout:none] rounded-lg border bg-background p-1.5 transition ${dragIdx === i ? "opacity-30" : ""} ${dragOverIdx === i && dragIdx !== i ? "ring-2 ring-primary" : ""}`}
                       draggable
-                      onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDragIdx(i); }}
+                      onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", m.id); setDragIdx(i); }}
                       onDragOver={(e) => { e.preventDefault(); setDragOverIdx(i); }}
                       onDragLeave={() => setDragOverIdx(null)}
-                      onDrop={() => {
-                        if (dragIdx === null || dragIdx === i) return;
-                        setExistingMedia((prev) => {
-                          const next = [...prev];
-                          const [moved] = next.splice(dragIdx, 1);
-                          next.splice(i, 0, moved);
-                          return next;
-                        });
+                      onDrop={(e) => {
+                        const draggedId = e.dataTransfer.getData("text/plain");
+                        reorderExistingMedia(draggedId, m.id);
                         setDragIdx(null);
                         setDragOverIdx(null);
                       }}
                       onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
+                      onContextMenu={(e) => e.preventDefault()}
                     >
                       <div className={`relative aspect-square cursor-grab active:cursor-grabbing overflow-hidden rounded-md bg-muted ${role ? "ring-2 ring-accent" : ""}`}>
                         {m.media_type === "video" ? (
@@ -442,17 +469,42 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
             {newFiles.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-2">
                 {newFiles.map((f, i) => (
-                  <div key={i} className="relative group">
+                  <div
+                    key={`${f.name}-${i}-${f.size}`}
+                    className={`relative group select-none [-webkit-touch-callout:none] ${newFileDragIdx === i ? "opacity-30" : ""} ${newFileDragOverIdx === i && newFileDragIdx !== i ? "ring-2 ring-primary rounded-md" : ""}`}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.effectAllowed = "move";
+                      e.dataTransfer.setData("text/plain", `${f.name}-${i}-${f.size}`);
+                      setNewFileDragIdx(i);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setNewFileDragOverIdx(i);
+                    }}
+                    onDragLeave={() => setNewFileDragOverIdx(null)}
+                    onDrop={(e) => {
+                      const draggedKey = e.dataTransfer.getData("text/plain");
+                      reorderNewFiles(draggedKey, `${f.name}-${i}-${f.size}`);
+                      setNewFileDragIdx(null);
+                      setNewFileDragOverIdx(null);
+                    }}
+                    onDragEnd={() => {
+                      setNewFileDragIdx(null);
+                      setNewFileDragOverIdx(null);
+                    }}
+                    onContextMenu={(e) => e.preventDefault()}
+                  >
                     <div className="w-16 h-16 rounded-md bg-muted overflow-hidden flex items-center justify-center text-center px-1">
                       {f.type.startsWith("image") ? (
-                        <img src={URL.createObjectURL(f)} alt="" className="w-full h-full object-contain bg-muted" />
+                        <img src={URL.createObjectURL(f)} alt="" draggable={false} className="w-full h-full object-contain bg-muted pointer-events-none" />
                       ) : f.type === "application/pdf" ? (
-                        <span className="flex flex-col items-center gap-1 text-[10px] leading-tight text-muted-foreground">
+                        <span className="flex flex-col items-center gap-1 text-[10px] leading-tight text-muted-foreground pointer-events-none">
                           <FileText className="h-4 w-4" />
                           PDF
                         </span>
                       ) : (
-                        <Video className="h-5 w-5 text-muted-foreground" />
+                        <Video className="h-5 w-5 text-muted-foreground pointer-events-none" />
                       )}
                     </div>
                     <button

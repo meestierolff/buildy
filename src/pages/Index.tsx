@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, Home, Hammer, Search, X, BookOpen, ArrowRight } from "lucide-react";
 import EmptyState from "@/components/EmptyState";
 import ProjectCard from "@/components/ProjectCard";
+import BrandLogo from "@/components/BrandLogo";
 import { applyProjectMediaSummaries, loadProjectMediaSummaries } from "@/lib/projectMedia";
 import { usePageMeta } from "@/hooks/usePageMeta";
 
@@ -389,7 +390,7 @@ const Index = () => {
       <footer className="border-t border-border mt-16 bg-muted/30">
         <div className="container py-8 max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <span className="font-serif italic text-xl font-bold">Buildy</span>
+            <BrandLogo href="/" imageClassName="h-8 w-8 rounded-lg" textClassName="font-serif italic text-xl font-bold" />
             <span className="text-muted-foreground text-xs">© {new Date().getFullYear()}</span>
           </div>
           <div className="flex items-center gap-6 text-sm font-medium">

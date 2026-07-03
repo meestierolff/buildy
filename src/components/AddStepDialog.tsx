@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -59,6 +59,19 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
   const previewUrlsRef = useRef<string[]>([]);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  const reorderUploads = (draggedId: string, targetId: string) => {
+    if (!draggedId || !targetId || draggedId === targetId) return;
+    setFiles((prev) => {
+      const next = [...prev];
+      const from = next.findIndex((item) => item.id === draggedId);
+      const to = next.findIndex((item) => item.id === targetId);
+      if (from < 0 || to < 0) return prev;
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  };
 
   useEffect(() => {
     supabase.from("trips").select("custom_phases").eq("id", tripId).single().then(({ data }) => {
@@ -221,9 +234,12 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto z-[1000]">
         <DialogHeader>
-          <DialogTitle>Nieuwe update toevoegen</DialogTitle>
+          <DialogTitle>Update toevoegen</DialogTitle>
+          <DialogDescription>
+            Voeg een nieuwe update toe met tekst, budgetinformatie en media voor dit project.
+          </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <Label>Update-titel *</Label>
             <Input value={locationName} onChange={(e) => setLocationName(e.target.value)} required placeholder="Bijv. Sloop begane grond, eerste keukenwand eruit" />
@@ -246,7 +262,7 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
             </Label>
           </div>
           <div>
-            <Label>Verhaal</Label>
+            <DialogTitle>Update toevoegen</DialogTitle>
             <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Wat is er gedaan, welke keuze heb je gemaakt en wat wil je later nog weten?" rows={4} />
           </div>
 
@@ -341,21 +357,17 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
                         key={upload.id} 
                         className={`relative rounded-lg border bg-background p-1.5 transition select-none [-webkit-touch-callout:none] ${dragIdx === i ? "opacity-30" : ""} ${dragOverIdx === i && dragIdx !== i ? "ring-2 ring-primary" : ""} ${upload.compareRole ? "ring-2 ring-accent" : ""}`}
                         draggable
-                        onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDragIdx(i); }}
+                        onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", upload.id); setDragIdx(i); }}
                         onDragOver={(e) => { e.preventDefault(); setDragOverIdx(i); }}
                         onDragLeave={() => setDragOverIdx(null)}
-                        onDrop={() => {
-                          if (dragIdx === null || dragIdx === i) return;
-                          setFiles((prev) => {
-                            const next = [...prev];
-                            const [moved] = next.splice(dragIdx, 1);
-                            next.splice(i, 0, moved);
-                            return next;
-                          });
+                        onDrop={(e) => {
+                          const draggedId = e.dataTransfer.getData("text/plain");
+                          reorderUploads(draggedId, upload.id);
                           setDragIdx(null);
                           setDragOverIdx(null);
                         }}
                         onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
+                        onContextMenu={(e) => e.preventDefault()}
                       >
                         <div className="relative aspect-square rounded-md bg-muted flex items-center justify-center overflow-hidden text-center cursor-grab active:cursor-grabbing">
                           {isImage && upload.previewUrl ? (

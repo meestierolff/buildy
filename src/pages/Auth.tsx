@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import BrandLogo from "@/components/BrandLogo";
 import { toast } from "sonner";
 import { usePageMeta } from "@/hooks/usePageMeta";
 
@@ -83,14 +84,7 @@ const Auth = () => {
     <div className="min-h-screen bg-background flex items-center justify-center px-6 py-16">
       <div className="w-full max-w-sm">
         <div className="text-center mb-12">
-          <Link to="/" className="inline-flex items-center gap-2 mb-10">
-            <div className="w-8 h-8 bg-foreground rounded-md flex items-center justify-center">
-              <svg className="w-4 h-4 text-background" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-              </svg>
-            </div>
-            <span className="text-lg font-semibold tracking-tight">Buildy</span>
-          </Link>
+          <BrandLogo className="mb-10" imageClassName="h-10 w-10 rounded-xl" textClassName="text-xl" />
           <p className="eyebrow mb-4">{isLogin ? "Inloggen" : "Registreren"}</p>
           <h1 className="font-serif italic text-4xl md:text-5xl leading-tight">
             {isLogin ? "Welkom terug." : "Start je dagboek."}

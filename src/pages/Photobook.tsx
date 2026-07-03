@@ -21,7 +21,7 @@ type CoverTextPos = "bottom" | "top" | "center";
 
 const PRINT_PAGE_WIDTH = 600;
 const PRINT_PAGE_HEIGHT = 400;
-const TEXT_CHARS_PER_PAGE = 900;
+const TEXT_CHARS_PER_LINE = 62;
 
 const PHOTO_DND_MIME = "application/x-buildy-photo";
 
@@ -53,26 +53,52 @@ const layoutForPhotoCount = (count: number, preferred?: StepLayout): StepLayout 
   return "grid";
 };
 
-const splitTextIntoPages = (text: string, maxChars = TEXT_CHARS_PER_PAGE) => {
+const splitTextIntoPages = (text: string, locationName?: string | null) => {
   const trimmed = text.trim();
   if (!trimmed) return [];
 
+  const titleLines = locationName ? Math.min(2, Math.ceil(locationName.trim().length / 28)) : 0;
+  const maxLines = Math.max(8, (locationName ? 14 : 17) - titleLines);
   const pages: string[] = [];
-  let current = "";
-  const words = trimmed.split(/(\s+)/);
+  let currentPage = "";
+  let currentLine = "";
+  let currentLineCount = 0;
+  const words = trimmed.split(/(\s+|\n)/);
 
   for (const word of words) {
     if (!word) continue;
-    const next = `${current}${word}`;
-    if (current && next.length > maxChars) {
-      pages.push(current.trim());
-      current = word.trimStart();
+
+    if (word === "\n") {
+      currentPage += `${currentLine.trimEnd()}\n`;
+      currentLine = "";
+      currentLineCount += 1;
+      if (currentLineCount >= maxLines) {
+        pages.push(currentPage.trim());
+        currentPage = "";
+        currentLineCount = 0;
+      }
+      continue;
+    }
+
+    const nextLine = `${currentLine}${word}`;
+    if (currentLine.trim() && nextLine.length > TEXT_CHARS_PER_LINE) {
+      currentPage += `${currentLine.trimEnd()}\n`;
+      currentLine = word.trimStart();
+      currentLineCount += 1;
+      if (currentLineCount >= maxLines) {
+        pages.push(currentPage.trim());
+        currentPage = "";
+        currentLineCount = 0;
+      }
     } else {
-      current = next;
+      currentLine = nextLine;
     }
   }
 
-  if (current.trim()) pages.push(current.trim());
+  if (currentLine.trim()) {
+    currentPage += currentLine.trimEnd();
+  }
+  if (currentPage.trim()) pages.push(currentPage.trim());
   return pages;
 };
 
@@ -629,7 +655,7 @@ const Photobook = () => {
           : allStepPhotos;
         const photos = orderedPhotos.filter((m: any) => !excludedMedia.has(m.id));
         const hasDescription = !!step.description;
-        const descriptionPages = hasDescription ? splitTextIntoPages(step.description as string) : [];
+        const descriptionPages = hasDescription ? splitTextIntoPages(step.description as string, step.location_name) : [];
 
         if (photos.length === 0 && !hasDescription && !step.location_name) continue;
 

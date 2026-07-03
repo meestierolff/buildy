@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import BrandLogo from "@/components/BrandLogo";
 import { Plus, LogOut, User, Heart, Compass, Users, UserCircle2, Settings } from "lucide-react";
 import NotificationBell from "@/components/NotificationBell";
 import OnboardingDialog from "@/components/OnboardingDialog";
@@ -18,14 +19,7 @@ const Header = () => {
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur-md text-foreground">
       <div className="max-w-7xl mx-auto px-6 md:px-8 flex h-16 items-center justify-between gap-4">
-        <Link to="/" className="flex items-center gap-2 group">
-          <div className="w-8 h-8 bg-foreground rounded-md flex items-center justify-center">
-            <svg className="w-4 h-4 text-background" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-            </svg>
-          </div>
-          <span className="text-lg font-semibold tracking-tight">Buildy</span>
-        </Link>
+        <BrandLogo imageClassName="h-8 w-8 rounded-lg" />
 
         <nav className="hidden md:flex items-center gap-8">
           <NavLink to="/" end className={navLinkClass}>Ontdekken</NavLink>

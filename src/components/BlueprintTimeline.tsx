@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, GripVertical, Heart, Image as ImageIcon, Link2, MessageCircle, Pencil, Trash2, Star } from "lucide-react";
+import { ChevronDown, Heart, Image as ImageIcon, Link2, MessageCircle, Pencil, Trash2, Star } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -167,7 +167,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
 
   return (
     <div className="relative pb-16">
-      <div ref={scrollerRef} className="flex gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x snap-x snap-mandatory pb-4 -mx-2 px-2 scroll-smooth">
+      <div ref={scrollerRef} className="flex gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain snap-x snap-mandatory pb-4 -mx-2 px-2 scroll-smooth">
       {steps.map((step) => {
         // Sort media by sort_order to match edit dialog order
         const sortedMedia = mediaDrafts[step.id] ?? [...step.step_media].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
@@ -312,9 +312,9 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                           size="icon"
                           className={`h-7 w-7 ${reorderOpenFor === step.id ? "text-accent" : ""}`}
                           onClick={() => setReorderOpenFor(reorderOpenFor === step.id ? null : step.id)}
-                          title="Foto's ordenen"
+                          title="Foto's verslepen"
                         >
-                          <GripVertical className="h-3.5 w-3.5" />
+                          <ImageIcon className="h-3.5 w-3.5" />
                         </Button>
                       )}
                       <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit?.(step)}>
@@ -372,7 +372,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                 {isOwner && sortedMedia.filter((m) => m.media_type !== "pdf").length > 1 && reorderOpenFor === step.id && (
                   <div className="border-t border-border/60 bg-secondary/30 px-3 py-2">
                     <div className="mb-1.5 flex items-center justify-between gap-2">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Foto's ordenen</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Foto's verslepen</p>
                       <button
                         type="button"
                         onClick={() => setReorderOpenFor(null)}
@@ -381,6 +381,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                         Sluiten
                       </button>
                     </div>
+                    <p className="mb-2 text-[10px] text-muted-foreground">Sleep de foto’s om de volgorde in de tijdlijn te wijzigen.</p>
                     <div className="flex gap-1.5 overflow-x-auto pb-1">
                       {sortedMedia.filter((m) => m.media_type !== "pdf").map((m, mediaIdx) => {
                         const isDragging = draggingMedia?.mediaId === m.id;
@@ -408,25 +409,20 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                               setDraggingMedia(null);
                               setDragOverMediaId(null);
                             }}
+                            onContextMenu={(e) => e.preventDefault()}
                             className={`relative h-14 w-14 shrink-0 cursor-grab overflow-hidden rounded-md border bg-background active:cursor-grabbing [-webkit-touch-callout:none] ${isDragging ? "opacity-40" : ""} ${isOver ? "border-accent ring-2 ring-accent/35" : "border-border"}`}
-                            title="Sleep om te ordenen"
+                            title="Sleep om te verplaatsen"
                           >
                             {m.media_type === "video" ? (
                               <video src={m.media_url} className="h-full w-full object-cover" />
                             ) : (
                               <img src={m.media_url} alt="" className="h-full w-full object-cover" loading="lazy" draggable={false} />
                             )}
-                            <span className="absolute left-1 top-1 rounded bg-background/90 px-1 text-[9px] font-bold tabular-nums text-foreground shadow-sm">
-                              {mediaIdx + 1}
-                            </span>
                             {m.compare_role && (
                               <span className="absolute bottom-1 left-1 rounded bg-accent px-1 text-[8px] font-bold uppercase tracking-wider text-accent-foreground">
                                 {m.compare_role === "before" ? "Voor" : "Na"}
                               </span>
                             )}
-                            <span className="absolute right-1 top-1 rounded bg-background/90 p-0.5 text-muted-foreground shadow-sm">
-                              <GripVertical className="h-3 w-3" />
-                            </span>
                           </div>
                         );
                       })}

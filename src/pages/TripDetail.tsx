@@ -40,15 +40,15 @@ const toSortableTime = (value?: string | null) => {
   return Number.isFinite(time) ? time : 0;
 };
 
-const sortStepsNewestFirst = <T extends { step_date: string; step_order?: number | null; created_at?: string | null }>(items: T[]) =>
+const sortStepsOldestFirst = <T extends { step_date: string; step_order?: number | null; created_at?: string | null }>(items: T[]) =>
   [...items].sort((a, b) => {
-    const dateDiff = toSortableTime(b.step_date) - toSortableTime(a.step_date);
+    const dateDiff = toSortableTime(a.step_date) - toSortableTime(b.step_date);
     if (dateDiff !== 0) return dateDiff;
 
-    const orderDiff = (b.step_order ?? 0) - (a.step_order ?? 0);
+    const orderDiff = (a.step_order ?? 0) - (b.step_order ?? 0);
     if (orderDiff !== 0) return orderDiff;
 
-    return toSortableTime(b.created_at) - toSortableTime(a.created_at);
+    return toSortableTime(a.created_at) - toSortableTime(b.created_at);
   });
 
 const TripDetail = () => {
@@ -328,7 +328,7 @@ const TripDetail = () => {
   const totalPhotos = steps.reduce((sum, s) => sum + (s.step_media?.length ?? 0), 0);
   const milestones = steps.filter((s) => s.is_milestone).length;
   const headerCoverUrl = pageCoverUrl;
-  const timelineSteps = sortStepsNewestFirst(steps);
+  const timelineSteps = sortStepsOldestFirst(steps);
 
   const effectiveFloorplans: FloorInfo[] =
     Array.isArray(trip.floorplans) && trip.floorplans.length > 0

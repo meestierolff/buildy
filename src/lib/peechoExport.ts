@@ -253,7 +253,7 @@ const drawStepTextPages = (
     pdf.text(titleLines, MARGIN, MARGIN + 42);
 
     const textY = MARGIN + 54 + titleLines.length * 7;
-    const maxLines = Math.max(1, Math.floor((H - MARGIN - textY) / lineHeight));
+    const maxLines = Math.max(1, Math.floor((H - MARGIN - textY - 8) / lineHeight));
     const chunk = lines.slice(cursor, cursor + maxLines);
 
     pdf.setFont("times", "italic");
