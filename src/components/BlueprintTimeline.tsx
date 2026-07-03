@@ -53,23 +53,28 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const initialPositionedRef = useRef(false);
 
-  // Deep-link: scroll naar ?step=<id> bij eerste load (alleen horizontaal)
+  // Initial focus: use ?step deeplink when present, otherwise land on the most recent update.
   useEffect(() => {
-    if (steps.length === 0) return;
+    if (steps.length === 0 || initialPositionedRef.current) return;
     const params = new URLSearchParams(window.location.search);
-    const target = params.get("step");
-    if (!target || !steps.some((s) => s.id === target)) return;
-    // Wacht tot kaarten gerenderd zijn
+    const targetFromUrl = params.get("step");
+    const target = targetFromUrl && steps.some((s) => s.id === targetFromUrl)
+      ? targetFromUrl
+      : steps[steps.length - 1]?.id;
+    if (!target) return;
+
     requestAnimationFrame(() => {
       const el = document.getElementById(`step-${target}`);
       const scroller = scrollerRef.current;
       if (el && scroller) {
-        const scrollerRect = scroller.getBoundingClientRect();
-        const elRect = el.getBoundingClientRect();
-        scroller.scrollTo({ left: scroller.scrollLeft + (elRect.left - scrollerRect.left), behavior: "smooth" });
+        const maxScrollLeft = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+        const nextLeft = Math.min(Math.max(0, el.offsetLeft - 16), maxScrollLeft);
+        scroller.scrollTo({ left: nextLeft, behavior: "auto" });
         setActiveStepId(target);
         setExpandedId(target);
+        initialPositionedRef.current = true;
       }
     });
   }, [steps]);
