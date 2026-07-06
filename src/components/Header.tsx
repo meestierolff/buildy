@@ -32,7 +32,7 @@ const Header = () => {
             <>
               <NotificationBell />
               <Link to="/trips/new" className="hidden sm:block">
-                <Button size="sm" variant="outline" className="rounded-full px-4 text-[11px] font-bold uppercase tracking-widest gap-1.5 border-border">
+                <Button variant="pillOutline" className="h-9 px-4 gap-1.5">
                   <Plus className="h-3.5 w-3.5" />
                   Nieuw project
                 </Button>
@@ -72,7 +72,7 @@ const Header = () => {
             </>
           ) : (
             <Link to="/auth">
-              <Button size="sm" className="rounded-full px-5 text-[11px] font-bold uppercase tracking-widest bg-foreground text-background hover:bg-foreground/90">
+              <Button variant="pill" className="h-9 px-5">
                 Inloggen
               </Button>
             </Link>

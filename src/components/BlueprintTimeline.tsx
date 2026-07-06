@@ -388,7 +388,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                     </div>
                     <p className="mb-2 text-[10px] text-muted-foreground">Sleep de foto’s om de volgorde in de tijdlijn te wijzigen.</p>
                     <div className="flex gap-1.5 overflow-x-auto pb-1">
-                      {sortedMedia.filter((m) => m.media_type !== "pdf").map((m, mediaIdx) => {
+                      {sortedMedia.filter((m) => m.media_type !== "pdf").map((m) => {
                         const isDragging = draggingMedia?.mediaId === m.id;
                         const isOver = dragOverMediaId === m.id && !isDragging;
                         return (

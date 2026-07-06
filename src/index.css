@@ -1,5 +1,6 @@
-@import 'https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700&display=swap';
-
+/* Fonts (Instrument Serif + Inter) are loaded via <link rel="preconnect"> and a
+   stylesheet <link> in index.html so they don't block first paint. Don't re-add
+   an @import here. */
 @tailwind base;
 
 /* Ensure dialogs render above Leaflet map */
@@ -105,10 +106,6 @@
 }
 
 @layer utilities {
-  .text-gradient-gold {
-    @apply text-accent;
-  }
-
   .blueprint-grid {
     background-color: hsl(var(--muted));
     background-image:

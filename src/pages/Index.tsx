@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Plus, Home, Hammer, Search, X, BookOpen, ArrowRight } from "lucide-react";
 import EmptyState from "@/components/EmptyState";
 import ProjectCard from "@/components/ProjectCard";
-import BrandLogo from "@/components/BrandLogo";
 import { applyProjectMediaSummaries, loadProjectMediaSummaries } from "@/lib/projectMedia";
 import { usePageMeta } from "@/hooks/usePageMeta";
 
@@ -157,13 +156,13 @@ const Index = () => {
         </p>
         {user ? (
           <Link to="/trips/new">
-            <Button size="lg" className="rounded-full px-8 py-6 text-[11px] font-bold uppercase tracking-[0.15em] bg-foreground text-background hover:bg-foreground/90 shadow-sm gap-2">
+            <Button variant="pill" size="pillLg" className="gap-2">
               <Plus className="h-4 w-4" /> Start een nieuw project
             </Button>
           </Link>
         ) : (
           <Link to="/auth">
-            <Button size="lg" className="rounded-full px-8 py-6 text-[11px] font-bold uppercase tracking-[0.15em] bg-foreground text-background hover:bg-foreground/90 shadow-sm">
+            <Button variant="pill" size="pillLg">
               Aan de slag
             </Button>
           </Link>
@@ -184,7 +183,7 @@ const Index = () => {
               Bouwboek dat je trots op je salontafel legt. Geen losse mappen meer.
             </p>
             <Link to={user ? "/trips/new" : "/auth"}>
-              <Button size="lg" className="rounded-full px-7 text-[11px] font-bold uppercase tracking-[0.15em] bg-accent text-accent-foreground hover:bg-accent/90 gap-2">
+              <Button variant="pillAccent" size="pill" className="px-7 gap-2">
                 <BookOpen className="h-4 w-4" /> Bekijk hoe het werkt <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
@@ -356,7 +355,7 @@ const Index = () => {
                 description="Documenteer elke stap, deel updates en bewaar foto's voor later."
                 action={
                   <Link to="/trips/new">
-                    <Button className="rounded-full px-6 text-[11px] font-bold uppercase tracking-widest bg-foreground text-background hover:bg-foreground/90 gap-2">
+                    <Button variant="pill" size="pill" className="gap-2">
                       <Plus className="h-4 w-4" /> Nieuw project
                     </Button>
                   </Link>
@@ -385,24 +384,6 @@ const Index = () => {
           </div>
         </section>
       </section>
-
-      {/* Footer */}
-      <footer className="border-t border-border mt-16 bg-muted/30">
-        <div className="container py-8 max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <BrandLogo href="/" imageClassName="h-8 w-8 rounded-lg" textClassName="font-serif italic text-xl font-bold" />
-            <span className="text-muted-foreground text-xs">© {new Date().getFullYear()}</span>
-          </div>
-          <div className="flex items-center gap-6 text-sm font-medium">
-            <a href="https://www.instagram.com/buildy.log/" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="20" x="2" y="2" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/></svg>
-              Instagram
-            </a>
-            <Link to="/privacy" className="text-muted-foreground hover:text-foreground transition-colors">Privacy</Link>
-            <Link to="/voorwaarden" className="text-muted-foreground hover:text-foreground transition-colors">Voorwaarden</Link>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 };

@@ -14,6 +14,13 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        // Source of truth for the two typefaces. Defining `serif` here makes the
+        // Tailwind `font-serif` utility emit Instrument Serif — otherwise the
+        // generated utility (Georgia/Times) overrides the intended heading font.
+        sans: ["Inter", "system-ui", "sans-serif"],
+        serif: ["Instrument Serif", "Georgia", "serif"],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
