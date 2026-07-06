@@ -38,12 +38,13 @@ const Budget = () => {
   useEffect(() => {
     if (!id) return;
     (async () => {
-      const [{ data: t }, { data: s }, { data: b }] = await Promise.all([
+      const [{ data: t }, { data: s }, { data: b }, { data: bt }] = await Promise.all([
         supabase.from("trips").select("*").eq("id", id).single(),
         supabase.from("steps").select("*").eq("trip_id", id).order("step_date", { ascending: true }),
         supabase.from("step_budget").select("*").eq("trip_id", id),
+        supabase.from("trip_budgets").select("budget_total").eq("trip_id", id).maybeSingle(),
       ]);
-      setTrip(t);
+      setTrip(t ? { ...t, budget_total: bt?.budget_total ?? null } : t);
       const budgetMap = new Map((b || []).map((row: any) => [row.step_id, row]));
       const merged = (s || []).map((step: any) => {
         const bud = budgetMap.get(step.id) as any;
@@ -88,7 +89,9 @@ const Budget = () => {
   const saveBudget = async () => {
     if (!id) return;
     const val = budgetDraft === "" ? null : Number(budgetDraft);
-    const { error } = await supabase.from("trips").update({ budget_total: val }).eq("id", id);
+    const { error } = await supabase
+      .from("trip_budgets")
+      .upsert({ trip_id: id, budget_total: val }, { onConflict: "trip_id" });
     if (error) toast.error("Kon niet opslaan");
     else { setTrip((t: any) => ({ ...t, budget_total: val })); setEditingBudget(false); toast.success("Budget opgeslagen"); }
   };

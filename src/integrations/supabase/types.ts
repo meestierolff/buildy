@@ -620,6 +620,35 @@ export type Database = {
           },
         ]
       }
+      trip_budgets: {
+        Row: {
+          budget_total: number | null
+          created_at: string
+          trip_id: string
+          updated_at: string
+        }
+        Insert: {
+          budget_total?: number | null
+          created_at?: string
+          trip_id: string
+          updated_at?: string
+        }
+        Update: {
+          budget_total?: number | null
+          created_at?: string
+          trip_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trip_budgets_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: true
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trip_private_info: {
         Row: {
           address: string | null
@@ -649,7 +678,6 @@ export type Database = {
       trips: {
         Row: {
           budget_public: boolean
-          budget_total: number | null
           countries: string[] | null
           cover_image_url: string | null
           cover_position_y: number
@@ -672,7 +700,6 @@ export type Database = {
         }
         Insert: {
           budget_public?: boolean
-          budget_total?: number | null
           countries?: string[] | null
           cover_image_url?: string | null
           cover_position_y?: number
@@ -695,7 +722,6 @@ export type Database = {
         }
         Update: {
           budget_public?: boolean
-          budget_total?: number | null
           countries?: string[] | null
           cover_image_url?: string | null
           cover_position_y?: number
