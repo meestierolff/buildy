@@ -371,7 +371,7 @@ const Photobook = () => {
   useEffect(() => {
     const fetchData = async () => {
       if (!id) return;
-      const [{ data: tripData }, { data: stepsData }, { data: settingsData }, { data: exMedia }, { data: exSteps }, { data: privInfo }, { data: budgetData }, orderData] = await Promise.all([
+      const [{ data: tripData }, { data: stepsData }, { data: settingsData }, { data: exMedia }, { data: exSteps }, { data: privInfo }, { data: budgetData }, { data: budgetTotalRow }, orderData] = await Promise.all([
         supabase.from("trips").select("*").eq("id", id).single(),
         supabase.from("steps").select("*, step_media(*)").eq("trip_id", id).order("step_date", { ascending: true }),
         supabase.from("photobook_settings").select("*").eq("trip_id", id).maybeSingle(),
@@ -379,10 +379,11 @@ const Photobook = () => {
         supabase.from("photobook_excluded_steps").select("step_id").eq("trip_id", id),
         supabase.from("trip_private_info").select("address").eq("trip_id", id).maybeSingle(),
         supabase.from("step_budget").select("step_id, cost").eq("trip_id", id),
+        supabase.from("trip_budgets").select("budget_total").eq("trip_id", id).maybeSingle(),
         fetchPhotobookOrders(id),
       ]);
       setStepBudgetMap(new Map((budgetData || []).map((r: any) => [r.step_id, Number(r.cost) || 0])));
-      setTrip(tripData ? { ...tripData, address: privInfo?.address ?? null } : null);
+      setTrip(tripData ? { ...tripData, address: privInfo?.address ?? null, budget_total: budgetTotalRow?.budget_total ?? null } : null);
       await hydrateStepsMedia(stepsData as any);
       setSteps(stepsData || []);
       if (settingsData) {
