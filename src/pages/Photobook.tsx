@@ -1013,6 +1013,25 @@ const Photobook = () => {
             />
 
             <div>
+              <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Oriëntatie boek</p>
+              <div className="flex gap-2">
+                {([["landscape", "Liggend (A4)"], ["portrait", "Staand (A4)"]] as const).map(([val, label]) => {
+                  const active = orientation === val;
+                  return (
+                    <button
+                      key={val}
+                      onClick={() => upsertSettings({ chapter_overrides: { ...settings.chapter_overrides, "__orientation__": val } })}
+                      className={`flex-1 py-1.5 rounded border text-xs font-medium transition ${active ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/40"}`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+
+            <div>
               <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Tekstpositie</p>
               <div className="flex gap-2">
                 {([["top", "Boven"], ["center", "Midden"], ["bottom", "Onder"]] as const).map(([val, label]) => {
