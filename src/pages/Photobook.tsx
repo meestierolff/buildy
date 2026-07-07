@@ -1230,6 +1230,7 @@ const Photobook = () => {
               <div className="flex flex-wrap gap-4">
                 {pages.map((page, idx) => {
                   const isStepHidden = page.meta?.stepId ? excludedSteps.has(page.meta.stepId) : false;
+                  const thumbScale = 0.25;
                   return (
                     <button
                       key={page.key}
@@ -1239,14 +1240,14 @@ const Photobook = () => {
                     >
                       <div
                         className="rounded overflow-hidden border-2 border-transparent group-hover:border-white/50 transition relative bg-[#f8f7f4]"
-                        style={{ width: PRINT_PAGE_WIDTH / 4, height: PRINT_PAGE_HEIGHT / 4 }}
+                        style={{ width: pageW * thumbScale, height: pageH * thumbScale }}
                       >
                         <div
                           style={{
-                            width: PRINT_PAGE_WIDTH,
-                            height: PRINT_PAGE_HEIGHT,
+                            width: pageW,
+                            height: pageH,
                             transformOrigin: "top left",
-                            transform: "scale(0.25)",
+                            transform: `scale(${thumbScale})`,
                             position: "absolute",
                             top: 0,
                             left: 0,
