@@ -1594,6 +1594,7 @@ const Photobook = () => {
         </DialogContent>
       </Dialog>
     </div>
+    </PhotobookLayoutContext.Provider>
   );
 };
 
