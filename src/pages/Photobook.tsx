@@ -30,6 +30,13 @@ const PHOTO_DND_MIME = "application/x-buildy-photo";
 // Kept for splitTextIntoPages default; portrait uses a narrower value.
 const getCharsPerLine = (orientation: PhotobookOrientation) => (orientation === "portrait" ? 44 : 62);
 
+const PhotobookLayoutContext = React.createContext<{ w: number; h: number; orientation: PhotobookOrientation }>({
+  w: PAGE_DIMS.landscape.w,
+  h: PAGE_DIMS.landscape.h,
+  orientation: "landscape",
+});
+const usePhotobookLayout = () => React.useContext(PhotobookLayoutContext);
+
 
 const sortMediaByTimelineOrder = <T extends { sort_order?: number | null; created_at?: string | null }>(media: T[]) =>
   [...media].sort((a, b) => {
