@@ -903,6 +903,7 @@ const Photobook = () => {
   }
 
   return (
+    <PhotobookLayoutContext.Provider value={layoutCtx}>
     <div className="min-h-screen bg-muted flex flex-col">
       <div className="container py-4 flex flex-wrap items-center gap-3">
         <Link to={`/trip/${id}`}>
