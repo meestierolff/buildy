@@ -496,9 +496,13 @@ const Photobook = () => {
     upsertSettings({ step_photo_order: { ...settings.step_photo_order, [stepId]: ids } });
   }, [settings.step_photo_order, steps, upsertSettings]);
 
+  const orientation: PhotobookOrientation =
+    (settings.chapter_overrides["__orientation__"] as PhotobookOrientation) === "portrait" ? "portrait" : "landscape";
+
   // Build pages (memoized)
   const pages = useMemo(() => {
     if (!trip) return [];
+
 
     const list: PhotobookPage[] = [];
 
