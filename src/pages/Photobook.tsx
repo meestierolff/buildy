@@ -2178,6 +2178,9 @@ const PhotoPageBuckets = ({
                       draggable
                       onDragStart={(event) => {
                         event.dataTransfer.effectAllowed = "move";
+                        // Firefox requires setData for a drag to initiate.
+                        event.dataTransfer.setData(PHOTO_DND_MIME, JSON.stringify({ photoId, sourcePageKey: page.key }));
+                        event.dataTransfer.setData("text/plain", photoId);
                         setDragging({ photoId, sourcePageKey: page.key });
                       }}
                       onDragEnd={() => {
