@@ -888,8 +888,6 @@ const Photobook = () => {
   const CONTENT_PAGES = Math.max(0, PRINT_PAGES - 2);
   const totalPrice = BOOK_BASE + PRINT_PAGES * PRICE_PER_PAGE;
 
-  const orientation: PhotobookOrientation =
-    (settings.chapter_overrides["__orientation__"] as PhotobookOrientation) === "portrait" ? "portrait" : "landscape";
   const { w: pageW, h: pageH } = PAGE_DIMS[orientation];
   const layoutCtx = useMemo(() => ({ w: pageW, h: pageH, orientation }), [pageW, pageH, orientation]);
 
