@@ -1310,7 +1310,7 @@ const Photobook = () => {
         <div className="md:hidden flex-1 flex flex-col items-center justify-center py-6 px-4">
           <PrintPagePreview
             className="mx-auto relative rounded-sm overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.8)] bg-[#f8f7f4]"
-            style={{ width: "min(100%, calc((100vh - 220px) * 3 / 2))", aspectRatio: "3/2" }}
+            style={{ width: `min(100%, calc((100vh - 220px) * ${pageW} / ${pageH}))`, aspectRatio: `${pageW} / ${pageH}` }}
             overlay={editing && pages[pageIdx]?.meta?.chapter ? (
               <ChapterEditOverlay
                 phase={pages[pageIdx].meta!.chapter!}
