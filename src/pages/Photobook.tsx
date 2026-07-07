@@ -58,7 +58,8 @@ const layoutForPhotoCount = (count: number, preferred?: StepLayout): StepLayout 
   return "grid";
 };
 
-const splitTextIntoPages = (text: string, locationName?: string | null) => {
+const splitTextIntoPages = (text: string, locationName?: string | null, orientation: PhotobookOrientation = "landscape") => {
+  const TEXT_CHARS_PER_LINE = getCharsPerLine(orientation);
   const trimmed = text.trim();
   if (!trimmed) return [];
 
