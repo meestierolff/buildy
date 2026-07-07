@@ -18,12 +18,17 @@ import { hydrateStepsMedia } from "@/lib/mediaUrl";
 
 type StepLayout = "auto" | "1-full" | "2-side" | "2-stack" | "3-mixed" | "grid";
 type CoverTextPos = "bottom" | "top" | "center";
+type PhotobookOrientation = "landscape" | "portrait";
 
-const PRINT_PAGE_WIDTH = 600;
-const PRINT_PAGE_HEIGHT = 400;
-const TEXT_CHARS_PER_LINE = 62;
+const PAGE_DIMS: Record<PhotobookOrientation, { w: number; h: number }> = {
+  landscape: { w: 600, h: 400 },
+  portrait: { w: 420, h: 594 },
+};
 
 const PHOTO_DND_MIME = "application/x-buildy-photo";
+
+// Kept for splitTextIntoPages default; portrait uses a narrower value.
+const getCharsPerLine = (orientation: PhotobookOrientation) => (orientation === "portrait" ? 44 : 62);
 
 
 const sortMediaByTimelineOrder = <T extends { sort_order?: number | null; created_at?: string | null }>(media: T[]) =>
