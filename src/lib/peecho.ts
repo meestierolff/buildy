@@ -10,8 +10,9 @@ export const getPeechoScriptUrl = (env: PeechoClientEnv = import.meta.env) => {
   const explicitUrl = env.VITE_PEECHO_SCRIPT_URL?.trim();
   if (explicitUrl) return explicitUrl;
 
-  const buttonKey = env.VITE_PEECHO_BUTTON_KEY?.trim();
+  const buttonKey = env.VITE_PEECHO_BUTTON_KEY?.trim() || "177858525756566936";
   if (!buttonKey) return "";
+
   if (buttonKey.startsWith("http://") || buttonKey.startsWith("https://")) return buttonKey;
 
   return `${PEECHO_SCRIPT_BASE_URL}/${buttonKey}.js`;
