@@ -18,12 +18,24 @@ import { hydrateStepsMedia } from "@/lib/mediaUrl";
 
 type StepLayout = "auto" | "1-full" | "2-side" | "2-stack" | "3-mixed" | "grid";
 type CoverTextPos = "bottom" | "top" | "center";
+type PhotobookOrientation = "landscape" | "portrait";
 
-const PRINT_PAGE_WIDTH = 600;
-const PRINT_PAGE_HEIGHT = 400;
-const TEXT_CHARS_PER_LINE = 62;
+const PAGE_DIMS: Record<PhotobookOrientation, { w: number; h: number }> = {
+  landscape: { w: 600, h: 400 },
+  portrait: { w: 420, h: 594 },
+};
 
 const PHOTO_DND_MIME = "application/x-buildy-photo";
+
+// Kept for splitTextIntoPages default; portrait uses a narrower value.
+const getCharsPerLine = (orientation: PhotobookOrientation) => (orientation === "portrait" ? 44 : 62);
+
+const PhotobookLayoutContext = React.createContext<{ w: number; h: number; orientation: PhotobookOrientation }>({
+  w: PAGE_DIMS.landscape.w,
+  h: PAGE_DIMS.landscape.h,
+  orientation: "landscape",
+});
+const usePhotobookLayout = () => React.useContext(PhotobookLayoutContext);
 
 
 const sortMediaByTimelineOrder = <T extends { sort_order?: number | null; created_at?: string | null }>(media: T[]) =>
@@ -53,7 +65,8 @@ const layoutForPhotoCount = (count: number, preferred?: StepLayout): StepLayout 
   return "grid";
 };
 
-const splitTextIntoPages = (text: string, locationName?: string | null) => {
+const splitTextIntoPages = (text: string, locationName?: string | null, orientation: PhotobookOrientation = "landscape") => {
+  const TEXT_CHARS_PER_LINE = getCharsPerLine(orientation);
   const trimmed = text.trim();
   if (!trimmed) return [];
 
@@ -483,9 +496,13 @@ const Photobook = () => {
     upsertSettings({ step_photo_order: { ...settings.step_photo_order, [stepId]: ids } });
   }, [settings.step_photo_order, steps, upsertSettings]);
 
+  const orientation: PhotobookOrientation =
+    (settings.chapter_overrides["__orientation__"] as PhotobookOrientation) === "portrait" ? "portrait" : "landscape";
+
   // Build pages (memoized)
   const pages = useMemo(() => {
     if (!trip) return [];
+
 
     const list: PhotobookPage[] = [];
 
@@ -656,7 +673,7 @@ const Photobook = () => {
           : allStepPhotos;
         const photos = orderedPhotos.filter((m: any) => !excludedMedia.has(m.id));
         const hasDescription = !!step.description;
-        const descriptionPages = hasDescription ? splitTextIntoPages(step.description as string, step.location_name) : [];
+        const descriptionPages = hasDescription ? splitTextIntoPages(step.description as string, step.location_name, orientation) : [];
 
         if (photos.length === 0 && !hasDescription && !step.location_name) continue;
 
@@ -871,6 +888,14 @@ const Photobook = () => {
   const CONTENT_PAGES = Math.max(0, PRINT_PAGES - 2);
   const totalPrice = BOOK_BASE + PRINT_PAGES * PRICE_PER_PAGE;
 
+  const { w: pageW, h: pageH } = PAGE_DIMS[orientation];
+  const layoutCtx = useMemo(() => ({ w: pageW, h: pageH, orientation }), [pageW, pageH, orientation]);
+
+  // Keep printFormat in sync with orientation setting
+  useEffect(() => {
+    setPrintFormat(orientation === "portrait" ? "A4_PORTRAIT" : "A4_LANDSCAPE");
+  }, [orientation]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -880,6 +905,7 @@ const Photobook = () => {
   }
 
   return (
+    <PhotobookLayoutContext.Provider value={layoutCtx}>
     <div className="min-h-screen bg-muted flex flex-col">
       <div className="container py-4 flex flex-wrap items-center gap-3">
         <Link to={`/trip/${id}`}>
@@ -985,6 +1011,25 @@ const Photobook = () => {
               value={settings.cover_subtitle ?? ""}
               onChange={(e) => upsertSettings({ cover_subtitle: e.target.value || null })}
             />
+
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Oriëntatie boek</p>
+              <div className="flex gap-2">
+                {([["landscape", "Liggend (A4)"], ["portrait", "Staand (A4)"]] as const).map(([val, label]) => {
+                  const active = orientation === val;
+                  return (
+                    <button
+                      key={val}
+                      onClick={() => upsertSettings({ chapter_overrides: { ...settings.chapter_overrides, "__orientation__": val } })}
+                      className={`flex-1 py-1.5 rounded border text-xs font-medium transition ${active ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/40"}`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
 
             <div>
               <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Tekstpositie</p>
@@ -1217,6 +1262,7 @@ const Photobook = () => {
               <div className="flex flex-wrap gap-4">
                 {pages.map((page, idx) => {
                   const isStepHidden = page.meta?.stepId ? excludedSteps.has(page.meta.stepId) : false;
+                  const thumbScale = 0.25;
                   return (
                     <button
                       key={page.key}
@@ -1226,14 +1272,14 @@ const Photobook = () => {
                     >
                       <div
                         className="rounded overflow-hidden border-2 border-transparent group-hover:border-white/50 transition relative bg-[#f8f7f4]"
-                        style={{ width: PRINT_PAGE_WIDTH / 4, height: PRINT_PAGE_HEIGHT / 4 }}
+                        style={{ width: pageW * thumbScale, height: pageH * thumbScale }}
                       >
                         <div
                           style={{
-                            width: PRINT_PAGE_WIDTH,
-                            height: PRINT_PAGE_HEIGHT,
+                            width: pageW,
+                            height: pageH,
                             transformOrigin: "top left",
-                            transform: "scale(0.25)",
+                            transform: `scale(${thumbScale})`,
                             position: "absolute",
                             top: 0,
                             left: 0,
@@ -1283,7 +1329,7 @@ const Photobook = () => {
         <div className="md:hidden flex-1 flex flex-col items-center justify-center py-6 px-4">
           <PrintPagePreview
             className="mx-auto relative rounded-sm overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.8)] bg-[#f8f7f4]"
-            style={{ width: "min(100%, calc((100vh - 220px) * 3 / 2))", aspectRatio: "3/2" }}
+            style={{ width: `min(100%, calc((100vh - 220px) * ${pageW} / ${pageH}))`, aspectRatio: `${pageW} / ${pageH}` }}
             overlay={editing && pages[pageIdx]?.meta?.chapter ? (
               <ChapterEditOverlay
                 phase={pages[pageIdx].meta!.chapter!}
@@ -1314,7 +1360,7 @@ const Photobook = () => {
         {/* ── DESKTOP: two-page spread view ── */}
         <div className="hidden md:flex flex-1 flex-col items-center justify-center py-8 px-4">
         {/* Book spread */}
-        <div className="w-full max-w-6xl" style={{ aspectRatio: "3/1" }}>
+        <div className="w-full max-w-6xl" style={{ aspectRatio: `${pageW * 2} / ${pageH}` }}>
           <div className="relative h-full rounded-sm overflow-hidden shadow-[0_30px_80px_rgba(0,0,0,0.85)]">
             <div className="flex h-full">
               {/* Left page */}
@@ -1569,6 +1615,7 @@ const Photobook = () => {
         </DialogContent>
       </Dialog>
     </div>
+    </PhotobookLayoutContext.Provider>
   );
 };
 
@@ -1869,6 +1916,7 @@ const PhotobookOrderHistory = ({ orders }: { orders: PhotobookOrder[] }) => {
 };
 
 const usePrintPageScale = () => {
+  const { w, h } = usePhotobookLayout();
   const ref = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(1);
 
@@ -1881,7 +1929,7 @@ const usePrintPageScale = () => {
       const { width, height } = element.getBoundingClientRect();
       if (width <= 0 || height <= 0) return;
 
-      const nextScale = Math.min(width / PRINT_PAGE_WIDTH, height / PRINT_PAGE_HEIGHT);
+      const nextScale = Math.min(width / w, height / h);
       setScale((currentScale) =>
         Math.abs(currentScale - nextScale) < 0.001 ? currentScale : nextScale,
       );
@@ -1903,7 +1951,7 @@ const usePrintPageScale = () => {
       observer?.disconnect();
       window.removeEventListener("resize", scheduleScaleMeasurement);
     };
-  }, []);
+  }, [w, h]);
 
   return { ref, scale };
 };
@@ -1920,21 +1968,22 @@ const PrintPagePreview = ({
   overlay?: React.ReactNode;
 }) => {
   const { ref, scale } = usePrintPageScale();
+  const { w, h } = usePhotobookLayout();
 
   return (
     <div
       ref={ref}
       className={`relative overflow-hidden ${className}`}
       style={{
-        aspectRatio: `${PRINT_PAGE_WIDTH} / ${PRINT_PAGE_HEIGHT}`,
+        aspectRatio: `${w} / ${h}`,
         ...style,
       }}
     >
       <div
         className="absolute left-1/2 top-1/2"
         style={{
-          width: PRINT_PAGE_WIDTH,
-          height: PRINT_PAGE_HEIGHT,
+          width: w,
+          height: h,
           transform: `translate(-50%, -50%) scale(${scale})`,
           transformOrigin: "center",
         }}
@@ -2148,6 +2197,9 @@ const PhotoPageBuckets = ({
                       draggable
                       onDragStart={(event) => {
                         event.dataTransfer.effectAllowed = "move";
+                        // Firefox requires setData for a drag to initiate.
+                        event.dataTransfer.setData(PHOTO_DND_MIME, JSON.stringify({ photoId, sourcePageKey: page.key }));
+                        event.dataTransfer.setData("text/plain", photoId);
                         setDragging({ photoId, sourcePageKey: page.key });
                       }}
                       onDragEnd={() => {
