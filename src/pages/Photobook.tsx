@@ -1882,6 +1882,7 @@ const PhotobookOrderHistory = ({ orders }: { orders: PhotobookOrder[] }) => {
 };
 
 const usePrintPageScale = () => {
+  const { w, h } = usePhotobookLayout();
   const ref = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(1);
 
@@ -1894,7 +1895,7 @@ const usePrintPageScale = () => {
       const { width, height } = element.getBoundingClientRect();
       if (width <= 0 || height <= 0) return;
 
-      const nextScale = Math.min(width / PRINT_PAGE_WIDTH, height / PRINT_PAGE_HEIGHT);
+      const nextScale = Math.min(width / w, height / h);
       setScale((currentScale) =>
         Math.abs(currentScale - nextScale) < 0.001 ? currentScale : nextScale,
       );
@@ -1916,7 +1917,7 @@ const usePrintPageScale = () => {
       observer?.disconnect();
       window.removeEventListener("resize", scheduleScaleMeasurement);
     };
-  }, []);
+  }, [w, h]);
 
   return { ref, scale };
 };
@@ -1933,21 +1934,22 @@ const PrintPagePreview = ({
   overlay?: React.ReactNode;
 }) => {
   const { ref, scale } = usePrintPageScale();
+  const { w, h } = usePhotobookLayout();
 
   return (
     <div
       ref={ref}
       className={`relative overflow-hidden ${className}`}
       style={{
-        aspectRatio: `${PRINT_PAGE_WIDTH} / ${PRINT_PAGE_HEIGHT}`,
+        aspectRatio: `${w} / ${h}`,
         ...style,
       }}
     >
       <div
         className="absolute left-1/2 top-1/2"
         style={{
-          width: PRINT_PAGE_WIDTH,
-          height: PRINT_PAGE_HEIGHT,
+          width: w,
+          height: h,
           transform: `translate(-50%, -50%) scale(${scale})`,
           transformOrigin: "center",
         }}
