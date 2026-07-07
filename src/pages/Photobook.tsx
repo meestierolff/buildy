@@ -669,7 +669,7 @@ const Photobook = () => {
           : allStepPhotos;
         const photos = orderedPhotos.filter((m: any) => !excludedMedia.has(m.id));
         const hasDescription = !!step.description;
-        const descriptionPages = hasDescription ? splitTextIntoPages(step.description as string, step.location_name) : [];
+        const descriptionPages = hasDescription ? splitTextIntoPages(step.description as string, step.location_name, orientation) : [];
 
         if (photos.length === 0 && !hasDescription && !step.location_name) continue;
 
