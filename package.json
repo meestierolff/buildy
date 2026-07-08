@@ -11,7 +11,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "bunx playwright test"
+    "test:e2e": "bunx playwright test",
+    "test:e2e:preview": "PLAYWRIGHT_MODE=preview bunx playwright test",
+    "test:regression": "bun run build && PLAYWRIGHT_MODE=preview bunx playwright test"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
