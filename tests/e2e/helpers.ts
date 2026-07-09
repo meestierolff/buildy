@@ -28,7 +28,7 @@ export { expect, test };
 export const skipWithoutAuth = async (page: Page, reason = "requires authenticated owner session") => {
   await page.goto(`${BASE}/account`);
   const needsLogin = await page.getByText(/log eerst in/i).count();
-  base.skip(needsLogin > 0, reason);
+  test.skip(needsLogin > 0, reason);
 };
 
 /** True when the page-level "log eerst in" fallback is showing. */
