@@ -17,7 +17,7 @@ export const PUBLIC_TRIP_ID = "08bab0ef-3afc-4a6a-81c3-640a071ac464";
 /** The primary Buildy test user (owner of OWNER_TRIP_ID). */
 export const TEST_USER_ID = "af842993-4095-47f7-91e8-a05575ceb70b";
 
-export { expect };
+export { expect, test };
 
 /**
  * Skip the running test when there is no owner (authenticated) session,
