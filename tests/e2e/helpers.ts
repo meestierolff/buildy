@@ -1,4 +1,4 @@
-import { test as base, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 /**
  * Shared constants and helpers for the Buildy Playwright regression suite.
@@ -17,7 +17,7 @@ export const PUBLIC_TRIP_ID = "08bab0ef-3afc-4a6a-81c3-640a071ac464";
 /** The primary Buildy test user (owner of OWNER_TRIP_ID). */
 export const TEST_USER_ID = "af842993-4095-47f7-91e8-a05575ceb70b";
 
-export { expect };
+export { expect, test };
 
 /**
  * Skip the running test when there is no owner (authenticated) session,
@@ -28,7 +28,7 @@ export { expect };
 export const skipWithoutAuth = async (page: Page, reason = "requires authenticated owner session") => {
   await page.goto(`${BASE}/account`);
   const needsLogin = await page.getByText(/log eerst in/i).count();
-  base.skip(needsLogin > 0, reason);
+  test.skip(needsLogin > 0, reason);
 };
 
 /** True when the page-level "log eerst in" fallback is showing. */
