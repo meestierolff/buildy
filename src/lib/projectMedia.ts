@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import { hydrateMediaUrls } from "@/lib/mediaUrl";
+import { hydrateMediaUrls, resolvePrivateStoragePath } from "@/lib/mediaUrl";
 
 export interface ProjectMediaSummary {
   stepCount: number;
@@ -23,6 +23,7 @@ interface StepWithMedia {
 export interface ProjectWithMediaFields {
   id: string;
   cover_image_url: string | null;
+  cover_storage_path?: string | null;
   cover_media_type?: string | null;
   step_count?: number;
 }
@@ -42,12 +43,34 @@ export const loadProjectMediaSummaries = async (tripIds: string[]) => {
   tripIds.forEach((id) => summaries.set(id, emptySummary()));
   if (tripIds.length === 0) return summaries;
 
-  const { data, error } = await supabase
-    .from("steps")
-    .select("trip_id, step_date, step_order, step_media(media_url, storage_path, media_type, sort_order)")
-    .in("trip_id", tripIds)
-    .order("step_date", { ascending: true })
-    .order("step_order", { ascending: true });
+  const [{ data, error }, { data: coverRows, error: coverError }] = await Promise.all([
+    supabase
+      .from("steps")
+      .select("trip_id, step_date, step_order, step_media(media_url, storage_path, media_type, sort_order)")
+      .in("trip_id", tripIds)
+      .order("step_date", { ascending: true })
+      .order("step_order", { ascending: true }),
+    supabase
+      .from("trips")
+      .select("id, cover_storage_path")
+      .in("id", tripIds),
+  ]);
+
+  // Keep the frontend usable during the intentional migration-first rollout.
+  // PostgREST 42703 means the live database has not received the new private
+  // cover column yet; the legacy cover fallback below remains functional.
+  if (coverError && coverError.code !== "42703") {
+    console.error("Project cover paths load failed:", coverError);
+  }
+  await Promise.all((coverRows || []).map(async (row) => {
+    if (!row.cover_storage_path) return;
+    const url = await resolvePrivateStoragePath(row.cover_storage_path);
+    const summary = summaries.get(row.id);
+    if (url && summary) {
+      summary.coverUrl = url;
+      summary.coverMediaType = "image";
+    }
+  }));
 
   if (error || !data) return summaries;
 
@@ -55,7 +78,7 @@ export const loadProjectMediaSummaries = async (tripIds: string[]) => {
   const allMedia = (data as StepWithMedia[]).flatMap((s) =>
     Array.isArray(s.step_media) ? s.step_media : s.step_media ? [s.step_media] : [],
   );
-  await hydrateMediaUrls(allMedia as any);
+  await hydrateMediaUrls(allMedia);
 
 
   const fallbackVideos = new Map<string, StepMediaRow>();
@@ -105,11 +128,12 @@ export const applyProjectMediaSummaries = <T extends ProjectWithMediaFields>(
   projects.map((project) => {
     const summary = summaries.get(project.id);
     const fallbackUrl = summary?.coverUrl ?? null;
-    const hasExplicitCover = !!project.cover_image_url;
+    const hasPrivateCover = !!project.cover_storage_path;
+    const hasExplicitCover = hasPrivateCover ? !!fallbackUrl : !!project.cover_image_url;
 
     return {
       ...project,
-      cover_image_url: project.cover_image_url || fallbackUrl,
+      cover_image_url: hasPrivateCover ? fallbackUrl : (project.cover_image_url || fallbackUrl),
       cover_media_type: hasExplicitCover ? "image" : summary?.coverMediaType ?? null,
       step_count: project.step_count ?? summary?.stepCount ?? 0,
     };

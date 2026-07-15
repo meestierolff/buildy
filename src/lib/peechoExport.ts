@@ -29,7 +29,8 @@ const MM_PER_INCH = 25.4;
 export const PEECHO_MIN_PAGES = 24;
 
 export const getPeechoPrintPageCount = (pageCount: number) => {
-  let total = Math.max(pageCount, PEECHO_MIN_PAGES);
+  const safePageCount = Number.isFinite(pageCount) ? Math.max(0, Math.floor(pageCount)) : 0;
+  let total = Math.max(safePageCount, PEECHO_MIN_PAGES);
   if (total % 2 !== 0) total += 1;
   return total;
 };
@@ -139,43 +140,6 @@ const clampLines = (pdf: jsPDF, text: string, maxWidth: number, maxLines: number
   return result;
 };
 
-const drawStepCaption = (
-  pdf: jsPDF,
-  params: {
-    x: number;
-    y: number;
-    w: number;
-    chapterTitle: string;
-    dateLabel: string;
-    locationName: string;
-    description?: string | null;
-    compact?: boolean;
-  },
-) => {
-  const { x, y, w, chapterTitle, dateLabel, locationName, description, compact } = params;
-  pdf.setTextColor(180, 90, 50);
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(compact ? 7 : 8);
-  pdf.text(chapterTitle.toUpperCase(), x, y);
-
-  pdf.setTextColor(120, 120, 120);
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(compact ? 7 : 8);
-  pdf.text(dateLabel, x, y + 5);
-
-  pdf.setFont("times", "bold");
-  pdf.setTextColor(20, 20, 20);
-  pdf.setFontSize(compact ? 13 : 15);
-  pdf.text(clampLines(pdf, locationName || "Update", w, compact ? 1 : 2), x, y + 13);
-
-  if (description) {
-    pdf.setFont("times", "italic");
-    pdf.setFontSize(compact ? 8 : 9);
-    pdf.setTextColor(60, 60, 60);
-    pdf.text(clampLines(pdf, `"${description}"`, w, compact ? 1 : 2), x, y + (compact ? 20 : 23));
-  }
-};
-
 const getOrderedPhotos = (
   step: Step,
   settings: Settings,
@@ -270,6 +234,7 @@ export interface BuildResult {
   blob: Blob;
   failedImages: number;
   renderedPhotos: number;
+  pageCount: number;
 }
 
 export async function buildPeechoPdf(args: BuildArgs): Promise<BuildResult> {
@@ -430,21 +395,23 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<BuildResult> {
       const photos = getOrderedPhotos(step, settings, excludedMedia);
       const hasDescription = !!step.description;
       const description = step.description || "";
-      if (photos.length === 0 && !hasDescription) continue;
+      if (photos.length === 0 && !hasDescription && !step.location_name) continue;
 
       const dateLabel = format(new Date(step.step_date), "d MMM yyyy", { locale: nl });
-      if (photos.length === 0) {
-        drawStepTextPages(pdf, {
-          addPage,
-          W,
-          H,
-          innerW,
-          chapterTitle,
-          dateLabel,
-          locationName: step.location_name || "Update",
-          description,
-        });
-      } else {
+      // Match the editor: every update starts on its own text page(s), followed
+      // by photo-only pages. This keeps the physical book faithful to preview.
+      drawStepTextPages(pdf, {
+        addPage,
+        W,
+        H,
+        innerW,
+        chapterTitle,
+        dateLabel,
+        locationName: step.location_name || "Update",
+        description,
+      });
+
+      if (photos.length > 0) {
         let pageIdx = 0;
         let photoIdx = 0;
         while (photoIdx < photos.length) {
@@ -452,16 +419,12 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<BuildResult> {
           const layout = getPageLayout(settings, step.id, pageKey);
           const batchSize = getBatchSize(layout, photos.length - photoIdx);
           const batch = photos.slice(photoIdx, photoIdx + batchSize);
-          const isFirstBatch = photoIdx === 0;
           addPage();
           pdf.setFillColor(248, 247, 244);
           pdf.rect(0, 0, W, H, "F");
 
-          const shouldCaption = isFirstBatch;
-          const shouldShowCaptionDescription = hasDescription && description.length <= 160;
-          const captionH = shouldCaption ? (shouldShowCaptionDescription ? 36 : 26) : 0;
           const gridTop = MARGIN;
-          const gridH = innerH - captionH - (shouldCaption ? 4 : 0);
+          const gridH = innerH;
           const gridW = innerW;
           const gap = 3;
 
@@ -507,34 +470,8 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<BuildResult> {
             }
           }
 
-          if (shouldCaption) {
-            drawStepCaption(pdf, {
-              x: MARGIN,
-              y: H - MARGIN - captionH + 6,
-              w: innerW,
-              chapterTitle,
-              dateLabel,
-              locationName: step.location_name || "Update",
-              description: shouldShowCaptionDescription ? description : null,
-              compact: captionH <= 26,
-            });
-          }
-
           photoIdx += batchSize;
           pageIdx++;
-        }
-
-        if (description.length > 160) {
-          drawStepTextPages(pdf, {
-            addPage,
-            W,
-            H,
-            innerW,
-            chapterTitle,
-            dateLabel,
-            locationName: step.location_name || "Update",
-            description,
-          });
         }
       }
     }
@@ -563,7 +500,12 @@ export async function buildPeechoPdf(args: BuildArgs): Promise<BuildResult> {
   pdf.setFontSize(9);
   pdf.text("Gemaakt met Buildy", W / 2, H / 2 + backTitleLines.length * 8 + 6, { align: "center" });
 
-  return { blob: pdf.output("blob"), failedImages, renderedPhotos };
+  return {
+    blob: pdf.output("blob"),
+    failedImages,
+    renderedPhotos,
+    pageCount: pdf.getNumberOfPages(),
+  };
 }
 
 export const PEECHO_FORMATS = FORMATS;

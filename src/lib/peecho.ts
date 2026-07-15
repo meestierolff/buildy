@@ -1,5 +1,6 @@
 const PEECHO_SCRIPT_BASE_URL = "https://d3aln0nj58oevo.cloudfront.net/button/script";
 const PEECHO_MIN_PDF_BYTES = 1_000;
+const PEECHO_MAX_PDF_BYTES = 50 * 1024 * 1024;
 
 type PeechoClientEnv = {
   VITE_PEECHO_SCRIPT_URL?: string;
@@ -22,6 +23,27 @@ export const createPeechoReference = (tripId: string) => {
   const timestamp = Date.now().toString(36);
   const nonce = crypto.randomUUID().slice(0, 8);
   return `buildy-${tripId}-${timestamp}-${nonce}`;
+};
+
+export const assertPeechoPdfBlob = async (
+  blob: Blob,
+  { minBytes = PEECHO_MIN_PDF_BYTES, maxBytes = PEECHO_MAX_PDF_BYTES } = {},
+) => {
+  if (blob.size < minBytes) {
+    throw new Error("De PDF lijkt onvolledig. Probeer het boek opnieuw klaar te maken.");
+  }
+  if (blob.size > maxBytes) {
+    throw new Error("De PDF is te groot om veilig te verwerken. Verberg enkele foto's en probeer opnieuw.");
+  }
+  if (blob.type && blob.type.toLowerCase() !== "application/pdf") {
+    throw new Error("Het gegenereerde bestand heeft een onverwacht bestandstype.");
+  }
+
+  const header = new TextDecoder().decode(await blob.slice(0, 5).arrayBuffer());
+  const trailer = new TextDecoder().decode(await blob.slice(Math.max(0, blob.size - 2048)).arrayBuffer());
+  if (header !== "%PDF-" || !trailer.includes("%%EOF")) {
+    throw new Error("De gegenereerde PDF is beschadigd. Probeer het boek opnieuw klaar te maken.");
+  }
 };
 
 export const assertPeechoPdfReachable = async (

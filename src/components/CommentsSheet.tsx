@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { formatDistanceToNow } from "date-fns";
@@ -17,7 +17,7 @@ interface Comment {
   parent_id: string | null;
   created_at: string;
   mentions: string[] | null;
-  profile?: { display_name: string };
+  profile?: { display_name: string; avatar_url?: string | null };
 }
 
 const CommentsSheet = ({
@@ -25,11 +25,13 @@ const CommentsSheet = ({
   open,
   onOpenChange,
   onCountChange,
+  canModerate = false,
 }: {
   stepId: string;
   open: boolean;
   onOpenChange: (o: boolean) => void;
   onCountChange?: (delta: number) => void;
+  canModerate?: boolean;
 }) => {
   const { user } = useAuth();
   const [comments, setComments] = useState<Comment[]>([]);
@@ -38,14 +40,20 @@ const CommentsSheet = ({
   const [posting, setPosting] = useState(false);
 
   const load = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("comments")
       .select("*")
       .eq("step_id", stepId)
       .order("created_at", { ascending: true });
+    if (error) {
+      console.error("Comments load failed:", error);
+      toast.error("Reacties laden mislukt");
+      return;
+    }
     if (!data) return;
     const ids = [...new Set(data.map((c) => c.user_id))];
-    const { data: profs } = await supabase.rpc("get_profiles_basic", { _ids: ids });
+    const { data: profs, error: profilesError } = await supabase.rpc("get_profiles_basic", { _ids: ids });
+    if (profilesError) console.error("Comment profiles load failed:", profilesError);
     const map = new Map((profs || []).map((p) => [p.user_id, p]));
     setComments(data.map((c) => ({ ...c, profile: map.get(c.user_id) })));
   };
@@ -57,6 +65,10 @@ const CommentsSheet = ({
 
   const submit = async () => {
     if (!user || !text.trim()) return;
+    if (text.trim().length > 2000) {
+      toast.error("Een reactie mag maximaal 2000 tekens bevatten");
+      return;
+    }
     setPosting(true);
     // parse @mentions: @display_name → look up in profiles
     const mentionTags = Array.from(text.matchAll(/@(\w[\w-]*)/g)).map((m) => m[1]);
@@ -68,30 +80,38 @@ const CommentsSheet = ({
         .in("display_name", mentionTags);
       mentions = (data || []).map((p) => p.user_id);
     }
-    const { error } = await supabase.from("comments").insert({
-      step_id: stepId,
-      user_id: user.id,
-      content: text.trim(),
-      parent_id: replyTo?.id ?? null,
-      mentions,
-    });
-    if (error) {
-      toast.error("Kon reactie niet plaatsen");
-    } else {
-      setText("");
-      setReplyTo(null);
-      onCountChange?.(1);
-      load();
+    try {
+      const { error } = await supabase.from("comments").insert({
+        step_id: stepId,
+        user_id: user.id,
+        content: text.trim(),
+        parent_id: replyTo?.id ?? null,
+        mentions,
+      });
+      if (error) {
+        console.error("Comment insert failed:", error);
+        toast.error("Kon reactie niet plaatsen");
+      } else {
+        setText("");
+        setReplyTo(null);
+        onCountChange?.(1);
+        await load();
+      }
+    } finally {
+      setPosting(false);
     }
-    setPosting(false);
   };
 
   const remove = async (id: string) => {
     const { error } = await supabase.from("comments").delete().eq("id", id);
-    if (!error) {
-      onCountChange?.(-1);
-      setComments((p) => p.filter((c) => c.id !== id && c.parent_id !== id));
+    if (error) {
+      console.error("Comment delete failed:", error);
+      toast.error("Reactie verwijderen mislukt");
+      return;
     }
+    const removedCount = comments.filter((comment) => comment.id === id || comment.parent_id === id).length;
+    onCountChange?.(-Math.max(1, removedCount));
+    setComments((p) => p.filter((c) => c.id !== id && c.parent_id !== id));
   };
 
   const roots = comments.filter((c) => !c.parent_id);
@@ -100,6 +120,7 @@ const CommentsSheet = ({
   const renderComment = (c: Comment, isReply = false) => (
     <div key={c.id} className={`flex gap-2.5 ${isReply ? "ml-9 mt-2" : "mt-3"}`}>
       <Avatar className="h-7 w-7 shrink-0">
+        <AvatarImage src={c.profile?.avatar_url ?? ""} />
         <AvatarFallback className="bg-accent/20 text-accent text-xs">
           {c.profile?.display_name?.[0]?.toUpperCase() ?? "?"}
         </AvatarFallback>
@@ -112,12 +133,12 @@ const CommentsSheet = ({
         <div className="flex items-center gap-3 mt-1 px-2 text-[11px] text-muted-foreground">
           <span>{formatDistanceToNow(new Date(c.created_at), { addSuffix: true, locale: nl })}</span>
           {!isReply && (
-            <button onClick={() => setReplyTo(c)} className="hover:text-accent flex items-center gap-1">
+            <button type="button" onClick={() => setReplyTo(c)} className="hover:text-accent flex items-center gap-1" aria-label={`Antwoord op ${c.profile?.display_name ?? "reactie"}`}>
               <Reply className="h-3 w-3" /> Antwoord
             </button>
           )}
-          {user?.id === c.user_id && (
-            <button onClick={() => remove(c.id)} className="hover:text-destructive flex items-center gap-1">
+          {(user?.id === c.user_id || canModerate) && (
+            <button type="button" onClick={() => remove(c.id)} className="hover:text-destructive flex items-center gap-1" aria-label="Reactie verwijderen">
               <Trash2 className="h-3 w-3" />
             </button>
           )}
@@ -145,7 +166,7 @@ const CommentsSheet = ({
             {replyTo && (
               <div className="text-xs text-muted-foreground flex items-center justify-between bg-muted/50 px-2 py-1 rounded">
                 <span>Antwoord op {replyTo.profile?.display_name}</span>
-                <button onClick={() => setReplyTo(null)} className="text-accent">×</button>
+                <button type="button" onClick={() => setReplyTo(null)} className="text-accent" aria-label="Antwoord annuleren">×</button>
               </div>
             )}
             <Textarea
@@ -153,7 +174,9 @@ const CommentsSheet = ({
               onChange={(e) => setText(e.target.value)}
               placeholder="Schrijf een reactie... gebruik @naam om iemand te taggen"
               rows={2}
+              maxLength={2000}
             />
+            <p className="text-right text-[10px] tabular-nums text-muted-foreground">{text.length}/2000</p>
             <Button onClick={submit} disabled={posting || !text.trim()} size="sm" className="w-full bg-accent text-accent-foreground hover:bg-accent/90">
               Plaatsen
             </Button>

@@ -1,10 +1,12 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { BookOpen, Check, Eye, EyeOff, Images, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
+import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import BrandLogo from "@/components/BrandLogo";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { usePageMeta } from "@/hooks/usePageMeta";
 
@@ -17,6 +19,8 @@ const GoogleIcon = () => (
   </svg>
 );
 
+type EmailStatus = "registration" | "magic-link" | null;
+
 const Auth = () => {
   usePageMeta({
     title: "Inloggen of registreren — Buildy",
@@ -24,136 +28,293 @@ const Auth = () => {
     path: "/auth",
     noIndex: true,
   });
-  const [isLogin, setIsLogin] = useState(true);
+
+  const { user, loading: authLoading } = useAuth();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const nextPath = useMemo(() => {
+    const requestedPath = searchParams.get("next");
+    return requestedPath?.startsWith("/") && !requestedPath.startsWith("//") ? requestedPath : "/";
+  }, [searchParams]);
+  const [isLogin, setIsLogin] = useState(searchParams.get("mode") !== "register");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [emailStatus, setEmailStatus] = useState<EmailStatus>(null);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const navigate = useNavigate();
+
+  const authReturnUrl = useMemo(() => {
+    const url = new URL("/auth", window.location.origin);
+    if (nextPath !== "/") url.searchParams.set("next", nextPath);
+    return url.toString();
+  }, [nextPath]);
 
   const handleGoogle = async () => {
     setGoogleLoading(true);
-    const result = await lovable.auth.signInWithOAuth("google", {
-      redirect_uri: window.location.origin,
-    });
-    if (result.error) {
-      toast.error("Google login mislukt. Probeer het opnieuw.");
+    try {
+      const result = await lovable.auth.signInWithOAuth("google", { redirect_uri: authReturnUrl });
+      if (result.error) {
+        toast.error("Google-login mislukt. Probeer het opnieuw.");
+        return;
+      }
+      if (!result.redirected) navigate(nextPath, { replace: true });
+    } catch (error) {
+      console.error("Google sign-in failed", error);
+      toast.error("Google-login is nu niet bereikbaar. Probeer het later opnieuw.");
+    } finally {
       setGoogleLoading(false);
-      return;
     }
-    if (result.redirected) return; // browser navigates away
-    navigate("/");
   };
 
   const handleMagicLink = async () => {
-    if (!email.trim()) {
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail) {
       toast.error("Vul eerst je e-mailadres in.");
       return;
     }
+
     setLoading(true);
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.origin },
-    });
-    if (error) toast.error("Kon geen magic link sturen. Controleer je e-mailadres.");
-    else toast.success("Magic link verstuurd. Check je inbox om in te loggen.");
-    setLoading(false);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email: normalizedEmail,
+        options: { emailRedirectTo: authReturnUrl },
+      });
+      if (error) {
+        toast.error("Kon geen magic link sturen. Controleer je e-mailadres.");
+        return;
+      }
+      setEmailStatus("magic-link");
+    } catch (error) {
+      console.error("Magic-link sign-in failed", error);
+      toast.error("Kon geen magic link sturen. Probeer het later opnieuw.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const normalizedEmail = email.trim();
+    const normalizedName = displayName.trim();
     setLoading(true);
-    if (isLogin) {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) toast.error("Ongeldige inloggegevens. Controleer je e-mail en wachtwoord.");
-      else navigate("/");
-    } else {
-      const { error } = await supabase.auth.signUp({
-        email,
+
+    try {
+      if (isLogin) {
+        const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
+        if (error) {
+          toast.error("Ongeldige inloggegevens. Controleer je e-mail en wachtwoord.");
+          return;
+        }
+        navigate(nextPath, { replace: true });
+        return;
+      }
+
+      const { data, error } = await supabase.auth.signUp({
+        email: normalizedEmail,
         password,
-        options: { data: { display_name: displayName }, emailRedirectTo: window.location.origin },
+        options: { data: { display_name: normalizedName }, emailRedirectTo: authReturnUrl },
       });
-      if (error) toast.error("Registratie is niet gelukt. Probeer het opnieuw of gebruik een ander e-mailadres.");
-      else toast.success("Check je e-mail om je account te bevestigen!");
+      if (error) {
+        toast.error("Registratie is niet gelukt. Probeer een ander e-mailadres of log in.");
+        return;
+      }
+      if (data.session) {
+        navigate(nextPath, { replace: true });
+        return;
+      }
+      setEmailStatus("registration");
+    } catch (error) {
+      console.error("Email authentication failed", error);
+      toast.error("Er ging iets mis. Controleer je verbinding en probeer opnieuw.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
+
+  const switchMode = () => {
+    setIsLogin((current) => !current);
+    setEmailStatus(null);
+    setPassword("");
+  };
+
+  if (!authLoading && user) return <Navigate to={nextPath} replace />;
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-6 py-16">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-12">
-          <BrandLogo className="mb-10" imageClassName="h-10 w-10 rounded-xl" textClassName="text-xl" />
-          <p className="eyebrow mb-4">{isLogin ? "Inloggen" : "Registreren"}</p>
-          <h1 className="font-serif italic text-4xl md:text-5xl leading-tight">
-            {isLogin ? "Welkom terug." : "Start je dagboek."}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-4 font-light">
-            {isLogin ? "Log in om je verbouwingen te volgen." : "Leg elke fase van je verbouwing vast."}
-          </p>
-        </div>
+    <div className="bg-background px-5 py-8 sm:px-6 md:py-14">
+      <div className="mx-auto grid max-w-5xl overflow-hidden rounded-2xl border border-border bg-card shadow-[0_24px_80px_-42px_hsl(var(--foreground)/0.28)] lg:min-h-[680px] lg:grid-cols-[0.92fr_1.08fr]">
+        <aside className="relative hidden overflow-hidden bg-foreground p-10 text-background lg:flex lg:flex-col lg:justify-between" aria-label="Wat je met Buildy kunt doen">
+          <div className="absolute inset-0 opacity-[0.08] blueprint-grid" />
+          <div className="relative">
+            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-background/65">Jouw verbouwingsverhaal</p>
+            <h2 className="mt-5 max-w-sm font-serif text-5xl italic leading-[0.98]">
+              Van eerste schets tot boek op tafel.
+            </h2>
+            <p className="mt-5 max-w-sm text-sm font-light leading-relaxed text-background/70">
+              Eén rustige plek voor de keuzes, foto's en mijlpalen waar je later nog vaak doorheen wilt bladeren.
+            </p>
+          </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          disabled={googleLoading || loading}
-          onClick={handleGoogle}
-          className="w-full h-11 rounded-full text-[12px] font-semibold border-border gap-2 mb-4"
-        >
-          <GoogleIcon />
-          {googleLoading ? "Even wachten…" : isLogin ? "Inloggen met Google" : "Registreren met Google"}
-        </Button>
+          <div className="relative space-y-3">
+            {[
+              { icon: Images, title: "Leg iedere fase vast", text: "Updates, foto's, planning en budget bij elkaar." },
+              { icon: Users, title: "Deel op jouw manier", text: "Houd je project privé of laat anderen meekijken." },
+              { icon: BookOpen, title: "Maak een echt Bouwboek", text: "Bundel je tijdlijn later tot een gedrukt fotoboek." },
+            ].map(({ icon: Icon, title, text }) => (
+              <div key={title} className="flex gap-4 rounded-xl border border-background/10 bg-background/[0.06] p-4 backdrop-blur-sm">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground">
+                  <Icon className="h-4 w-4" aria-hidden="true" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">{title}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-background/60">{text}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </aside>
 
-        <div className="flex items-center gap-3 mb-4 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-          <span className="flex-1 h-px bg-border" />
-          <span>of met e-mail</span>
-          <span className="flex-1 h-px bg-border" />
-        </div>
+        <section className="flex items-center px-5 py-9 sm:px-10 lg:px-14" aria-labelledby="auth-title">
+          <div className="mx-auto w-full max-w-md">
+            {emailStatus ? (
+              <div className="text-center" role="status" aria-live="polite">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-accent/12 text-accent">
+                  <Check className="h-6 w-6" aria-hidden="true" />
+                </div>
+                <p className="eyebrow mt-7">Check je inbox</p>
+                <h1 id="auth-title" className="mt-3 font-serif text-4xl italic leading-tight sm:text-5xl">De link is onderweg.</h1>
+                <p className="mx-auto mt-4 max-w-sm text-sm font-light leading-relaxed text-muted-foreground">
+                  {emailStatus === "registration"
+                    ? "Bevestig je e-mailadres om je account af te ronden. Daarna kun je meteen je eerste project starten."
+                    : "Open de magic link op dit apparaat om veilig in te loggen, zonder wachtwoord."}
+                </p>
+                <p className="mt-4 break-all text-sm font-semibold text-foreground">{email.trim()}</p>
+                <Button type="button" variant="pillOutline" size="pill" className="mt-8" onClick={() => setEmailStatus(null)}>
+                  Ander e-mailadres
+                </Button>
+              </div>
+            ) : (
+              <>
+                <div className="mb-8">
+                  <p className="eyebrow mb-3">{isLogin ? "Inloggen" : "Gratis beginnen"}</p>
+                  <h1 id="auth-title" className="font-serif text-4xl italic leading-tight sm:text-5xl">
+                    {isLogin ? "Welkom terug." : "Start je dagboek."}
+                  </h1>
+                  <p className="mt-3 text-sm font-light leading-relaxed text-muted-foreground">
+                    {isLogin ? "Ga verder met je verbouwing en Bouwboek." : "Maak je eerste project. Je kiest zelf wat je deelt."}
+                  </p>
+                </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {!isLogin && (
-            <Input placeholder="Naam" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required className="h-11" />
-          )}
-          <Input type="email" placeholder="E-mailadres" value={email} onChange={(e) => setEmail(e.target.value)} required className="h-11" />
-          <Input type="password" placeholder="Wachtwoord" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} className="h-11" />
-          <Button
-            type="submit"
-            disabled={loading || googleLoading}
-            className="w-full h-11 rounded-full text-[11px] font-bold uppercase tracking-[0.15em] bg-foreground text-background hover:bg-foreground/90"
-          >
-            {loading ? "Even wachten…" : isLogin ? "Inloggen" : "Account aanmaken"}
-          </Button>
-          {isLogin && (
-            <Button
-              type="button"
-              variant="outline"
-              disabled={loading || googleLoading}
-              onClick={handleMagicLink}
-              className="w-full h-11 rounded-full text-[11px] font-bold uppercase tracking-[0.15em] border-border"
-            >
-              Stuur magic link
-            </Button>
-          )}
-        </form>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={googleLoading || loading || authLoading}
+                  onClick={handleGoogle}
+                  className="h-12 w-full rounded-full border-border text-xs font-semibold hover:border-foreground hover:bg-background hover:text-foreground"
+                >
+                  <GoogleIcon />
+                  {googleLoading ? "Even wachten…" : isLogin ? "Inloggen met Google" : "Registreren met Google"}
+                </Button>
 
-        {isLogin && (
-          <p className="text-center text-xs text-muted-foreground mt-4">
-            <Link to="/wachtwoord-vergeten" className="hover:text-foreground underline underline-offset-4">
-              Wachtwoord vergeten?
-            </Link>
-          </p>
-        )}
+                <div className="my-6 flex items-center gap-3 text-[10px] uppercase tracking-[0.2em] text-muted-foreground" aria-hidden="true">
+                  <span className="h-px flex-1 bg-border" />
+                  <span>of met e-mail</span>
+                  <span className="h-px flex-1 bg-border" />
+                </div>
 
-        <p className="text-center text-sm text-muted-foreground mt-8">
-          {isLogin ? "Nog geen account? " : "Al een account? "}
-          <button
-            onClick={() => setIsLogin(!isLogin)}
-            className="text-foreground underline underline-offset-4 hover:text-accent transition-colors font-medium"
-          >
-            {isLogin ? "Registreer" : "Inloggen"}
-          </button>
-        </p>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  {!isLogin && (
+                    <div className="space-y-2">
+                      <Label htmlFor="display-name" className="text-xs font-semibold">Naam</Label>
+                      <Input
+                        id="display-name"
+                        name="name"
+                        autoComplete="name"
+                        placeholder="Bijv. Sol"
+                        value={displayName}
+                        onChange={(event) => setDisplayName(event.target.value)}
+                        required
+                        minLength={2}
+                        maxLength={60}
+                        className="h-12 rounded-lg bg-background"
+                      />
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="auth-email" className="text-xs font-semibold">E-mailadres</Label>
+                    <Input
+                      id="auth-email"
+                      name="email"
+                      type="email"
+                      inputMode="email"
+                      autoComplete="email"
+                      placeholder="jij@voorbeeld.nl"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      required
+                      className="h-12 rounded-lg bg-background"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-4">
+                      <Label htmlFor="auth-password" className="text-xs font-semibold">Wachtwoord</Label>
+                      {isLogin && (
+                        <Link to="/wachtwoord-vergeten" className="text-xs text-muted-foreground underline underline-offset-4 transition-colors hover:text-foreground">
+                          Wachtwoord vergeten?
+                        </Link>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <Input
+                        id="auth-password"
+                        name="password"
+                        type={showPassword ? "text" : "password"}
+                        autoComplete={isLogin ? "current-password" : "new-password"}
+                        placeholder={isLogin ? "Je wachtwoord" : "Minimaal 6 tekens"}
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        required
+                        minLength={6}
+                        className="h-12 rounded-lg bg-background pr-12"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((visible) => !visible)}
+                        className="absolute right-1 top-1 flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        aria-label={showPassword ? "Verberg wachtwoord" : "Toon wachtwoord"}
+                        aria-pressed={showPassword}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <Button type="submit" variant="pill" disabled={loading || googleLoading || authLoading} className="h-12 w-full">
+                    {loading ? "Even wachten…" : isLogin ? "Inloggen" : "Account aanmaken"}
+                  </Button>
+                  {isLogin && (
+                    <Button type="button" variant="pillOutline" disabled={loading || googleLoading || authLoading} onClick={handleMagicLink} className="h-12 w-full">
+                      Stuur magic link
+                    </Button>
+                  )}
+                </form>
+
+                <p className="mt-7 text-center text-sm text-muted-foreground">
+                  {isLogin ? "Nog geen account? " : "Al een account? "}
+                  <button onClick={switchMode} className="rounded-sm font-semibold text-foreground underline underline-offset-4 transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    {isLogin ? "Registreer" : "Inloggen"}
+                  </button>
+                </p>
+                {!isLogin && (
+                  <p className="mt-5 text-center text-[11px] leading-relaxed text-muted-foreground">
+                    Door een account te maken ga je akkoord met onze <Link to="/voorwaarden" className="underline underline-offset-2 hover:text-foreground">voorwaarden</Link>. Lees in de <Link to="/privacy" className="underline underline-offset-2 hover:text-foreground">privacyverklaring</Link> hoe we je gegevens verwerken.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );

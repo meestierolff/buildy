@@ -12,9 +12,15 @@ import { toast } from "sonner";
 import { BriefcaseBusiness, FileText, Hammer, MapPin, Star, Trash2, Upload, Video, Wallet, X } from "lucide-react";
 import type { FloorInfo } from "./FloorplanView";
 import { prepareUpload } from "@/lib/compressImage";
+import { hydrateTripAssets } from "@/lib/mediaUrl";
+import type { Database } from "@/integrations/supabase/types";
+
+type StepRow = Database["public"]["Tables"]["steps"]["Row"];
+type StepMediaRow = Database["public"]["Tables"]["step_media"]["Row"];
+type EditableStep = StepRow & { step_media?: StepMediaRow[] | null };
 
 interface EditStepDialogProps {
-  step: any;
+  step: EditableStep;
   onClose: () => void;
   onUpdated: () => void;
 }
@@ -37,7 +43,7 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
   const [contractorName, setContractorName] = useState<string>("");
   const [contractorNotes, setContractorNotes] = useState<string>("");
 
-  const [existingMedia, setExistingMedia] = useState<any[]>(
+  const [existingMedia, setExistingMedia] = useState<StepMediaRow[]>(
     [...(step.step_media || [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
   );
   const [newFiles, setNewFiles] = useState<File[]>([]);
@@ -80,16 +86,22 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
   useEffect(() => {
     supabase
       .from("trips")
-      .select("custom_phases, floorplan_url, floorplans")
+      .select("custom_phases, floorplan_url, floorplan_storage_path, floorplans")
       .eq("id", step.trip_id)
       .single()
-      .then(({ data }) => {
+      .then(async ({ data }) => {
+        if (data) await hydrateTripAssets([data]);
         setCustomPhases((data?.custom_phases as string[]) || []);
         const fpRaw = (data?.floorplans as unknown) as FloorInfo[] | null;
         const floors = Array.isArray(fpRaw) && fpRaw.length > 0
           ? fpRaw
           : data?.floorplan_url
-            ? [{ id: "__legacy__", label: "Begane grond", url: data.floorplan_url as string }]
+            ? [{
+                id: "__legacy__",
+                label: "Begane grond",
+                url: data.floorplan_url as string,
+                storage_path: data.floorplan_storage_path,
+              }]
             : [];
         setFloorplans(floors);
         if (!step.floorplan_id) setSelectedFloorId(floors[0]?.id ?? "__legacy__");
@@ -131,7 +143,7 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
   };
 
 
-  const removeExisting = async (m: any) => {
+  const removeExisting = async (m: StepMediaRow) => {
     if (!confirm("Foto verwijderen?")) return;
     const { error } = await supabase.from("step_media").delete().eq("id", m.id);
     if (error) {
@@ -190,20 +202,28 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
       return;
     }
 
+    const partialFailures: string[] = [];
+
+    let contractorError;
     if (contractorName.trim() || contractorNotes.trim()) {
-      await supabase.from("step_contractor_info").upsert({
+      ({ error: contractorError } = await supabase.from("step_contractor_info").upsert({
         step_id: step.id,
         trip_id: step.trip_id,
         contractor_name: contractorName.trim() || null,
         contractor_notes: contractorNotes.trim() || null,
         updated_at: new Date().toISOString(),
-      });
+      }));
     } else {
-      await supabase.from("step_contractor_info").delete().eq("step_id", step.id);
+      ({ error: contractorError } = await supabase.from("step_contractor_info").delete().eq("step_id", step.id));
+    }
+    if (contractorError) {
+      console.error("Update contractor info failed:", contractorError);
+      partialFailures.push("aannemersinformatie");
     }
 
     const hasBudget = cost !== "" || hoursSpent !== "" || workType !== "" ||
       diyCost !== "" || diyHours !== "" || outsourcedCost !== "" || outsourcedHours !== "";
+    let budgetError;
     if (hasBudget) {
       const isMixed = workType === "mixed";
       const totalCost = isMixed
@@ -212,7 +232,7 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
       const totalHours = isMixed
         ? (diyHours !== "" || outsourcedHours !== "" ? Number(diyHours || 0) + Number(outsourcedHours || 0) : null)
         : (hoursSpent === "" ? null : Number(hoursSpent));
-      await supabase.from("step_budget").upsert({
+      ({ error: budgetError } = await supabase.from("step_budget").upsert({
         step_id: step.id,
         trip_id: step.trip_id,
         cost: totalCost,
@@ -222,20 +242,28 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
         diy_hours: isMixed && diyHours !== "" ? Number(diyHours) : null,
         outsourced_cost: isMixed && outsourcedCost !== "" ? Number(outsourcedCost) : null,
         outsourced_hours: isMixed && outsourcedHours !== "" ? Number(outsourcedHours) : null,
-      });
+      }));
     } else {
-      await supabase.from("step_budget").delete().eq("step_id", step.id);
+      ({ error: budgetError } = await supabase.from("step_budget").delete().eq("step_id", step.id));
+    }
+    if (budgetError) {
+      console.error("Update step budget failed:", budgetError);
+      partialFailures.push("budgetinformatie");
     }
 
 
     // Persist reorder of existing media
-    await Promise.all(
+    const reorderResults = await Promise.all(
       existingMedia.map((m, i) =>
         (m.sort_order ?? 0) !== i
           ? supabase.from("step_media").update({ sort_order: i }).eq("id", m.id)
-          : Promise.resolve()
+          : Promise.resolve({ error: null })
       )
     );
+    if (reorderResults.some((result) => result?.error)) {
+      console.error("Reorder existing step media failed:", reorderResults.find((result) => result?.error)?.error);
+      partialFailures.push("fotovolgorde");
+    }
 
     const baseOrder = existingMedia.length;
     for (let i = 0; i < newFiles.length; i++) {
@@ -243,31 +271,52 @@ const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
       try {
         file = await prepareUpload(newFiles[i]);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Bestand overgeslagen");
+        console.error("Prepare upload failed:", err);
+        partialFailures.push(newFiles[i].name);
         continue;
       }
       const ext = file.name.split(".").pop();
       const path = `${user.id}/${step.id}/${Date.now()}-${i}.${ext}`;
       const { error: upErr } = await supabase.storage.from("trip-private").upload(path, file);
-      if (!upErr) {
-        const { data: signed } = await supabase.storage
-          .from("trip-private")
-          .createSignedUrl(path, 60 * 60);
-        await supabase.from("step_media").insert({
-          step_id: step.id,
-          user_id: user.id,
-          media_url: signed?.signedUrl ?? "",
-          storage_path: path,
-          media_type: file.type === "application/pdf" ? "pdf" : file.type.startsWith("video") ? "video" : "image",
-          sort_order: baseOrder + i,
-        });
+      if (upErr) {
+        console.error("Upload step media failed:", upErr);
+        partialFailures.push(newFiles[i].name);
+        continue;
+      }
+
+      const { data: signed, error: signedUrlError } = await supabase.storage
+        .from("trip-private")
+        .createSignedUrl(path, 60 * 60);
+      if (signedUrlError || !signed?.signedUrl) {
+        console.error("Sign step media URL failed:", signedUrlError);
+        await supabase.storage.from("trip-private").remove([path]);
+        partialFailures.push(newFiles[i].name);
+        continue;
+      }
+
+      const { error: mediaError } = await supabase.from("step_media").insert({
+        step_id: step.id,
+        user_id: user.id,
+        media_url: signed.signedUrl,
+        storage_path: path,
+        media_type: file.type === "application/pdf" ? "pdf" : file.type.startsWith("video") ? "video" : "image",
+        sort_order: baseOrder + i,
+      });
+      if (mediaError) {
+        console.error("Store step media failed:", mediaError);
+        await supabase.storage.from("trip-private").remove([path]);
+        partialFailures.push(newFiles[i].name);
       }
     }
 
-    toast.success("Update opgeslagen!");
     onUpdated();
     onClose();
     setLoading(false);
+    if (partialFailures.length > 0) {
+      toast.error(`Update opgeslagen, maar ${partialFailures.length} onderdeel${partialFailures.length === 1 ? "" : "en"} konden niet worden bijgewerkt.`);
+    } else {
+      toast.success("Update opgeslagen!");
+    }
   };
 
   return (

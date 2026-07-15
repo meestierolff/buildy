@@ -12,23 +12,25 @@ import { format } from "date-fns";
 import { nl } from "date-fns/locale";
 import { toast } from "sonner";
 import { buildPeechoPdf, getPeechoPrintPageCount, PEECHO_FORMATS, PEECHO_MIN_PAGES, type PeechoFormat } from "@/lib/peechoExport";
-import { assertPeechoPdfReachable, createPeechoReference } from "@/lib/peecho";
+import { assertPeechoPdfBlob, createPeechoReference } from "@/lib/peecho";
 import { usePageMeta } from "@/hooks/usePageMeta";
-import { hydrateStepsMedia } from "@/lib/mediaUrl";
+import { hydrateStepsMedia, hydrateTripAssets } from "@/lib/mediaUrl";
 
 type StepLayout = "auto" | "1-full" | "2-side" | "2-stack" | "3-mixed" | "grid";
 type CoverTextPos = "bottom" | "top" | "center";
-type PhotobookOrientation = "landscape" | "portrait";
+type PhotobookOrientation = "landscape" | "portrait" | "square";
 
 const PAGE_DIMS: Record<PhotobookOrientation, { w: number; h: number }> = {
   landscape: { w: 600, h: 400 },
   portrait: { w: 420, h: 594 },
+  square: { w: 500, h: 500 },
 };
 
 const PHOTO_DND_MIME = "application/x-buildy-photo";
 
 // Kept for splitTextIntoPages default; portrait uses a narrower value.
-const getCharsPerLine = (orientation: PhotobookOrientation) => (orientation === "portrait" ? 44 : 62);
+const getCharsPerLine = (orientation: PhotobookOrientation) =>
+  orientation === "landscape" ? 62 : orientation === "portrait" ? 44 : 50;
 
 const PhotobookLayoutContext = React.createContext<{ w: number; h: number; orientation: PhotobookOrientation }>({
   w: PAGE_DIMS.landscape.w,
@@ -156,19 +158,47 @@ interface PhotobookOrder {
   status_updated_at: string | null;
 }
 
+interface PhotobookPriceQuote {
+  baseCents: number;
+  pageCents: number;
+  shippingCents: number;
+  subtotalCents: number;
+  totalCents: number;
+  currency: string;
+  vatIncluded: boolean;
+  shippingCountries: string[];
+  deliveryEstimate: string;
+  termsVersion: string;
+  seller: {
+    legalName: string;
+    contactEmail: string;
+    contactPhone: string;
+    postalAddress: string;
+    registrationNumber: string;
+  };
+}
+
 const PHOTOBOOK_ORDER_SELECT_BASE = "id, merchant_reference, peecho_id, format, page_count, status, tracking_code, tracking_url, created_at, ordered_at, status_updated_at";
 const PHOTOBOOK_ORDER_SELECT_EXTENDED = "id, merchant_reference, peecho_id, format, page_count, status, payment_status, payment_amount_cents, payment_currency, fulfillment_status, fulfillment_error, tracking_code, tracking_url, created_at, ordered_at, status_updated_at";
 
 const fetchPhotobookOrders = async (tripId: string) => {
+  const extended = await supabase
+    .from("photobook_orders")
+    .select(PHOTOBOOK_ORDER_SELECT_EXTENDED)
+    .eq("trip_id", tripId)
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  if (!extended.error) return extended.data || [];
+
   const legacy = await supabase
     .from("photobook_orders")
     .select(PHOTOBOOK_ORDER_SELECT_BASE)
     .eq("trip_id", tripId)
     .order("created_at", { ascending: false })
     .limit(5);
-
   if (legacy.error) {
-    console.error("Could not fetch photobook order history:", legacy.error);
+    console.error("Could not fetch photobook order history:", extended.error, legacy.error);
     return [];
   }
   return legacy.data || [];
@@ -249,6 +279,7 @@ const Photobook = () => {
   // pageIdx: flat 0-based index into the pages array (0 = cover)
   const [pageIdx, setPageIdx] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [dataError, setDataError] = useState<string | null>(null);
 
   const [editing, setEditing] = useState(false);
   const [overviewMode, setOverviewMode] = useState(false);
@@ -260,6 +291,9 @@ const Photobook = () => {
     step_layout_overrides: {},
     step_photo_order: {},
   });
+  const settingsRef = useRef(settings);
+  const settingsSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const settingsSaveVersionRef = useRef(0);
   const [excludedMedia, setExcludedMedia] = useState<Set<string>>(new Set());
   const [excludedSteps, setExcludedSteps] = useState<Set<string>>(new Set());
 
@@ -270,12 +304,18 @@ const Photobook = () => {
   const [printBusy, setPrintBusy] = useState(false);
   const [printStep, setPrintStep] = useState<"idle" | "pdf" | "upload" | "checkout" | "done">("idle");
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+  const [preparedPageCount, setPreparedPageCount] = useState<number | null>(null);
+  const [priceQuote, setPriceQuote] = useState<PhotobookPriceQuote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
   const [photobookOrders, setPhotobookOrders] = useState<PhotobookOrder[]>([]);
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [stepBudgetMap, setStepBudgetMap] = useState<Map<string, number>>(new Map());
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const savedTimerRef = useRef<number | null>(null);
   const checkoutToastShown = useRef(false);
+  const checkoutLockRef = useRef(false);
+  const cancelledCheckoutHandled = useRef<string | null>(null);
   usePageMeta({
     title: trip?.title ? `Bouwboek van ${trip.title} — Buildy` : "Bouwboek maken — Buildy",
     description: "Bekijk en bestel het Bouwboek van deze verbouwing met foto's, fases en mijlpalen.",
@@ -295,24 +335,61 @@ const Photobook = () => {
     if (checkout === "success") {
       checkoutToastShown.current = true;
       toast.success("Betaling ontvangen — we verwerken je Bouwboek order");
-    } else if (checkout === "cancelled") {
-      checkoutToastShown.current = true;
-      toast.info("Betaling geannuleerd. Je kunt je Bouwboek opnieuw klaarmaken wanneer je wilt.");
     }
   }, [searchParams]);
 
+  useEffect(() => {
+    const cancelledOrderId = searchParams.get("checkout") === "cancelled"
+      ? searchParams.get("order")
+      : null;
+    if (!cancelledOrderId || !user || cancelledCheckoutHandled.current === cancelledOrderId) return;
+    cancelledCheckoutHandled.current = cancelledOrderId;
+
+    supabase.functions.invoke("create-photobook-checkout", {
+      body: { action: "cancel", orderId: cancelledOrderId },
+    }).then(async ({ error }) => {
+      if (error) {
+        console.error("Could not close cancelled checkout session:", error);
+        toast.info("De betaling kon niet als geannuleerd worden bevestigd. Controleer je bestelstatus; een bankbetaling kan nog worden verwerkt.");
+        return;
+      }
+      toast.info("Betaling geannuleerd. Je kunt je Bouwboek opnieuw klaarmaken wanneer je wilt.");
+      if (id) setPhotobookOrders((await fetchPhotobookOrders(id)) as PhotobookOrder[]);
+    });
+  }, [id, searchParams, user]);
+
   const handleGeneratePeechoPdf = async () => {
-    if (!trip || !id) return;
+    if (!trip || !id || !user || !isOwner || checkoutLockRef.current) return;
+    if (!legalAccepted) {
+      toast.error("Ga eerst akkoord met de voorwaarden");
+      return;
+    }
+    if (!priceQuote?.termsVersion) {
+      toast.error("De actuele prijs en voorwaarden konden niet worden geladen");
+      return;
+    }
+    const printablePhotos = steps
+      .filter((step) => !excludedSteps.has(step.id))
+      .flatMap((step) => step.step_media || [])
+      .filter((media) => media.media_type !== "video" && media.media_type !== "pdf" && !excludedMedia.has(media.id));
+    if (printablePhotos.length === 0) {
+      toast.error("Voeg minimaal één foto uit een update aan je Bouwboek toe");
+      return;
+    }
+
+    checkoutLockRef.current = true;
     setPrintBusy(true);
     setCheckoutUrl(null);
     setPrintStep("pdf");
     let uploadedPdfPath: string | null = null;
-    let pdfReadyForCheckout = false;
+    let checkoutRequested = false;
+    let checkoutRegistered = false;
     try {
       const orderReference = createPeechoReference(id);
-      const { blob, failedImages, renderedPhotos } = await buildPeechoPdf({
+      const { blob, failedImages, renderedPhotos, pageCount } = await buildPeechoPdf({
         trip, steps, settings, excludedMedia, excludedSteps, format: printFormat,
       });
+      await assertPeechoPdfBlob(blob);
       if (renderedPhotos === 0) {
         throw new Error("Er zijn geen printbare foto's in je boek. Voeg minimaal één foto toe.");
       }
@@ -322,69 +399,77 @@ const Photobook = () => {
         );
       }
       setPrintStep("upload");
-      // Upload to public storage so Peecho can fetch the PDF directly
-      const path = `${trip.user_id}/peecho/${orderReference}.pdf`;
-      const { error: upErr } = await supabase.storage.from("trip-media").upload(path, blob, {
-        contentType: "application/pdf", upsert: true,
+      // Personalized books stay private; the server creates a temporary signed
+      // URL for Peecho only after Stripe confirms payment.
+      const path = `${user.id}/${id}/${orderReference}.pdf`;
+      const { error: upErr } = await supabase.storage.from("photobook-pdfs").upload(path, blob, {
+        contentType: "application/pdf", upsert: false,
       });
       if (upErr) throw upErr;
       uploadedPdfPath = path;
 
-      const { data: pub } = supabase.storage.from("trip-media").getPublicUrl(path);
-      await assertPeechoPdfReachable(pub.publicUrl);
-      pdfReadyForCheckout = true;
-      const pageCount = getPeechoPrintPageCount(pages.length);
-
       setPrintStep("checkout");
-      const { data: orderData, error: orderErr } = await supabase
-        .from("photobook_orders")
-        .insert({
-          trip_id: id,
-          user_id: trip.user_id,
-          merchant_reference: orderReference,
-          pdf_url: pub.publicUrl,
-          format: printFormat,
-          page_count: pageCount,
-          status: "pdf_ready",
-          payment_status: "unpaid",
-          payment_currency: "eur",
-          fulfillment_status: "not_started",
-        })
-        .select(PHOTOBOOK_ORDER_SELECT_EXTENDED)
-        .single();
-      if (orderErr || !orderData) throw orderErr || new Error("Order kon niet worden aangemaakt");
-      const newOrder = orderData as unknown as PhotobookOrder;
-
+      checkoutRequested = true;
       const { data: checkoutData, error: checkoutErr } = await supabase.functions.invoke("create-photobook-checkout", {
-        body: { orderId: newOrder.id },
+        body: {
+          action: "checkout",
+          tripId: id,
+          merchantReference: orderReference,
+          pdfPath: path,
+          format: printFormat,
+          pageCount,
+          legalAccepted: true,
+          acceptedTermsVersion: priceQuote.termsVersion,
+        },
       });
       if (checkoutErr) throw checkoutErr;
       if (!checkoutData?.checkoutUrl) throw new Error("Checkout-url ontbreekt");
+      if (!checkoutData?.order) throw new Error("Orderbevestiging ontbreekt");
+      checkoutRegistered = true;
 
       setPrintStep("done");
       setCheckoutUrl(checkoutData.checkoutUrl);
+      setPreparedPageCount(pageCount);
+      if (checkoutData.quote) setPriceQuote(checkoutData.quote as PhotobookPriceQuote);
+      const newOrder = checkoutData.order as PhotobookOrder;
       setPhotobookOrders((current) => [newOrder, ...current.filter((order) => order.id !== newOrder.id)].slice(0, 5));
-      toast.success("Boek klaar — je gaat nu naar de beveiligde betaling");
-      window.location.assign(checkoutData.checkoutUrl);
-    } catch (e: any) {
-      if (uploadedPdfPath && !pdfReadyForCheckout) {
-        const { error: cleanupErr } = await supabase.storage.from("trip-media").remove([uploadedPdfPath]);
-        if (cleanupErr) {
-          console.error("Could not clean up unregistered Peecho PDF:", cleanupErr);
+      toast.success("Boek klaar — controleer het totaal en open daarna de beveiligde betaling");
+    } catch (e: unknown) {
+      if (uploadedPdfPath && !checkoutRegistered) {
+        let canRemovePdf = !checkoutRequested;
+        if (checkoutRequested) {
+          const registration = await supabase
+            .from("photobook_orders")
+            .select("id")
+            .eq("pdf_storage_path", uploadedPdfPath)
+            .maybeSingle();
+          if (registration.error) {
+            console.error("Could not verify whether the private PDF belongs to an order:", registration.error);
+          } else {
+            canRemovePdf = !registration.data;
+          }
+        }
+        if (canRemovePdf) {
+          const { error: cleanupErr } = await supabase.storage.from("photobook-pdfs").remove([uploadedPdfPath]);
+          if (cleanupErr) console.error("Could not clean up unregistered private PDF:", cleanupErr);
         }
       }
       console.error(e);
       setPrintStep("idle");
-      toast.error(e.message || "Genereren mislukt");
+      toast.error(e instanceof Error ? e.message : "Genereren mislukt");
     } finally {
+      checkoutLockRef.current = false;
       setPrintBusy(false);
     }
   };
 
   useEffect(() => {
+    let cancelled = false;
     const fetchData = async () => {
       if (!id) return;
-      const [{ data: tripData }, { data: stepsData }, { data: settingsData }, { data: exMedia }, { data: exSteps }, { data: privInfo }, { data: budgetData }, { data: budgetTotalRow }, orderData] = await Promise.all([
+      setLoading(true);
+      setDataError(null);
+      const [tripResult, stepsResult, settingsResult, exMediaResult, exStepsResult, privateResult, budgetResult, budgetTotalResult, orderData] = await Promise.all([
         supabase.from("trips").select("*").eq("id", id).single(),
         supabase.from("steps").select("*, step_media(*)").eq("trip_id", id).order("step_date", { ascending: true }),
         supabase.from("photobook_settings").select("*").eq("trip_id", id).maybeSingle(),
@@ -395,51 +480,109 @@ const Photobook = () => {
         supabase.from("trip_budgets").select("budget_total").eq("trip_id", id).maybeSingle(),
         fetchPhotobookOrders(id),
       ]);
+      if (cancelled) return;
+      if (tripResult.error || stepsResult.error || !tripResult.data) {
+        console.error("Could not load photobook:", tripResult.error, stepsResult.error);
+        setTrip(null);
+        setSteps([]);
+        setDataError("Dit Bouwboek bestaat niet of je hebt geen toegang.");
+        setLoading(false);
+        return;
+      }
+
+      const tripData = tripResult.data;
+      const stepsData = stepsResult.data || [];
+      const settingsData = settingsResult.data;
+      const exMedia = exMediaResult.data;
+      const exSteps = exStepsResult.data;
+      const privInfo = privateResult.data;
+      const budgetData = budgetResult.data;
+      const budgetTotalRow = budgetTotalResult.data;
+      await Promise.all([
+        hydrateTripAssets([tripData]),
+        hydrateStepsMedia(stepsData as any),
+      ]);
+      if (cancelled) return;
       setStepBudgetMap(new Map((budgetData || []).map((r: any) => [r.step_id, Number(r.cost) || 0])));
-      setTrip(tripData ? { ...tripData, address: privInfo?.address ?? null, budget_total: budgetTotalRow?.budget_total ?? null } : null);
-      await hydrateStepsMedia(stepsData as any);
-      setSteps(stepsData || []);
+      setTrip({ ...tripData, address: privInfo?.address ?? null, budget_total: budgetTotalRow?.budget_total ?? null });
+      setSteps(stepsData);
       if (settingsData) {
-        setSettings({
+        const loadedSettings: PhotobookSettings = {
           cover_title: settingsData.cover_title,
           cover_subtitle: settingsData.cover_subtitle,
           cover_media_id: settingsData.cover_media_id,
           chapter_overrides: (settingsData.chapter_overrides as any) || {},
           step_layout_overrides: (settingsData.step_layout_overrides as any) || {},
           step_photo_order: (settingsData.step_photo_order as any) || {},
-        });
+        };
+        settingsRef.current = loadedSettings;
+        setSettings(loadedSettings);
+      } else {
+        const defaultSettings: PhotobookSettings = {
+          cover_title: null,
+          cover_subtitle: null,
+          cover_media_id: null,
+          chapter_overrides: {},
+          step_layout_overrides: {},
+          step_photo_order: {},
+        };
+        settingsRef.current = defaultSettings;
+        setSettings(defaultSettings);
       }
       setExcludedMedia(new Set((exMedia || []).map((r: any) => r.media_id)));
       setExcludedSteps(new Set((exSteps || []).map((r: any) => r.step_id)));
       setPhotobookOrders((orderData || []) as PhotobookOrder[]);
       setLoading(false);
     };
-    fetchData();
+    fetchData().catch((error) => {
+      if (cancelled) return;
+      console.error("Could not load photobook:", error);
+      setDataError("Het Bouwboek kon niet worden geladen. Probeer het opnieuw.");
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [id, user?.id]);
 
-  const upsertSettings = useCallback(async (patch: Partial<PhotobookSettings>) => {
-    if (!id) return;
-    const next = { ...settings, ...patch };
+  const upsertSettings = useCallback((patch: Partial<PhotobookSettings>) => {
+    if (!id) return Promise.resolve();
+    const next = { ...settingsRef.current, ...patch };
+    settingsRef.current = next;
     setSettings(next);
     setSaveState("saving");
-    const { error } = await supabase.from("photobook_settings").upsert({
-      trip_id: id,
-      cover_title: next.cover_title,
-      cover_subtitle: next.cover_subtitle,
-      cover_media_id: next.cover_media_id,
-      chapter_overrides: next.chapter_overrides as any,
-      step_layout_overrides: next.step_layout_overrides as any,
-      step_photo_order: next.step_photo_order as any,
+    const version = ++settingsSaveVersionRef.current;
+    const operation = settingsSaveQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        const { error } = await supabase.from("photobook_settings").upsert({
+          trip_id: id,
+          cover_title: next.cover_title,
+          cover_subtitle: next.cover_subtitle,
+          cover_media_id: next.cover_media_id,
+          chapter_overrides: next.chapter_overrides as any,
+          step_layout_overrides: next.step_layout_overrides as any,
+          step_photo_order: next.step_photo_order as any,
+        });
+        if (error) throw error;
+      });
+    settingsSaveQueueRef.current = operation;
+    operation.then(() => {
+      if (version !== settingsSaveVersionRef.current) return;
+      setSaveState("saved");
+      if (savedTimerRef.current) window.clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = window.setTimeout(() => setSaveState("idle"), 1800);
+    }).catch((error) => {
+      console.error("Could not save photobook settings:", error);
+      if (version === settingsSaveVersionRef.current) setSaveState("idle");
+      toast.error("Kon je Bouwboek-aanpassing niet opslaan");
     });
-    if (error) {
-      setSaveState("idle");
-      toast.error("Kon niet opslaan");
-      return;
-    }
-    setSaveState("saved");
+    return operation;
+  }, [id]);
+
+  useEffect(() => () => {
     if (savedTimerRef.current) window.clearTimeout(savedTimerRef.current);
-    savedTimerRef.current = window.setTimeout(() => setSaveState("idle"), 1800);
-  }, [id, settings]);
+  }, []);
 
 
   const toggleMedia = async (mediaId: string) => {
@@ -496,8 +639,9 @@ const Photobook = () => {
     upsertSettings({ step_photo_order: { ...settings.step_photo_order, [stepId]: ids } });
   }, [settings.step_photo_order, steps, upsertSettings]);
 
+  const savedOrientation = settings.chapter_overrides["__orientation__"] as PhotobookOrientation;
   const orientation: PhotobookOrientation =
-    (settings.chapter_overrides["__orientation__"] as PhotobookOrientation) === "portrait" ? "portrait" : "landscape";
+    savedOrientation === "portrait" || savedOrientation === "square" ? savedOrientation : "landscape";
 
   // Build pages (memoized)
   const pages = useMemo(() => {
@@ -858,7 +1002,7 @@ const Photobook = () => {
     });
 
     return list;
-  }, [trip, steps, settings, excludedMedia, excludedSteps, editing, stepBudgetMap, defaultCoverMedia, reorderPhotoTo]);
+  }, [trip, steps, settings, excludedMedia, excludedSteps, editing, stepBudgetMap, defaultCoverMedia, reorderPhotoTo, orientation]);
 
   // Build page spreads: spread 0 = [cover, page 2], spread n = [pages[2n], pages[2n + 1]]
   const spreads = useMemo(() => {
@@ -882,24 +1026,73 @@ const Photobook = () => {
   const goToFirstSpread = () => setPageIdx(0);
   const goToLastSpread = () => setPageIdx(Math.max(0, pages.length - 1));
 
-  const PRICE_PER_PAGE = 0.75;
-  const BOOK_BASE = 12.95;
   const PRINT_PAGES = getPeechoPrintPageCount(pages.length);
   const CONTENT_PAGES = Math.max(0, PRINT_PAGES - 2);
-  const totalPrice = BOOK_BASE + PRINT_PAGES * PRICE_PER_PAGE;
+  const printablePhotoCount = useMemo(() => steps
+    .filter((step) => !excludedSteps.has(step.id))
+    .flatMap((step) => step.step_media || [])
+    .filter((media: any) => media.media_type !== "video" && media.media_type !== "pdf" && !excludedMedia.has(media.id))
+    .length, [excludedMedia, excludedSteps, steps]);
 
   const { w: pageW, h: pageH } = PAGE_DIMS[orientation];
   const layoutCtx = useMemo(() => ({ w: pageW, h: pageH, orientation }), [pageW, pageH, orientation]);
 
   // Keep printFormat in sync with orientation setting
   useEffect(() => {
-    setPrintFormat(orientation === "portrait" ? "A4_PORTRAIT" : "A4_LANDSCAPE");
+    setPrintFormat(
+      orientation === "portrait"
+        ? "A4_PORTRAIT"
+        : orientation === "square"
+          ? "SQUARE_210"
+          : "A4_LANDSCAPE",
+    );
   }, [orientation]);
+
+  useEffect(() => {
+    if (!printOpen || !id || !isOwner) return;
+    let cancelled = false;
+    setLegalAccepted(false);
+    setQuoteLoading(true);
+    setQuoteError(null);
+    setPriceQuote(null);
+    supabase.functions.invoke("create-photobook-checkout", {
+      body: {
+        action: "quote",
+        tripId: id,
+        format: printFormat,
+        pageCount: PRINT_PAGES,
+      },
+    }).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error || !data?.quote) {
+        console.error("Could not load photobook quote:", error, data);
+        setQuoteError("Bestellen is tijdelijk niet beschikbaar. Probeer het later opnieuw.");
+        return;
+      }
+      setPriceQuote(data.quote as PhotobookPriceQuote);
+    }).finally(() => {
+      if (!cancelled) setQuoteLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [PRINT_PAGES, id, isOwner, printFormat, printOpen]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="animate-spin h-8 w-8 border-2 border-accent border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  if (dataError || !trip) {
+    return (
+      <div className="container max-w-xl py-16 text-center space-y-4">
+        <BookOpen className="mx-auto h-12 w-12 text-muted-foreground" />
+        <h1 className="text-2xl font-serif font-semibold">Bouwboek niet beschikbaar</h1>
+        <p className="text-sm text-muted-foreground">{dataError || "Dit Bouwboek kon niet worden gevonden."}</p>
+        <Button asChild variant="outline"><Link to="/"><ArrowLeft className="mr-2 h-4 w-4" />Terug naar Buildy</Link></Button>
       </div>
     );
   }
@@ -1015,7 +1208,7 @@ const Photobook = () => {
             <div>
               <p className="text-[11px] font-medium text-muted-foreground mb-1.5">Oriëntatie boek</p>
               <div className="flex gap-2">
-                {([["landscape", "Liggend (A4)"], ["portrait", "Staand (A4)"]] as const).map(([val, label]) => {
+                {([["landscape", "Liggend (A4)"], ["portrait", "Staand (A4)"], ["square", "Vierkant"]] as const).map(([val, label]) => {
                   const active = orientation === val;
                   return (
                     <button
@@ -1311,13 +1504,7 @@ const Photobook = () => {
               <span className="text-muted-foreground text-xs ml-2">(printklaar: {PRINT_PAGES}, min. Peecho: {PEECHO_MIN_PAGES})</span>
             </p>
             <p className="text-sm text-muted-foreground">
-              Schatting:{" "}
-              <span className="font-semibold text-foreground">
-                €{totalPrice.toFixed(2).replace(".", ",")}
-              </span>
-              <span className="text-xs ml-2">
-                · €{PRICE_PER_PAGE.toFixed(2).replace(".", ",")} p/p + €{BOOK_BASE.toFixed(2).replace(".", ",")} basis
-              </span>
+              Prijs en verzending worden actueel berekend bij bestellen
             </p>
           </div>
         </div>
@@ -1354,7 +1541,9 @@ const Photobook = () => {
             <button aria-label="Volgende pagina" title="Volgende pagina" onClick={() => setPageIdx(Math.min(pages.length - 1, pageIdx + 1))} disabled={pageIdx >= pages.length - 1} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center text-white transition"><ChevronRight className="h-4 w-4" /></button>
             <button aria-label="Laatste pagina" title="Laatste pagina" onClick={() => setPageIdx(pages.length - 1)} disabled={pageIdx >= pages.length - 1} className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-25 disabled:cursor-not-allowed flex items-center justify-center text-white transition"><ChevronsRight className="h-4 w-4" /></button>
           </div>
-          <p className="text-white/30 text-xs mt-2 text-center">Elke pagina zoals hij gedrukt wordt</p>
+          <p className="text-white/40 text-xs mt-2 text-center">
+            Opmaakvoorbeeld — de print-PDF wordt bij bestellen apart opgebouwd en gecontroleerd
+          </p>
         </div>
 
         {/* ── DESKTOP: two-page spread view ── */}
@@ -1432,22 +1621,22 @@ const Photobook = () => {
       )}
 
 
-      <Dialog open={printOpen} onOpenChange={(open) => { setPrintOpen(open); if (!open) { setCheckoutUrl(null); setPrintStep("idle"); setLegalAccepted(false); } }}>
+      <Dialog open={printOpen} onOpenChange={(open) => { setPrintOpen(open); if (!open) { setCheckoutUrl(null); setPreparedPageCount(null); setPrintStep("idle"); setLegalAccepted(false); } }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Bestel als hardcover Bouwboek</DialogTitle>
             <DialogDescription>
-              Printklare PDF, veilig afrekenen via Stripe, druk en verzending via Peecho.
+              Printklare PDF, veilig afrekenen via Stripe, druk en verzending via Peecho. De editor toont een inhoudsvoorvertoning; uitsnedes en tekstomloop kunnen in het drukbestand licht afwijken.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
-            {pages.length < PEECHO_MIN_PAGES && (
+            {printablePhotoCount === 0 && (
               <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-900">
                 <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
                 <div className="text-xs">
-                  <p className="font-semibold">Nog te weinig pagina's</p>
-                  <p>Je boek heeft minstens {PEECHO_MIN_PAGES} pagina's nodig. Voeg meer updates of foto's toe — lege pagina's worden automatisch aangevuld, maar méér inhoud levert een mooier boek.</p>
+                  <p className="font-semibold">Nog geen foto's in je boek</p>
+                  <p>Voeg minimaal één foto uit een update toe. Buildy vult het boek automatisch aan tot minimaal {PEECHO_MIN_PAGES} pagina's.</p>
                 </div>
               </div>
             )}
@@ -1511,7 +1700,18 @@ const Photobook = () => {
                     return (
                       <button
                         key={fmt}
-                        onClick={() => setPrintFormat(fmt)}
+                        onClick={() => {
+                          const nextOrientation: PhotobookOrientation = fmt === "A4_PORTRAIT"
+                            ? "portrait"
+                            : fmt === "SQUARE_210"
+                              ? "square"
+                              : "landscape";
+                          setPrintFormat(fmt);
+                          setPreparedPageCount(null);
+                          upsertSettings({
+                            chapter_overrides: { ...settings.chapter_overrides, "__orientation__": nextOrientation },
+                          });
+                        }}
                         className={`group flex flex-col items-center gap-2 rounded-lg border-2 p-3 transition ${active ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/40"}`}
                       >
                         <div
@@ -1530,16 +1730,53 @@ const Photobook = () => {
               </div>
             )}
 
-            <div className="rounded-md border bg-muted/35 p-3 flex items-center justify-between gap-3">
+            <div className="rounded-md border bg-muted/35 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">Samenvatting</p>
-                <p className="text-sm font-semibold">{PRINT_PAGES} pagina's · {PEECHO_FORMATS[printFormat].label}</p>
+                <p className="text-sm font-semibold">{preparedPageCount ?? PRINT_PAGES} pagina's · {PEECHO_FORMATS[printFormat].label}</p>
               </div>
               <div className="text-right">
-                <p className="text-xs text-muted-foreground">Geschat</p>
-                <p className="text-lg font-bold tabular-nums">€{totalPrice.toFixed(2).replace(".", ",")}</p>
+                <p className="text-xs text-muted-foreground">{checkoutUrl ? "Te betalen incl. btw" : "Indicatie incl. btw"}</p>
+                {quoteLoading ? (
+                  <Loader2 className="ml-auto h-5 w-5 animate-spin text-muted-foreground" />
+                ) : priceQuote ? (
+                  <p className="text-lg font-bold tabular-nums">
+                    {(priceQuote.totalCents / 100).toLocaleString("nl-NL", { style: "currency", currency: priceQuote.currency.toUpperCase() })}
+                  </p>
+                ) : (
+                  <p className="text-sm font-medium text-destructive">Niet beschikbaar</p>
+                )}
               </div>
+              </div>
+              {priceQuote && (
+                <div className="border-t pt-2 text-[11px] text-muted-foreground space-y-1.5">
+                  <div className="flex justify-between gap-3">
+                    <span>Boek {(priceQuote.subtotalCents / 100).toLocaleString("nl-NL", { style: "currency", currency: priceQuote.currency.toUpperCase() })}</span>
+                    <span>Verzending {(priceQuote.shippingCents / 100).toLocaleString("nl-NL", { style: "currency", currency: priceQuote.currency.toUpperCase() })}</span>
+                  </div>
+                  <p className="border-t pt-1.5">
+                    Verkocht door <span className="font-medium text-foreground">{priceQuote.seller.legalName}</span>
+                    {priceQuote.seller.registrationNumber ? ` · ${priceQuote.seller.registrationNumber}` : ""}
+                    {priceQuote.seller.postalAddress ? ` · ${priceQuote.seller.postalAddress}` : ""}
+                    {" · "}
+                    <a className="underline underline-offset-2" href={`mailto:${priceQuote.seller.contactEmail}`}>
+                      {priceQuote.seller.contactEmail}
+                    </a>
+                    {" · "}
+                    <a className="underline underline-offset-2" href={`tel:${priceQuote.seller.contactPhone.replace(/[^+\d]/g, "")}`}>
+                      {priceQuote.seller.contactPhone}
+                    </a>
+                  </p>
+                </div>
+              )}
             </div>
+
+            {quoteError && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+                {quoteError}
+              </div>
+            )}
 
             {printBusy && (
               <div className="rounded-md border bg-background p-3 space-y-2">
@@ -1575,12 +1812,13 @@ const Photobook = () => {
                 />
                 <span className="text-muted-foreground">
                   Ik ga akkoord met de{" "}
-                  <a href="/voorwaarden" target="_blank" rel="noreferrer" className="text-foreground underline underline-offset-2">algemene voorwaarden</a>{" "}
-                  en de{" "}
+                  <a href="/voorwaarden" target="_blank" rel="noreferrer" className="text-foreground underline underline-offset-2">algemene voorwaarden</a>
+                  {priceQuote?.termsVersion ? ` (versie ${priceQuote.termsVersion})` : ""}.
+                  Ik heb kennisgenomen van de{" "}
                   <a href="/privacy" target="_blank" rel="noreferrer" className="text-foreground underline underline-offset-2">privacyverklaring</a>.
-                  Ik bevestig dat mijn Bouwboek een gepersonaliseerd product is en doe uitdrukkelijk afstand van het{" "}
+                  Ik begrijp dat dit Bouwboek volgens mijn specificaties wordt gemaakt en dat daarom geen{" "}
                   <a href="/herroeping" target="_blank" rel="noreferrer" className="text-foreground underline underline-offset-2">herroepingsrecht</a>{" "}
-                  zodat de productie direct kan starten na betaling.
+                  geldt.
                 </span>
               </label>
             )}
@@ -1588,23 +1826,25 @@ const Photobook = () => {
             {!checkoutUrl ? (
               <Button
                 onClick={handleGeneratePeechoPdf}
-                disabled={printBusy || pages.length < PEECHO_MIN_PAGES || !legalAccepted}
+                disabled={printBusy || printablePhotoCount === 0 || !legalAccepted || quoteLoading || !priceQuote || !!quoteError}
                 className="w-full gap-2"
               >
                 {printBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookOpen className="h-4 w-4" />}
-                {printBusy ? "Bezig…" : "Boek klaarmaken en betalen"}
+                {printBusy ? "Bezig…" : "PDF maken en totaal bevestigen"}
               </Button>
             ) : (
-              <a href={checkoutUrl} className="block">
+              <a href={checkoutUrl} className="block" rel="noreferrer">
                 <Button className="w-full gap-2">
                   <ExternalLink className="h-4 w-4" />
-                  Ga naar beveiligde betaling
+                  Betaal {priceQuote ? (priceQuote.totalCents / 100).toLocaleString("nl-NL", { style: "currency", currency: priceQuote.currency.toUpperCase() }) : "veilig"} via Stripe
                 </Button>
               </a>
             )}
 
             <p className="text-[11px] text-muted-foreground text-center">
-              Na betaling maken we de Peecho-order aan. Levertijd hangt af van productie en verzending.
+              {priceQuote
+                ? `Levering in ${priceQuote.shippingCountries.join(", ")} · verwacht ${priceQuote.deliveryEstimate}. Na betaling gaat je persoonlijke boek naar Peecho voor productie.`
+                : "Na betaling gaat je persoonlijke boek naar Peecho voor productie."}
             </p>
             <PhotobookOrderHistory orders={photobookOrders} />
           </div>

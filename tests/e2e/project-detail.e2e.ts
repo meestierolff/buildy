@@ -39,14 +39,14 @@ test.describe("Project detail", () => {
     await expect(page.getByText(/alleen mijlpalen worden getoond/i)).toBeVisible();
   });
 
-  test("lightbox opens on photo click and closes via backdrop", async ({ page }) => {
+  test("lightbox opens on photo click and closes with its close control", async ({ page }) => {
     await page.goto(`${BASE}/trip/${PUBLIC_TRIP_ID}`, { waitUntil: "networkidle" });
-    const firstPhoto = page.locator("article button img").first();
-    test.skip((await firstPhoto.count()) === 0, "no photos on this trip");
-    await firstPhoto.click();
-    const lightbox = page.locator("div.fixed.inset-0.z-\\[1200\\]");
+    const firstMedia = page.getByTestId("timeline-primary-media").filter({ has: page.locator("img, video") }).first();
+    test.skip((await firstMedia.count()) === 0, "no photos or videos on this trip");
+    await firstMedia.click();
+    const lightbox = page.getByTestId("media-lightbox");
     await expect(lightbox).toBeVisible();
-    await page.mouse.click(20, 500);
+    await page.getByRole("button", { name: /lightbox sluiten/i }).click();
     await expect(lightbox).toHaveCount(0);
   });
 });

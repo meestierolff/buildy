@@ -3,7 +3,19 @@
 
 const MAX_DIM = 2400;
 const QUALITY = 0.85;
+export const MAX_IMAGE_BYTES = 30 * 1024 * 1024; // 30 MB before compression
 export const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // 100 MB
+export const MAX_PDF_BYTES = 25 * 1024 * 1024; // 25 MB
+
+const SUPPORTED_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/avif",
+]);
+
+const sizeInMb = (bytes: number) => (bytes / 1024 / 1024).toFixed(0);
 
 const loadImage = (file: File) =>
   new Promise<HTMLImageElement>((resolve, reject) => {
@@ -49,10 +61,29 @@ export async function compressImage(file: File): Promise<File> {
 }
 
 export async function prepareUpload(file: File): Promise<File> {
-  if (file.type.startsWith("video/") && file.size > MAX_VIDEO_BYTES) {
-    throw new Error(
-      `Video is te groot (${(file.size / 1024 / 1024).toFixed(0)} MB). Max ${MAX_VIDEO_BYTES / 1024 / 1024} MB.`
-    );
+  if (file.type.startsWith("image/")) {
+    if (!SUPPORTED_IMAGE_TYPES.has(file.type)) {
+      throw new Error(`${file.name} heeft een niet-ondersteund fotoformaat. Gebruik JPG, PNG, WebP, GIF of AVIF.`);
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      throw new Error(`Foto is te groot (${sizeInMb(file.size)} MB). Max ${sizeInMb(MAX_IMAGE_BYTES)} MB.`);
+    }
+    return compressImage(file);
   }
-  return compressImage(file);
+
+  if (file.type.startsWith("video/")) {
+    if (file.size > MAX_VIDEO_BYTES) {
+      throw new Error(`Video is te groot (${sizeInMb(file.size)} MB). Max ${sizeInMb(MAX_VIDEO_BYTES)} MB.`);
+    }
+    return file;
+  }
+
+  if (file.type === "application/pdf") {
+    if (file.size > MAX_PDF_BYTES) {
+      throw new Error(`PDF is te groot (${sizeInMb(file.size)} MB). Max ${sizeInMb(MAX_PDF_BYTES)} MB.`);
+    }
+    return file;
+  }
+
+  throw new Error(`${file.name} heeft een niet-ondersteund bestandstype.`);
 }

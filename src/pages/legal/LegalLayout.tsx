@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { Link } from "react-router-dom";
 
@@ -20,14 +20,14 @@ const LegalLayout = ({ title, description, updated, children }: Props) => {
         <h1 className="text-3xl md:text-4xl font-serif font-semibold tracking-tight">{title}</h1>
         <p className="text-sm text-muted-foreground mt-2">Laatst bijgewerkt: {updated}</p>
       </header>
-      <div className="prose prose-sm md:prose-base max-w-none prose-headings:font-serif prose-headings:font-semibold prose-h2:mt-10 prose-h2:mb-3 prose-h2:text-xl prose-p:leading-relaxed prose-li:my-1">
+      <div className="prose prose-sm md:prose-base max-w-none prose-headings:font-serif prose-headings:font-semibold prose-h2:mt-10 prose-h2:mb-3 prose-h2:text-xl prose-p:leading-relaxed prose-li:my-1 prose-a:text-foreground prose-a:underline prose-a:underline-offset-2 prose-th:text-left prose-th:align-top prose-td:align-top">
         {children}
       </div>
-      <footer className="mt-12 pt-6 border-t border-border flex flex-wrap gap-x-6 gap-y-2 text-xs text-muted-foreground">
+      <nav aria-label="Juridische pagina's" className="mt-12 pt-6 border-t border-border flex flex-wrap gap-x-6 gap-y-2 text-xs text-muted-foreground">
         <Link to="/voorwaarden" className="hover:text-foreground">Algemene voorwaarden</Link>
         <Link to="/privacy" className="hover:text-foreground">Privacyverklaring</Link>
         <Link to="/herroeping" className="hover:text-foreground">Herroepingsrecht</Link>
-      </footer>
+      </nav>
     </article>
   );
 };

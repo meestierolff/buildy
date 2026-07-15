@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ImagePlus, MoveVertical, Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import ProjectAccessManager from "@/components/ProjectAccessManager";
 
 const PROJECT_TYPES = [
   "Volledige renovatie",
@@ -193,7 +194,7 @@ export default function ProjectSettingsSheet({
               <p className="text-xs text-muted-foreground pl-12">
                 {isPublicDraft
                   ? "Iedereen kan dit project bekijken en direct volgen."
-                  : "Alleen jij ziet dit project. Anderen kunnen een volgverzoek sturen dat jij eerst moet goedkeuren."}
+                  : "Alleen jij en goedgekeurde projectvolgers zien dit project. Bestaande projectvolgers behouden toegang; je kunt ze hieronder verwijderen."}
               </p>
             </div>
 
@@ -207,6 +208,10 @@ export default function ProjectSettingsSheet({
               <Check className="h-3.5 w-3.5" /> {savingBasics ? "Opslaan..." : "Opslaan"}
             </Button>
           </div>
+
+          <Separator />
+
+          {trip?.id && <ProjectAccessManager projectId={trip.id} enabled={open} />}
 
           <Separator />
 
@@ -291,4 +296,3 @@ export default function ProjectSettingsSheet({
     </Sheet>
   );
 }
-

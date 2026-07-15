@@ -18,7 +18,7 @@ export default {
         // Source of truth for the two typefaces. Defining `serif` here makes the
         // Tailwind `font-serif` utility emit Instrument Serif — otherwise the
         // generated utility (Georgia/Times) overrides the intended heading font.
-        sans: ["Inter", "system-ui", "sans-serif"],
+        sans: ["Inter Variable", "Inter", "system-ui", "sans-serif"],
         serif: ["Instrument Serif", "Georgia", "serif"],
       },
       colors: {

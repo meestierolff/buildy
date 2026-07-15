@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -16,8 +16,41 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Loader2, KeyRound, Trash2, Mail } from "lucide-react";
+import { BookOpen, ChevronRight, Loader2, KeyRound, Trash2, Mail } from "lucide-react";
 import { usePageMeta } from "@/hooks/usePageMeta";
+
+interface OrderSummary {
+  id: string;
+  status: string;
+  created_at: string;
+  format: string | null;
+  payment_amount_cents: number | null;
+  payment_currency: string | null;
+}
+
+const ORDER_STATUS_LABELS: Record<string, string> = {
+  pending: "Checkout voorbereid",
+  payment_pending: "Betaling in behandeling",
+  paid: "Betaald",
+  submitted: "Naar de drukker",
+  processing: "In productie",
+  shipped: "Verzonden",
+  delivered: "Afgerond",
+  cancelled: "Geannuleerd",
+  refunded: "Terugbetaald",
+  payment_cancelled: "Betaling geannuleerd",
+  payment_expired: "Checkout verlopen",
+  payment_failed: "Betaling mislukt",
+  fulfillment_failed: "Handmatige opvolging nodig",
+};
+
+const formatOrderAmount = (amount: number | null, currency: string | null) => {
+  if (amount == null || amount <= 0) return null;
+  return new Intl.NumberFormat("nl-NL", {
+    style: "currency",
+    currency: (currency || "eur").toUpperCase(),
+  }).format(amount / 100);
+};
 
 const AccountSettings = () => {
   usePageMeta({
@@ -26,20 +59,55 @@ const AccountSettings = () => {
     path: "/account",
     noIndex: true,
   });
-  const { user, signOut } = useAuth();
+  const { user, loading: authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const [newPassword, setNewPassword] = useState("");
   const [savingPwd, setSavingPwd] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirm, setConfirm] = useState("");
+  const [orders, setOrders] = useState<OrderSummary[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [ordersError, setOrdersError] = useState(false);
 
-  if (!user) {
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) {
+      setOrders([]);
+      setOrdersLoading(false);
+      return () => { cancelled = true; };
+    }
+
+    setOrdersLoading(true);
+    setOrdersError(false);
+    supabase
+      .from("photobook_orders")
+      .select("id, status, created_at, format, payment_amount_cents, payment_currency")
+      .order("created_at", { ascending: false })
+      .limit(20)
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Order history load failed", error);
+          setOrdersError(true);
+        } else {
+          setOrders(data || []);
+        }
+        setOrdersLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [user]);
+
+  if (authLoading) {
     return (
-      <div className="container py-20 text-center">
-        <p className="text-muted-foreground">Log eerst in om je account te beheren.</p>
+      <div className="flex min-h-[60vh] items-center justify-center" role="status" aria-live="polite">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <span className="sr-only">Account laden…</span>
       </div>
     );
   }
+
+  if (!user) return <Navigate to="/auth?next=/account" replace />;
 
   const handleResetMail = async () => {
     if (!user.email) return;
@@ -69,10 +137,21 @@ const AccountSettings = () => {
 
   const handleDelete = async () => {
     setDeleting(true);
-    const { error } = await supabase.functions.invoke("delete-account");
+    const { error, response } = await supabase.functions.invoke("delete-account");
     if (error) {
       console.error(error);
-      toast.error("Account verwijderen mislukt. Neem contact op als het blijft falen.");
+      let message = "Account verwijderen mislukt. Probeer het later opnieuw.";
+      if (response) {
+        try {
+          const payload = await response.json() as { error?: unknown };
+          if (typeof payload.error === "string" && payload.error.trim()) {
+            message = payload.error;
+          }
+        } catch (parseError) {
+          console.error("Could not read account deletion error", parseError);
+        }
+      }
+      toast.error(message);
       setDeleting(false);
       return;
     }
@@ -110,7 +189,9 @@ const AccountSettings = () => {
         <form onSubmit={handlePasswordChange} className="space-y-3">
           <Input
             type="password"
+            aria-label="Nieuw wachtwoord"
             placeholder="Nieuw wachtwoord"
+            autoComplete="new-password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             minLength={6}
@@ -127,13 +208,69 @@ const AccountSettings = () => {
         </form>
       </section>
 
+      <section className="border border-border rounded-md p-6 space-y-4">
+        <div className="flex items-start gap-3">
+          <BookOpen className="h-4 w-4 mt-1 text-muted-foreground" />
+          <div>
+            <h2 className="text-sm font-semibold">Mijn Bouwboeken</h2>
+            <p className="text-sm text-muted-foreground">
+              Bekijk de betaling, productie en verzending van je bestellingen.
+            </p>
+          </div>
+        </div>
+
+        {ordersLoading ? (
+          <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground" role="status">
+            <Loader2 className="h-4 w-4 animate-spin" /> Bestellingen laden…
+          </div>
+        ) : ordersError ? (
+          <p className="rounded-md bg-muted px-4 py-3 text-sm text-muted-foreground">
+            Je bestellingen konden niet worden geladen. Vernieuw de pagina om het opnieuw te proberen.
+          </p>
+        ) : orders.length === 0 ? (
+          <p className="rounded-md border border-dashed px-4 py-5 text-center text-sm text-muted-foreground">
+            Je hebt nog geen Bouwboek besteld.
+          </p>
+        ) : (
+          <div className="divide-y rounded-md border">
+            {orders.map((order) => {
+              const amount = formatOrderAmount(order.payment_amount_cents, order.payment_currency);
+              return (
+                <Link
+                  key={order.id}
+                  to={`/bestelling/${order.id}`}
+                  className="flex items-center gap-3 px-4 py-3 transition-colors first:rounded-t-md last:rounded-b-md hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">
+                      {order.format?.replace(/_/g, " ") || "Bouwboek"}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {new Intl.DateTimeFormat("nl-NL", { dateStyle: "medium" }).format(new Date(order.created_at))}
+                      {amount ? ` · ${amount}` : ""}
+                    </p>
+                  </div>
+                  <span className="hidden text-xs text-muted-foreground sm:inline">
+                    {ORDER_STATUS_LABELS[order.status] || "Status bekijken"}
+                  </span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       <section className="border border-destructive/30 rounded-md p-6 space-y-4">
         <div className="flex items-start gap-3">
           <Trash2 className="h-4 w-4 mt-1 text-destructive" />
           <div>
             <h2 className="text-sm font-semibold text-destructive">Account verwijderen</h2>
             <p className="text-sm text-muted-foreground">
-              Dit verwijdert je profiel, projecten, updates en geüploade foto's permanent. Lopende fotoboek-bestellingen blijven bij ons in de administratie.
+              Dit verwijdert je profiel, projecten, updates en geüploade foto's permanent.
+              Tijdens een open checkout of lopende Bouwboek-bestelling kan je account nog
+              niet worden verwijderd. Na afronding bewaren we alleen de wettelijk vereiste
+              minimale bestel- en betaalgegevens.
             </p>
           </div>
         </div>
@@ -153,6 +290,7 @@ const AccountSettings = () => {
             <Input
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
+              aria-label="Typ VERWIJDEREN om accountverwijdering te bevestigen"
               placeholder="VERWIJDEREN"
               className="h-10"
             />

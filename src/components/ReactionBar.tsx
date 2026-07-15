@@ -16,9 +16,11 @@ interface Reaction {
 const ReactionBar = ({ stepId }: { stepId: string }) => {
   const { user } = useAuth();
   const [reactions, setReactions] = useState<Reaction[]>([]);
+  const [busyEmoji, setBusyEmoji] = useState<string | null>(null);
 
   const load = async () => {
-    const { data } = await supabase.from("reactions").select("id, emoji, user_id").eq("step_id", stepId);
+    const { data, error } = await supabase.from("reactions").select("id, emoji, user_id").eq("step_id", stepId);
+    if (error) console.error("Reactions load failed:", error);
     setReactions(data || []);
   };
 
@@ -37,18 +39,30 @@ const ReactionBar = ({ stepId }: { stepId: string }) => {
       toast.error("Log in om te reageren");
       return;
     }
+    if (busyEmoji) return;
+    setBusyEmoji(emoji);
     const mine = reactions.find((r) => r.emoji === emoji && r.user_id === user.id);
     if (mine) {
-      await supabase.from("reactions").delete().eq("id", mine.id);
-      setReactions((p) => p.filter((r) => r.id !== mine.id));
+      const { error } = await supabase.from("reactions").delete().eq("id", mine.id);
+      if (error) {
+        console.error("Reaction delete failed:", error);
+        toast.error("Reactie bijwerken mislukt");
+      } else {
+        setReactions((p) => p.filter((r) => r.id !== mine.id));
+      }
     } else {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("reactions")
         .insert({ step_id: stepId, user_id: user.id, emoji })
         .select()
         .single();
+      if (error) {
+        console.error("Reaction insert failed:", error);
+        toast.error("Reactie plaatsen mislukt");
+      }
       if (data) setReactions((p) => [...p, data]);
     }
+    setBusyEmoji(null);
   };
 
   return (
@@ -58,7 +72,10 @@ const ReactionBar = ({ stepId }: { stepId: string }) => {
         return (
           <button
             key={emoji}
+            type="button"
             onClick={() => toggle(emoji)}
+            disabled={busyEmoji === emoji}
+            aria-label={`${mine ? "Verwijder" : "Plaats"} reactie ${emoji}, ${rs.length}`}
             className={`text-xs px-2 py-0.5 rounded-full border transition-colors flex items-center gap-1 ${
               mine ? "bg-accent/15 border-accent/40 text-accent" : "bg-muted/50 border-border hover:bg-muted"
             }`}
@@ -70,7 +87,7 @@ const ReactionBar = ({ stepId }: { stepId: string }) => {
       })}
       <Popover>
         <PopoverTrigger asChild>
-          <button className="text-xs h-6 w-6 rounded-full border border-dashed border-border text-muted-foreground hover:text-accent hover:border-accent flex items-center justify-center">
+          <button type="button" aria-label="Reactie kiezen" className="text-xs h-6 w-6 rounded-full border border-dashed border-border text-muted-foreground hover:text-accent hover:border-accent flex items-center justify-center">
             <Smile className="h-3 w-3" />
           </button>
         </PopoverTrigger>
@@ -79,7 +96,10 @@ const ReactionBar = ({ stepId }: { stepId: string }) => {
             {EMOJIS.map((e) => (
               <button
                 key={e}
+                type="button"
                 onClick={() => toggle(e)}
+                disabled={busyEmoji === e}
+                aria-label={`Reageer met ${e}`}
                 className="text-lg hover:scale-125 transition-transform p-1"
               >
                 {e}

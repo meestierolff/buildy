@@ -22,7 +22,14 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { MapPin, Plus, BookOpen, Share2, Hammer, LayoutGrid, Map as MapIcon, Images, Wallet, Settings, Flag, Upload, Sparkles, Loader2, ChevronDown } from "lucide-react";
 import { differenceInDays } from "date-fns";
 import { toast } from "sonner";
-import { hydrateStepsMedia } from "@/lib/mediaUrl";
+import {
+  hydrateStepsMedia,
+  hydrateTripAssets,
+  resolvePrivateStoragePath,
+  serializeFloorAssets,
+} from "@/lib/mediaUrl";
+import { prepareUpload } from "@/lib/compressImage";
+import { getOwnedPrivatePath, getOwnedPublicTripMediaPath } from "@/lib/storagePaths";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,6 +41,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { usePageMeta } from "@/hooks/usePageMeta";
+
+const AI_BLUEPRINT_ENABLED = import.meta.env.VITE_AI_BLUEPRINT_ENABLED === "true";
 
 const toSortableTime = (value?: string | null) => {
   const time = value ? new Date(value).getTime() : 0;
@@ -85,7 +94,7 @@ const TripDetail = () => {
     image: pageCoverUrl || undefined,
     imageAlt: trip?.title ? `Renovatieproject ${trip.title} op Buildy` : "Renovatieproject op Buildy",
     path: id ? `/trip/${id}` : undefined,
-    noIndex: !!trip && !trip.is_public && !isOwner,
+    noIndex: !!trip && !trip.is_public,
     type: "article",
   });
 
@@ -99,6 +108,7 @@ const TripDetail = () => {
       .single();
 
     if (tripData) {
+      await hydrateTripAssets([tripData]);
       const [{ data: profileRows }, { data: privInfo }] = await Promise.all([
         supabase.rpc("get_profiles_basic", { _ids: [tripData.user_id] }),
         supabase.from("trip_private_info").select("address").eq("trip_id", id).maybeSingle(),
@@ -176,10 +186,13 @@ const TripDetail = () => {
     const step = steps.find((s) => s.id === stepId);
     if (!step) return;
 
-    if (step.user_liked) {
-      await supabase.from("likes").delete().eq("step_id", stepId).eq("user_id", user.id);
-    } else {
-      await supabase.from("likes").insert({ step_id: stepId, user_id: user.id });
+    const { error } = step.user_liked
+      ? await supabase.from("likes").delete().eq("step_id", stepId).eq("user_id", user.id)
+      : await supabase.from("likes").insert({ step_id: stepId, user_id: user.id });
+    if (error) {
+      console.error("Like toggle failed:", error);
+      toast.error("Like bijwerken mislukt");
+      return;
     }
 
     setSteps((prev) =>
@@ -227,6 +240,51 @@ const TripDetail = () => {
 
   const handleDelete = async () => {
     if (!deletingStepId) return;
+    const step = steps.find((item) => item.id === deletingStepId);
+    if (!step || !trip?.user_id) {
+      toast.error("Update kon niet worden gevonden");
+      setDeletingStepId(null);
+      return;
+    }
+
+    const mediaRows = (step.step_media || []) as Array<{
+      storage_path?: string | null;
+      media_url?: string | null;
+    }>;
+    const privatePaths = Array.from(new Set(mediaRows
+      .map((media) => getOwnedPrivatePath(media.storage_path, trip.user_id))
+      .filter((path: string | null): path is string => !!path)));
+    const publicPaths = Array.from(new Set(mediaRows
+      .map((media) => getOwnedPublicTripMediaPath(media.media_url, trip.user_id))
+      .filter((path: string | null): path is string => !!path)));
+
+    if (privatePaths.length > 0) {
+      const { error } = await supabase.storage.from("trip-private").remove(privatePaths);
+      if (error) {
+        console.error("Delete private step media failed:", error);
+        toast.error("Foto's konden niet veilig worden verwijderd. De update is behouden.");
+        return;
+      }
+    }
+    if (publicPaths.length > 0) {
+      const { error } = await supabase.storage.from("trip-media").remove(publicPaths);
+      if (error) {
+        console.error("Delete legacy step media failed:", error);
+        toast.error("Oude foto's konden niet worden verwijderd. De update is behouden.");
+        return;
+      }
+    }
+
+    if (trip.cover_image_url && (step.step_media || []).some(
+      (media: { media_url?: string | null }) => media.media_url === trip.cover_image_url,
+    )) {
+      const { error } = await supabase
+        .from("trips")
+        .update({ cover_image_url: null, cover_storage_path: null })
+        .eq("id", trip.id);
+      if (error) console.error("Clear deleted step cover failed:", error);
+    }
+
     const { error } = await supabase.from("steps").delete().eq("id", deletingStepId);
     if (error) {
       console.error("Delete step failed:", error);
@@ -238,67 +296,227 @@ const TripDetail = () => {
     setDeletingStepId(null);
   };
 
-  const handleShare = () => {
-    navigator.clipboard.writeText(window.location.href);
-    toast.success("Link gekopieerd!");
+  const handleShare = async () => {
+    const url = window.location.href;
+    const shareData = {
+      title: trip?.title ? `${trip.title} op Buildy` : "Renovatieproject op Buildy",
+      text: trip?.is_public
+        ? "Bekijk dit renovatieproject op Buildy."
+        : "Bekijk dit privéproject op Buildy. Toegang van de eigenaar is vereist.",
+      url,
+    };
+
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+        toast.success("Project gedeeld");
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.error("Native share failed, using clipboard:", error);
+      }
+    }
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const input = document.createElement("textarea");
+        input.value = url;
+        input.style.position = "fixed";
+        input.style.opacity = "0";
+        document.body.appendChild(input);
+        input.select();
+        const copied = document.execCommand("copy");
+        input.remove();
+        if (!copied) throw new Error("Clipboard fallback failed");
+      }
+      toast.success(trip?.is_public
+        ? "Projectlink gekopieerd"
+        : "Privélink gekopieerd — de ontvanger moet eerst toegang krijgen");
+    } catch (error) {
+      console.error("Share failed:", error);
+      toast.error("Delen mislukt. Kopieer de link uit je adresbalk.");
+    }
+  };
+
+  const uploadFloorplanAsset = async (blob: Blob, extension: string) => {
+    const path = `${trip.user_id}/trip-assets/${trip.id}/floorplans/${Date.now()}-${crypto.randomUUID()}.${extension}`;
+    const { error } = await supabase.storage
+      .from("trip-private")
+      .upload(path, blob, { contentType: blob.type || undefined });
+    if (error) throw error;
+    const url = await resolvePrivateStoragePath(path);
+    if (!url) {
+      await supabase.storage.from("trip-private").remove([path]);
+      throw new Error("De beveiligde plattegrond kon niet worden geladen");
+    }
+    return { path, url };
+  };
+
+  const prepareFloorplanAsset = async (file: File) => {
+    const prepared = await prepareUpload(file);
+    if (!prepared.type.startsWith("image/")) throw new Error("Kies een JPG-, PNG-, WebP-, GIF- of AVIF-afbeelding");
+    const extension = prepared.name.split(".").pop()?.toLowerCase() || "jpg";
+    return uploadFloorplanAsset(prepared, extension);
+  };
+
+  const removeReplacedFloorplans = async (
+    paths: Array<string | null | undefined>,
+    legacyUrls: Array<string | null | undefined> = [],
+  ) => {
+    const prefix = `${trip.user_id}/trip-assets/${trip.id}/floorplans/`;
+    const ownedPaths = Array.from(new Set(paths.filter((path): path is string => !!path && path.startsWith(prefix))));
+    if (ownedPaths.length > 0) {
+      const { error } = await supabase.storage.from("trip-private").remove(ownedPaths);
+      if (error) console.error("Remove replaced floorplan failed:", error);
+    }
+
+    const uniqueLegacyUrls = Array.from(new Set(legacyUrls.filter((url): url is string => !!url)));
+    if (uniqueLegacyUrls.length === 0) return;
+    const { data: mediaReferences, error: referenceError } = await supabase
+      .from("step_media")
+      .select("media_url")
+      .in("media_url", uniqueLegacyUrls);
+    if (referenceError) {
+      console.error("Check legacy floorplan references failed:", referenceError);
+      return;
+    }
+    const referencedUrls = new Set((mediaReferences || []).map((row) => row.media_url));
+    if (trip.cover_image_url) referencedUrls.add(trip.cover_image_url);
+    const publicPaths = uniqueLegacyUrls
+      .filter((url) => !referencedUrls.has(url))
+      .map((url) => getOwnedPublicTripMediaPath(url, trip.user_id))
+      .filter((path): path is string => !!path);
+    if (publicPaths.length > 0) {
+      const { error } = await supabase.storage.from("trip-media").remove(Array.from(new Set(publicPaths)));
+      if (error) console.error("Remove legacy floorplan failed:", error);
+    }
   };
 
   const uploadFloorplan = async (file: File) => {
     setUploadingFloorplan(true);
-    const path = `${trip.user_id}/floorplans/${trip.id}-${Date.now()}-${file.name}`;
-    const { error: upErr } = await supabase.storage.from("trip-media").upload(path, file, { upsert: true });
-    if (upErr) { toast.error("Upload mislukt"); setUploadingFloorplan(false); return; }
-    const { data } = supabase.storage.from("trip-media").getPublicUrl(path);
-    // Keep legacy floorplan_url for backward compat; reset floorplans to single floor
-    const newFloors: FloorInfo[] = [{ id: crypto.randomUUID(), label: "Begane grond", url: data.publicUrl }];
-    await supabase.from("trips").update({ floorplan_url: data.publicUrl, floorplans: newFloors as any }).eq("id", trip.id);
-    toast.success("Plattegrond geüpload");
-    setUploadingFloorplan(false);
-    fetchTrip();
+    try {
+      const asset = await prepareFloorplanAsset(file);
+      const newFloors: FloorInfo[] = [{
+        id: crypto.randomUUID(),
+        label: "Begane grond",
+        url: asset.url,
+        storage_path: asset.path,
+      }];
+      const previousPaths = [
+        trip.floorplan_storage_path,
+        ...(Array.isArray(trip.floorplans) ? trip.floorplans.map((floor: FloorInfo) => floor.storage_path) : []),
+      ];
+      const previousUrls = [
+        trip.floorplan_url,
+        ...(Array.isArray(trip.floorplans) ? trip.floorplans.map((floor: FloorInfo) => floor.url) : []),
+      ];
+      const { error } = await supabase.from("trips").update({
+        floorplan_url: null,
+        floorplan_storage_path: asset.path,
+        floorplans: serializeFloorAssets(newFloors) as any,
+      }).eq("id", trip.id);
+      if (error) {
+        await supabase.storage.from("trip-private").remove([asset.path]);
+        throw error;
+      }
+      await removeReplacedFloorplans(previousPaths, previousUrls);
+      toast.success("Plattegrond veilig geüpload");
+      await fetchTrip();
+    } catch (error) {
+      console.error("Upload floorplan failed:", error);
+      toast.error(error instanceof Error ? error.message : "Upload mislukt");
+    } finally {
+      setUploadingFloorplan(false);
+    }
   };
 
   const addFloor = async (file: File) => {
     setUploadingFloorplan(true);
-    const path = `${trip.user_id}/floorplans/${trip.id}-${Date.now()}-${file.name}`;
-    const { error: upErr } = await supabase.storage.from("trip-media").upload(path, file, { upsert: true });
-    if (upErr) { toast.error("Upload mislukt"); setUploadingFloorplan(false); return; }
-    const { data } = supabase.storage.from("trip-media").getPublicUrl(path);
-    const existing: FloorInfo[] = Array.isArray(trip.floorplans) && trip.floorplans.length > 0
-      ? trip.floorplans
-      : trip.floorplan_url
-        ? [{ id: "__legacy__", label: "Begane grond", url: trip.floorplan_url }]
-        : [];
-    const floorLabels = ["Begane grond", "1e verdieping", "2e verdieping", "3e verdieping", "4e verdieping"];
-    const newLabel = floorLabels[existing.length] ?? `Verdieping ${existing.length}`;
-    const newFloors: FloorInfo[] = [...existing, { id: crypto.randomUUID(), label: newLabel, url: data.publicUrl }];
-    await supabase.from("trips").update({ floorplans: newFloors as any }).eq("id", trip.id);
-    toast.success(`${newLabel} toegevoegd`);
-    setUploadingFloorplan(false);
-    fetchTrip();
+    try {
+      const asset = await prepareFloorplanAsset(file);
+      const existing: FloorInfo[] = Array.isArray(trip.floorplans) && trip.floorplans.length > 0
+        ? trip.floorplans
+        : trip.floorplan_url
+          ? [{
+              id: "__legacy__",
+              label: "Begane grond",
+              url: trip.floorplan_url,
+              storage_path: trip.floorplan_storage_path,
+            }]
+          : [];
+      const floorLabels = ["Begane grond", "1e verdieping", "2e verdieping", "3e verdieping", "4e verdieping"];
+      const newLabel = floorLabels[existing.length] ?? `Verdieping ${existing.length}`;
+      const newFloors: FloorInfo[] = [...existing, {
+        id: crypto.randomUUID(),
+        label: newLabel,
+        url: asset.url,
+        storage_path: asset.path,
+      }];
+      const { error } = await supabase.from("trips").update({
+        floorplans: serializeFloorAssets(newFloors) as any,
+      }).eq("id", trip.id);
+      if (error) {
+        await supabase.storage.from("trip-private").remove([asset.path]);
+        throw error;
+      }
+      toast.success(`${newLabel} toegevoegd`);
+      await fetchTrip();
+    } catch (error) {
+      console.error("Add floorplan failed:", error);
+      toast.error(error instanceof Error ? error.message : "Upload mislukt");
+    } finally {
+      setUploadingFloorplan(false);
+    }
   };
 
   const makeBlueprint = async () => {
-    if (!trip?.floorplan_url) return;
+    const currentFloors: FloorInfo[] = Array.isArray(trip?.floorplans) && trip.floorplans.length > 0
+      ? trip.floorplans
+      : trip?.floorplan_url
+        ? [{
+            id: "__legacy__",
+            label: "Begane grond",
+            url: trip.floorplan_url,
+            storage_path: trip.floorplan_storage_path,
+          }]
+        : [];
+    const primary = currentFloors[0];
+    if (!primary) return;
     if (!confirm("De huidige plattegrond wordt vervangen door een AI-blauwdruk. Doorgaan?")) return;
     setGeneratingBlueprint(true);
     try {
-      const { data, error } = await supabase.functions.invoke("floorplan-blueprint", {
-        body: { imageUrl: trip.floorplan_url },
-      });
+      const body = primary.storage_path
+        ? { storagePath: primary.storage_path }
+        : { imageUrl: primary.url };
+      const { data, error } = await supabase.functions.invoke("floorplan-blueprint", { body });
       if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
-      const dataUrl: string = (data as any).image;
-      const res = await fetch(dataUrl);
-      const blob = await res.blob();
-      const path = `${trip.user_id}/floorplans/${trip.id}-blueprint-${Date.now()}.png`;
-      const { error: upErr } = await supabase.storage.from("trip-media").upload(path, blob, { upsert: true, contentType: "image/png" });
-      if (upErr) throw upErr;
-      const { data: pub } = supabase.storage.from("trip-media").getPublicUrl(path);
-      await supabase.from("trips").update({ floorplan_url: pub.publicUrl }).eq("id", trip.id);
+      const payload = data as { error?: string; image?: string } | null;
+      if (payload?.error) throw new Error(payload.error);
+      if (!payload?.image) throw new Error("De blauwdrukservice gaf geen afbeelding terug");
+      const response = await fetch(payload.image);
+      if (!response.ok) throw new Error("De gegenereerde afbeelding kon niet worden gelezen");
+      const blob = await response.blob();
+      const asset = await uploadFloorplanAsset(blob, "png");
+      const newFloors: FloorInfo[] = currentFloors.map((floor, index) => index === 0
+        ? { ...floor, url: asset.url, storage_path: asset.path }
+        : floor);
+      const { error: saveError } = await supabase.from("trips").update({
+        floorplan_url: null,
+        floorplan_storage_path: asset.path,
+        floorplans: serializeFloorAssets(newFloors) as any,
+      }).eq("id", trip.id);
+      if (saveError) {
+        await supabase.storage.from("trip-private").remove([asset.path]);
+        throw saveError;
+      }
+      await removeReplacedFloorplans([primary.storage_path], [primary.url]);
       toast.success("Blauwdruk gegenereerd ✨");
-      fetchTrip();
-    } catch (e: any) {
-      toast.error(e?.message || "Genereren mislukt");
+      await fetchTrip();
+    } catch (error) {
+      console.error("Generate blueprint failed:", error);
+      toast.error(error instanceof Error ? error.message : "Genereren mislukt");
     } finally {
       setGeneratingBlueprint(false);
     }
@@ -330,11 +548,19 @@ const TripDetail = () => {
   const headerCoverUrl = pageCoverUrl;
   const timelineSteps = sortStepsOldestFirst(steps);
 
+  const resolvedFloorplans: FloorInfo[] = Array.isArray(trip.floorplans)
+    ? trip.floorplans.filter((floor: FloorInfo) => typeof floor?.url === "string" && floor.url.length > 0)
+    : [];
   const effectiveFloorplans: FloorInfo[] =
-    Array.isArray(trip.floorplans) && trip.floorplans.length > 0
-      ? trip.floorplans
+    resolvedFloorplans.length > 0
+      ? resolvedFloorplans
       : trip.floorplan_url
-        ? [{ id: "__legacy__", label: "Begane grond", url: trip.floorplan_url }]
+        ? [{
+            id: "__legacy__",
+            label: "Begane grond",
+            url: trip.floorplan_url,
+            storage_path: trip.floorplan_storage_path,
+          }]
         : [];
 
   return (
@@ -383,7 +609,7 @@ const TripDetail = () => {
                   <Plus className="h-4 w-4" /> Update toevoegen
                 </Button>
               )}
-              {!isOwner && trip.is_public && (
+              {!isOwner && (
                 <FollowButton projectId={trip.id} className="bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground" />
               )}
 
@@ -394,11 +620,9 @@ const TripDetail = () => {
                     <Settings className="h-4 w-4" /> Instellingen
                   </Button>
                 )}
-                {isOwner && (
-                  <Button size="sm" variant="outline" onClick={handleShare} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
-                    <Share2 className="h-4 w-4" /> Delen
-                  </Button>
-                )}
+                <Button size="sm" variant="outline" onClick={handleShare} className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
+                  <Share2 className="h-4 w-4" /> Delen
+                </Button>
                 {(isOwner || (trip.is_public && trip.budget_public)) && (
                   <Link to={`/trip/${id}/budget`}>
                     <Button size="sm" variant="outline" className="gap-1.5 bg-transparent text-primary-foreground border-primary-foreground/30 hover:bg-primary-foreground/10 hover:text-primary-foreground">
@@ -428,15 +652,15 @@ const TripDetail = () => {
                   <span className="text-[10px] font-bold uppercase tracking-wider">Instel</span>
                 </button>
               )}
-              {isOwner && (
-                <button
-                  onClick={handleShare}
-                  className="flex min-w-[88px] flex-1 flex-col items-center gap-1.5 rounded-xl border border-primary-foreground/20 bg-primary-foreground/5 hover:bg-primary-foreground/10 px-2 py-2.5 text-primary-foreground"
-                >
-                  <Share2 className="h-4 w-4" />
-                  <span className="text-[10px] font-bold uppercase tracking-wider">Delen</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={handleShare}
+                className="flex min-w-[88px] flex-1 flex-col items-center gap-1.5 rounded-xl border border-primary-foreground/20 bg-primary-foreground/5 hover:bg-primary-foreground/10 px-2 py-2.5 text-primary-foreground"
+                aria-label="Project delen"
+              >
+                <Share2 className="h-4 w-4" />
+                <span className="text-[10px] font-bold uppercase tracking-wider">Delen</span>
+              </button>
               {(isOwner || (trip.is_public && trip.budget_public)) && (
                 <Link
                   to={`/trip/${id}/budget`}
@@ -551,6 +775,7 @@ const TripDetail = () => {
                         onDelete={setDeletingStepId}
                         onReorderMedia={handleReorderMedia}
                         isOwner={!!isOwner}
+                        tripId={trip.id}
                       />
                       {routeSteps.some((s) => s.latitude && s.longitude) && (
                         <div className="mt-3">
@@ -608,10 +833,12 @@ const TripDetail = () => {
                           <DropdownMenuItem onClick={() => setFloorMode("manage")}>
                             <MapPin className="h-4 w-4 mr-2" /> Pinnen beheren
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={makeBlueprint} disabled={generatingBlueprint || uploadingFloorplan}>
-                            {generatingBlueprint ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
-                            AI blauwdruk maken
-                          </DropdownMenuItem>
+                          {AI_BLUEPRINT_ENABLED && (
+                            <DropdownMenuItem onClick={makeBlueprint} disabled={generatingBlueprint || uploadingFloorplan}>
+                              {generatingBlueprint ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
+                              AI blauwdruk maken
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem onClick={() => addFloorFileRef.current?.click()} disabled={uploadingFloorplan || generatingBlueprint}>
                             <Upload className="h-4 w-4 mr-2" /> Verdieping toevoegen
                           </DropdownMenuItem>
@@ -682,6 +909,7 @@ const TripDetail = () => {
           tripId={trip.id}
           userId={trip.user_id}
           currentUrl={trip.cover_image_url}
+          currentStoragePath={trip.cover_storage_path}
           onClose={() => setShowCoverPicker(false)}
           onSaved={fetchTrip}
         />

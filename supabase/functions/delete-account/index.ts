@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isPhotobookOrderTerminalForDeletion } from "../_shared/photobook.ts";
+
+type AdminClient = ReturnType<typeof createClient<any>>;
+const USER_STORAGE_BUCKETS = ["trip-media", "trip-private", "avatars", "photobook-pdfs"] as const;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,6 +20,52 @@ const getRequiredEnv = (key: string) => {
   const value = Deno.env.get(key)?.trim();
   if (!value) throw new Error(`${key} is not configured`);
   return value;
+};
+
+const collectStoragePaths = async (
+  admin: AdminClient,
+  bucket: string,
+  prefix: string,
+): Promise<string[]> => {
+  const paths: string[] = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await admin.storage.from(bucket).list(prefix, {
+      limit: pageSize,
+      offset,
+      sortBy: { column: "name", order: "asc" },
+    });
+    if (error) throw error;
+    for (const item of data || []) {
+      const fullPath = `${prefix}/${item.name}`;
+      if (item.id === null || item.metadata === null) {
+        paths.push(...await collectStoragePaths(admin, bucket, fullPath));
+      } else {
+        paths.push(fullPath);
+      }
+    }
+    if (!data || data.length < pageSize) break;
+  }
+  return paths;
+};
+
+const cleanupUserStorage = async (admin: AdminClient, userId: string) => {
+  const failedBuckets: string[] = [];
+  for (const bucket of USER_STORAGE_BUCKETS) {
+    try {
+      const allPaths = await collectStoragePaths(admin, bucket, userId);
+      for (let index = 0; index < allPaths.length; index += 1000) {
+        const { error: removeError } = await admin.storage
+          .from(bucket)
+          .remove(allPaths.slice(index, index + 1000));
+        if (removeError) throw removeError;
+      }
+    } catch (error) {
+      console.error(`Storage cleanup failed for ${bucket}:`, error);
+      failedBuckets.push(bucket);
+    }
+  }
+  return failedBuckets;
 };
 
 serve(async (req) => {
@@ -40,43 +90,102 @@ serve(async (req) => {
 
     const admin = createClient(supabaseUrl, serviceRoleKey);
 
-    // 1) Verwijder storage-bestanden in eigen prefix (trip-media + trip-private)
-    for (const bucket of ["trip-media", "trip-private"]) {
-      try {
-        const { data: list } = await admin.storage.from(bucket).list(userId, { limit: 1000 });
-        if (list && list.length > 0) {
-          const collectPaths = async (prefix: string): Promise<string[]> => {
-            const { data } = await admin.storage.from(bucket).list(prefix, { limit: 1000 });
-            if (!data) return [];
-            const paths: string[] = [];
-            for (const item of data) {
-              const full = `${prefix}/${item.name}`;
-              if (item.id === null || item.metadata === null) {
-                paths.push(...(await collectPaths(full)));
-              } else {
-                paths.push(full);
-              }
-            }
-            return paths;
-          };
-          const allPaths = await collectPaths(userId);
-          if (allPaths.length > 0) {
-            await admin.storage.from(bucket).remove(allPaths);
-          }
-        }
-      } catch (e) {
-        console.error(`Storage cleanup failed for ${bucket}:`, e);
+    const { error: lockError } = await admin.from("account_deletion_locks").insert({ user_id: userId });
+    if (lockError) {
+      console.error("Could not acquire account deletion lock", lockError);
+      return json({
+        error: "Accountverwijdering is al gestart of kon niet veilig worden vergrendeld. Probeer het later opnieuw.",
+        code: "ACCOUNT_DELETION_LOCKED",
+      }, 409);
+    }
+
+    try {
+      const { data: orders, error: orderLookupError } = await admin
+        .from("photobook_orders")
+        .select("id, status, fulfillment_status, payment_status, stripe_checkout_session_id")
+        .eq("user_id", userId);
+      if (orderLookupError) {
+        console.error("Could not verify active photobook orders", orderLookupError);
+        return json({ error: "Je bestellingen konden niet worden gecontroleerd. Probeer het opnieuw." }, 500);
       }
-    }
+      const activeOrders = (orders || []).filter((order) => !isPhotobookOrderTerminalForDeletion(order));
+      if (activeOrders.length > 0) {
+        return json({
+          error: "Je account kan nog niet worden verwijderd omdat een Bouwboek-checkout of bestelling nog actief is. Annuleer de betaling of wacht tot de bestelling is afgerond.",
+          code: "ACTIVE_PHOTOBOOK_ORDER",
+        }, 409);
+      }
 
-    // 2) Verwijder de auth-user — cascade FKs ruimen rest van public data op.
-    const { error: deleteErr } = await admin.auth.admin.deleteUser(userId);
-    if (deleteErr) {
-      console.error("deleteUser failed", deleteErr);
-      return json({ error: "Account verwijderen mislukt" }, 500);
-    }
+      // Write the recovery record before the irreversible auth/database delete.
+      // If any later storage operation fails, the cron already has every bucket
+      // it needs and no post-delete queue insert can be lost.
+      const { error: queuePrepareError } = await admin.from("account_deletion_cleanup_failures").upsert({
+        user_id: userId,
+        failed_buckets: [...USER_STORAGE_BUCKETS],
+        attempts: 0,
+        last_attempt_at: new Date().toISOString(),
+        last_error: null,
+      }, { onConflict: "user_id" });
+      if (queuePrepareError) {
+        console.error("Could not prepare durable account cleanup", queuePrepareError);
+        return json({ error: "Accountverwijdering kon niet veilig worden voorbereid. Probeer het opnieuw." }, 500);
+      }
 
-    return json({ ok: true });
+      // Delete auth/database first. Storage is untouched if this transaction is
+      // rejected (for example by the active-order database trigger).
+      // The database trigger performs the final active-order check in the same
+      // transaction as the cascading order deletion.
+      const { error: deleteErr } = await admin.auth.admin.deleteUser(userId);
+      if (deleteErr) {
+        console.error("deleteUser failed", deleteErr);
+        const { error: queueRollbackError } = await admin
+          .from("account_deletion_cleanup_failures")
+          .delete()
+          .eq("user_id", userId);
+        if (queueRollbackError) {
+          // The cron verifies that the auth user is gone before deleting files,
+          // so even a failed rollback cannot erase an active account's storage.
+          console.error("Could not roll back prepared account cleanup", queueRollbackError);
+        }
+        return json({ error: "Account verwijderen mislukt" }, 500);
+      }
+
+      const storageFailures = await cleanupUserStorage(admin, userId);
+      if (storageFailures.length > 0) {
+        const { error: queueError } = await admin.from("account_deletion_cleanup_failures").update({
+          failed_buckets: storageFailures,
+          attempts: 1,
+          last_attempt_at: new Date().toISOString(),
+          last_error: "Storage cleanup failed after account deletion",
+        }).eq("user_id", userId);
+        if (queueError) {
+          // The pre-created row still contains all buckets, so the cron can
+          // recover even when narrowing the failure list fails.
+          console.error("Could not update prepared post-delete cleanup", userId, queueError);
+        }
+        return json({
+          ok: true,
+          cleanupPending: true,
+        }, 202);
+      }
+
+      const { error: queueResolveError } = await admin
+        .from("account_deletion_cleanup_failures")
+        .delete()
+        .eq("user_id", userId);
+      if (queueResolveError) {
+        console.error("Could not resolve completed account cleanup", userId, queueResolveError);
+        return json({ ok: true, cleanupPending: true }, 202);
+      }
+
+      return json({ ok: true });
+    } finally {
+      const { error: unlockError } = await admin
+        .from("account_deletion_locks")
+        .delete()
+        .eq("user_id", userId);
+      if (unlockError) console.error("Could not release account deletion lock", unlockError);
+    }
   } catch (error) {
     console.error("delete-account error", error);
     return json({ error: error instanceof Error ? error.message : "Account verwijderen mislukt" }, 500);

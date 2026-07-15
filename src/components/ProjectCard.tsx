@@ -31,7 +31,7 @@ const ProjectCard = ({
   const videoCover = looksLikeVideo(coverUrl, coverMediaType);
 
   return (
-    <Link to={`/trip/${id}`} className="group block">
+    <Link to={`/trip/${id}`} className="group block" aria-label={`${title} bekijken`}>
       <div className="relative aspect-[4/5] overflow-hidden rounded-sm bg-muted mb-5">
         {coverUrl ? (
           videoCover ? (
@@ -39,6 +39,7 @@ const ProjectCard = ({
               src={coverUrl}
               muted
               playsInline
+              aria-hidden="true"
               preload="metadata"
               className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
             />
@@ -69,7 +70,14 @@ const ProjectCard = ({
           <h3 className="font-serif italic text-2xl leading-tight truncate">{title}</h3>
           <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest tabular-nums shrink-0">{pct}%</span>
         </div>
-        <div className="w-full h-0.5 bg-muted">
+        <div
+          className="w-full h-0.5 bg-muted"
+          role="progressbar"
+          aria-label={`Voortgang van ${title}`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={pct}
+        >
           <div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} />
         </div>
         {(profileName || stepCount > 0) && (
@@ -78,7 +86,7 @@ const ProjectCard = ({
               {profileName ? `door ${profileName}` : ""}
             </span>
             <span className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground shrink-0">
-              {stepCount} updates
+              {stepCount} {stepCount === 1 ? "update" : "updates"}
             </span>
           </div>
         )}

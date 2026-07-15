@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, Users, Loader2, UserPlus, UserCheck, MapPin, Hammer } from "lucide-react";
+import { Search, Users, Loader2, UserPlus, UserCheck, MapPin, Hammer, Lock, Check, X } from "lucide-react";
 import EmptyState from "@/components/EmptyState";
 import { toast } from "sonner";
 import { usePageMeta } from "@/hooks/usePageMeta";
@@ -18,6 +18,12 @@ interface ProfileResult {
   bio: string | null;
   location: string | null;
   project_count: number;
+  is_private?: boolean;
+}
+
+interface ProfilePage {
+  items: ProfileResult[];
+  consumed: number;
 }
 
 const PAGE_SIZE = 20;
@@ -36,10 +42,12 @@ const Friends = () => {
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [nextOffset, setNextOffset] = useState(0);
   const [following, setFollowing] = useState<Set<string>>(new Set());
   const [followedProfiles, setFollowedProfiles] = useState<ProfileResult[]>([]);
   const [followerProfiles, setFollowerProfiles] = useState<ProfileResult[]>([]);
-  const [activeTab, setActiveTab] = useState<"following" | "followers">("following");
+  const [incomingProfiles, setIncomingProfiles] = useState<ProfileResult[]>([]);
+  const [activeTab, setActiveTab] = useState<"following" | "followers" | "requests">("following");
   const [loadingFollowed, setLoadingFollowed] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const reqIdRef = useRef(0);
@@ -52,7 +60,15 @@ const Friends = () => {
   const [pending, setPending] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setFollowing(new Set());
+      setPending(new Set());
+      setFollowedProfiles([]);
+      setFollowerProfiles([]);
+      setIncomingProfiles([]);
+      setLoadingFollowed(false);
+      return;
+    }
     setLoadingFollowed(true);
     (async () => {
       // 1. Fetch people you follow
@@ -66,19 +82,24 @@ const Friends = () => {
       setPending(new Set(pend));
 
       // 2. Fetch your followers
-      const { data: followerData } = await supabase
+      const { data: followerData, error: followersError } = await supabase
         .from("user_follows")
         .select("follower_id, status")
-        .eq("following_id", user.id)
-        .eq("status", "accepted");
-      const followerIds = (followerData || []).map((r: any) => r.follower_id);
+        .eq("following_id", user.id);
+      if (followersError) console.error("Followers load failed:", followersError);
+      const followerIds = (followerData || [])
+        .filter((r: any) => r.status === "accepted")
+        .map((r: any) => r.follower_id);
+      const incomingIds = (followerData || [])
+        .filter((r: any) => r.status === "pending")
+        .map((r: any) => r.follower_id);
 
-      // Collect all unique IPs to fetch basic info + trips
-      const allIds = Array.from(new Set([...accepted, ...followerIds]));
+      const allIds = Array.from(new Set([...accepted, ...followerIds, ...incomingIds]));
 
       if (allIds.length === 0) { 
         setFollowedProfiles([]); 
         setFollowerProfiles([]);
+        setIncomingProfiles([]);
         setLoadingFollowed(false); 
         return; 
       }
@@ -97,22 +118,32 @@ const Friends = () => {
           .filter((p: any) => followerIds.includes(p.user_id))
           .sort((a: any, b: any) => (a.display_name || "").localeCompare(b.display_name || ""));
 
+        const sortedIncoming = [...profiles]
+          .filter((p: any) => incomingIds.includes(p.user_id))
+          .sort((a: any, b: any) => (a.display_name || "").localeCompare(b.display_name || ""));
+
         setFollowedProfiles(sortedFollowing.map((p: any) => ({ ...p, bio: null, location: null, project_count: counts[p.user_id] || 0 })));
         setFollowerProfiles(sortedFollowers.map((p: any) => ({ ...p, bio: null, location: null, project_count: counts[p.user_id] || 0 })));
+        setIncomingProfiles(sortedIncoming.map((p: any) => ({ ...p, bio: null, location: null, project_count: counts[p.user_id] || 0 })));
       }
       setLoadingFollowed(false);
     })();
   }, [user]);
 
 
-  const fetchPage = useCallback(async (search: string, from: number, reqId: number): Promise<ProfileResult[]> => {
+  const fetchPage = useCallback(async (search: string, from: number, reqId: number): Promise<ProfilePage> => {
     const { data, error } = await supabase.rpc("search_profiles", {
       _q: search || "",
       _limit: PAGE_SIZE,
       _offset: from,
     });
 
-    if (error || !data || reqId !== reqIdRef.current) return [];
+    if (error) {
+      console.error("Profile search failed:", error);
+      if (reqId === reqIdRef.current) toast.error("Zoeken mislukt");
+      return { items: [], consumed: 0 };
+    }
+    if (!data || reqId !== reqIdRef.current) return { items: [], consumed: 0 };
     const ids = data.map((p: any) => p.user_id).filter((uid: string) => uid !== user?.id);
     const filtered = data.filter((p: any) => p.user_id !== user?.id);
     const counts: Record<string, number> = {};
@@ -120,19 +151,29 @@ const Friends = () => {
       const { data: trips } = await supabase.from("trips").select("user_id").in("user_id", ids);
       (trips || []).forEach((t: any) => { counts[t.user_id] = (counts[t.user_id] || 0) + 1; });
     }
-    if (reqId !== reqIdRef.current) return [];
-    return filtered.map((p: any) => ({ ...p, bio: null, location: null, project_count: counts[p.user_id] || 0 }));
+    if (reqId !== reqIdRef.current) return { items: [], consumed: 0 };
+    return {
+      items: filtered.map((p: any) => ({ ...p, bio: null, location: null, project_count: counts[p.user_id] || 0 })),
+      consumed: data.length,
+    };
   }, [user]);
 
   useEffect(() => {
-    if (!debounced) { setResults([]); setLoading(false); setHasMore(false); return; }
     const reqId = ++reqIdRef.current;
+    if (!debounced) {
+      setResults([]);
+      setNextOffset(0);
+      setLoading(false);
+      setHasMore(false);
+      return;
+    }
     setLoading(true); setHasMore(true);
     (async () => {
       const page = await fetchPage(debounced, 0, reqId);
       if (reqId !== reqIdRef.current) return;
-      setResults(page);
-      setHasMore(page.length === PAGE_SIZE);
+      setResults(page.items);
+      setNextOffset(page.consumed);
+      setHasMore(page.consumed === PAGE_SIZE && page.items.length < MAX_RESULTS);
       setLoading(false);
     })();
   }, [debounced, fetchPage]);
@@ -141,10 +182,12 @@ const Friends = () => {
     if (loadingMore || !hasMore || results.length >= MAX_RESULTS) return;
     setLoadingMore(true);
     const reqId = reqIdRef.current;
-    const page = await fetchPage(debounced, results.length, reqId);
+    const page = await fetchPage(debounced, nextOffset, reqId);
     if (reqId !== reqIdRef.current) { setLoadingMore(false); return; }
-    setResults((prev) => [...prev, ...page]);
-    setHasMore(page.length === PAGE_SIZE && results.length + page.length < MAX_RESULTS);
+    const nextLength = Math.min(MAX_RESULTS, results.length + page.items.length);
+    setResults((prev) => [...prev, ...page.items].slice(0, MAX_RESULTS));
+    setNextOffset((current) => current + page.consumed);
+    setHasMore(page.consumed === PAGE_SIZE && nextLength < MAX_RESULTS);
     setLoadingMore(false);
   };
 
@@ -153,25 +196,29 @@ const Friends = () => {
     setBusyId(uid);
     const isFollowing = following.has(uid);
     const isPending = pending.has(uid);
-    if (isFollowing || isPending) {
-      const { error } = await supabase.from("user_follows").delete().eq("follower_id", user.id).eq("following_id", uid);
-      if (!error) {
-        setFollowing((prev) => { const n = new Set(prev); n.delete(uid); return n; });
-        setPending((prev) => { const n = new Set(prev); n.delete(uid); return n; });
-        setFollowedProfiles((prev) => prev.filter((p) => p.user_id !== uid));
-        toast.success(isPending ? "Verzoek ingetrokken" : "Niet meer gevolgd");
-      } else toast.error("Kon niet bijwerken");
-    } else {
-      const { data, error } = await supabase
-        .from("user_follows")
-        .insert({ follower_id: user.id, following_id: uid })
-        .select("status")
-        .single();
+    try {
+      if (isFollowing || isPending) {
+        const { error } = await supabase.from("user_follows").delete().eq("follower_id", user.id).eq("following_id", uid);
+        if (!error) {
+          setFollowing((prev) => { const n = new Set(prev); n.delete(uid); return n; });
+          setPending((prev) => { const n = new Set(prev); n.delete(uid); return n; });
+          setFollowedProfiles((prev) => prev.filter((p) => p.user_id !== uid));
+          toast.success(isPending ? "Verzoek ingetrokken" : "Niet meer gevolgd");
+        } else {
+          console.error("User unfollow failed:", error);
+          toast.error("Kon niet bijwerken");
+        }
+        return;
+      }
+
+      const { data, error } = await supabase.rpc("request_user_follow", {
+        _following_id: uid,
+      });
       if (!error && data) {
-        const accepted = (data as any).status === "accepted";
+        const accepted = data === "accepted";
         if (accepted) {
           setFollowing((prev) => new Set(prev).add(uid));
-          const profile = results.find((p) => p.user_id === uid);
+          const profile = [...results, ...followerProfiles].find((p) => p.user_id === uid);
           if (profile) {
             setFollowedProfiles((prev) => [...prev, profile].sort((a, b) => (a.display_name || "").localeCompare(b.display_name || "")));
           }
@@ -180,12 +227,69 @@ const Friends = () => {
           setPending((prev) => new Set(prev).add(uid));
           toast.success("Volgverzoek verstuurd");
         }
-      } else toast.error("Kon niet volgen");
+      } else {
+        if (error) console.error("User follow failed:", error);
+        toast.error("Kon niet volgen");
+      }
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const respondToRequest = async (profile: ProfileResult, accept: boolean) => {
+    setBusyId(profile.user_id);
+    try {
+      const { data, error } = await supabase.rpc("respond_to_user_follow", {
+        _follower_id: profile.user_id,
+        _accept: accept,
+      });
+      if (error) {
+        console.error("Respond to user follow failed:", error);
+        toast.error("Verzoek behandelen mislukt");
+        return;
+      }
+      setIncomingProfiles((current) => current.filter((item) => item.user_id !== profile.user_id));
+      if (accept && data) {
+        setFollowerProfiles((current) => [...current, profile]
+          .sort((a, b) => (a.display_name || "").localeCompare(b.display_name || "")));
+        toast.success("Volgverzoek goedgekeurd");
+      } else {
+        toast.success(data ? "Volgverzoek afgewezen" : "Dit verzoek bestond niet meer");
+      }
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const removeFollower = async (uid: string) => {
+    if (!user) return;
+    setBusyId(uid);
+    const { error } = await supabase
+      .from("user_follows")
+      .delete()
+      .eq("follower_id", uid)
+      .eq("following_id", user.id);
+    if (error) {
+      console.error("Remove profile follower failed:", error);
+      toast.error("Volger verwijderen mislukt");
+    } else {
+      setFollowerProfiles((current) => current.filter((profile) => profile.user_id !== uid));
+      toast.success("Volger verwijderd");
     }
     setBusyId(null);
   };
 
-  const Row = ({ p, isFollowing, isPending }: { p: ProfileResult; isFollowing: boolean; isPending: boolean }) => (
+  const Row = ({
+    p,
+    isFollowing,
+    isPending,
+    canRemoveFollower = false,
+  }: {
+    p: ProfileResult;
+    isFollowing: boolean;
+    isPending: boolean;
+    canRemoveFollower?: boolean;
+  }) => (
     <div className="flex items-center gap-4 py-5 border-b border-border last:border-b-0 group">
       <Link to={`/profile/${p.user_id}`} className="flex items-center gap-4 min-w-0 flex-1">
         <Avatar className="h-12 w-12 shrink-0">
@@ -207,20 +311,73 @@ const Friends = () => {
         </div>
       </Link>
       {user && (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => toggleFollow(p.user_id)}
-          disabled={busyId === p.user_id}
-          className={`rounded-full px-4 text-[10px] font-bold uppercase tracking-widest border-border ${isFollowing ? "bg-foreground text-background hover:bg-foreground/90 border-foreground" : ""}`}
-        >
-          {isFollowing
-            ? <><UserCheck className="h-3 w-3 mr-1" />Volgend</>
-            : isPending
-              ? <><UserCheck className="h-3 w-3 mr-1" />In afwachting</>
-              : <><UserPlus className="h-3 w-3 mr-1" />Volg</>}
-        </Button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => toggleFollow(p.user_id)}
+            disabled={busyId === p.user_id}
+            className={`rounded-full px-4 text-[10px] font-bold uppercase tracking-widest border-border ${isFollowing ? "bg-foreground text-background hover:bg-foreground/90 border-foreground" : ""}`}
+          >
+            {isFollowing
+              ? <><UserCheck className="h-3 w-3 mr-1" />Volgend</>
+              : isPending
+                ? <><UserCheck className="h-3 w-3 mr-1" />Verzoek intrekken</>
+                : <><UserPlus className="h-3 w-3 mr-1" />Volgen</>}
+          </Button>
+          {canRemoveFollower && (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 rounded-full text-muted-foreground hover:text-destructive"
+              onClick={() => removeFollower(p.user_id)}
+              disabled={busyId === p.user_id}
+              aria-label={`Verwijder ${p.display_name || "gebruiker"} als volger`}
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
       )}
+    </div>
+  );
+
+  const RequestRow = ({ p }: { p: ProfileResult }) => (
+    <div className="flex items-center gap-4 py-5 border-b border-border last:border-b-0">
+      <Link to={`/profile/${p.user_id}`} className="flex items-center gap-4 min-w-0 flex-1 group">
+        <Avatar className="h-12 w-12 shrink-0">
+          <AvatarImage src={p.avatar_url ?? ""} />
+          <AvatarFallback className="bg-muted text-foreground font-semibold text-sm">
+            {p.display_name?.[0]?.toUpperCase() ?? "?"}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0">
+          <p className="font-serif italic text-xl truncate group-hover:text-accent transition-colors">{p.display_name || "Naamloos"}</p>
+          <p className="text-[11px] text-muted-foreground mt-1">Wil jou volgen</p>
+        </div>
+      </Link>
+      <div className="flex gap-2">
+        <Button
+          size="icon"
+          onClick={() => respondToRequest(p, true)}
+          disabled={busyId === p.user_id}
+          aria-label={`Volgverzoek van ${p.display_name || "gebruiker"} goedkeuren`}
+          className="h-9 w-9 rounded-full bg-accent text-accent-foreground"
+        >
+          <Check className="h-4 w-4" />
+        </Button>
+        <Button
+          size="icon"
+          variant="outline"
+          onClick={() => respondToRequest(p, false)}
+          disabled={busyId === p.user_id}
+          aria-label={`Volgverzoek van ${p.display_name || "gebruiker"} afwijzen`}
+          className="h-9 w-9 rounded-full"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
     </div>
   );
 
@@ -239,6 +396,7 @@ const Friends = () => {
         <div className="relative mb-10">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
+            aria-label="Zoek bouwers op naam"
             placeholder="Zoek op naam…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -253,13 +411,22 @@ const Friends = () => {
             </p>
           ) : (
             <div>
-              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
-                <TabsList className="grid grid-cols-2 bg-transparent border-b border-border rounded-none p-0 h-auto w-full mb-8">
+              <Tabs
+                value={activeTab}
+                onValueChange={(value) => {
+                  if (value === "following" || value === "followers" || value === "requests") setActiveTab(value);
+                }}
+                className="w-full"
+              >
+                <TabsList className="grid grid-cols-3 bg-transparent border-b border-border rounded-none p-0 h-auto w-full mb-8">
                   <TabsTrigger value="following" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">
                     Volgend ({followedProfiles.length})
                   </TabsTrigger>
                   <TabsTrigger value="followers" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">
                     Volgers ({followerProfiles.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="requests" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">
+                    Verzoeken ({incomingProfiles.length})
                   </TabsTrigger>
                 </TabsList>
 
@@ -280,13 +447,25 @@ const Friends = () => {
                 <TabsContent value="followers" className="mt-0">
                   {followerProfiles.length > 0 ? (
                     <div>
-                      {followerProfiles.map((p) => <Row key={p.user_id} p={p} isFollowing={following.has(p.user_id)} isPending={pending.has(p.user_id)} />)}
+                      {followerProfiles.map((p) => <Row key={p.user_id} p={p} isFollowing={following.has(p.user_id)} isPending={pending.has(p.user_id)} canRemoveFollower />)}
                     </div>
                   ) : (
                     <EmptyState
                       icon={Users}
                       title="Nog geen volgers"
                       description="Andere bouwers die jou volgen verschijnen hier."
+                    />
+                  )}
+                </TabsContent>
+
+                <TabsContent value="requests" className="mt-0">
+                  {incomingProfiles.length > 0 ? (
+                    <div>{incomingProfiles.map((p) => <RequestRow key={p.user_id} p={p} />)}</div>
+                  ) : (
+                    <EmptyState
+                      icon={Lock}
+                      title="Geen openstaande verzoeken"
+                      description="Nieuwe volgverzoeken voor je privéprofiel verschijnen hier."
                     />
                   )}
                 </TabsContent>

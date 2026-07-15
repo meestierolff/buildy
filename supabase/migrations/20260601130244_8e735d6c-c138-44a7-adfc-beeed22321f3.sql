@@ -22,6 +22,7 @@ GRANT ALL ON public.photobook_orders TO service_role;
 
 ALTER TABLE public.photobook_orders ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Owner can view photobook orders" ON public.photobook_orders;
 CREATE POLICY "Owner can view photobook orders"
 ON public.photobook_orders FOR SELECT
 USING (
@@ -29,6 +30,7 @@ USING (
   AND EXISTS (SELECT 1 FROM public.trips t WHERE t.id = trip_id AND t.user_id = auth.uid())
 );
 
+DROP POLICY IF EXISTS "Owner can create photobook orders" ON public.photobook_orders;
 CREATE POLICY "Owner can create photobook orders"
 ON public.photobook_orders FOR INSERT
 WITH CHECK (
@@ -36,6 +38,7 @@ WITH CHECK (
   AND EXISTS (SELECT 1 FROM public.trips t WHERE t.id = trip_id AND t.user_id = auth.uid())
 );
 
+DROP POLICY IF EXISTS "Owner can update photobook orders" ON public.photobook_orders;
 CREATE POLICY "Owner can update photobook orders"
 ON public.photobook_orders FOR UPDATE
 USING (
@@ -43,6 +46,7 @@ USING (
   AND EXISTS (SELECT 1 FROM public.trips t WHERE t.id = trip_id AND t.user_id = auth.uid())
 );
 
+DROP POLICY IF EXISTS "Owner can delete photobook orders" ON public.photobook_orders;
 CREATE POLICY "Owner can delete photobook orders"
 ON public.photobook_orders FOR DELETE
 USING (

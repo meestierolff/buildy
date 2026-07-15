@@ -14,6 +14,7 @@ import { MapPin, Hammer, Camera, Pencil, Lock, UserPlus, UserCheck, Loader2, Log
 import { toast } from "sonner";
 import ProjectCard from "@/components/ProjectCard";
 import { applyProjectMediaSummaries, loadProjectMediaSummaries } from "@/lib/projectMedia";
+import { getOwnedPublicAvatarPath, getOwnedPublicTripMediaPath } from "@/lib/storagePaths";
 import { usePageMeta } from "@/hooks/usePageMeta";
 
 interface FollowProfile {
@@ -36,6 +37,7 @@ const Profile = () => {
   const [followPending, setFollowPending] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [restrictedProfile, setRestrictedProfile] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ display_name: "", bio: "", location: "", is_private: false });
 
@@ -69,11 +71,11 @@ const Profile = () => {
     const allIds = Array.from(new Set([...followerIds, ...followingIds]));
     const profilesById: Record<string, FollowProfile> = {};
     if (allIds.length) {
-      const { data: ps } = await supabase
-        .from("profiles")
-        .select("user_id, display_name, avatar_url, is_private")
-        .in("user_id", allIds);
-      (ps || []).forEach((p: any) => { profilesById[p.user_id] = p; });
+      const { data: ps, error } = await supabase.rpc("get_profiles_basic", { _ids: allIds });
+      if (error) console.error("Follow profiles load failed:", error);
+      (ps || []).forEach((p) => {
+        profilesById[p.user_id] = { ...p, is_private: false };
+      });
     }
     setFollowers(followerIds.map((id) => profilesById[id]).filter(Boolean));
     setFollowing(followingIds.map((id) => profilesById[id]).filter(Boolean));
@@ -86,17 +88,42 @@ const Profile = () => {
         .maybeSingle();
       setIFollow(rel?.status === "accepted");
       setFollowPending(rel?.status === "pending");
+    } else {
+      setIFollow(false);
+      setFollowPending(false);
     }
   }, [isMe, user]);
 
   const load = useCallback(async () => {
     if (!userId) return;
-    const { data: profileData } = await supabase
+    setLoading(true);
+    setRestrictedProfile(false);
+    const { data: profileData, error: profileError } = await supabase
       .from("profiles")
       .select("*")
       .eq("user_id", userId)
-      .single();
-    setProfile(profileData);
+      .maybeSingle();
+    if (profileError) console.error("Profile load failed:", profileError);
+
+    let visibleProfile: any = profileData;
+    if (!visibleProfile) {
+      const { data: basicRows, error: basicError } = await supabase.rpc("get_profiles_basic", { _ids: [userId] });
+      if (basicError) console.error("Basic profile load failed:", basicError);
+      const basic = basicRows?.[0];
+      if (basic) {
+        visibleProfile = {
+          ...basic,
+          bio: null,
+          location: null,
+          is_private: true,
+          is_pro: false,
+          onboarded: true,
+        };
+        setRestrictedProfile(true);
+      }
+    }
+
+    setProfile(visibleProfile);
     if (profileData) setDraft({
       display_name: profileData.display_name || "",
       bio: profileData.bio || "",
@@ -104,15 +131,23 @@ const Profile = () => {
       is_private: !!profileData.is_private,
     });
 
+    await loadFollows(userId);
+    if (!profileData) {
+      setTrips([]);
+      setStats({ updates: 0, photos: 0 });
+      setStatsExtra({ budgetTotal: 0, completedProjects: 0, upcomingProject: null });
+      setLoading(false);
+      return;
+    }
+
     const tripsQuery = supabase
       .from("trips")
       .select("*")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
     
-    // Supabase RLS automatically filters out private trips the user is not allowed to see.
-    // By removing the hardcoded .eq("is_public", true) filter, we allow viewers to see 
-    // private trips that they are an accepted follower of.
+    // Project RLS is separate from profile follows. A private project appears
+    // only to its owner or an accepted project-level follower.
     const { data: tripsData } = await tripsQuery;
     const rawTrips = tripsData || [];
     const tripIds = rawTrips.map((t: any) => t.id);
@@ -142,9 +177,8 @@ const Profile = () => {
     );
     setStats(totals);
 
-    await loadFollows(userId);
     setLoading(false);
-  }, [isMe, loadFollows, userId]);
+  }, [loadFollows, userId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -155,17 +189,61 @@ const Profile = () => {
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
+    const extensions: Record<string, string> = {
+      "image/jpeg": "jpg",
+      "image/png": "png",
+      "image/webp": "webp",
+      "image/gif": "gif",
+    };
+    const ext = extensions[file.type];
+    if (!ext) {
+      toast.error("Kies een JPG-, PNG-, WebP- of GIF-afbeelding");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("De profielfoto mag maximaal 10 MB zijn");
+      return;
+    }
     setAvatarUploading(true);
-    const ext = file.name.split(".").pop();
-    const path = `${user.id}/avatar-${Date.now()}.${ext}`;
+    const previousAvatarPath = getOwnedPublicAvatarPath(profile?.avatar_url, user.id);
+    const previousLegacyPath = previousAvatarPath
+      ? null
+      : getOwnedPublicTripMediaPath(profile?.avatar_url, user.id);
+    const nextSlot = previousAvatarPath?.split("/").at(-1)?.startsWith("avatar-a.") ? "b" : "a";
+    const path = `${user.id}/avatar-${nextSlot}.${ext}`;
     const { error: upErr } = await supabase.storage
-      .from("trip-media")
-      .upload(path, file, { upsert: true });
+      .from("avatars")
+      .upload(path, file, { contentType: file.type, upsert: true });
     if (upErr) {
+      console.error("Avatar upload failed:", upErr);
       toast.error("Uploaden mislukt");
     } else {
-      const { data: urlData } = supabase.storage.from("trip-media").getPublicUrl(path);
-      await supabase.from("profiles").update({ avatar_url: urlData.publicUrl }).eq("user_id", user.id);
+      const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
+      const publicUrl = `${urlData.publicUrl}?v=${Date.now()}`;
+      const { error: saveError } = await supabase
+        .from("profiles")
+        .update({ avatar_url: publicUrl })
+        .eq("user_id", user.id);
+      if (saveError) {
+        console.error("Avatar profile save failed:", saveError);
+        await supabase.storage.from("avatars").remove([path]);
+        toast.error("Profielfoto opslaan mislukt");
+        setAvatarUploading(false);
+        if (avatarInputRef.current) avatarInputRef.current.value = "";
+        return;
+      }
+
+      if (previousAvatarPath && previousAvatarPath !== path) {
+        const { error: cleanupError } = await supabase.storage.from("avatars").remove([previousAvatarPath]);
+        if (cleanupError) console.error("Previous avatar cleanup failed:", cleanupError);
+      }
+      const previousName = previousLegacyPath?.split("/").at(-1) || "";
+      const isManagedLegacyAvatar = previousLegacyPath?.startsWith(`${user.id}/avatars/`)
+        || previousName.startsWith("avatar-");
+      if (previousLegacyPath && isManagedLegacyAvatar) {
+        const { error: cleanupError } = await supabase.storage.from("trip-media").remove([previousLegacyPath]);
+        if (cleanupError) console.error("Legacy avatar cleanup failed:", cleanupError);
+      }
       await load();
       toast.success("Profielfoto bijgewerkt!");
     }
@@ -175,10 +253,19 @@ const Profile = () => {
 
   const save = async () => {
     if (!user) return;
+    const displayName = draft.display_name.trim();
+    if (displayName.length < 2 || displayName.length > 60) {
+      toast.error("Kies een naam van 2 tot 60 tekens");
+      return;
+    }
+    if (draft.bio.trim().length > 500 || draft.location.trim().length > 100) {
+      toast.error("Je bio of locatie is te lang");
+      return;
+    }
     const { error } = await supabase
       .from("profiles")
       .update({
-        display_name: draft.display_name.trim(),
+        display_name: displayName,
         bio: draft.bio.trim() || null,
         location: draft.location.trim() || null,
         is_private: draft.is_private,
@@ -197,21 +284,29 @@ const Profile = () => {
     if (!user) { toast.error("Log in om te volgen"); return; }
     if (!userId || isMe) return;
     setFollowBusy(true);
-    if (iFollow || followPending) {
-      await supabase.from("user_follows").delete().eq("follower_id", user.id).eq("following_id", userId);
-      setIFollow(false);
-      setFollowPending(false);
-    } else {
-      const { data } = await supabase
-        .from("user_follows")
-        .insert({ follower_id: user.id, following_id: userId })
-        .select("status")
-        .single();
-      setIFollow(data?.status === "accepted");
-      setFollowPending(data?.status === "pending");
+    try {
+      if (iFollow || followPending) {
+        const { error } = await supabase.from("user_follows").delete().eq("follower_id", user.id).eq("following_id", userId);
+        if (error) throw error;
+        setIFollow(false);
+        setFollowPending(false);
+        toast.success(followPending ? "Volgverzoek ingetrokken" : "Je volgt dit profiel niet meer");
+      } else {
+        const { data, error } = await supabase.rpc("request_user_follow", {
+          _following_id: userId,
+        });
+        if (error) throw error;
+        setIFollow(data === "accepted");
+        setFollowPending(data === "pending");
+        toast.success(data === "accepted" ? "Je volgt dit profiel nu" : "Volgverzoek verstuurd");
+      }
+      await loadFollows(userId);
+    } catch (error) {
+      console.error("Profile follow toggle failed:", error);
+      toast.error("Volgen bijwerken mislukt");
+    } finally {
+      setFollowBusy(false);
     }
-    await loadFollows(userId);
-    setFollowBusy(false);
   };
 
   if (loading) {
@@ -289,7 +384,7 @@ const Profile = () => {
             )}
             {profile.bio && <p className="text-sm mt-4 leading-relaxed font-light max-w-xl">{profile.bio}</p>}
 
-            <div className="flex flex-wrap gap-x-8 gap-y-3 mt-6">
+            {!restrictedProfile && <div className="flex flex-wrap gap-x-8 gap-y-3 mt-6">
               {[
                 { label: "Projecten", value: trips.length, tab: "projects" },
                 { label: "Volgers", value: followers.length, tab: "followers" },
@@ -306,7 +401,7 @@ const Profile = () => {
                   <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-1">{s.label}</p>
                 </div>
               ))}
-            </div>
+            </div>}
 
             <div className="mt-6 flex gap-2">
               {!isMe && user && (
@@ -316,8 +411,15 @@ const Profile = () => {
                   disabled={followBusy}
                   className={`rounded-full px-5 text-[11px] font-bold uppercase tracking-widest gap-1.5 ${iFollow || followPending ? "bg-foreground text-background hover:bg-foreground/90" : "bg-accent text-accent-foreground hover:bg-accent/90"}`}
                 >
-                  {iFollow ? <><UserCheck className="h-3.5 w-3.5" /> Volgend</> : followPending ? <><UserCheck className="h-3.5 w-3.5" /> In afwachting</> : <><UserPlus className="h-3.5 w-3.5" /> Volgen</>}
+                  {iFollow ? <><UserCheck className="h-3.5 w-3.5" /> Volgend</> : followPending ? <><UserCheck className="h-3.5 w-3.5" /> Verzoek intrekken</> : <><UserPlus className="h-3.5 w-3.5" /> Volgen</>}
                 </Button>
+              )}
+              {!isMe && !user && (
+                <Link to={`/auth?next=${encodeURIComponent(`/profile/${userId}`)}`}>
+                  <Button size="sm" className="rounded-full px-5 text-[11px] font-bold uppercase tracking-widest gap-1.5 bg-accent text-accent-foreground hover:bg-accent/90">
+                    <UserPlus className="h-3.5 w-3.5" /> Log in om te volgen
+                  </Button>
+                </Link>
               )}
               {isMe && (
                 <>
@@ -332,9 +434,18 @@ const Profile = () => {
             </div>
           </div>
         </div>
-
-
-
+      {restrictedProfile ? (
+        <div className="rounded-2xl border border-border/70 bg-card px-6 py-10 text-center shadow-sm">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <Lock className="h-5 w-5 text-muted-foreground" />
+          </div>
+          <h2 className="font-serif italic text-2xl">Dit profiel is privé</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
+            Stuur een volgverzoek om de bio, projecten en sociale updates van deze bouwer te bekijken.
+            Privéprojecten vragen daarna nog altijd apart toestemming.
+          </p>
+        </div>
+      ) : (
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid grid-cols-2 sm:inline-flex bg-transparent sm:border-b sm:border-border rounded-none p-0 h-auto gap-x-6 gap-y-2 sm:gap-8 w-full justify-start mb-8">
           <TabsTrigger value="projects" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Projecten</TabsTrigger>
@@ -431,6 +542,7 @@ const Profile = () => {
           <PeopleList list={following} empty="Volgt nog niemand." />
         </TabsContent>
       </Tabs>
+      )}
 
       <Dialog open={editing} onOpenChange={setEditing}>
         <DialogContent>
@@ -454,7 +566,7 @@ const Profile = () => {
                   <Lock className="h-3.5 w-3.5" /> Openbaar profiel
                 </Label>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Standaard ben je privé. Zet dit aan om zichtbaar te zijn in 'Vrienden' en 'Ontdekken', zodat anderen je projecten kunnen volgen.
+                  Standaard ben je privé. Zet dit aan om vindbaar te zijn in Vrienden. De zichtbaarheid van ieder project stel je apart in.
                 </p>
               </div>
               <Switch

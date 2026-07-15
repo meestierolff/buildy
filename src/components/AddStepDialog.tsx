@@ -160,13 +160,19 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
       return;
     }
 
+    const partialFailures: string[] = [];
+
     if (contractorName.trim() || contractorNotes.trim()) {
-      await supabase.from("step_contractor_info").insert({
+      const { error: contractorError } = await supabase.from("step_contractor_info").insert({
         step_id: step.id,
         trip_id: tripId,
         contractor_name: contractorName.trim() || null,
         contractor_notes: contractorNotes.trim() || null,
       });
+      if (contractorError) {
+        console.error("Add contractor info failed:", contractorError);
+        partialFailures.push("aannemersinformatie");
+      }
     }
 
 
@@ -179,7 +185,7 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
       const totalHours = isMixed
         ? (diyHours !== "" || outsourcedHours !== "" ? Number(diyHours || 0) + Number(outsourcedHours || 0) : null)
         : (hoursSpent === "" ? null : Number(hoursSpent));
-      await supabase.from("step_budget").insert({
+      const { error: budgetError } = await supabase.from("step_budget").insert({
         step_id: step.id,
         trip_id: tripId,
         cost: totalCost,
@@ -190,6 +196,10 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
         outsourced_cost: isMixed && outsourcedCost !== "" ? Number(outsourcedCost) : null,
         outsourced_hours: isMixed && outsourcedHours !== "" ? Number(outsourcedHours) : null,
       });
+      if (budgetError) {
+        console.error("Add step budget failed:", budgetError);
+        partialFailures.push("budgetinformatie");
+      }
     }
 
     for (let i = 0; i < files.length; i++) {
@@ -198,7 +208,8 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
       try {
         file = await prepareUpload(upload.file);
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Bestand overgeslagen");
+        console.error("Prepare upload failed:", err);
+        partialFailures.push(upload.file.name);
         continue;
       }
       const ext = file.name.split(".").pop();
@@ -208,26 +219,45 @@ const AddStepDialog = ({ tripId, onClose, onAdded }: AddStepDialogProps) => {
         .from("trip-private")
         .upload(path, file);
 
-      if (!uploadError) {
-        const { data: signed } = await supabase.storage
-          .from("trip-private")
-          .createSignedUrl(path, 60 * 60);
-        await supabase.from("step_media").insert({
-          step_id: step.id,
-          user_id: user.id,
-          media_url: signed?.signedUrl ?? "",
-          storage_path: path,
-          media_type: file.type === "application/pdf" ? "pdf" : file.type.startsWith("video") ? "video" : "image",
-          compare_role: file.type.startsWith("image") ? upload.compareRole : null,
-          sort_order: i,
-        });
+      if (uploadError) {
+        console.error("Upload step media failed:", uploadError);
+        partialFailures.push(upload.file.name);
+        continue;
+      }
+
+      const { data: signed, error: signedUrlError } = await supabase.storage
+        .from("trip-private")
+        .createSignedUrl(path, 60 * 60);
+      if (signedUrlError || !signed?.signedUrl) {
+        console.error("Sign step media URL failed:", signedUrlError);
+        await supabase.storage.from("trip-private").remove([path]);
+        partialFailures.push(upload.file.name);
+        continue;
+      }
+      const { error: mediaError } = await supabase.from("step_media").insert({
+        step_id: step.id,
+        user_id: user.id,
+        media_url: signed.signedUrl,
+        storage_path: path,
+        media_type: file.type === "application/pdf" ? "pdf" : file.type.startsWith("video") ? "video" : "image",
+        compare_role: file.type.startsWith("image") ? upload.compareRole : null,
+        sort_order: i,
+      });
+      if (mediaError) {
+        console.error("Store step media failed:", mediaError);
+        await supabase.storage.from("trip-private").remove([path]);
+        partialFailures.push(upload.file.name);
       }
     }
 
-    toast.success("Update toegevoegd!");
     onAdded();
     onClose();
     setLoading(false);
+    if (partialFailures.length > 0) {
+      toast.error(`Update toegevoegd, maar ${partialFailures.length} onderdeel${partialFailures.length === 1 ? "" : "en"} konden niet worden opgeslagen.`);
+    } else {
+      toast.success("Update toegevoegd!");
+    }
   };
 
   return (

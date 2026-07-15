@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { usePageMeta } from "@/hooks/usePageMeta";
@@ -10,14 +10,18 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   ArrowLeft,
+  Building2,
   CheckCircle2,
   Clock,
   CreditCard,
+  FileCheck2,
   Mail,
   Package,
   Printer,
+  ReceiptText,
   Truck,
   XCircle,
+  type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -31,13 +35,17 @@ interface OrderRow {
   status: string;
   payment_status: string | null;
   payment_amount_cents: number | null;
+  payment_refunded_cents: number | null;
   payment_currency: string | null;
   fulfillment_status: string | null;
   fulfillment_error: string | null;
   tracking_code: string | null;
   tracking_url: string | null;
   customer_email: string | null;
+  checkout_snapshot: unknown;
+  terms_version: string | null;
   paid_at: string | null;
+  refunded_at: string | null;
   created_at: string;
   ordered_at: string | null;
   status_updated_at: string | null;
@@ -46,12 +54,68 @@ interface OrderRow {
 interface EventRow {
   id: string;
   event_type: string;
-  payload: any;
+  payload: unknown;
   created_at: string;
 }
 
 const ORDER_SELECT =
-  "id, trip_id, merchant_reference, peecho_id, format, page_count, status, payment_status, payment_amount_cents, payment_currency, fulfillment_status, fulfillment_error, tracking_code, tracking_url, customer_email, paid_at, created_at, ordered_at, status_updated_at";
+  "id, trip_id, merchant_reference, peecho_id, format, page_count, status, payment_status, payment_amount_cents, payment_refunded_cents, payment_currency, fulfillment_status, fulfillment_error, tracking_code, tracking_url, customer_email, checkout_snapshot, terms_version, paid_at, refunded_at, created_at, ordered_at, status_updated_at";
+
+interface CheckoutSnapshot {
+  product?: string;
+  subtotalCents?: number;
+  shippingCents?: number;
+  totalCents?: number;
+  currency?: string;
+  vatIncluded: boolean;
+  shippingCountries: string[];
+  deliveryEstimate?: string;
+  termsVersion?: string;
+  acceptedAt?: string;
+  customizedProductNoWithdrawal: boolean;
+  seller: {
+    legalName?: string;
+    contactEmail?: string;
+    contactPhone?: string;
+    postalAddress?: string;
+    registrationNumber?: string;
+  };
+}
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+
+const asString = (value: unknown) => typeof value === "string" && value.trim() ? value.trim() : undefined;
+const asNumber = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : undefined;
+
+const readCheckoutSnapshot = (value: unknown): CheckoutSnapshot => {
+  const snapshot = asRecord(value) || {};
+  const seller = asRecord(snapshot.seller) || {};
+  return {
+    product: asString(snapshot.product),
+    subtotalCents: asNumber(snapshot.subtotal_cents),
+    shippingCents: asNumber(snapshot.shipping_cents),
+    totalCents: asNumber(snapshot.total_cents),
+    currency: asString(snapshot.currency),
+    vatIncluded: snapshot.vat_included === true,
+    shippingCountries: Array.isArray(snapshot.shipping_countries)
+      ? snapshot.shipping_countries.filter((country): country is string => typeof country === "string")
+      : [],
+    deliveryEstimate: asString(snapshot.delivery_estimate),
+    termsVersion: asString(snapshot.terms_version),
+    acceptedAt: asString(snapshot.accepted_at),
+    customizedProductNoWithdrawal: snapshot.customized_product_no_withdrawal === true,
+    seller: {
+      legalName: asString(seller.legalName),
+      contactEmail: asString(seller.contactEmail),
+      contactPhone: asString(seller.contactPhone),
+      postalAddress: asString(seller.postalAddress),
+      registrationNumber: asString(seller.registrationNumber),
+    },
+  };
+};
 
 const formatMoney = (cents: number | null | undefined, currency: string | null | undefined) => {
   if (cents == null) return "—";
@@ -61,7 +125,7 @@ const formatMoney = (cents: number | null | undefined, currency: string | null |
       currency: (currency || "EUR").toUpperCase(),
     }).format(cents / 100);
   } catch {
-    return `€ ${(cents / 100).toFixed(2)}`;
+    return `${(cents / 100).toFixed(2)} ${(currency || "").toUpperCase()}`.trim();
   }
 };
 
@@ -86,9 +150,17 @@ const EVENT_LABELS: Record<string, string> = {
   peecho_order_submit_attempt: "Order doorgestuurd naar drukker",
   peecho_order_submitted: "Drukker heeft order geaccepteerd",
   peecho_pingback: "Statusupdate van drukker",
+  peecho_order_created: "Order bij drukker aangemaakt",
+  "stripe_checkout.session.completed": "Betaling bevestigd door Stripe",
+  "stripe_checkout.session.async_payment_succeeded": "Betaling ontvangen",
+  "stripe_checkout.session.async_payment_failed": "Betaling mislukt",
+  "stripe_charge.refunded": "Betaling volledig terugbetaald",
+  "stripe_refund.created": "Terugbetaling aangemaakt",
+  "stripe_refund.updated": "Terugbetaling bijgewerkt",
+  checkout_cancelled: "Betaling geannuleerd",
 };
 
-const STATUS_PIPELINE: { key: string; label: string; icon: any }[] = [
+const STATUS_PIPELINE: { key: string; label: string; icon: LucideIcon }[] = [
   { key: "payment", label: "Betaling", icon: CreditCard },
   { key: "submitted", label: "Drukker", icon: Printer },
   { key: "fulfillment", label: "Productie", icon: Package },
@@ -96,13 +168,17 @@ const STATUS_PIPELINE: { key: string; label: string; icon: any }[] = [
 ];
 
 const pipelineState = (order: OrderRow) => {
-  const paid = order.payment_status === "paid";
+  const paid = ["paid", "partially_refunded", "refunded"].includes(order.payment_status || "");
   const submitted =
     !!order.peecho_id ||
+    ["submitted", "in_production", "shipped", "delivered"].includes(order.fulfillment_status || "") ||
     ["submitted_to_peecho", "in_production", "shipped", "delivered"].includes(order.status);
-  const inProduction = ["in_production", "shipped", "delivered"].includes(order.status);
+  const inProduction = ["in_production", "shipped", "delivered"].includes(order.fulfillment_status || "") ||
+    ["in_production", "shipped", "delivered"].includes(order.status);
   const shipped =
-    !!order.tracking_url || !!order.tracking_code || ["shipped", "delivered"].includes(order.status);
+    !!order.tracking_url || !!order.tracking_code ||
+    ["shipped", "delivered"].includes(order.fulfillment_status || "") ||
+    ["shipped", "delivered"].includes(order.status);
   return { payment: paid, submitted, fulfillment: inProduction, shipped };
 };
 
@@ -212,6 +288,10 @@ const OrderConfirmation = () => {
     );
   }
 
+  if (!authLoading && !user) {
+    return <Navigate to={`/auth?next=${encodeURIComponent(`/bestelling/${orderId || ""}`)}`} replace />;
+  }
+
   if (error || !order) {
     return (
       <div className="container max-w-2xl py-16 text-center space-y-4">
@@ -227,7 +307,16 @@ const OrderConfirmation = () => {
   }
 
   const isPaid = order.payment_status === "paid";
-  const isFailed = ["failed", "cancelled", "refunded"].includes(order.payment_status || "");
+  const isRefunded = order.payment_status === "refunded";
+  const isPartiallyRefunded = order.payment_status === "partially_refunded";
+  const isRefundState = isRefunded || isPartiallyRefunded;
+  const isFailed = ["failed", "cancelled", "expired"].includes(order.payment_status || "");
+  const snapshot = readCheckoutSnapshot(order.checkout_snapshot);
+  const snapshotCurrency = snapshot.currency || order.payment_currency;
+  const termsVersion = snapshot.termsVersion || order.terms_version;
+  const sellerEmail = snapshot.seller.contactEmail;
+  const sellerPhone = snapshot.seller.contactPhone;
+  const hasSellerDetails = Object.values(snapshot.seller).some(Boolean);
 
   return (
     <div className="container max-w-3xl py-8 md:py-12 space-y-6">
@@ -238,7 +327,15 @@ const OrderConfirmation = () => {
           </Link>
         </Button>
         <Badge variant={isPaid ? "default" : isFailed ? "destructive" : "secondary"}>
-          {isPaid ? "Betaald" : isFailed ? "Betaling mislukt" : "In afwachting"}
+          {isPaid
+            ? "Betaald"
+            : isRefunded
+              ? "Terugbetaald"
+              : isPartiallyRefunded
+                ? "Deels terugbetaald"
+                : isFailed
+                  ? "Betaling mislukt"
+                  : "In afwachting"}
         </Badge>
       </div>
 
@@ -247,6 +344,8 @@ const OrderConfirmation = () => {
           <div className="flex items-start gap-3">
             {isPaid ? (
               <CheckCircle2 className="h-8 w-8 text-primary mt-0.5" />
+            ) : isRefundState ? (
+              <ReceiptText className="h-8 w-8 text-amber-600 mt-0.5" />
             ) : isFailed ? (
               <XCircle className="h-8 w-8 text-destructive mt-0.5" />
             ) : (
@@ -256,6 +355,10 @@ const OrderConfirmation = () => {
               <CardTitle className="font-serif text-2xl">
                 {isPaid
                   ? "Bedankt voor je bestelling"
+                  : isRefunded
+                    ? "Je betaling is terugbetaald"
+                    : isPartiallyRefunded
+                      ? "Je betaling is deels terugbetaald"
                   : isFailed
                     ? "Betaling niet voltooid"
                     : "Betaling wordt verwerkt"}
@@ -282,18 +385,112 @@ const OrderConfirmation = () => {
               <div className="font-medium">
                 {formatMoney(order.payment_amount_cents, order.payment_currency)}
               </div>
+              {isRefundState && order.payment_refunded_cents != null && (
+                <div className="text-xs text-amber-700">
+                  {formatMoney(order.payment_refunded_cents, order.payment_currency)} terugbetaald
+                </div>
+              )}
             </div>
             <div>
-              <div className="text-muted-foreground">Besteld op</div>
-              <div className="font-medium">{formatDate(order.created_at)}</div>
+              <div className="text-muted-foreground">{isRefundState ? "Terugbetaald op" : isPaid ? "Betaald op" : "Aangemaakt op"}</div>
+              <div className="font-medium">{formatDate(isRefundState ? order.refunded_at || order.created_at : isPaid ? order.paid_at || order.created_at : order.created_at)}</div>
             </div>
           </div>
+
+          {snapshot.totalCents != null && (
+            <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+              <div className="flex items-center gap-2 font-medium">
+                <ReceiptText className="h-4 w-4 text-primary" />
+                <span>Prijsopbouw bij bestelling</span>
+              </div>
+              <dl className="space-y-2 text-sm">
+                {snapshot.product && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Product</dt>
+                    <dd className="text-right font-medium">{snapshot.product}</dd>
+                  </div>
+                )}
+                {snapshot.subtotalCents != null && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Boek</dt>
+                    <dd>{formatMoney(snapshot.subtotalCents, snapshotCurrency)}</dd>
+                  </div>
+                )}
+                {snapshot.shippingCents != null && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Verzending</dt>
+                    <dd>{formatMoney(snapshot.shippingCents, snapshotCurrency)}</dd>
+                  </div>
+                )}
+                <div className="flex justify-between gap-4 border-t pt-2 font-semibold">
+                  <dt>Totaal{snapshot.vatIncluded ? " incl. btw" : ""}</dt>
+                  <dd>{formatMoney(snapshot.totalCents, snapshotCurrency)}</dd>
+                </div>
+              </dl>
+              {(snapshot.deliveryEstimate || snapshot.shippingCountries.length > 0) && (
+                <p className="border-t pt-3 text-xs text-muted-foreground">
+                  {snapshot.deliveryEstimate ? `Verwachte levering: ${snapshot.deliveryEstimate}.` : ""}
+                  {snapshot.shippingCountries.length > 0
+                    ? ` Levergebied bij bestelling: ${snapshot.shippingCountries.join(", ")}.`
+                    : ""}
+                </p>
+              )}
+            </div>
+          )}
+
+          {hasSellerDetails && (
+            <div className="rounded-lg border p-4 text-sm space-y-2">
+              <div className="flex items-center gap-2 font-medium">
+                <Building2 className="h-4 w-4 text-primary" />
+                <span>Verkoper</span>
+              </div>
+              <div className="text-muted-foreground space-y-0.5">
+                {snapshot.seller.legalName && <p className="text-foreground font-medium">{snapshot.seller.legalName}</p>}
+                {snapshot.seller.postalAddress && <p>{snapshot.seller.postalAddress}</p>}
+                {snapshot.seller.registrationNumber && <p>Registratie: {snapshot.seller.registrationNumber}</p>}
+                {snapshot.seller.contactEmail && (
+                  <p>
+                    <a className="underline underline-offset-2" href={`mailto:${snapshot.seller.contactEmail}`}>
+                      {snapshot.seller.contactEmail}
+                    </a>
+                  </p>
+                )}
+                {snapshot.seller.contactPhone && (
+                  <p>
+                    <a
+                      className="underline underline-offset-2"
+                      href={`tel:${snapshot.seller.contactPhone.replace(/[^+\d]/g, "")}`}
+                    >
+                      {snapshot.seller.contactPhone}
+                    </a>
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {(termsVersion || snapshot.customizedProductNoWithdrawal) && (
+            <div className="flex items-start gap-2 rounded-lg border p-3 text-xs text-muted-foreground">
+              <FileCheck2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <p>
+                {termsVersion && (
+                  <>
+                    Van toepassing: <Link className="underline underline-offset-2" to="/voorwaarden">algemene voorwaarden</Link> versie {termsVersion}
+                    {snapshot.acceptedAt ? `, geaccepteerd op ${formatDate(snapshot.acceptedAt)}` : ""}.{" "}
+                  </>
+                )}
+                {snapshot.customizedProductNoWithdrawal && (
+                  <>Dit Bouwboek is volgens jouw specificaties gemaakt; de maatwerkuitzondering op het herroepingsrecht is van toepassing.</>
+                )}
+              </p>
+            </div>
+          )}
 
           {order.customer_email && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground border rounded-md p-3">
               <Mail className="h-4 w-4" />
               <span>
-                Bevestiging en updates worden gestuurd naar{" "}
+                E-mailadres bij deze bestelling:{" "}
                 <span className="text-foreground font-medium">{order.customer_email}</span>
               </span>
             </div>
@@ -301,9 +498,15 @@ const OrderConfirmation = () => {
 
           {isPaid && !order.tracking_url && (
             <p className="text-sm text-muted-foreground">
-              Je boek wordt nu gedrukt en in een hardcover gebonden. Verwachte levering: 5–10
-              werkdagen na productie.
+              Je boek wordt nu voor productie klaargezet. Je ontvangt updates zodra de drukker
+              de productie en verzending bevestigt.
             </p>
+          )}
+
+          {isRefundState && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+              De terugbetaling annuleert de drukopdracht niet automatisch. Buildy controleert de productie en levering handmatig en werkt deze status bij.
+            </div>
           )}
 
           {order.tracking_url && (
@@ -354,7 +557,7 @@ const OrderConfirmation = () => {
 
           {order.fulfillment_error && (
             <div className="mt-4 text-sm text-destructive border border-destructive/30 rounded-md p-3">
-              {order.fulfillment_error}
+              De productie heeft aandacht nodig. Ons team controleert dit; neem bij vragen contact op met support en vermeld je referentie.
             </div>
           )}
         </CardContent>
@@ -389,15 +592,29 @@ const OrderConfirmation = () => {
 
       <div className="text-center text-sm text-muted-foreground space-y-2">
         <p>
-          Vragen over je bestelling? Mail ons op{" "}
-          <a href="mailto:support@buildy.app" className="underline">
-            support@buildy.app
-          </a>{" "}
-          met referentie <span className="font-mono">{order.merchant_reference}</span>.
+          {sellerEmail ? (
+            <>
+              Vragen over je bestelling? Mail{" "}
+              <a href={`mailto:${sellerEmail}`} className="underline">{sellerEmail}</a>{" "}
+              met referentie <span className="font-mono">{order.merchant_reference}</span>.
+            </>
+          ) : sellerPhone ? (
+            <>
+              Vragen over je bestelling? Bel{" "}
+              <a href={`tel:${sellerPhone.replace(/[^+\d]/g, "")}`} className="underline">{sellerPhone}</a>{" "}
+              en vermeld referentie <span className="font-mono">{order.merchant_reference}</span>.
+            </>
+          ) : (
+            <>
+              Gebruik voor vragen de verkopergegevens in de{" "}
+              <Link to="/voorwaarden" className="underline">algemene voorwaarden</Link>{" "}
+              en vermeld referentie <span className="font-mono">{order.merchant_reference}</span>.
+            </>
+          )}
         </p>
         <p>
-          <Link to="/account" className="underline">
-            Bekijk al je bestellingen in je account
+          <Link to={`/trip/${order.trip_id}/photobook`} className="underline">
+            Bekijk je Bouwboek en bestelhistorie
           </Link>
         </p>
       </div>

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { usePageMeta } from "@/hooks/usePageMeta";
 
@@ -21,16 +22,22 @@ const ForgotPassword = () => {
     e.preventDefault();
     if (!email.trim()) return;
     setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}/wachtwoord-resetten`,
-    });
-    setLoading(false);
-    if (error) {
-      toast.error("Kon geen reset-link versturen. Probeer het opnieuw.");
-      return;
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${window.location.origin}/wachtwoord-resetten`,
+      });
+      if (error) {
+        toast.error("Kon geen reset-link versturen. Probeer het opnieuw.");
+        return;
+      }
+      setSent(true);
+      toast.success("Check je inbox voor de reset-link.");
+    } catch (error) {
+      console.error("Password reset email failed", error);
+      toast.error("De reset-link kon niet worden verstuurd. Controleer je verbinding.");
+    } finally {
+      setLoading(false);
     }
-    setSent(true);
-    toast.success("Check je inbox voor de reset-link.");
   };
 
   return (
@@ -55,14 +62,21 @@ const ForgotPassword = () => {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Input
-              type="email"
-              placeholder="E-mailadres"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="h-11"
-            />
+            <div className="space-y-2">
+              <Label htmlFor="forgot-password-email">E-mailadres</Label>
+              <Input
+                id="forgot-password-email"
+                name="email"
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                placeholder="jij@voorbeeld.nl"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="h-11"
+              />
+            </div>
             <Button
               type="submit"
               disabled={loading}

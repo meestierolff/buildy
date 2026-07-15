@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { usePageMeta } from "@/hooks/usePageMeta";
 
@@ -17,17 +18,21 @@ const ResetPassword = () => {
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
+  const [checkingLink, setCheckingLink] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
     // Supabase plaatst de tokens als hash-fragment of detecteert ze automatisch.
     // We luisteren naar PASSWORD_RECOVERY of een bestaande session.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") setReady(true);
+      if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
+        setReady(true);
+        setCheckingLink(false);
+      }
     });
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) setReady(true);
-    });
+    }).finally(() => setCheckingLink(false));
     return () => subscription.unsubscribe();
   }, []);
 
@@ -42,14 +47,20 @@ const ResetPassword = () => {
       return;
     }
     setLoading(true);
-    const { error } = await supabase.auth.updateUser({ password });
-    setLoading(false);
-    if (error) {
-      toast.error("Wachtwoord opslaan mislukt. Probeer de link opnieuw.");
-      return;
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) {
+        toast.error("Wachtwoord opslaan mislukt. Probeer de link opnieuw.");
+        return;
+      }
+      toast.success("Wachtwoord bijgewerkt — je bent ingelogd.");
+      navigate("/");
+    } catch (error) {
+      console.error("Password update failed", error);
+      toast.error("Wachtwoord opslaan mislukt. Controleer je verbinding.");
+    } finally {
+      setLoading(false);
     }
-    toast.success("Wachtwoord bijgewerkt — je bent ingelogd.");
-    navigate("/");
   };
 
   return (
@@ -61,33 +72,45 @@ const ResetPassword = () => {
         </div>
 
         {!ready ? (
-          <div className="text-center text-sm text-muted-foreground space-y-3">
-            <p>We checken je reset-link…</p>
+          <div className="text-center text-sm text-muted-foreground space-y-3" role="status" aria-live="polite">
+            <p>{checkingLink ? "We checken je reset-link…" : "Deze reset-link is ongeldig of verlopen."}</p>
             <p className="text-xs">
               Heb je geen geldige link? <Link to="/wachtwoord-vergeten" className="underline underline-offset-4">Vraag een nieuwe aan</Link>.
             </p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Input
-              type="password"
-              placeholder="Nieuw wachtwoord"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={6}
-              className="h-11"
-              autoFocus
-            />
-            <Input
-              type="password"
-              placeholder="Herhaal wachtwoord"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              required
-              minLength={6}
-              className="h-11"
-            />
+            <div className="space-y-2">
+              <Label htmlFor="new-password">Nieuw wachtwoord</Label>
+              <Input
+                id="new-password"
+                name="new-password"
+                type="password"
+                autoComplete="new-password"
+                placeholder="Minimaal 6 tekens"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={6}
+                className="h-11"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirm-password">Herhaal wachtwoord</Label>
+              <Input
+                id="confirm-password"
+                name="confirm-password"
+                type="password"
+                autoComplete="new-password"
+                placeholder="Nogmaals je nieuwe wachtwoord"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                required
+                minLength={6}
+                className="h-11"
+              />
+            </div>
             <Button
               type="submit"
               disabled={loading}

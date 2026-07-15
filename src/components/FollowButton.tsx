@@ -17,20 +17,30 @@ type FollowStatus = "none" | "pending" | "accepted";
 const FollowButton = ({ projectId, size = "sm", variant = "outline", className }: FollowButtonProps) => {
   const { user } = useAuth();
   const [status, setStatus] = useState<FollowStatus>("none");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) { setStatus("none"); return; }
+    let cancelled = false;
+    if (!user) {
+      setStatus("none");
+      setLoading(false);
+      return () => { cancelled = true; };
+    }
+    setLoading(true);
     supabase
       .from("follows")
       .select("status")
       .eq("user_id", user.id)
       .eq("project_id", projectId)
       .maybeSingle()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) console.error("Project follow status failed:", error);
         if (!data) setStatus("none");
-        else setStatus((data as any).status === "accepted" ? "accepted" : "pending");
+        else setStatus(data.status === "accepted" ? "accepted" : "pending");
+        setLoading(false);
       });
+    return () => { cancelled = true; };
   }, [user, projectId]);
 
   const toggle = async (e: React.MouseEvent) => {
@@ -41,28 +51,33 @@ const FollowButton = ({ projectId, size = "sm", variant = "outline", className }
       return;
     }
     setLoading(true);
-    if (status !== "none") {
-      const { error } = await supabase.from("follows").delete().eq("user_id", user.id).eq("project_id", projectId);
-      if (error) toast.error("Kon niet bijwerken");
-      else {
-        setStatus("none");
-        toast.success(status === "pending" ? "Verzoek ingetrokken" : "Niet meer gevolgd");
+    try {
+      if (status !== "none") {
+        const { error } = await supabase.from("follows").delete().eq("user_id", user.id).eq("project_id", projectId);
+        if (error) {
+          console.error("Project unfollow failed:", error);
+          toast.error("Kon niet bijwerken");
+        } else {
+          setStatus("none");
+          toast.success(status === "pending" ? "Verzoek ingetrokken" : "Niet meer gevolgd");
+        }
+        return;
       }
-    } else {
-      const { data, error } = await supabase
-        .from("follows")
-        .insert({ user_id: user.id, project_id: projectId })
-        .select("status")
-        .single();
+
+      const { data, error } = await supabase.rpc("request_project_follow", {
+        _project_id: projectId,
+      });
       if (error) {
+        console.error("Project follow failed:", error);
         toast.error("Volgen mislukt");
       } else {
-        const newStatus = (data as any).status === "accepted" ? "accepted" : "pending";
+        const newStatus: FollowStatus = data === "accepted" ? "accepted" : "pending";
         setStatus(newStatus);
         toast.success(newStatus === "accepted" ? "Je volgt dit project nu" : "Volgverzoek verstuurd");
       }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const label = status === "accepted" ? "Volgend" : status === "pending" ? "In afwachting" : "Volgen";
@@ -75,7 +90,8 @@ const FollowButton = ({ projectId, size = "sm", variant = "outline", className }
       variant={status === "accepted" ? "default" : variant}
       onClick={toggle}
       disabled={loading}
-      className={`gap-1.5 ${status === "accepted" ? "bg-accent text-accent-foreground hover:bg-accent/90" : (className ?? "")}`}
+      aria-pressed={status === "accepted"}
+      className={`gap-1.5 ${status === "accepted" ? "bg-accent text-accent-foreground hover:bg-accent/90" : ""} ${className ?? ""}`}
     >
       <Icon className={`h-4 w-4 ${status === "accepted" ? "fill-current" : ""}`} />
       {label}

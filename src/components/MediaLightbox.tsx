@@ -26,6 +26,7 @@ const MediaLightbox = ({ items, index, onClose, onIndex, tripId }: Props) => {
   const item = items[index];
   const touchStartX = useRef<number | null>(null);
   const touchStartY = useRef<number | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [dragX, setDragX] = useState(0);
 
   useEffect(() => {
@@ -37,6 +38,13 @@ const MediaLightbox = ({ items, index, onClose, onIndex, tripId }: Props) => {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [index, items.length, onClose, onIndex]);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeButtonRef.current?.focus();
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, []);
 
   if (!item) return null;
 
@@ -65,10 +73,17 @@ const MediaLightbox = ({ items, index, onClose, onIndex, tripId }: Props) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[1200] bg-black/95 flex flex-col" onClick={closeFromBackdrop}>
+    <div
+      className="fixed inset-0 z-[1200] bg-black/95 flex flex-col"
+      onClick={closeFromBackdrop}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Media van ${item.stepTitle}`}
+      data-testid="media-lightbox"
+    >
       <div className="flex items-center justify-between p-3 text-white" onClick={(e) => e.stopPropagation()}>
         <span className="text-sm opacity-70">{index + 1} / {items.length}</span>
-        <button onClick={onClose} className="p-2 rounded-full hover:bg-white/10">
+        <button ref={closeButtonRef} type="button" onClick={onClose} aria-label="Lightbox sluiten" className="p-2 rounded-full hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white">
           <X className="h-5 w-5" />
         </button>
       </div>
@@ -83,6 +98,8 @@ const MediaLightbox = ({ items, index, onClose, onIndex, tripId }: Props) => {
         {index > 0 && (
           <button
             onClick={(e) => { e.stopPropagation(); onIndex(index - 1); }}
+            type="button"
+            aria-label="Vorige media"
             className="hidden sm:flex absolute left-2 p-3 rounded-full bg-white/10 text-white hover:bg-white/20 z-10"
           >
             <ChevronLeft className="h-6 w-6" />
@@ -108,6 +125,8 @@ const MediaLightbox = ({ items, index, onClose, onIndex, tripId }: Props) => {
         {index < items.length - 1 && (
           <button
             onClick={(e) => { e.stopPropagation(); onIndex(index + 1); }}
+            type="button"
+            aria-label="Volgende media"
             className="hidden sm:flex absolute right-2 p-3 rounded-full bg-white/10 text-white hover:bg-white/20 z-10"
           >
             <ChevronRight className="h-6 w-6" />

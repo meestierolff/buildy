@@ -48,7 +48,7 @@ test.describe("Photobook — preview", () => {
   test("mobile page-by-page preview stays print-safe", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`${BASE}/trip/${PHOTOBOOK_TRIP_ID}/photobook`, { waitUntil: "networkidle" });
-    await expect(page.getByText(/elke pagina zoals hij gedrukt wordt/i)).toBeVisible();
+    await expect(page.getByText(/opmaakvoorbeeld.*print-pdf.*apart opgebouwd en gecontroleerd/i)).toBeVisible();
     await waitForPhotobookImages(page);
 
     for (let i = 0; i < 4; i += 1) {

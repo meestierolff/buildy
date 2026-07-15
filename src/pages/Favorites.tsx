@@ -26,59 +26,97 @@ const Favorites = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) { setLoading(false); return; }
+    if (!user) {
+      setProjects([]);
+      setActivity([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     (async () => {
-      const { data: follows } = await supabase
-        .from("follows")
-        .select("project_id")
-        .eq("user_id", user.id);
+      const [{ data: follows, error: followsError }, { data: userFollows, error: userFollowsError }] = await Promise.all([
+        supabase
+          .from("follows")
+          .select("project_id")
+          .eq("user_id", user.id)
+          .eq("status", "accepted"),
+        supabase
+          .from("user_follows")
+          .select("following_id")
+          .eq("follower_id", user.id)
+          .eq("status", "accepted"),
+      ]);
+      if (followsError) console.error("Followed projects load failed:", followsError);
+      if (userFollowsError) console.error("Followed builders load failed:", userFollowsError);
 
-      if (!follows || follows.length === 0) {
+      const explicitIds = (follows || []).map((follow) => follow.project_id);
+      const builderIds = (userFollows || []).map((follow) => follow.following_id);
+      if (explicitIds.length === 0 && builderIds.length === 0) {
         setProjects([]);
         setActivity([]);
         setLoading(false);
         return;
       }
 
-      const ids = follows.map((f) => f.project_id);
-      const { data: trips } = await supabase
-        .from("trips")
-        .select("*")
-        .in("id", ids);
+      const tripQueries = [];
+      if (explicitIds.length > 0) {
+        tripQueries.push(supabase.from("trips").select("*").in("id", explicitIds));
+      }
+      if (builderIds.length > 0) {
+        // Following a builder adds only their public projects. Private project
+        // access always requires an accepted project-level follow.
+        tripQueries.push(supabase.from("trips").select("*").in("user_id", builderIds).eq("is_public", true));
+      }
+      const tripResults = await Promise.all(tripQueries);
+      tripResults.forEach(({ error }) => {
+        if (error) console.error("Follow feed projects load failed:", error);
+      });
+      const trips = Array.from(new Map(
+        tripResults.flatMap(({ data }) => data || []).map((trip) => [trip.id, trip]),
+      ).values());
+      const ids = trips.map((trip) => trip.id);
 
-      if (trips) {
-        const userIds = Array.from(new Set(trips.map((t: any) => t.user_id)));
-        const [mediaSummaries, { data: profiles }] = await Promise.all([
-          loadProjectMediaSummaries(ids),
-          supabase.rpc("get_profiles_basic", { _ids: userIds }),
-        ]);
-        const profileById = new Map((profiles || []).map((p: any) => [p.user_id, p]));
-        setProjects(
-          applyProjectMediaSummaries(trips, mediaSummaries).map((t: any) => ({
-            ...t,
-            profile: profileById.get(t.user_id),
-          })),
-        );
+      if (trips.length === 0) {
+        setProjects([]);
+        setActivity([]);
+        setLoading(false);
+        return;
       }
 
+      const userIds = Array.from(new Set(trips.map((t: any) => t.user_id)));
+      const [mediaSummaries, { data: profiles }] = await Promise.all([
+        loadProjectMediaSummaries(ids),
+        supabase.rpc("get_profiles_basic", { _ids: userIds }),
+      ]);
+      const profileById = new Map((profiles || []).map((p: any) => [p.user_id, p]));
+      setProjects(
+        applyProjectMediaSummaries(trips, mediaSummaries).map((t: any) => ({
+          ...t,
+          profile: profileById.get(t.user_id),
+        })),
+      );
+
       // Activity feed: latest steps from followed projects
-      const { data: recent } = await supabase
+      const { data: recent, error: recentError } = await supabase
         .from("steps")
         .select("id, location_name, description, step_date, trip_id, created_at, phase, is_milestone, step_media(media_url, storage_path, media_type, sort_order)")
         .in("trip_id", ids)
         .order("created_at", { ascending: false })
         .limit(20);
+      if (recentError) console.error("Follow activity load failed:", recentError);
       if (recent) {
         await hydrateStepsMedia(recent as any);
         const tMap = new Map((trips || []).map((t: any) => [t.id, t]));
         setActivity(recent.map((s: any) => ({ ...s, trip: tMap.get(s.trip_id) })));
+      } else {
+        setActivity([]);
       }
       setLoading(false);
     })();
   }, [user]);
 
   if (authLoading) return <div className="min-h-screen bg-background" />;
-  if (!user) return <Navigate to="/auth" replace />;
+  if (!user) return <Navigate to="/auth?next=%2Ffavorieten" replace />;
 
   return (
     <div className="max-w-7xl mx-auto px-6 md:px-8 py-16">
@@ -93,7 +131,7 @@ const Favorites = () => {
         <EmptyState
           icon={Heart}
           title="Je volgt nog niks"
-          description="Ontdek projecten op de homepage en klik op 'Volgen' om updates hier terug te zien."
+          description="Volg een project of bouwer om nieuwe updates hier terug te zien."
         />
       ) : (
         <Tabs defaultValue="feed">
@@ -112,7 +150,7 @@ const Favorites = () => {
                     .filter((m: any) => m.media_type !== "pdf" && m.media_type !== "video")
                     .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0))[0]?.media_url;
                   return (
-                    <Link key={s.id} to={`/trip/${s.trip_id}`} className="block hover:bg-muted/40 transition-colors bg-card">
+                    <Link key={s.id} to={`/trip/${s.trip_id}?step=${s.id}`} className="block hover:bg-muted/40 transition-colors bg-card">
                       {/* project name header */}
                       <div className="px-4 pt-3 pb-1 flex items-center gap-2">
                         <Home className="h-3 w-3 text-accent shrink-0" />

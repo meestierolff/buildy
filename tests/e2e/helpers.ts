@@ -27,14 +27,20 @@ export { expect, test };
  */
 export const skipWithoutAuth = async (page: Page, reason = "requires authenticated owner session") => {
   await page.goto(`${BASE}/account`);
-  const needsLogin = await page.getByText(/log eerst in/i).count();
-  test.skip(needsLogin > 0, reason);
+  test.skip(!(await isSignedIn(page)), reason);
 };
 
-/** True when the page-level "log eerst in" fallback is showing. */
+/**
+ * Supabase persists the browser session under an `sb-*-auth-token` key. Using
+ * that signal is route-independent and avoids treating a public page as an
+ * authenticated one while AuthProvider is still resolving its session.
+ */
 export const isSignedIn = async (page: Page) => {
-  const needsLogin = await page.getByText(/log eerst in/i).count();
-  return needsLogin === 0;
+  return page.evaluate(() =>
+    Object.entries(window.localStorage).some(([key, value]) =>
+      /^sb-.+-auth-token$/.test(key) && !!value && value !== "null",
+    ),
+  );
 };
 
 /** Wait until every image inside photobook pages has loaded (or timeout softly). */

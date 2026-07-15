@@ -40,9 +40,10 @@ interface Props {
   onDelete?: (stepId: string) => void;
   onReorderMedia?: (stepId: string, orderedMediaIds: string[]) => void;
   isOwner?: boolean;
+  tripId?: string;
 }
 
-const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, isOwner }: Props) => {
+const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, isOwner, tripId }: Props) => {
   const [openComments, setOpenComments] = useState<string | null>(null);
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [lightbox, setLightbox] = useState<{ items: LightboxItem[]; idx: number } | null>(null);
@@ -136,9 +137,10 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
 
   const cc = (id: string, base: number) => commentCounts[id] ?? base;
 
-  const openLightboxForStep = (step: Step, mediaIdx: number) => {
+  const openLightboxForStep = (step: Step, mediaId: string) => {
     const orderedMedia = mediaDrafts[step.id] ?? [...step.step_media].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-    const items: LightboxItem[] = orderedMedia.map((m) => ({
+    const visualMedia = orderedMedia.filter((m) => m.media_type !== "pdf");
+    const items: LightboxItem[] = visualMedia.map((m) => ({
       id: m.id,
       url: m.media_url,
       type: m.media_type,
@@ -147,7 +149,9 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
       stepDate: step.step_date,
       phase: step.phase,
     }));
-    setLightbox({ items, idx: mediaIdx });
+    const index = visualMedia.findIndex((media) => media.id === mediaId);
+    if (index < 0) return;
+    setLightbox({ items, idx: index });
   };
 
   const reorderMedia = (step: Step, targetMediaId: string) => {
@@ -179,11 +183,10 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
         const before = sortedMedia.find((m) => m.compare_role === "before");
         const after = sortedMedia.find((m) => m.compare_role === "after");
         const hasCompare = !!before && !!after;
-        const beforeIdx = before ? sortedMedia.findIndex((m) => m.id === before.id) : -1;
-        const afterIdx = after ? sortedMedia.findIndex((m) => m.id === after.id) : -1;
         const visuals = sortedMedia.filter(
           (m) => m.media_type !== "pdf" && !(hasCompare && (m.id === before!.id || m.id === after!.id))
         );
+        const previewMedia = visuals[0] ?? before ?? after;
         const pdfs = sortedMedia.filter((m) => m.media_type === "pdf");
 
         const stepDate = new Date(step.step_date);
@@ -236,14 +239,17 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
 
             <article className={`flex flex-col overflow-hidden rounded-md border bg-card/95 shadow-sm backdrop-blur-sm transition-shadow ${isExpanded ? "border-accent/40 shadow-md" : "border-border/50 hover:shadow-md"}`}>
 
-            {/* Compact preview: first photo + update name only */}
-            <button
-              type="button"
-              onClick={() => setExpandedId((cur) => (cur === step.id ? null : step.id))}
-              className="text-left w-full group"
-              aria-expanded={isExpanded}
-            >
+            {/* The update toggle and primary media are separate controls: a
+                photo click always opens the gallery, including by keyboard. */}
+            <div className="text-left w-full group">
               {isExpanded && (
+                <button
+                  type="button"
+                  onClick={() => setExpandedId((cur) => (cur === step.id ? null : step.id))}
+                  className="w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
+                  aria-expanded={isExpanded}
+                  aria-label={`${step.location_name} inklappen`}
+                >
                 <div className="flex items-center justify-between px-4 pt-4 pb-2 gap-2">
                   <div className="flex items-center gap-2 flex-wrap min-w-0">
                     <time className="text-[11px] font-medium text-muted-foreground">
@@ -262,22 +268,29 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                   </div>
                   <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform shrink-0 ${isExpanded ? "rotate-180" : ""}`} />
                 </div>
-              )}
-
-              {isExpanded && (
                 <div className="px-4 pb-3">
                   <h3 className="font-bold text-lg leading-tight group-hover:text-accent transition-colors">{step.location_name}</h3>
                 </div>
+                </button>
               )}
 
-              <div className="relative w-full overflow-hidden bg-muted" style={{ aspectRatio: "4/3" }}>
-                {visuals.length > 0 ? (
-                  visuals[0].media_type === "video" ? (
-                    <video src={visuals[0].media_url} className="w-full h-full object-cover" />
+              <button
+                type="button"
+                onClick={() => previewMedia
+                  ? openLightboxForStep(step, previewMedia.id)
+                  : setExpandedId((cur) => (cur === step.id ? null : step.id))}
+                className="relative block w-full overflow-hidden bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+                style={{ aspectRatio: "4/3" }}
+                aria-label={previewMedia ? `Open media van ${step.location_name}` : `${step.location_name} ${isExpanded ? "inklappen" : "uitklappen"}`}
+                data-testid="timeline-primary-media"
+              >
+                {previewMedia ? (
+                  previewMedia.media_type === "video" ? (
+                    <video src={previewMedia.media_url} className="w-full h-full object-cover" />
                   ) : (
                     <img
-                      src={visuals[0].media_url}
-                      alt=""
+                      src={previewMedia.media_url}
+                      alt={`Foto bij ${step.location_name}`}
                       className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-700"
                       loading="lazy"
                     />
@@ -287,13 +300,19 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                     <ImageIcon className="h-10 w-10 text-muted-foreground/40" />
                   </div>
                 )}
-              </div>
+              </button>
               {!isExpanded && (
-                <div className="px-4 py-3 border-t border-border/40">
+                <button
+                  type="button"
+                  onClick={() => setExpandedId(step.id)}
+                  className="block w-full px-4 py-3 text-left border-t border-border/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
+                  aria-expanded={false}
+                  aria-label={`${step.location_name} uitklappen`}
+                >
                   <h3 className="font-bold text-foreground text-lg leading-tight group-hover:text-accent transition-colors">{step.location_name}</h3>
-                </div>
+                </button>
               )}
-            </button>
+            </div>
 
             {/* Expanded content */}
             {isExpanded && (
@@ -338,8 +357,8 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                     <BeforeAfterSlider
                       beforeUrl={before!.media_url}
                       afterUrl={after!.media_url}
-                      onBeforeClick={() => beforeIdx >= 0 && openLightboxForStep(step, beforeIdx)}
-                      onAfterClick={() => afterIdx >= 0 && openLightboxForStep(step, afterIdx)}
+                      onBeforeClick={() => before && openLightboxForStep(step, before.id)}
+                      onAfterClick={() => after && openLightboxForStep(step, after.id)}
                     />
                   </div>
                 )}
@@ -348,13 +367,13 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                 {visuals.length > 1 && (
                   <div className={`grid gap-0.5 mt-0.5 ${visuals.length === 2 ? "grid-cols-1" : visuals.length === 3 ? "grid-cols-2" : "grid-cols-3"}`}>
                     {visuals.slice(1, 4).map((m, mi) => {
-                      const origIdx = sortedMedia.findIndex((x) => x.id === m.id);
                       const isOverflow = mi === 2 && visuals.length > 4;
                       return (
                         <button
                           key={m.id}
                           type="button"
-                          onClick={() => openLightboxForStep(step, origIdx)}
+                          onClick={() => openLightboxForStep(step, m.id)}
+                          aria-label={`Open media ${mi + 2} van ${step.location_name}`}
                           className="relative bg-muted overflow-hidden"
                           style={{ aspectRatio: "1" }}
                         >
@@ -468,14 +487,18 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                     <ReactionBar stepId={step.id} />
                     <div className="flex items-center gap-4">
                       <button
+                        type="button"
                         onClick={() => onLike?.(step.id)}
+                        aria-label={`${step.user_liked ? "Like verwijderen" : "Update liken"}, ${step.like_count} likes`}
                         className={`flex items-center gap-1.5 text-sm transition-colors ${step.user_liked ? "text-accent" : "text-muted-foreground hover:text-accent"}`}
                       >
                         <Heart className={`h-4 w-4 ${step.user_liked ? "fill-current" : ""}`} />
                         <span className="text-xs">{step.like_count}</span>
                       </button>
                       <button
+                        type="button"
                         onClick={() => setOpenComments(step.id)}
+                        aria-label={`Reacties openen, ${cc(step.id, step.comment_count)} reacties`}
                         className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-accent transition-colors"
                       >
                         <MessageCircle className="h-4 w-4" />
@@ -492,6 +515,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
                   onCountChange={(d) =>
                     setCommentCounts((p) => ({ ...p, [step.id]: cc(step.id, step.comment_count) + d }))
                   }
+                  canModerate={!!isOwner}
                 />
               </>
             )}
@@ -507,6 +531,7 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
           index={lightbox.idx}
           onIndex={(i) => setLightbox({ ...lightbox, idx: i })}
           onClose={() => setLightbox(null)}
+          tripId={tripId}
         />
       )}
     </div>

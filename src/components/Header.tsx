@@ -1,4 +1,4 @@
-import { Link, NavLink } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -10,18 +10,22 @@ import OnboardingDialog from "@/components/OnboardingDialog";
 
 const Header = () => {
   const { user, signOut } = useAuth();
+  const { pathname } = useLocation();
+  const isAuthRoute = pathname === "/auth" || pathname === "/wachtwoord-vergeten" || pathname === "/wachtwoord-resetten";
+  const isNewProjectRoute = pathname === "/trips/new";
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-    `text-[11px] font-bold uppercase tracking-[0.2em] py-2 transition-colors ${
+    `rounded-sm px-1 py-2 text-[11px] font-bold uppercase tracking-[0.2em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 ${
       isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground"
     }`;
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur-md text-foreground">
-      <div className="max-w-7xl mx-auto px-6 md:px-8 flex h-16 items-center justify-between gap-4">
+    <>
+      <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur-md text-foreground">
+        <div className="max-w-7xl mx-auto px-6 md:px-8 flex h-16 items-center justify-between gap-4">
         <BrandLogo imageClassName="h-8 w-8 rounded-lg" />
 
-        <nav className="hidden md:flex items-center gap-8">
+        <nav className="hidden md:flex items-center gap-8" aria-label="Hoofdnavigatie">
           <NavLink to="/" end className={navLinkClass}>Ontdekken</NavLink>
           {user && <NavLink to="/favorieten" className={navLinkClass}>Volgend</NavLink>}
           <NavLink to="/vrienden" className={navLinkClass}>Vrienden</NavLink>
@@ -31,22 +35,22 @@ const Header = () => {
           {user ? (
             <>
               <NotificationBell />
-              <Link to="/trips/new" className="hidden sm:block">
-                <Button variant="pillOutline" className="h-9 px-4 gap-1.5">
+              {!isNewProjectRoute && <Button asChild variant="pillOutline" className="hidden h-9 px-4 sm:inline-flex">
+                <Link to="/trips/new">
                   <Plus className="h-3.5 w-3.5" />
                   Nieuw project
-                </Button>
-              </Link>
-              <Link to="/trips/new" className="sm:hidden">
-                <Button size="icon" variant="outline" className="rounded-full h-9 w-9 border-border">
+                </Link>
+              </Button>}
+              {!isNewProjectRoute && <Button asChild size="icon" variant="outline" className="h-9 w-9 rounded-full border-border sm:hidden">
+                <Link to="/trips/new" aria-label="Nieuw project">
                   <Plus className="h-4 w-4" />
-                </Button>
-              </Link>
+                </Link>
+              </Button>}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="rounded-full">
+                  <Button variant="ghost" size="icon" className="rounded-full" aria-label="Open accountmenu">
                     <Avatar className="h-8 w-8">
-                      <AvatarImage src="" />
+                      <AvatarImage src="" alt="" />
                       <AvatarFallback className="bg-muted text-foreground text-xs font-semibold">
                         {user.email?.[0]?.toUpperCase()}
                       </AvatarFallback>
@@ -71,18 +75,19 @@ const Header = () => {
               </DropdownMenu>
             </>
           ) : (
-            <Link to="/auth">
-              <Button variant="pill" className="h-9 px-5">
-                Inloggen
-              </Button>
-            </Link>
+            <Button asChild variant={isAuthRoute ? "pillOutline" : "pill"} className="h-9 px-5">
+              <Link to={isAuthRoute ? "/" : "/auth"}>
+                {isAuthRoute ? "Bekijk projecten" : "Inloggen"}
+              </Link>
+            </Button>
           )}
         </div>
-      </div>
+        </div>
+      </header>
       {user && <OnboardingDialog />}
 
       {/* Mobile bottom tab bar */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-border bg-background/95 backdrop-blur-md flex">
+      {!isAuthRoute && <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-border bg-background/95 backdrop-blur-md flex pb-[env(safe-area-inset-bottom)]" aria-label="Mobiele navigatie">
         {[
           { to: "/", end: true, icon: <Compass className="h-5 w-5" />, label: "Ontdekken" },
           ...(user ? [{ to: "/favorieten", end: false, icon: <Heart className="h-5 w-5" />, label: "Volgend" }] : []),
@@ -103,8 +108,8 @@ const Header = () => {
             {label}
           </NavLink>
         ))}
-      </nav>
-    </header>
+      </nav>}
+    </>
   );
 };
 

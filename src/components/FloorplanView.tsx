@@ -7,6 +7,7 @@ export interface FloorInfo {
   id: string;
   label: string;
   url: string;
+  storage_path?: string | null;
 }
 
 interface Step {

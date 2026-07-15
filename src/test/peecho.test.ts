@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertPeechoPdfReachable, createPeechoReference, getPeechoScriptUrl } from "@/lib/peecho";
+import { assertPeechoPdfBlob, assertPeechoPdfReachable, createPeechoReference, getPeechoScriptUrl } from "@/lib/peecho";
 import { getPeechoPrintPageCount, PEECHO_MIN_PAGES } from "@/lib/peechoExport";
 
 describe("Peecho helpers", () => {
@@ -9,6 +9,8 @@ describe("Peecho helpers", () => {
     expect(getPeechoPrintPageCount(24)).toBe(24);
     expect(getPeechoPrintPageCount(25)).toBe(26);
     expect(getPeechoPrintPageCount(40)).toBe(40);
+    expect(getPeechoPrintPageCount(Number.NaN)).toBe(PEECHO_MIN_PAGES);
+    expect(getPeechoPrintPageCount(-4)).toBe(PEECHO_MIN_PAGES);
   });
 
   it("derives the Print Button script URL from a button key", () => {
@@ -80,5 +82,16 @@ describe("Peecho helpers", () => {
     await expect(assertPeechoPdfReachable("https://example.test/slow.pdf", fetcher as typeof fetch, 1)).rejects.toThrow(
       /duurde te lang/i,
     );
+  });
+
+  it("validates PDF magic bytes, trailer and size before upload", async () => {
+    const padding = "x".repeat(1_100);
+    const blob = new Blob([`%PDF-1.7\n${padding}\n%%EOF`], { type: "application/pdf" });
+    await expect(assertPeechoPdfBlob(blob)).resolves.toBeUndefined();
+  });
+
+  it("rejects truncated or non-PDF blobs before upload", async () => {
+    const invalid = new Blob(["not-a-pdf".repeat(200)], { type: "application/pdf" });
+    await expect(assertPeechoPdfBlob(invalid)).rejects.toThrow(/beschadigd/i);
   });
 });

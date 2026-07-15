@@ -1,6 +1,37 @@
-/* Fonts (Instrument Serif + Inter) are loaded via <link rel="preconnect"> and a
-   stylesheet <link> in index.html so they don't block first paint. Don't re-add
-   an @import here. */
+/* Local, Latin-only Fontsource assets keep typography fast and avoid a
+   third-party request on every page. */
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2-variations');
+}
+
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: italic;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('@fontsource-variable/inter/files/inter-latin-wght-italic.woff2') format('woff2-variations');
+}
+
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/instrument-serif/files/instrument-serif-latin-400-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: italic;
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/instrument-serif/files/instrument-serif-latin-400-italic.woff2') format('woff2');
+}
+
 @tailwind base;
 
 /* Ensure dialogs render above Leaflet map */
@@ -15,6 +46,7 @@
 @layer base {
   :root {
     /* Buildy — Minimal Scandi */
+    color-scheme: light;
     --background: 30 30% 99%;          /* #FDFCFB */
     --foreground: 0 0% 10%;            /* #1A1A1A */
 
@@ -88,10 +120,18 @@
     @apply border-border;
   }
 
+  html {
+    min-width: 320px;
+    scroll-behavior: smooth;
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', system-ui, sans-serif;
+    min-width: 320px;
+    min-height: 100vh;
+    font-family: 'Inter Variable', 'Inter', system-ui, sans-serif;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    text-rendering: optimizeLegibility;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -102,6 +142,26 @@
 
   .font-serif {
     font-family: 'Instrument Serif', Georgia, serif;
+  }
+
+  ::selection {
+    background: hsl(var(--accent) / 0.25);
+    color: hsl(var(--foreground));
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
@@ -130,5 +190,9 @@
   }
   input[type="number"] {
     -moz-appearance: textfield;
+  }
+
+  input[type="search"]::-webkit-search-cancel-button {
+    -webkit-appearance: none;
   }
 }
