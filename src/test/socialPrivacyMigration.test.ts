@@ -7,7 +7,17 @@ const migration = readFileSync(
   "utf8",
 );
 
+const securityFixMigration = readFileSync(
+  resolve(process.cwd(), "supabase/migrations/20260724130000_fix_social_security_and_notifications.sql"),
+  "utf8",
+);
+
 describe("social privacy migration contract", () => {
+  it("enforces status = pending on INSERT for follows and user_follows", () => {
+    expect(securityFixMigration).toContain("WITH CHECK (auth.uid() = user_id AND status = 'pending')");
+    expect(securityFixMigration).toContain("WITH CHECK (auth.uid() = follower_id AND status = 'pending')");
+  });
+
   it("does not let a profile follow grant access to a private project", () => {
     const start = migration.indexOf("CREATE OR REPLACE FUNCTION public.user_can_view_trip");
     const end = migration.indexOf("REVOKE ALL ON FUNCTION public.user_can_view_trip", start);
@@ -77,3 +87,4 @@ describe("social privacy migration contract", () => {
     expect(inventory).not.toContain(".delete(");
   });
 });
+

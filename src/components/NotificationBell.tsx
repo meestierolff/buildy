@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Bell, Hammer, MessageCircle, AtSign, UserPlus, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { formatDistanceToNow } from "date-fns";
@@ -20,6 +21,11 @@ interface Notif {
   actor_id: string | null;
 }
 
+interface ActorProfile {
+  display_name: string;
+  avatar_url: string | null;
+}
+
 const iconFor = (type: string) => {
   if (type === "comment" || type === "reply") return MessageCircle;
   if (type === "mention") return AtSign;
@@ -27,11 +33,51 @@ const iconFor = (type: string) => {
   return Hammer;
 };
 
+const formatNotifMessage = (n: Notif, actor: ActorProfile | undefined): string => {
+  if (!n.message) return "Nieuwe melding";
+  const actorName = actor?.display_name || "Iemand";
+  
+  if (n.message === "Nieuw volgverzoek") {
+    return `${actorName} wil je volgen`;
+  }
+  if (n.message.startsWith("Nieuw volgverzoek voor ")) {
+    const projectPart = n.message.replace("Nieuw volgverzoek voor ", "");
+    return `${actorName} vraagt toegang tot ${projectPart}`;
+  }
+  return n.message;
+};
+
 const NotificationBell = () => {
   const { user } = useAuth();
   const [notifs, setNotifs] = useState<Notif[]>([]);
+  const [actorProfiles, setActorProfiles] = useState<Record<string, ActorProfile>>({});
   const [open, setOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  const fetchActorProfiles = async (notifications: Notif[]) => {
+    const actorIds = Array.from(
+      new Set(notifications.map((n) => n.actor_id).filter((id): id is string => Boolean(id)))
+    );
+    if (actorIds.length === 0) return;
+
+    const missingIds = actorIds.filter((id) => !actorProfiles[id]);
+    if (missingIds.length === 0) return;
+
+    const { data, error } = await supabase.rpc("get_profiles_basic", { _ids: missingIds });
+    if (error) {
+      console.error("Failed to load notification actor profiles:", error);
+      return;
+    }
+    if (data) {
+      setActorProfiles((prev) => {
+        const next = { ...prev };
+        for (const p of data) {
+          next[p.user_id] = { display_name: p.display_name, avatar_url: p.avatar_url };
+        }
+        return next;
+      });
+    }
+  };
 
   const load = async () => {
     if (!user) return;
@@ -41,7 +87,9 @@ const NotificationBell = () => {
       .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(20);
-    setNotifs(data || []);
+    const loaded = data || [];
+    setNotifs(loaded);
+    await fetchActorProfiles(loaded);
   };
 
   useEffect(() => {
@@ -55,7 +103,9 @@ const NotificationBell = () => {
         (payload) => setNotifs((prev) => {
           const next = payload.new as Notif;
           if (prev.some((item) => item.id === next.id)) return prev;
-          return [next, ...prev].slice(0, 20);
+          const updated = [next, ...prev].slice(0, 20);
+          fetchActorProfiles([next]);
+          return updated;
         })
       )
       .subscribe();
@@ -172,21 +222,37 @@ const NotificationBell = () => {
             notifs.map((n) => {
               const Icon = iconFor(n.type);
               const request = isRequest(n.type);
-              const userNotification = n.type === "new_user_follower" || n.type === "user_follow_accepted";
+              const actor = n.actor_id ? actorProfiles[n.actor_id] : undefined;
+              const displayMessage = formatNotifMessage(n, actor);
+              const userNotification = n.type === "new_user_follower" || n.type === "user_follow_accepted" || n.type === "user_follow_request";
               const href = request
-                ? "#"
+                ? n.actor_id
+                  ? `/profile/${n.actor_id}`
+                  : "#"
                 : n.project_id
                   ? `/trip/${n.project_id}${n.step_id ? `?step=${n.step_id}` : ""}`
                   : userNotification && n.actor_id
                     ? `/profile/${n.actor_id}`
                     : "/vrienden";
+
               const Body = (
                 <div className={`flex items-start gap-3 px-4 py-3 border-b last:border-0 ${!n.read ? "bg-accent/5" : ""} ${request ? "" : "hover:bg-muted/60 transition-colors"}`}>
-                  <div className="mt-0.5 h-7 w-7 rounded-full bg-accent/15 text-accent flex items-center justify-center shrink-0">
-                    <Icon className="h-3.5 w-3.5" />
+                  <div className="relative mt-0.5 shrink-0">
+                    {actor ? (
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={actor.avatar_url || ""} />
+                        <AvatarFallback className="bg-accent/20 text-accent font-semibold text-xs">
+                          {actor.display_name?.[0]?.toUpperCase() || "?"}
+                        </AvatarFallback>
+                      </Avatar>
+                    ) : (
+                      <div className="h-8 w-8 rounded-full bg-accent/15 text-accent flex items-center justify-center">
+                        <Icon className="h-4 w-4" />
+                      </div>
+                    )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm leading-snug">{n.message}</p>
+                    <p className="text-sm leading-snug">{displayMessage}</p>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
                       {formatDistanceToNow(new Date(n.created_at), { addSuffix: true, locale: nl })}
                     </p>
@@ -203,7 +269,11 @@ const NotificationBell = () => {
                   </div>
                 </div>
               );
-              return request ? (
+              return request && n.actor_id ? (
+                <div key={n.id}>
+                  {Body}
+                </div>
+              ) : request ? (
                 <div key={n.id}>{Body}</div>
               ) : (
                 <Link key={n.id} to={href} onClick={() => setOpen(false)}>{Body}</Link>
@@ -217,3 +287,4 @@ const NotificationBell = () => {
 };
 
 export default NotificationBell;
+

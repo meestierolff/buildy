@@ -32,7 +32,7 @@ const ProjectCard = ({
 
   return (
     <Link to={`/trip/${id}`} className="group block" aria-label={`${title} bekijken`}>
-      <div className="relative aspect-[4/5] overflow-hidden rounded-sm bg-muted mb-5">
+      <div className="relative aspect-[4/5] overflow-hidden rounded-md bg-muted mb-4 shadow-sm group-hover:shadow-md transition-all duration-300">
         {coverUrl ? (
           videoCover ? (
             <video
@@ -41,7 +41,7 @@ const ProjectCard = ({
               playsInline
               aria-hidden="true"
               preload="metadata"
-              className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
+              className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04]"
             />
           ) : (
             <img
@@ -49,7 +49,7 @@ const ProjectCard = ({
               alt={title}
               loading="lazy"
               decoding="async"
-              className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
+              className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04]"
             />
           )
         ) : (
@@ -58,30 +58,34 @@ const ProjectCard = ({
           </div>
         )}
         {projectType && (
-          <div className="absolute top-5 left-5">
-            <span className="bg-background/95 backdrop-blur-md px-3 py-1.5 rounded-sm text-[9px] font-bold uppercase tracking-[0.2em] text-foreground shadow-sm">
+          <div className="absolute top-4 left-4">
+            <span className="bg-background/95 backdrop-blur-md px-3 py-1 rounded-md text-[9px] font-bold uppercase tracking-[0.2em] text-foreground shadow-xs">
               {projectType}
             </span>
           </div>
         )}
       </div>
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         <div className="flex justify-between items-baseline gap-3">
-          <h3 className="font-serif italic text-2xl leading-tight truncate">{title}</h3>
-          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest tabular-nums shrink-0">{pct}%</span>
+          <h3 className="font-serif italic text-2xl leading-tight truncate group-hover:text-accent transition-colors">
+            {title}
+          </h3>
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest tabular-nums shrink-0">
+            {pct}%
+          </span>
         </div>
         <div
-          className="w-full h-0.5 bg-muted"
+          className="w-full h-1 rounded-full bg-muted overflow-hidden"
           role="progressbar"
           aria-label={`Voortgang van ${title}`}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={pct}
         >
-          <div className="h-full bg-accent transition-all" style={{ width: `${pct}%` }} />
+          <div className="h-full bg-accent rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
         </div>
         {(profileName || stepCount > 0) && (
-          <div className="flex items-center justify-between pt-1">
+          <div className="flex items-center justify-between pt-0.5">
             <span className="text-[11px] text-muted-foreground font-medium truncate">
               {profileName ? `door ${profileName}` : ""}
             </span>
@@ -96,3 +100,4 @@ const ProjectCard = ({
 };
 
 export default ProjectCard;
+
