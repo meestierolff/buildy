@@ -14,48 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      account_deletion_cleanup_failures: {
-        Row: {
-          attempts: number
-          created_at: string
-          failed_buckets: string[]
-          last_attempt_at: string
-          last_error: string | null
-          user_id: string
-        }
-        Insert: {
-          attempts?: number
-          created_at?: string
-          failed_buckets?: string[]
-          last_attempt_at?: string
-          last_error?: string | null
-          user_id: string
-        }
-        Update: {
-          attempts?: number
-          created_at?: string
-          failed_buckets?: string[]
-          last_attempt_at?: string
-          last_error?: string | null
-          user_id?: string
-        }
-        Relationships: []
-      }
-      account_deletion_locks: {
-        Row: {
-          created_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       comments: {
         Row: {
           content: string
@@ -85,13 +43,6 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "comments_parent_id_fkey"
-            columns: ["parent_id"]
-            isOneToOne: false
-            referencedRelation: "comments"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "comments_step_id_fkey"
             columns: ["step_id"]
@@ -144,15 +95,7 @@ export type Database = {
           status?: string
           user_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "follows_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "trips"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       likes: {
         Row: {
@@ -217,22 +160,7 @@ export type Database = {
           type?: string
           user_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "notifications_project_id_fkey"
-            columns: ["project_id"]
-            isOneToOne: false
-            referencedRelation: "trips"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "notifications_step_id_fkey"
-            columns: ["step_id"]
-            isOneToOne: false
-            referencedRelation: "steps"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       photobook_excluded_media: {
         Row: {
@@ -277,7 +205,6 @@ export type Database = {
           id: string
           order_id: string
           payload: Json | null
-          provider_event_id: string | null
         }
         Insert: {
           created_at?: string
@@ -285,7 +212,6 @@ export type Database = {
           id?: string
           order_id: string
           payload?: Json | null
-          provider_event_id?: string | null
         }
         Update: {
           created_at?: string
@@ -293,7 +219,6 @@ export type Database = {
           id?: string
           order_id?: string
           payload?: Json | null
-          provider_event_id?: string | null
         }
         Relationships: [
           {
@@ -307,11 +232,9 @@ export type Database = {
       }
       photobook_orders: {
         Row: {
-          checkout_snapshot: Json
           created_at: string
           customer_email: string | null
           format: string
-          fulfillment_claimed_at: string | null
           fulfillment_error: string | null
           fulfillment_status: string
           id: string
@@ -321,16 +244,8 @@ export type Database = {
           paid_at: string | null
           payment_amount_cents: number | null
           payment_currency: string
-          payment_refunded_cents: number
-          payment_shipping_cents: number | null
           payment_status: string
-          payment_subtotal_cents: number | null
-          pdf_delete_after: string | null
-          pdf_sha256: string | null
-          pdf_size_bytes: number | null
-          pdf_storage_path: string | null
           pdf_url: string
-          pdf_url_expires_at: string | null
           peecho_id: string | null
           peecho_order_request: Json | null
           peecho_payload: Json
@@ -338,22 +253,16 @@ export type Database = {
           status_updated_at: string | null
           stripe_checkout_session_id: string | null
           stripe_payment_intent_id: string | null
-          stripe_refund_id: string | null
           tracking_code: string | null
           tracking_url: string | null
           trip_id: string
           updated_at: string
           user_id: string
-          refunded_at: string | null
-          legal_accepted_at: string | null
-          terms_version: string | null
         }
         Insert: {
-          checkout_snapshot?: Json
           created_at?: string
           customer_email?: string | null
           format: string
-          fulfillment_claimed_at?: string | null
           fulfillment_error?: string | null
           fulfillment_status?: string
           id?: string
@@ -363,16 +272,8 @@ export type Database = {
           paid_at?: string | null
           payment_amount_cents?: number | null
           payment_currency?: string
-          payment_refunded_cents?: number
-          payment_shipping_cents?: number | null
           payment_status?: string
-          payment_subtotal_cents?: number | null
-          pdf_delete_after?: string | null
-          pdf_sha256?: string | null
-          pdf_size_bytes?: number | null
-          pdf_storage_path?: string | null
           pdf_url: string
-          pdf_url_expires_at?: string | null
           peecho_id?: string | null
           peecho_order_request?: Json | null
           peecho_payload?: Json
@@ -380,22 +281,16 @@ export type Database = {
           status_updated_at?: string | null
           stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null
-          stripe_refund_id?: string | null
           tracking_code?: string | null
           tracking_url?: string | null
           trip_id: string
           updated_at?: string
           user_id: string
-          refunded_at?: string | null
-          legal_accepted_at?: string | null
-          terms_version?: string | null
         }
         Update: {
-          checkout_snapshot?: Json
           created_at?: string
           customer_email?: string | null
           format?: string
-          fulfillment_claimed_at?: string | null
           fulfillment_error?: string | null
           fulfillment_status?: string
           id?: string
@@ -405,16 +300,8 @@ export type Database = {
           paid_at?: string | null
           payment_amount_cents?: number | null
           payment_currency?: string
-          payment_refunded_cents?: number
-          payment_shipping_cents?: number | null
           payment_status?: string
-          payment_subtotal_cents?: number | null
-          pdf_delete_after?: string | null
-          pdf_sha256?: string | null
-          pdf_size_bytes?: number | null
-          pdf_storage_path?: string | null
           pdf_url?: string
-          pdf_url_expires_at?: string | null
           peecho_id?: string | null
           peecho_order_request?: Json | null
           peecho_payload?: Json
@@ -422,15 +309,11 @@ export type Database = {
           status_updated_at?: string | null
           stripe_checkout_session_id?: string | null
           stripe_payment_intent_id?: string | null
-          stripe_refund_id?: string | null
           tracking_code?: string | null
           tracking_url?: string | null
           trip_id?: string
           updated_at?: string
           user_id?: string
-          refunded_at?: string | null
-          legal_accepted_at?: string | null
-          terms_version?: string | null
         }
         Relationships: [
           {
@@ -539,15 +422,7 @@ export type Database = {
           step_id?: string
           user_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "reactions_step_id_fkey"
-            columns: ["step_id"]
-            isOneToOne: false
-            referencedRelation: "steps"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       step_budget: {
         Row: {
@@ -805,7 +680,6 @@ export type Database = {
           budget_public: boolean
           countries: string[] | null
           cover_image_url: string | null
-          cover_storage_path: string | null
           cover_position_y: number
           cover_title_position: string
           created_at: string
@@ -813,7 +687,6 @@ export type Database = {
           description: string | null
           end_date: string | null
           floorplan_url: string | null
-          floorplan_storage_path: string | null
           floorplans: Json
           id: string
           is_public: boolean
@@ -829,7 +702,6 @@ export type Database = {
           budget_public?: boolean
           countries?: string[] | null
           cover_image_url?: string | null
-          cover_storage_path?: string | null
           cover_position_y?: number
           cover_title_position?: string
           created_at?: string
@@ -837,7 +709,6 @@ export type Database = {
           description?: string | null
           end_date?: string | null
           floorplan_url?: string | null
-          floorplan_storage_path?: string | null
           floorplans?: Json
           id?: string
           is_public?: boolean
@@ -853,7 +724,6 @@ export type Database = {
           budget_public?: boolean
           countries?: string[] | null
           cover_image_url?: string | null
-          cover_storage_path?: string | null
           cover_position_y?: number
           cover_title_position?: string
           created_at?: string
@@ -861,7 +731,6 @@ export type Database = {
           description?: string | null
           end_date?: string | null
           floorplan_url?: string | null
-          floorplan_storage_path?: string | null
           floorplans?: Json
           id?: string
           is_public?: boolean
@@ -905,10 +774,6 @@ export type Database = {
     }
     Functions: {
       can_view_budget: { Args: { _trip_id: string }; Returns: boolean }
-      can_view_profile: {
-        Args: { _profile_user_id: string }
-        Returns: boolean
-      }
       can_view_step: { Args: { _step_id: string }; Returns: boolean }
       can_view_trip: { Args: { _trip_id: string }; Returns: boolean }
       get_profiles_basic: {
@@ -922,31 +787,11 @@ export type Database = {
       get_trip_access_info: {
         Args: { _trip_id: string }
         Returns: {
-          is_public: boolean | null
-          owner_id: string | null
-          title: string | null
+          is_public: boolean
+          owner_id: string
+          title: string
           trip_exists: boolean
         }[]
-      }
-      request_project_follow: {
-        Args: { _project_id: string }
-        Returns: string
-      }
-      request_user_follow: {
-        Args: { _following_id: string }
-        Returns: string
-      }
-      respond_to_project_follow: {
-        Args: {
-          _accept: boolean
-          _follower_id: string
-          _project_id: string
-        }
-        Returns: boolean
-      }
-      respond_to_user_follow: {
-        Args: { _accept: boolean; _follower_id: string }
-        Returns: boolean
       }
       search_profiles: {
         Args: { _limit?: number; _offset?: number; _q: string }
