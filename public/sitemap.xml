@@ -2,15 +2,21 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://buildy.app/</loc>
-    <lastmod>2026-07-24</lastmod>
+    <lastmod>2026-07-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://buildy.app/vrienden</loc>
-    <lastmod>2026-07-24</lastmod>
+    <lastmod>2026-07-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://buildy.app/trip/5110c085-9c9d-498b-a3ff-7609c15d1024</loc>
+    <lastmod>2026-07-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://buildy.app/trip/42df7370-58bd-4712-823f-3e972328eca7</loc>
@@ -26,12 +32,6 @@
   </url>
   <url>
     <loc>https://buildy.app/trip/08bab0ef-3afc-4a6a-81c3-640a071ac464</loc>
-    <lastmod>2026-05-12</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://buildy.app/trip/5110c085-9c9d-498b-a3ff-7609c15d1024</loc>
     <lastmod>2026-05-12</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
