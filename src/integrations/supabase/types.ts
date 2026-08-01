@@ -245,7 +245,9 @@ export type Database = {
           payment_amount_cents: number | null
           payment_currency: string
           payment_status: string
-          pdf_url: string
+          pdf_delete_after: string | null
+          pdf_storage_path: string | null
+          pdf_url: string | null
           peecho_id: string | null
           peecho_order_request: Json | null
           peecho_payload: Json
@@ -273,7 +275,9 @@ export type Database = {
           payment_amount_cents?: number | null
           payment_currency?: string
           payment_status?: string
-          pdf_url: string
+          pdf_delete_after?: string | null
+          pdf_storage_path?: string | null
+          pdf_url?: string | null
           peecho_id?: string | null
           peecho_order_request?: Json | null
           peecho_payload?: Json
@@ -301,7 +305,9 @@ export type Database = {
           payment_amount_cents?: number | null
           payment_currency?: string
           payment_status?: string
-          pdf_url?: string
+          pdf_delete_after?: string | null
+          pdf_storage_path?: string | null
+          pdf_url?: string | null
           peecho_id?: string | null
           peecho_order_request?: Json | null
           peecho_payload?: Json
