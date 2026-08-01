@@ -681,11 +681,13 @@ export type Database = {
           countries: string[] | null
           cover_image_url: string | null
           cover_position_y: number
+          cover_storage_path: string | null
           cover_title_position: string
           created_at: string
           custom_phases: string[]
           description: string | null
           end_date: string | null
+          floorplan_storage_path: string | null
           floorplan_url: string | null
           floorplans: Json
           id: string
@@ -703,11 +705,13 @@ export type Database = {
           countries?: string[] | null
           cover_image_url?: string | null
           cover_position_y?: number
+          cover_storage_path?: string | null
           cover_title_position?: string
           created_at?: string
           custom_phases?: string[]
           description?: string | null
           end_date?: string | null
+          floorplan_storage_path?: string | null
           floorplan_url?: string | null
           floorplans?: Json
           id?: string
@@ -725,11 +729,13 @@ export type Database = {
           countries?: string[] | null
           cover_image_url?: string | null
           cover_position_y?: number
+          cover_storage_path?: string | null
           cover_title_position?: string
           created_at?: string
           custom_phases?: string[]
           description?: string | null
           end_date?: string | null
+          floorplan_storage_path?: string | null
           floorplan_url?: string | null
           floorplans?: Json
           id?: string
@@ -792,6 +798,16 @@ export type Database = {
           title: string
           trip_exists: boolean
         }[]
+      }
+      request_project_follow: { Args: { _project_id: string }; Returns: string }
+      request_user_follow: { Args: { _following_id: string }; Returns: string }
+      respond_to_project_follow: {
+        Args: { _accept: boolean; _follower_id: string; _project_id: string }
+        Returns: boolean
+      }
+      respond_to_user_follow: {
+        Args: { _accept: boolean; _follower_id: string }
+        Returns: boolean
       }
       search_profiles: {
         Args: { _limit?: number; _offset?: number; _q: string }
