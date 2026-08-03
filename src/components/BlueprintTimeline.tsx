@@ -276,12 +276,18 @@ const BlueprintTimeline = ({ steps, onLike, onEdit, onDelete, onReorderMedia, is
 
               <button
                 type="button"
-                onClick={() => previewMedia
-                  ? openLightboxForStep(step, previewMedia.id)
-                  : setExpandedId((cur) => (cur === step.id ? null : step.id))}
+                onClick={() => {
+                  if (!isExpanded) {
+                    setExpandedId(step.id);
+                    return;
+                  }
+                  if (previewMedia) openLightboxForStep(step, previewMedia.id);
+                }}
                 className="relative block w-full overflow-hidden bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
                 style={{ aspectRatio: "4/3" }}
-                aria-label={previewMedia ? `Open media van ${step.location_name}` : `${step.location_name} ${isExpanded ? "inklappen" : "uitklappen"}`}
+                aria-label={isExpanded
+                  ? (previewMedia ? `Open media van ${step.location_name}` : step.location_name)
+                  : `${step.location_name} uitklappen`}
                 data-testid="timeline-primary-media"
               >
                 {previewMedia ? (
