@@ -12,11 +12,23 @@ const securityFixMigration = readFileSync(
   "utf8",
 );
 
+const friendAccessMigration = readFileSync(
+  resolve(process.cwd(), "supabase/migrations/20260803154500_fix_private_profile_friend_access.sql"),
+  "utf8",
+);
+
 describe("social privacy migration contract", () => {
   it("enforces status = pending on INSERT for follows and user_follows", () => {
     expect(securityFixMigration).toContain("WITH CHECK (auth.uid() = user_id AND status = 'pending')");
     expect(securityFixMigration).toContain("WITH CHECK (auth.uid() = follower_id AND status = 'pending')");
   });
+
+  it("allows accepted friends in either direction to view private profiles", () => {
+    expect(friendAccessMigration).toContain("(uf.following_id = p.user_id AND uf.follower_id = auth.uid())");
+    expect(friendAccessMigration).toContain("(uf.follower_id = p.user_id AND uf.following_id = auth.uid())");
+    expect(friendAccessMigration).toContain("AND uf.status = 'accepted'");
+  });
+
 
   it("does not let a profile follow grant access to a private project", () => {
     const start = migration.indexOf("CREATE OR REPLACE FUNCTION public.user_can_view_trip");
