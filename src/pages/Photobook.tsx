@@ -26,7 +26,7 @@ const PAGE_DIMS: Record<PhotobookOrientation, { w: number; h: number }> = {
   square: { w: 500, h: 500 },
 };
 
-const PHOTO_DND_MIME = "application/x-buildy-photo";
+
 
 // Kept for splitTextIntoPages default; portrait uses a narrower value.
 const getCharsPerLine = (orientation: PhotobookOrientation) =>
@@ -67,55 +67,62 @@ const layoutForPhotoCount = (count: number, preferred?: StepLayout): StepLayout 
   return "grid";
 };
 
+const getLinesPerPage = (orientation: PhotobookOrientation) =>
+  orientation === "landscape" ? 15 : orientation === "portrait" ? 24 : 19;
+
+/**
+ * Splits a description into printable page chunks in reading order.
+ * Text is first wrapped into display lines (paragraph breaks kept as one blank
+ * line) and only then paged, so no content is silently clipped or reordered.
+ */
 const splitTextIntoPages = (text: string, locationName?: string | null, orientation: PhotobookOrientation = "landscape") => {
-  const TEXT_CHARS_PER_LINE = getCharsPerLine(orientation);
-  const trimmed = text.trim();
-  if (!trimmed) return [];
+  const charsPerLine = getCharsPerLine(orientation);
+  const normalized = text.replace(/\r\n?/g, "\n").trim();
+  if (!normalized) return [];
 
-  const titleLines = locationName ? Math.min(2, Math.ceil(locationName.trim().length / 28)) : 0;
-  const maxLines = Math.max(8, (locationName ? 14 : 17) - titleLines);
+  const wrapLine = (paragraphLine: string): string[] => {
+    const words = paragraphLine.split(/\s+/).filter(Boolean);
+    if (words.length === 0) return [""];
+    const wrapped: string[] = [];
+    let line = "";
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (line && candidate.length > charsPerLine) {
+        wrapped.push(line);
+        line = word;
+      } else {
+        line = candidate;
+      }
+    }
+    if (line) wrapped.push(line);
+    return wrapped;
+  };
+
+  const displayLines: string[] = [];
+  normalized.split(/\n{2,}/).forEach((paragraph, paragraphIdx) => {
+    if (paragraphIdx > 0) displayLines.push("");
+    paragraph.split("\n").forEach((rawLine) => {
+      displayLines.push(...wrapLine(rawLine.trim()));
+    });
+  });
+
+  const titleLines = locationName ? Math.min(2, Math.ceil(locationName.trim().length / 26)) : 0;
+  const linesPerPage = getLinesPerPage(orientation);
+  const firstPageLines = Math.max(4, linesPerPage - 2 - titleLines);
+
   const pages: string[] = [];
-  let currentPage = "";
-  let currentLine = "";
-  let currentLineCount = 0;
-  const words = trimmed.split(/(\s+|\n)/);
-
-  for (const word of words) {
-    if (!word) continue;
-
-    if (word === "\n") {
-      currentPage += `${currentLine.trimEnd()}\n`;
-      currentLine = "";
-      currentLineCount += 1;
-      if (currentLineCount >= maxLines) {
-        pages.push(currentPage.trim());
-        currentPage = "";
-        currentLineCount = 0;
-      }
-      continue;
-    }
-
-    const nextLine = `${currentLine}${word}`;
-    if (currentLine.trim() && nextLine.length > TEXT_CHARS_PER_LINE) {
-      currentPage += `${currentLine.trimEnd()}\n`;
-      currentLine = word.trimStart();
-      currentLineCount += 1;
-      if (currentLineCount >= maxLines) {
-        pages.push(currentPage.trim());
-        currentPage = "";
-        currentLineCount = 0;
-      }
-    } else {
-      currentLine = nextLine;
-    }
+  let cursor = 0;
+  while (cursor < displayLines.length) {
+    const budget = pages.length === 0 ? firstPageLines : linesPerPage;
+    const chunk = displayLines.slice(cursor, cursor + budget);
+    cursor += chunk.length;
+    while (chunk.length && chunk[0] === "") chunk.shift();
+    while (chunk.length && chunk[chunk.length - 1] === "") chunk.pop();
+    if (chunk.length) pages.push(chunk.join("\n"));
   }
-
-  if (currentLine.trim()) {
-    currentPage += currentLine.trimEnd();
-  }
-  if (currentPage.trim()) pages.push(currentPage.trim());
   return pages;
 };
+
 
 interface PhotobookPageMeta {
   stepId?: string;
@@ -705,13 +712,16 @@ const Photobook = () => {
             )}
           </div>
 
-          {/* Buildy watermark — subtle bottom-right corner */}
-          <div className="absolute bottom-2 right-3 flex items-center gap-1 opacity-50">
-            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+          {/* Buildy watermark — current brand mark, subtle bottom-right corner */}
+          <div className="absolute bottom-2 right-3 flex items-center gap-1 opacity-60">
+            <svg viewBox="0 0 40 40" className="h-3.5 w-3.5 text-white" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M9.5 18.2 20 9.8l10.5 8.4" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M12.5 17.3v10.2h15V17.3L20 11.2l-7.5 6.1Z" fill="currentColor" fillOpacity="0.85" />
+              <path d="M7.8 29.3c4.4-.5 8.5.4 12.2 2.7 3.7-2.3 7.8-3.2 12.2-2.7" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
             </svg>
-            <span className="text-[8px] font-semibold text-white tracking-tight">buildy</span>
+            <span className="text-[8px] font-serif italic text-white tracking-tight">Buildy</span>
           </div>
+
         </div>
       ),
     });
@@ -830,21 +840,22 @@ const Photobook = () => {
             meta: { stepId: step.id, firstStep: textPageIdx === 0 },
             node: (
               <div className="h-full grid grid-rows-[minmax(0,1fr)_auto] bg-card overflow-hidden">
-                <div className="min-h-0 overflow-hidden flex flex-col justify-center px-[10%] py-[8%]">
+                <div className="min-h-0 overflow-hidden flex flex-col justify-start px-[10%] pt-[8%] pb-[4%]">
                   <p className="text-[9px] uppercase tracking-[0.25em] text-accent mb-1.5 font-bold">{chapterTitle}</p>
                   <p className="text-[10px] text-muted-foreground mb-3">
                     {format(new Date(step.step_date), "d MMM yyyy", { locale: nl })}
                     {textPageIdx > 0 ? " · vervolg" : ""}
                   </p>
-                  {step.location_name && (
+                  {step.location_name && textPageIdx === 0 && (
                     <h2 className="text-xl font-bold font-serif mb-3 leading-tight [overflow-wrap:anywhere] line-clamp-2">{step.location_name}</h2>
                   )}
                   {descriptionPage && (
                     <p className="text-[11px] leading-[1.55] text-foreground/80 italic whitespace-pre-line [overflow-wrap:anywhere]">
-                      &quot;{descriptionPage}&quot;
+                      {descriptionPage}
                     </p>
                   )}
                 </div>
+
                 <StepPageFooter
                   step={step}
                   stepIdx={stepIdx}
@@ -1099,7 +1110,7 @@ const Photobook = () => {
 
   return (
     <PhotobookLayoutContext.Provider value={layoutCtx}>
-    <div className="min-h-screen bg-muted flex flex-col">
+    <div className="min-h-[100dvh] bg-muted flex flex-col pb-[env(safe-area-inset-bottom)]">
       <div className="container py-4 flex flex-wrap items-center gap-3">
         <Link to={`/trip/${id}`}>
           <Button variant="ghost" size="sm" className="gap-1">
@@ -1513,10 +1524,11 @@ const Photobook = () => {
       <div className="flex-1 flex flex-col bg-[#16162a]">
 
         {/* ── MOBILE: single page portrait (shows exactly one printed page) ── */}
-        <div className="md:hidden flex-1 flex flex-col items-center justify-center py-6 px-4">
+        <div className="md:hidden flex-1 flex flex-col items-center justify-start pt-4 pb-8 px-4">
           <PrintPagePreview
-            className="mx-auto relative rounded-sm overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.8)] bg-[#f8f7f4]"
-            style={{ width: `min(100%, calc((100vh - 220px) * ${pageW} / ${pageH}))`, aspectRatio: `${pageW} / ${pageH}` }}
+            className="mx-auto relative w-full rounded-sm overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.8)] bg-[#f8f7f4]"
+            style={{ maxWidth: `calc((100dvh - 300px) * ${pageW} / ${pageH})`, aspectRatio: `${pageW} / ${pageH}` }}
+
             overlay={editing && pages[pageIdx]?.meta?.chapter ? (
               <ChapterEditOverlay
                 phase={pages[pageIdx].meta!.chapter!}
@@ -1549,7 +1561,14 @@ const Photobook = () => {
         {/* ── DESKTOP: two-page spread view ── */}
         <div className="hidden md:flex flex-1 flex-col items-center justify-center py-8 px-4">
         {/* Book spread */}
-        <div className="w-full max-w-6xl" style={{ aspectRatio: `${pageW * 2} / ${pageH}` }}>
+        <div
+          className="w-full max-w-6xl mx-auto"
+          style={{
+            aspectRatio: `${pageW * 2} / ${pageH}`,
+            maxWidth: `min(72rem, calc((100dvh - 260px) * ${pageW * 2} / ${pageH}))`,
+          }}
+        >
+
           <div className="relative h-full rounded-sm overflow-hidden shadow-[0_30px_80px_rgba(0,0,0,0.85)]">
             <div className="flex h-full">
               {/* Left page */}
@@ -1897,7 +1916,9 @@ const CheckoutCoverPicker = ({
   onPick: (mediaId: string | null) => void;
 }) => {
   const [expanded, setExpanded] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
+  const activeDrag = usePhotoDragState();
+  const dragOver = activeDrag?.hoverKey === "cover-target";
+
   const [cropRatio, setCropRatio] = useState<"landscape" | "square" | "portrait">("landscape");
   const [focusX, setFocusX] = useState(50);
   const [focusY, setFocusY] = useState(50);
@@ -1921,15 +1942,14 @@ const CheckoutCoverPicker = ({
     : defaultCoverMedia;
   const isCustom = !!settings.cover_media_id;
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const id = e.dataTransfer.getData(PHOTO_DND_MIME) || e.dataTransfer.getData("text/plain");
-    if (id && allPhotos.some((m: any) => m.id === id)) {
-      onPick(id);
+  const handleCoverDrop = (payload: PhotoDragPayload, targetKey: string) => {
+    if (targetKey !== "cover-target") return;
+    if (allPhotos.some((m: any) => m.id === payload.photoId)) {
+      onPick(payload.photoId);
       toast.success("Omslagfoto bijgewerkt");
     }
   };
+
 
   const ratioOptions: { value: "landscape" | "square" | "portrait"; label: string; icon: string }[] = [
     { value: "landscape", label: "Liggend", icon: "▭" },
@@ -1974,15 +1994,11 @@ const CheckoutCoverPicker = ({
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragOver(true);
-        }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={handleDrop}
+        data-photo-drop="cover-target"
         className={`group relative w-full overflow-hidden rounded-lg border-2 transition ${
           dragOver ? "border-primary ring-2 ring-primary/30" : "border-border hover:border-muted-foreground/50"
         }`}
+
         style={{ aspectRatio: ratioStyle }}
         aria-label="Klik om omslagfoto te kiezen of sleep een foto hierheen"
       >
@@ -2076,18 +2092,16 @@ const CheckoutCoverPicker = ({
                 <button
                   key={m.id}
                   type="button"
-                  draggable
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData(PHOTO_DND_MIME, m.id);
-                    e.dataTransfer.setData("text/plain", m.id);
-                    e.dataTransfer.effectAllowed = "copy";
-                  }}
+                  onPointerDown={(event) =>
+                    startPhotoDrag(event, { photoId: m.id, sourceKey: `cover-pick:${m.id}` }, handleCoverDrop)
+                  }
                   onClick={() => onPick(m.id)}
-                  className={`relative aspect-square overflow-hidden rounded border-2 cursor-grab active:cursor-grabbing [-webkit-touch-callout:none] ${
+                  className={`relative aspect-square overflow-hidden rounded border-2 cursor-grab touch-none select-none active:cursor-grabbing [-webkit-touch-callout:none] ${
                     active ? "border-primary" : "border-transparent hover:border-muted-foreground/40"
                   }`}
                 >
-                  <img src={m.media_url} alt="" className="w-full h-full object-cover" />
+                  <img src={m.media_url} alt="" className="w-full h-full object-cover pointer-events-none" />
+
                   {active && (
                     <span className="absolute top-0.5 right-0.5 bg-primary text-primary-foreground rounded-full p-0.5">
                       <Check className="h-2.5 w-2.5" />
@@ -2237,6 +2251,95 @@ const PrintPagePreview = ({
   );
 };
 
+/* ──────────────────────────────────────────────────────────────
+   Pointer-based photo drag & drop.
+   Native HTML5 drag events do not fire on touch devices, so all photo
+   dragging in the Bouwboek editor uses pointer events + hit testing on
+   elements marked with `data-photo-drop`.
+   ────────────────────────────────────────────────────────────── */
+
+type PhotoDragPayload = { photoId: string; sourceKey: string };
+type ActivePhotoDrag = { payload: PhotoDragPayload; hoverKey: string | null } | null;
+
+let activePhotoDrag: ActivePhotoDrag = null;
+const photoDragListeners = new Set<() => void>();
+
+const publishPhotoDrag = (next: ActivePhotoDrag) => {
+  activePhotoDrag = next;
+  photoDragListeners.forEach((listener) => listener());
+};
+
+const usePhotoDragState = () => {
+  const [, forceRender] = useState(0);
+  useEffect(() => {
+    const listener = () => forceRender((value) => value + 1);
+    photoDragListeners.add(listener);
+    return () => {
+      photoDragListeners.delete(listener);
+    };
+  }, []);
+  return activePhotoDrag;
+};
+
+const findPhotoDropTarget = (x: number, y: number) => {
+  const element = document.elementFromPoint(x, y) as HTMLElement | null;
+  const dropElement = element?.closest("[data-photo-drop]") as HTMLElement | null;
+  return dropElement?.dataset.photoDrop ?? null;
+};
+
+const startPhotoDrag = (
+  event: React.PointerEvent,
+  payload: PhotoDragPayload,
+  onDrop: (payload: PhotoDragPayload, targetKey: string) => void,
+) => {
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+  const startX = event.clientX;
+  const startY = event.clientY;
+  let active = false;
+
+  const handleMove = (moveEvent: PointerEvent) => {
+    if (!active) {
+      if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < 6) return;
+      active = true;
+    }
+    if (moveEvent.cancelable) moveEvent.preventDefault();
+    publishPhotoDrag({ payload, hoverKey: findPhotoDropTarget(moveEvent.clientX, moveEvent.clientY) });
+  };
+
+  const cleanup = () => {
+    window.removeEventListener("pointermove", handleMove);
+    window.removeEventListener("pointerup", handleUp);
+    window.removeEventListener("pointercancel", handleCancel);
+  };
+
+  function handleUp(upEvent: PointerEvent) {
+    cleanup();
+    const targetKey = active ? findPhotoDropTarget(upEvent.clientX, upEvent.clientY) : null;
+    publishPhotoDrag(null);
+    if (active) {
+      // A real drag happened — swallow the click that follows the pointerup so
+      // dropping a photo never doubles as a select/open action.
+      const swallow = (clickEvent: MouseEvent) => {
+        clickEvent.preventDefault();
+        clickEvent.stopPropagation();
+      };
+      window.addEventListener("click", swallow, { capture: true, once: true });
+      window.setTimeout(() => window.removeEventListener("click", swallow, { capture: true }), 300);
+    }
+    if (targetKey && targetKey !== payload.sourceKey) onDrop(payload, targetKey);
+  }
+
+
+  function handleCancel() {
+    cleanup();
+    publishPhotoDrag(null);
+  }
+
+  window.addEventListener("pointermove", handleMove, { passive: false });
+  window.addEventListener("pointerup", handleUp);
+  window.addEventListener("pointercancel", handleCancel);
+};
+
 const PhotoFrame = ({
   src,
   className = "",
@@ -2252,47 +2355,31 @@ const PhotoFrame = ({
   editing?: boolean;
   onMovePhoto?: (targetStepId: string, draggedPhotoId: string, targetPhotoId: string) => void;
 }) => {
-  const [isOver, setIsOver] = useState(false);
+  const drag = usePhotoDragState();
   const interactive = editing && !!stepId && !!photoId && !!onMovePhoto;
+  const dropKey = `frame:${stepId}:${photoId}`;
+  const isSource = interactive && drag?.payload.sourceKey === dropKey;
+  const isOver = interactive && !!drag && drag.hoverKey === dropKey && drag.payload.sourceKey !== dropKey;
 
   return (
     <div
-      className={`relative min-h-0 min-w-0 overflow-hidden bg-secondary flex items-center justify-center [-webkit-touch-callout:none] ${className} ${interactive ? "cursor-grab active:cursor-grabbing" : ""}`}
-      draggable={interactive}
-      onDragStart={(e) => {
+      data-photo-drop={interactive ? dropKey : undefined}
+      className={`relative min-h-0 min-w-0 overflow-hidden bg-secondary flex items-center justify-center [-webkit-touch-callout:none] ${className} ${interactive ? "cursor-grab active:cursor-grabbing touch-none select-none" : ""} ${isSource ? "opacity-40" : ""}`}
+      onPointerDown={(event) => {
         if (!interactive) return;
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData(PHOTO_DND_MIME, JSON.stringify({ stepId, photoId }));
-      }}
-      onDragOver={(e) => {
-        if (!interactive) return;
-        if (!Array.from(e.dataTransfer.types).includes(PHOTO_DND_MIME)) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        setIsOver(true);
-      }}
-      onDragLeave={() => setIsOver(false)}
-      onDrop={(e) => {
-        if (!interactive) return;
-        setIsOver(false);
-        const raw = e.dataTransfer.getData(PHOTO_DND_MIME);
-        if (!raw) return;
-        e.preventDefault();
-        try {
-          const data = JSON.parse(raw) as { stepId: string; photoId: string };
-          if (data.stepId !== stepId) {
+        startPhotoDrag(event, { photoId: photoId!, sourceKey: dropKey }, (payload, targetKey) => {
+          const [, targetStepId, targetPhotoId] = targetKey.split(":");
+          if (!targetPhotoId) return;
+          if (targetStepId !== stepId) {
             toast.error("Foto's kunnen alleen binnen dezelfde update verplaatst worden");
             return;
           }
-          if (data.photoId === photoId) return;
-          onMovePhoto!(stepId!, data.photoId, photoId!);
-        } catch {/* ignore */}
+          onMovePhoto!(stepId!, payload.photoId, targetPhotoId);
+        });
       }}
     >
       <img src={src} alt="" loading="lazy" draggable={false} className="block h-full w-full object-contain pointer-events-none" />
-      {interactive && isOver && (
-        <div className="absolute inset-0 ring-4 ring-primary ring-inset bg-primary/10 pointer-events-none" />
-      )}
+      {isOver && <div className="absolute inset-0 ring-4 ring-primary ring-inset bg-primary/10 pointer-events-none" />}
     </div>
   );
 };
@@ -2311,57 +2398,50 @@ const PhotoManagePanel = ({
   onToggleMedia: (id: string) => void;
   onReorder: (stepId: string, newOrder: string[]) => void;
 }) => {
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
-  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const drag = usePhotoDragState();
 
-  const handleDrop = (targetIdx: number) => {
-    if (dragIdx === null || dragIdx === targetIdx) return;
-    const newOrder = photos.map((m: any) => m.id);
-    const [moved] = newOrder.splice(dragIdx, 1);
-    newOrder.splice(targetIdx, 0, moved);
+  const handleDrop = (payload: PhotoDragPayload, targetKey: string) => {
+    const ids = photos.map((m: any) => m.id);
+    const fromIdx = ids.indexOf(payload.photoId);
+    const toIdx = ids.indexOf(targetKey.replace(`panel:${stepId}:`, ""));
+    if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+    const newOrder = [...ids];
+    const [moved] = newOrder.splice(fromIdx, 1);
+    newOrder.splice(toIdx, 0, moved);
     onReorder(stepId, newOrder);
-    setDragIdx(null);
-    setDragOverIdx(null);
   };
 
   return (
     <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
-      {photos.map((m: any, idx: number) => {
+      {photos.map((m: any) => {
         const out = excludedMedia.has(m.id);
-        const isDragging = dragIdx === idx;
-        const isOver = dragOverIdx === idx && dragIdx !== idx;
+        const dropKey = `panel:${stepId}:${m.id}`;
+        const isDragging = drag?.payload.sourceKey === dropKey;
+        const isOver = !!drag && drag.hoverKey === dropKey && drag.payload.sourceKey !== dropKey;
         return (
           <div
             key={m.id}
-            className={`relative group cursor-grab active:cursor-grabbing transition-opacity select-none [-webkit-touch-callout:none] ${isDragging ? "opacity-30" : ""}`}
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.effectAllowed = "move";
-              e.dataTransfer.setData(PHOTO_DND_MIME, JSON.stringify({ stepId, photoId: m.id }));
-              setDragIdx(idx);
-            }}
-
-            onDragOver={(e) => { e.preventDefault(); setDragOverIdx(idx); }}
-            onDragLeave={() => setDragOverIdx(null)}
-            onDrop={() => handleDrop(idx)}
-            onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
+            data-photo-drop={dropKey}
+            className={`relative group cursor-grab touch-none active:cursor-grabbing transition-opacity select-none [-webkit-touch-callout:none] ${isDragging ? "opacity-30" : ""}`}
+            onPointerDown={(event) => startPhotoDrag(event, { photoId: m.id, sourceKey: dropKey }, handleDrop)}
           >
             <img
               src={m.media_url}
               alt=""
               draggable={false}
-              className={`w-14 h-14 object-contain rounded-md bg-muted transition ${out ? "opacity-40 grayscale" : ""} ${isOver ? "ring-2 ring-primary" : ""}`}
+              className={`w-14 h-14 object-contain rounded-md bg-muted transition pointer-events-none ${out ? "opacity-40 grayscale" : ""} ${isOver ? "ring-2 ring-primary" : ""}`}
             />
             {out && (
               <>
-                <div className="absolute inset-0 rounded-md ring-2 ring-destructive" />
-                <div className="absolute inset-0 flex items-center justify-center">
+                <div className="absolute inset-0 rounded-md ring-2 ring-destructive pointer-events-none" />
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <EyeOff className="h-4 w-4 text-destructive drop-shadow" />
                 </div>
               </>
             )}
-            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 rounded-md">
+            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity bg-black/60 rounded-md">
               <button
+                onPointerDown={(event) => event.stopPropagation()}
                 onClick={() => onToggleMedia(m.id)}
                 className="text-white p-1.5 hover:bg-white/20 rounded-full"
                 title={out ? "Terugzetten in fotoboek" : "Verberg uit fotoboek"}
@@ -2387,9 +2467,15 @@ const PhotoPageBuckets = ({
   excludedMedia: Set<string>;
   onMovePhoto: (photoId: string, sourcePageKey: string, targetPageKey: string) => void;
 }) => {
-  const [dragging, setDragging] = useState<{ photoId: string; sourcePageKey: string } | null>(null);
-  const [dragOverPageKey, setDragOverPageKey] = useState<string | null>(null);
+  const drag = usePhotoDragState();
   const photoMap = new Map(photos.map((photo: any) => [photo.id, photo]));
+
+  const handleDrop = (payload: PhotoDragPayload, targetKey: string) => {
+    if (!targetKey.startsWith("bucket:")) return;
+    const targetPageKey = targetKey.slice("bucket:".length);
+    const sourcePageKey = payload.sourceKey.slice("bucket:".length).split("::")[0];
+    onMovePhoto(payload.photoId, sourcePageKey, targetPageKey);
+  };
 
   return (
     <div className="mt-3 space-y-2">
@@ -2399,21 +2485,12 @@ const PhotoPageBuckets = ({
       <div className="grid gap-2 md:grid-cols-2">
         {pages.map((page) => {
           const visiblePhotoIds = page.photoIds.filter((photoId) => !excludedMedia.has(photoId));
-          const isOver = dragOverPageKey === page.key;
+          const bucketKey = `bucket:${page.key}`;
+          const isOver = !!drag && drag.hoverKey === bucketKey;
           return (
             <div
               key={page.key}
-              onDragOver={(event) => {
-                event.preventDefault();
-                event.dataTransfer.dropEffect = "move";
-                setDragOverPageKey(page.key);
-              }}
-              onDragLeave={() => setDragOverPageKey(null)}
-              onDrop={() => {
-                if (dragging) onMovePhoto(dragging.photoId, dragging.sourcePageKey, page.key);
-                setDragging(null);
-                setDragOverPageKey(null);
-              }}
+              data-photo-drop={bucketKey}
               className={`min-h-24 rounded-md border bg-secondary/30 p-2 transition ${
                 isOver ? "border-primary ring-2 ring-primary/20" : "border-border"
               }`}
@@ -2430,28 +2507,18 @@ const PhotoPageBuckets = ({
                 {visiblePhotoIds.map((photoId) => {
                   const photo = photoMap.get(photoId);
                   if (!photo) return null;
-                  const isDragging = dragging?.photoId === photoId;
+                  const sourceKey = `bucket:${page.key}::${photoId}`;
+                  const isDragging = drag?.payload.sourceKey === sourceKey;
                   return (
                     <div
                       key={photoId}
-                      draggable
-                      onDragStart={(event) => {
-                        event.dataTransfer.effectAllowed = "move";
-                        // Firefox requires setData for a drag to initiate.
-                        event.dataTransfer.setData(PHOTO_DND_MIME, JSON.stringify({ photoId, sourcePageKey: page.key }));
-                        event.dataTransfer.setData("text/plain", photoId);
-                        setDragging({ photoId, sourcePageKey: page.key });
-                      }}
-                      onDragEnd={() => {
-                        setDragging(null);
-                        setDragOverPageKey(null);
-                      }}
-                      className={`h-14 w-14 shrink-0 cursor-grab overflow-hidden rounded-md border bg-background active:cursor-grabbing [-webkit-touch-callout:none] ${
+                      onPointerDown={(event) => startPhotoDrag(event, { photoId, sourceKey }, handleDrop)}
+                      className={`h-14 w-14 shrink-0 cursor-grab touch-none select-none overflow-hidden rounded-md border bg-background active:cursor-grabbing [-webkit-touch-callout:none] ${
                         isDragging ? "opacity-40" : ""
                       }`}
                       title="Sleep naar een andere pagina"
                     >
-                      <img src={photo.media_url} alt="" className="h-full w-full object-cover" loading="lazy" draggable={false} />
+                      <img src={photo.media_url} alt="" className="h-full w-full object-cover pointer-events-none" loading="lazy" draggable={false} />
                     </div>
                   );
                 })}
@@ -2463,6 +2530,7 @@ const PhotoPageBuckets = ({
     </div>
   );
 };
+
 
 const StepPageFooter = ({
   step,
