@@ -210,13 +210,18 @@ const drawStepTextPages = (
     pdf.setFont("helvetica", "normal");
     pdf.text(textPageIdx === 0 ? dateLabel : `${dateLabel} · vervolg`, MARGIN, MARGIN + 14);
 
-    pdf.setFont("times", "bold");
-    pdf.setTextColor(20, 20, 20);
-    pdf.setFontSize(22);
-    const titleLines = clampLines(pdf, locationName || "Update", innerW, 2);
-    pdf.text(titleLines, MARGIN, MARGIN + 42);
+    // The title only appears on the first text page, matching the editor preview.
+    let titleLineCount = 0;
+    if (textPageIdx === 0) {
+      pdf.setFont("times", "bold");
+      pdf.setTextColor(20, 20, 20);
+      pdf.setFontSize(22);
+      const titleLines = clampLines(pdf, locationName || "Update", innerW, 2);
+      titleLineCount = titleLines.length;
+      pdf.text(titleLines, MARGIN, MARGIN + 42);
+    }
 
-    const textY = MARGIN + 54 + titleLines.length * 7;
+    const textY = textPageIdx === 0 ? MARGIN + 54 + titleLineCount * 7 : MARGIN + 26;
     const maxLines = Math.max(1, Math.floor((H - MARGIN - textY - 8) / lineHeight));
     const chunk = lines.slice(cursor, cursor + maxLines);
 
@@ -224,6 +229,7 @@ const drawStepTextPages = (
     pdf.setFontSize(12);
     pdf.setTextColor(60, 60, 60);
     pdf.text(chunk, MARGIN, textY, { lineHeightFactor: 1.3 });
+
 
     cursor += chunk.length;
     textPageIdx++;
