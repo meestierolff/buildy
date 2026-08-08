@@ -1,9 +1,20 @@
-import { useEffect, useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { useEffect, useState, type FormEvent } from "react";
+import {
+  Download,
+  FileArchive,
+  KeyRound,
+  Loader2,
+  Lock,
+  Mail,
+  MapPin,
+  MonitorSmartphone,
+  Save,
+  ShieldAlert,
+  Trash2,
+  UserRound,
+} from "lucide-react";
+import { toast } from "sonner";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,93 +26,119 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { toast } from "sonner";
-import { BookOpen, ChevronRight, Loader2, KeyRound, Trash2, Mail } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  useAccountExports,
+  useAccountSessions,
+  useCreateAccountExportMutation,
+  useRequestAccountDeletionMutation,
+  useRevokeAccountSessionMutation,
+} from "@/hooks/useAccount";
+import { useOwnProfile, useUpdateOwnProfileMutation } from "@/hooks/useProfiles";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { ApiClientError } from "@/lib/apiClient";
+import { authClient, authErrorMessage } from "@/lib/authClient";
+import { createClientIdempotencyKey } from "@/lib/clientIdempotency";
+import { Link, Navigate } from "@/lib/router";
+import type { UpdateOwnProfileInput } from "../../shared/contracts/profiles";
+import type { AccountExportStatus } from "../../shared/contracts/account";
 
-interface OrderSummary {
-  id: string;
-  status: string;
-  created_at: string;
-  format: string | null;
-  payment_amount_cents: number | null;
-  payment_currency: string | null;
+type ProfileDraft = {
+  bio: string;
+  displayName: string;
+  isPrivate: boolean;
+  location: string;
+  slug: string;
+};
+
+const EMPTY_PROFILE: ProfileDraft = {
+  bio: "",
+  displayName: "",
+  isPrivate: true,
+  location: "",
+  slug: "",
+};
+
+function normalizedOptional(value: string): string | null {
+  return value.trim() || null;
 }
 
-const ORDER_STATUS_LABELS: Record<string, string> = {
-  pending: "Checkout voorbereid",
-  payment_pending: "Betaling in behandeling",
-  paid: "Betaald",
-  submitted: "Naar de drukker",
-  processing: "In productie",
-  shipped: "Verzonden",
-  delivered: "Afgerond",
-  cancelled: "Geannuleerd",
-  refunded: "Terugbetaald",
-  payment_cancelled: "Betaling geannuleerd",
-  payment_expired: "Checkout verlopen",
-  payment_failed: "Betaling mislukt",
-  fulfillment_failed: "Handmatige opvolging nodig",
+const exportStatusLabels: Record<AccountExportStatus, string> = {
+  requested: "In wachtrij",
+  processing: "Wordt gemaakt",
+  retry_scheduled: "Nieuwe poging gepland",
+  ready: "Klaar om te downloaden",
+  expired: "Verlopen",
+  failed: "Mislukt",
+  dead_letter: "Handmatige controle nodig",
+  deleted: "Verwijderd",
 };
 
-const formatOrderAmount = (amount: number | null, currency: string | null) => {
-  if (amount == null || amount <= 0) return null;
-  return new Intl.NumberFormat("nl-NL", {
-    style: "currency",
-    currency: (currency || "eur").toUpperCase(),
-  }).format(amount / 100);
-};
+function accountDate(value: string): string {
+  return new Intl.DateTimeFormat("nl-NL", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function deviceLabel(userAgent: string | null): string {
+  if (!userAgent) return "Onbekend apparaat";
+  if (/iphone|ipad/i.test(userAgent)) return "iPhone of iPad";
+  if (/android/i.test(userAgent)) return "Android-apparaat";
+  if (/macintosh|mac os/i.test(userAgent)) return "Mac";
+  if (/windows/i.test(userAgent)) return "Windows-computer";
+  if (/linux/i.test(userAgent)) return "Linux-computer";
+  return "Browserapparaat";
+}
 
 const AccountSettings = () => {
   usePageMeta({
     title: "Account & instellingen — Buildy",
-    description: "Beheer je wachtwoord en account.",
+    description: "Beheer je profiel, privacy en wachtwoord.",
     path: "/account",
     noIndex: true,
   });
   const { user, loading: authLoading, signOut } = useAuth();
-  const navigate = useNavigate();
+  const profileQuery = useOwnProfile(Boolean(user));
+  const profileMutation = useUpdateOwnProfileMutation();
+  const [draft, setDraft] = useState<ProfileDraft>(EMPTY_PROFILE);
+  const [draftVersion, setDraftVersion] = useState<number | null>(null);
+  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [savingPwd, setSavingPwd] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [confirm, setConfirm] = useState("");
-  const [orders, setOrders] = useState<OrderSummary[]>([]);
-  const [ordersLoading, setOrdersLoading] = useState(true);
-  const [ordersError, setOrdersError] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [sendingReset, setSendingReset] = useState(false);
+  const [includeMediaInExport, setIncludeMediaInExport] = useState(true);
+  const [deletionConfirmation, setDeletionConfirmation] = useState("");
+  const [deletionPassword, setDeletionPassword] = useState("");
+  const sessionsQuery = useAccountSessions(Boolean(user));
+  const exportsQuery = useAccountExports(Boolean(user));
+  const revokeSessionMutation = useRevokeAccountSessionMutation();
+  const createExportMutation = useCreateAccountExportMutation();
+  const deletionMutation = useRequestAccountDeletionMutation();
+
+  const profile = profileQuery.data;
 
   useEffect(() => {
-    let cancelled = false;
-    if (!user) {
-      setOrders([]);
-      setOrdersLoading(false);
-      return () => { cancelled = true; };
-    }
-
-    setOrdersLoading(true);
-    setOrdersError(false);
-    supabase
-      .from("photobook_orders")
-      .select("id, status, created_at, format, payment_amount_cents, payment_currency")
-      .order("created_at", { ascending: false })
-      .limit(20)
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) {
-          console.error("Order history load failed", error);
-          setOrdersError(true);
-        } else {
-          setOrders(data || []);
-        }
-        setOrdersLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [user]);
+    if (!profile || profile.version === draftVersion) return;
+    setDraft({
+      bio: profile.bio ?? "",
+      displayName: profile.displayName,
+      isPrivate: profile.isPrivate,
+      location: profile.location ?? "",
+      slug: profile.slug,
+    });
+    setDraftVersion(profile.version);
+  }, [draftVersion, profile]);
 
   if (authLoading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center" role="status" aria-live="polite">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
         <span className="sr-only">Account laden…</span>
       </div>
     );
@@ -109,208 +146,530 @@ const AccountSettings = () => {
 
   if (!user) return <Navigate to="/auth?next=/account" replace />;
 
-  const handleResetMail = async () => {
+  const setField = <Key extends keyof ProfileDraft>(key: Key, value: ProfileDraft[Key]) => {
+    setDraft((current) => ({ ...current, [key]: value }));
+  };
+
+  const saveProfile = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!profile) return;
+
+    const displayName = draft.displayName.trim();
+    const slug = draft.slug.trim().toLowerCase();
+    const bio = normalizedOptional(draft.bio);
+    const location = normalizedOptional(draft.location);
+    const changes: Partial<UpdateOwnProfileInput> = {};
+    if (displayName !== profile.displayName) changes.displayName = displayName;
+    if (slug !== profile.slug) changes.slug = slug;
+    if (bio !== profile.bio) changes.bio = bio;
+    if (location !== profile.location) changes.location = location;
+    if (draft.isPrivate !== profile.isPrivate) changes.isPrivate = draft.isPrivate;
+
+    if (Object.keys(changes).length === 0) {
+      toast.info("Er zijn geen profielwijzigingen om op te slaan.");
+      return;
+    }
+
+    try {
+      await profileMutation.mutateAsync({
+        idempotencyKey: createClientIdempotencyKey("profile-update"),
+        expectedVersion: profile.version,
+        ...changes,
+      });
+      toast.success("Je profiel is bijgewerkt.");
+    } catch (error) {
+      console.error("Profile settings update failed", error);
+      toast.error(
+        error instanceof ApiClientError
+          ? error.message
+          : "Je profiel kon niet worden opgeslagen. Probeer het opnieuw.",
+      );
+    }
+  };
+
+  const sendPasswordReset = async () => {
     if (!user.email) return;
-    const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
-      redirectTo: `${window.location.origin}/wachtwoord-resetten`,
-    });
-    if (error) toast.error("Kon geen reset-mail sturen.");
-    else toast.success("Reset-link verstuurd naar je e-mail.");
+    setSendingReset(true);
+    try {
+      const { error } = await authClient.requestPasswordReset({
+        email: user.email,
+        redirectTo: `${window.location.origin}/wachtwoord-resetten`,
+      });
+      if (error) throw error;
+      toast.success("Als dit account een wachtwoord heeft, ontvang je zo een reset-link.");
+    } catch (error) {
+      console.error("Password reset request failed", error);
+      toast.error(authErrorMessage(error, "forgot-password"));
+    } finally {
+      setSendingReset(false);
+    }
   };
 
-  const handlePasswordChange = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (newPassword.length < 6) {
-      toast.error("Wachtwoord moet minstens 6 tekens zijn.");
+  const changePassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (newPassword.length < 12) {
+      toast.error("Gebruik een nieuw wachtwoord van minimaal 12 tekens.");
       return;
     }
-    setSavingPwd(true);
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    setSavingPwd(false);
-    if (error) {
-      toast.error("Wachtwoord wijzigen mislukt.");
+    if (!currentPassword) {
+      toast.error("Vul je huidige wachtwoord in.");
       return;
     }
-    setNewPassword("");
-    toast.success("Wachtwoord bijgewerkt.");
+
+    setSavingPassword(true);
+    try {
+      const { error } = await authClient.changePassword({
+        currentPassword,
+        newPassword,
+        revokeOtherSessions: false,
+      });
+      if (error) throw error;
+      setCurrentPassword("");
+      setNewPassword("");
+      toast.success("Je wachtwoord is bijgewerkt.");
+    } catch (error) {
+      console.error("Password change failed", error);
+      toast.error(authErrorMessage(error, "reset-password"));
+    } finally {
+      setSavingPassword(false);
+    }
   };
 
-  const handleDelete = async () => {
-    setDeleting(true);
-    const { error, response } = await supabase.functions.invoke("delete-account");
-    if (error) {
-      console.error(error);
-      let message = "Account verwijderen mislukt. Probeer het later opnieuw.";
-      if (response) {
-        try {
-          const payload = await response.json() as { error?: unknown };
-          if (typeof payload.error === "string" && payload.error.trim()) {
-            message = payload.error;
-          }
-        } catch (parseError) {
-          console.error("Could not read account deletion error", parseError);
-        }
+  const requestExport = async () => {
+    try {
+      await createExportMutation.mutateAsync({
+        idempotencyKey: createClientIdempotencyKey("account-export"),
+        includeMedia: includeMediaInExport,
+      });
+      toast.success("Je data-export staat in de wachtrij.");
+    } catch (error) {
+      console.error("Account export request failed", error);
+      toast.error(error instanceof ApiClientError
+        ? error.message
+        : "Je data-export kon niet worden aangevraagd.");
+    }
+  };
+
+  const revokeSession = async (sessionId: string, isCurrent: boolean) => {
+    try {
+      await revokeSessionMutation.mutateAsync(sessionId);
+      if (isCurrent) {
+        await signOut();
+        window.location.assign("/");
+        return;
       }
-      toast.error(message);
-      setDeleting(false);
+      toast.success("De sessie is ingetrokken.");
+    } catch (error) {
+      console.error("Session revoke failed", error);
+      toast.error(error instanceof ApiClientError
+        ? error.message
+        : "De sessie kon niet worden ingetrokken.");
+    }
+  };
+
+  const requestDeletion = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (deletionConfirmation !== "VERWIJDEREN") {
+      toast.error("Typ VERWIJDEREN om deze keuze te bevestigen.");
       return;
     }
-    toast.success("Je account is verwijderd.");
-    await signOut();
-    navigate("/");
+    try {
+      await deletionMutation.mutateAsync({
+        confirmation: "VERWIJDEREN",
+        ...(deletionPassword ? { currentPassword: deletionPassword } : {}),
+        idempotencyKey: createClientIdempotencyKey("account-deletion"),
+      });
+      toast.success("Je account is voor veilige verwijdering ingepland.");
+      await signOut();
+      window.location.assign("/");
+    } catch (error) {
+      console.error("Account deletion request failed", error);
+      toast.error(error instanceof ApiClientError
+        ? error.message
+        : "Je account kon niet voor verwijdering worden ingepland.");
+    }
   };
 
   return (
-    <div className="max-w-2xl mx-auto px-6 py-12 space-y-10">
-      <div>
+    <main className="mx-auto max-w-3xl space-y-10 px-6 py-12 md:py-16">
+      <header>
         <p className="eyebrow mb-2">Account</p>
-        <h1 className="font-serif italic text-4xl leading-tight">Instellingen</h1>
-        <p className="text-sm text-muted-foreground mt-3">Beheer je login en account.</p>
-      </div>
+        <h1 className="font-serif text-4xl italic leading-tight">Instellingen</h1>
+        <p className="mt-3 text-sm text-muted-foreground">
+          Beheer wat andere bouwers van je zien en houd je login veilig.
+        </p>
+      </header>
 
-      <section className="border border-border rounded-md p-6 space-y-4">
-        <div className="flex items-start gap-3">
-          <Mail className="h-4 w-4 mt-1 text-muted-foreground" />
-          <div>
-            <h2 className="text-sm font-semibold">E-mail</h2>
-            <p className="text-sm text-muted-foreground">{user.email}</p>
+      <section className="rounded-xl border border-border bg-card p-6 md:p-8" aria-labelledby="profile-settings-title">
+        <div className="mb-6 flex items-start gap-4">
+          <Avatar className="h-14 w-14 border border-border">
+            <AvatarImage src={profile?.avatar?.proxyPath ?? ""} alt="" />
+            <AvatarFallback className="font-serif text-xl italic">
+              {profile?.displayName[0]?.toUpperCase() ?? "?"}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 id="profile-settings-title" className="text-base font-semibold">Profiel en privacy</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Deze gegevens komen uit je afgeschermde Buildy-profiel.</p>
+              </div>
+              {profile && (
+                <Button asChild type="button" variant="outline" size="sm">
+                  <Link to={`/profiel/${profile.slug}`}>Bekijk profiel</Link>
+                </Button>
+              )}
+            </div>
           </div>
         </div>
+
+        {profileQuery.isPending ? (
+          <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground" role="status">
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Profiel laden…
+          </div>
+        ) : profileQuery.isError || !profile ? (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+            <p className="text-sm text-muted-foreground" role="alert">Je profiel kon niet veilig worden geladen.</p>
+            <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => profileQuery.refetch()}>
+              Opnieuw proberen
+            </Button>
+          </div>
+        ) : (
+          <form className="space-y-5" onSubmit={saveProfile}>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="profile-display-name">Weergavenaam</Label>
+                <Input
+                  id="profile-display-name"
+                  value={draft.displayName}
+                  onChange={(event) => setField("displayName", event.target.value)}
+                  minLength={1}
+                  maxLength={80}
+                  autoComplete="name"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="profile-slug">Profielnaam</Label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">@</span>
+                  <Input
+                    id="profile-slug"
+                    className="pl-7"
+                    value={draft.slug}
+                    onChange={(event) => setField("slug", event.target.value)}
+                    minLength={1}
+                    maxLength={80}
+                    pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="profile-bio">Over jou</Label>
+              <Textarea
+                id="profile-bio"
+                value={draft.bio}
+                onChange={(event) => setField("bio", event.target.value)}
+                maxLength={500}
+                placeholder="Vertel kort wat je aan het verbouwen bent."
+              />
+              <p className="text-right text-xs text-muted-foreground">{draft.bio.length}/500</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="profile-location" className="flex items-center gap-2">
+                <MapPin className="h-3.5 w-3.5" aria-hidden="true" /> Plaats of regio
+              </Label>
+              <Input
+                id="profile-location"
+                value={draft.location}
+                onChange={(event) => setField("location", event.target.value)}
+                maxLength={120}
+                autoComplete="address-level2"
+                placeholder="Bijvoorbeeld Utrecht"
+              />
+            </div>
+
+            <div className="flex items-start justify-between gap-5 rounded-lg border bg-muted/30 p-4">
+              <div>
+                <Label htmlFor="profile-private" className="flex items-center gap-2">
+                  <Lock className="h-3.5 w-3.5" aria-hidden="true" /> Privéprofiel
+                </Label>
+                <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">
+                  Alleen geaccepteerde volgers kunnen je profielgegevens bekijken. Blokkades blijven altijd leidend.
+                </p>
+              </div>
+              <Switch
+                id="profile-private"
+                checked={draft.isPrivate}
+                onCheckedChange={(checked) => setField("isPrivate", checked)}
+                aria-label="Privéprofiel"
+              />
+            </div>
+
+            <Button type="submit" disabled={profileMutation.isPending} className="gap-2">
+              {profileMutation.isPending
+                ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                : <Save className="h-4 w-4" aria-hidden="true" />}
+              Profiel opslaan
+            </Button>
+          </form>
+        )}
       </section>
 
-      <section className="border border-border rounded-md p-6 space-y-5">
-        <div className="flex items-start gap-3">
-          <KeyRound className="h-4 w-4 mt-1 text-muted-foreground" />
+      <section className="rounded-xl border border-border bg-card p-6 md:p-8" aria-labelledby="login-settings-title">
+        <div className="mb-6 flex items-start gap-3">
+          <UserRound className="mt-0.5 h-5 w-5 text-muted-foreground" aria-hidden="true" />
           <div>
-            <h2 className="text-sm font-semibold">Wachtwoord</h2>
-            <p className="text-sm text-muted-foreground">Wijzig direct of vraag een reset-link aan via e-mail.</p>
+            <h2 id="login-settings-title" className="text-base font-semibold">Login</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Je login wordt beheerd door de beveiligde Buildy-authenticatie.</p>
           </div>
         </div>
-        <form onSubmit={handlePasswordChange} className="space-y-3">
-          <Input
-            type="password"
-            aria-label="Nieuw wachtwoord"
-            placeholder="Nieuw wachtwoord"
-            autoComplete="new-password"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            minLength={6}
-            className="h-10"
-          />
+
+        <div className="mb-6 flex items-start gap-3 rounded-lg border bg-muted/20 p-4">
+          <Mail className="mt-0.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">E-mail</p>
+            <p className="mt-1 truncate text-sm">{user.email}</p>
+          </div>
+        </div>
+
+        <form onSubmit={changePassword} className="space-y-4">
+          <div className="flex items-start gap-3">
+            <KeyRound className="mt-0.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <div>
+              <h3 className="text-sm font-semibold">Wachtwoord wijzigen</h3>
+              <p className="mt-1 text-xs text-muted-foreground">Gebruik minimaal 12 tekens. Andere sessies blijven ongewijzigd.</p>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="current-password">Huidig wachtwoord</Label>
+              <Input
+                id="current-password"
+                type="password"
+                autoComplete="current-password"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-password">Nieuw wachtwoord</Label>
+              <Input
+                id="new-password"
+                type="password"
+                autoComplete="new-password"
+                minLength={12}
+                maxLength={128}
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+              />
+            </div>
+          </div>
           <div className="flex flex-wrap gap-2">
-            <Button type="submit" disabled={savingPwd || !newPassword} size="sm" className="rounded-full px-5 text-[11px] font-bold uppercase tracking-widest">
-              {savingPwd ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Wachtwoord opslaan"}
+            <Button type="submit" size="sm" disabled={savingPassword || !currentPassword || !newPassword}>
+              {savingPassword ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Wachtwoord opslaan"}
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={handleResetMail} className="rounded-full px-5 text-[11px] font-bold uppercase tracking-widest">
-              Stuur reset-link
+            <Button type="button" variant="outline" size="sm" disabled={sendingReset} onClick={sendPasswordReset}>
+              {sendingReset ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Stuur reset-link"}
             </Button>
           </div>
         </form>
       </section>
 
-      <section className="border border-border rounded-md p-6 space-y-4">
-        <div className="flex items-start gap-3">
-          <BookOpen className="h-4 w-4 mt-1 text-muted-foreground" />
+      <section className="rounded-xl border border-border bg-card p-6 md:p-8" aria-labelledby="sessions-title">
+        <div className="mb-5 flex items-start gap-3">
+          <MonitorSmartphone className="mt-0.5 h-5 w-5 text-muted-foreground" aria-hidden="true" />
           <div>
-            <h2 className="text-sm font-semibold">Mijn Bouwboeken</h2>
-            <p className="text-sm text-muted-foreground">
-              Bekijk de betaling, productie en verzending van je bestellingen.
+            <h2 id="sessions-title" className="text-base font-semibold">Actieve sessies</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Trek apparaten in die je niet herkent. Een recente login is nodig om deze lijst te bekijken.
             </p>
           </div>
         </div>
 
-        {ordersLoading ? (
-          <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground" role="status">
-            <Loader2 className="h-4 w-4 animate-spin" /> Bestellingen laden…
+        {sessionsQuery.isPending ? (
+          <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground" role="status">
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Sessies laden…
           </div>
-        ) : ordersError ? (
-          <p className="rounded-md bg-muted px-4 py-3 text-sm text-muted-foreground">
-            Je bestellingen konden niet worden geladen. Vernieuw de pagina om het opnieuw te proberen.
-          </p>
-        ) : orders.length === 0 ? (
-          <p className="rounded-md border border-dashed px-4 py-5 text-center text-sm text-muted-foreground">
-            Je hebt nog geen Bouwboek besteld.
-          </p>
+        ) : sessionsQuery.isError ? (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+            <p className="text-sm" role="alert">
+              {sessionsQuery.error instanceof ApiClientError
+                ? sessionsQuery.error.message
+                : "Je sessies konden niet worden geladen."}
+            </p>
+            <Button className="mt-3" type="button" size="sm" variant="outline" onClick={() => sessionsQuery.refetch()}>
+              Opnieuw proberen
+            </Button>
+          </div>
         ) : (
-          <div className="divide-y rounded-md border">
-            {orders.map((order) => {
-              const amount = formatOrderAmount(order.payment_amount_cents, order.payment_currency);
-              return (
-                <Link
-                  key={order.id}
-                  to={`/bestelling/${order.id}`}
-                  className="flex items-center gap-3 px-4 py-3 transition-colors first:rounded-t-md last:rounded-b-md hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium">
-                      {order.format?.replace(/_/g, " ") || "Bouwboek"}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {new Intl.DateTimeFormat("nl-NL", { dateStyle: "medium" }).format(new Date(order.created_at))}
-                      {amount ? ` · ${amount}` : ""}
-                    </p>
+          <ul className="divide-y rounded-lg border" aria-label="Actieve sessies">
+            {sessionsQuery.data.map((session) => (
+              <li key={session.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-medium">{deviceLabel(session.userAgent)}</p>
+                    {session.isCurrent && (
+                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                        Dit apparaat
+                      </span>
+                    )}
                   </div>
-                  <span className="hidden text-xs text-muted-foreground sm:inline">
-                    {ORDER_STATUS_LABELS[order.status] || "Status bekijken"}
-                  </span>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                </Link>
-              );
-            })}
-          </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Gestart {accountDate(session.createdAt)} · verloopt {accountDate(session.expiresAt)}
+                    {session.ipAddress ? ` · IP ${session.ipAddress}` : ""}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={revokeSessionMutation.isPending}
+                  onClick={() => revokeSession(session.id, session.isCurrent)}
+                >
+                  {revokeSessionMutation.isPending && revokeSessionMutation.variables === session.id
+                    ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    : session.isCurrent ? "Hier uitloggen" : "Sessie intrekken"}
+                </Button>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 
-      <section className="border border-destructive/30 rounded-md p-6 space-y-4">
-        <div className="flex items-start gap-3">
-          <Trash2 className="h-4 w-4 mt-1 text-destructive" />
+      <section className="rounded-xl border border-border bg-card p-6 md:p-8" aria-labelledby="export-title">
+        <div className="mb-5 flex items-start gap-3">
+          <FileArchive className="mt-0.5 h-5 w-5 text-muted-foreground" aria-hidden="true" />
           <div>
-            <h2 className="text-sm font-semibold text-destructive">Account verwijderen</h2>
-            <p className="text-sm text-muted-foreground">
-              Dit verwijdert je profiel, projecten, updates en geüploade foto's permanent.
-              Tijdens een open checkout of lopende Bouwboek-bestelling kan je account nog
-              niet worden verwijderd. Na afronding bewaren we alleen de wettelijk vereiste
-              minimale bestel- en betaalgegevens.
+            <h2 id="export-title" className="text-base font-semibold">Je Buildy-data</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Maak een privé ZIP-archief met een controlemanifest. Het archief verloopt automatisch na zeven dagen.
             </p>
           </div>
         </div>
+
+        <div className="flex items-start justify-between gap-5 rounded-lg border bg-muted/20 p-4">
+          <div>
+            <Label htmlFor="export-media">Foto&apos;s en bestanden toevoegen</Label>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Zonder media bevat de export nog steeds je profiel, projecten, updates en accountgegevens.
+            </p>
+          </div>
+          <Switch
+            id="export-media"
+            checked={includeMediaInExport}
+            onCheckedChange={setIncludeMediaInExport}
+          />
+        </div>
+        <Button
+          type="button"
+          className="mt-4 gap-2"
+          disabled={createExportMutation.isPending || exportsQuery.data?.some((item) =>
+            ["requested", "processing", "retry_scheduled"].includes(item.status))}
+          onClick={requestExport}
+        >
+          {createExportMutation.isPending
+            ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            : <Download className="h-4 w-4" aria-hidden="true" />}
+          Data-export aanvragen
+        </Button>
+
+        {exportsQuery.data && exportsQuery.data.length > 0 && (
+          <ul className="mt-5 divide-y rounded-lg border" aria-label="Data-exports">
+            {exportsQuery.data.map((item) => (
+              <li key={item.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium">{exportStatusLabels[item.status]}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Aangevraagd {accountDate(item.createdAt)}
+                    {item.expiresAt ? ` · beschikbaar tot ${accountDate(item.expiresAt)}` : ""}
+                  </p>
+                </div>
+                {item.downloadPath && (
+                  <Button asChild type="button" size="sm" variant="outline" className="gap-2">
+                    <a href={item.downloadPath} download>
+                      <Download className="h-4 w-4" aria-hidden="true" /> Download
+                    </a>
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="rounded-xl border border-destructive/40 bg-destructive/5 p-6 md:p-8" aria-labelledby="delete-account-title">
+        <div className="flex items-start gap-3">
+          <ShieldAlert className="mt-0.5 h-5 w-5 text-destructive" aria-hidden="true" />
+          <div className="flex-1">
+            <h2 id="delete-account-title" className="text-base font-semibold">Account verwijderen</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Je account en projecten worden meteen afgeschermd. Verwijdering gebeurt daarna gecontroleerd op de achtergrond.
+              Lopende bouwboekbestellingen blokkeren de aanvraag; wettelijke bestelgegevens blijven minimaal bewaard.
+            </p>
+          </div>
+        </div>
+
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="destructive" size="sm" className="rounded-full px-5 text-[11px] font-bold uppercase tracking-widest">
-              Account permanent verwijderen
+            <Button type="button" variant="destructive" className="mt-5 gap-2">
+              <Trash2 className="h-4 w-4" aria-hidden="true" /> Account verwijderen
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Weet je het zeker?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Deze actie is onomkeerbaar. Typ <strong>VERWIJDEREN</strong> hieronder om te bevestigen.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <Input
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              aria-label="Typ VERWIJDEREN om accountverwijdering te bevestigen"
-              placeholder="VERWIJDEREN"
-              className="h-10"
-            />
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={deleting}>Annuleren</AlertDialogCancel>
-              <AlertDialogAction
-                disabled={confirm !== "VERWIJDEREN" || deleting}
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleDelete();
-                }}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              >
-                {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Verwijder mijn account"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
+            <form onSubmit={requestDeletion}>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Weet je dit zeker?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Dit is niet ongedaan te maken. Typ VERWIJDEREN en bevestig zo nodig je wachtwoord.
+                  Bij een zeer recente login mag het wachtwoordveld leeg blijven.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="my-5 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="delete-confirmation">Typ VERWIJDEREN</Label>
+                  <Input
+                    id="delete-confirmation"
+                    value={deletionConfirmation}
+                    onChange={(event) => setDeletionConfirmation(event.target.value)}
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="delete-password">Huidig wachtwoord (indien van toepassing)</Label>
+                  <Input
+                    id="delete-password"
+                    type="password"
+                    value={deletionPassword}
+                    onChange={(event) => setDeletionPassword(event.target.value)}
+                    autoComplete="current-password"
+                    maxLength={128}
+                  />
+                </div>
+              </div>
+              <AlertDialogFooter>
+                <AlertDialogCancel type="button">Annuleren</AlertDialogCancel>
+                <AlertDialogAction
+                  type="submit"
+                  disabled={deletionConfirmation !== "VERWIJDEREN" || deletionMutation.isPending}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {deletionMutation.isPending
+                    ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    : "Definitief verwijderen"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </form>
           </AlertDialogContent>
         </AlertDialog>
       </section>
-    </div>
+    </main>
   );
 };
 

@@ -1,557 +1,698 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import type { Database } from "@/integrations/supabase/types";
-import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
-import { Plus, Home, Hammer, Search, X, BookOpen, ArrowRight, Camera, Check, LockKeyhole, Users } from "lucide-react";
-import EmptyState from "@/components/EmptyState";
-import ProjectCard from "@/components/ProjectCard";
-import { applyProjectMediaSummaries, loadProjectMediaSummaries } from "@/lib/projectMedia";
-import { usePageMeta } from "@/hooks/usePageMeta";
+import { useState, type ReactNode } from "react";
+import {
+  ArrowRight,
+  BookOpen,
+  Camera,
+  Plus,
+  Search,
+  ShieldCheck,
+  Users,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 
-interface Project {
-  id: string;
+import AsyncState from "@/components/app/AsyncState";
+import PrivacyBadge from "@/components/app/PrivacyBadge";
+import ProjectCard from "@/components/ProjectCard";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
+import { usePageMeta } from "@/hooks/usePageMeta";
+import { useProjectDashboard, useProjectDiscovery } from "@/hooks/useProjectApi";
+import { authPagePath } from "@/lib/authClient";
+import { PRODUCT_ROUTES } from "@/lib/productNavigation";
+import { Link, Navigate, useLocation } from "@/lib/router";
+import type { ProjectCard as Project } from "../../shared/contracts/projects";
+type ProjectTab = "discover" | "mine";
+
+interface Principle {
+  icon: LucideIcon;
   title: string;
-  project_type: string | null;
-  progress_percentage: number | null;
-  cover_image_url: string | null;
-  cover_media_type?: string | null;
-  user_id: string;
-  is_public: boolean;
-  created_at: string;
-  profile_name?: string;
-  step_count: number;
-  follower_count: number;
+  description: string;
 }
 
-type TripRow = Database["public"]["Tables"]["trips"]["Row"];
+const CORE_STEPS: Principle[] = [
+  {
+    icon: Camera,
+    title: "Leg vast wat er gebeurt",
+    description: "Maak per fase een update met foto’s, keuzes, kosten en de kleine momenten die je later anders vergeet.",
+  },
+  {
+    icon: Users,
+    title: "Laat mensen gericht meekijken",
+    description: "Je project begint privé. Deel het daarna met bekenden of zet alleen het verhaal bewust openbaar.",
+  },
+  {
+    icon: BookOpen,
+    title: "Maak er een Bouwboek van",
+    description: "Je tijdlijn vormt de basis voor een persoonlijk fotoboek, zonder dat je vanaf nul een album hoeft te ontwerpen.",
+  },
+];
 
-const Grid = ({ projects, loading, emptyState }: { projects: Project[]; loading: boolean; emptyState: React.ReactNode }) => {
+const PRIVACY_LEVELS = [
+  {
+    level: "private" as const,
+    title: "Privé als vertrekpunt",
+    description: "Alleen jij ziet het project totdat je zelf toegang geeft.",
+  },
+  {
+    level: "shared" as const,
+    title: "Gedeeld met jouw kring",
+    description: "Nodig gericht vrienden of familie uit om mee te kijken.",
+  },
+  {
+    level: "public" as const,
+    title: "Openbaar als bewuste keuze",
+    description: "Alleen dan kan het project in Ontdekken verschijnen. Adres, budget en werkaantekeningen horen daar niet automatisch bij.",
+  },
+];
+
+const looksLikeVideo = (url: string | null | undefined, mediaType: string | null | undefined) =>
+  mediaType === "video" || /\.(mp4|mov|webm)(\?|#|$)/i.test(url ?? "");
+
+const ProjectSkeleton = ({ feature = false }: { feature?: boolean }) => (
+  <div className={feature ? "lg:col-span-7" : "lg:col-span-5"} aria-hidden="true">
+    <div className={`${feature ? "aspect-[16/10]" : "aspect-[4/5]"} animate-pulse rounded-sm bg-muted motion-reduce:animate-none`} />
+    <div className="mt-4 h-px bg-border" />
+    <div className="mt-4 h-7 w-2/3 animate-pulse bg-muted motion-reduce:animate-none" />
+    <div className="mt-3 h-4 w-1/3 animate-pulse bg-muted motion-reduce:animate-none" />
+  </div>
+);
+
+const ProjectCollection = ({
+  projects,
+  loading,
+  emptyState,
+}: {
+  projects: Project[];
+  loading: boolean;
+  emptyState: ReactNode;
+}) => {
   if (loading) {
     return (
-      <div className="grid grid-cols-1 gap-x-8 gap-y-12 md:grid-cols-2 lg:grid-cols-3" role="status" aria-label="Projecten laden">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="animate-pulse">
-            <div className="aspect-[4/5] bg-muted rounded-sm mb-5" />
-            <div className="h-5 bg-muted rounded w-3/4 mb-3" />
-            <div className="h-3 bg-muted rounded w-1/2" />
-          </div>
-        ))}
+      <div
+        className="grid grid-cols-1 gap-x-8 gap-y-12 md:grid-cols-2 lg:grid-cols-12"
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+        aria-label="Projecten laden"
+      >
+        <ProjectSkeleton feature />
+        <ProjectSkeleton />
         <span className="sr-only">Projecten laden…</span>
       </div>
     );
   }
+
   if (projects.length === 0) return <>{emptyState}</>;
+
+  const projectGroups = Array.from(
+    { length: Math.ceil(projects.length / 5) },
+    (_, groupIndex) => projects.slice(groupIndex * 5, groupIndex * 5 + 5),
+  );
+
+  const getLayout = (groupLength: number, index: number) => {
+    if (groupLength === 1) return { className: "lg:col-span-8 lg:col-start-3", feature: true };
+    if (groupLength === 2) {
+      return index === 0
+        ? { className: "lg:col-span-7", feature: true }
+        : { className: "lg:col-span-5", feature: false };
+    }
+    if (groupLength === 3) {
+      return index === 0
+        ? { className: "lg:col-span-6", feature: true }
+        : { className: "lg:col-span-3", feature: false };
+    }
+    if (groupLength === 4) {
+      const feature = index === 0 || index === 3;
+      return {
+        className: feature ? "lg:col-span-8" : "lg:col-span-4",
+        feature,
+      };
+    }
+    return index === 0
+      ? { className: "lg:col-span-7", feature: true }
+      : index === 1
+        ? { className: "lg:col-span-5", feature: false }
+        : { className: "lg:col-span-4", feature: false };
+  };
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
-      {projects.map((p) => (
-        <ProjectCard
-          key={p.id}
-          id={p.id}
-          title={p.title}
-          projectType={p.project_type}
-          progressPercentage={p.progress_percentage}
-          coverUrl={p.cover_image_url}
-          coverMediaType={p.cover_media_type}
-          profileName={p.profile_name}
-          stepCount={p.step_count}
-        />
+    <div className="space-y-14">
+      {projectGroups.map((group) => (
+        <div key={group[0].id} className="grid grid-cols-1 gap-x-8 gap-y-14 md:grid-cols-2 lg:grid-cols-12">
+          {group.map((project, index) => {
+            const layout = getLayout(group.length, index);
+            return (
+              <div key={project.id} className={layout.className}>
+                <ProjectCard
+                  id={project.id}
+                  title={project.title}
+                  projectType={project.projectType}
+                  progressPercentage={project.progressPercentage}
+                  coverUrl={project.cover?.proxyPath}
+                  coverMediaType={project.cover?.contentType}
+                  profileName={project.owner.displayName}
+                  updateCount={project.updateCount}
+                  isPublic={project.visibility === "public"}
+                  variant={layout.feature ? "feature" : "standard"}
+                />
+              </div>
+            );
+          })}
+        </div>
       ))}
     </div>
   );
 };
 
-const enrich = async (rows: TripRow[]): Promise<Project[]> => {
-  if (rows.length === 0) return [];
-  const ids = rows.map((r) => r.id);
-  const userIds = Array.from(new Set(rows.map((r) => r.user_id)));
+const HeroProject = ({ project, loading }: { project?: Project; loading: boolean }) => {
+  const media = project?.cover?.proxyPath;
+  const video = looksLikeVideo(media, project?.cover?.contentType);
 
-  const [mediaSummaries, favRes, profRes] = await Promise.all([
-    loadProjectMediaSummaries(ids),
-    supabase.from("favorites").select("project_id").in("project_id", ids),
-    supabase.rpc("get_profiles_basic", { _ids: userIds }),
-  ]);
-
-  const favCounts = new Map<string, number>();
-  (favRes.data || []).forEach((favorite) => favCounts.set(favorite.project_id, (favCounts.get(favorite.project_id) || 0) + 1));
-  const profMap = new Map<string, string>();
-  (profRes.data || []).forEach((profile) => profMap.set(profile.user_id, profile.display_name));
-
-  // Trip visibility is controlled by trips.is_public — profiles stay publicly findable
-  return applyProjectMediaSummaries(rows, mediaSummaries)
-    .map((trip) => ({
-      ...trip,
-      follower_count: favCounts.get(trip.id) || 0,
-      profile_name: profMap.get(trip.user_id) || undefined,
-    }));
+  return (
+    <div className="relative lg:pl-8">
+      <div className="absolute -left-2 top-10 hidden h-px w-16 bg-accent lg:block" aria-hidden="true" />
+      <figure className="border-x border-b border-border bg-card">
+        <div className="flex min-h-12 items-center justify-between border-y border-border px-4 font-sans text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground sm:px-5">
+          <span>Uit een openbaar bouwverhaal</span>
+          <span aria-hidden="true">Veldnotitie 01</span>
+        </div>
+        <div className="relative aspect-[4/3] overflow-hidden bg-secondary sm:aspect-[16/11] lg:aspect-[4/3]">
+          {loading ? (
+            <div className="flex h-full w-full flex-col justify-end bg-secondary p-6 sm:p-8" role="status" aria-busy="true">
+              <Camera className="h-10 w-10 text-muted-foreground" strokeWidth={1.2} aria-hidden="true" />
+              <p className="mt-5 max-w-sm font-serif text-2xl leading-tight text-foreground">Openbaar voorbeeld wordt gecontroleerd.</p>
+              <div className="mt-5 space-y-2" aria-hidden="true">
+                <div className="h-2 w-3/4 animate-pulse bg-muted-foreground/15 motion-reduce:animate-none" />
+                <div className="h-2 w-1/2 animate-pulse bg-muted-foreground/15 motion-reduce:animate-none" />
+              </div>
+              <span className="sr-only">Openbaar voorbeeldproject laden…</span>
+            </div>
+          ) : media ? (
+            video ? (
+              <video src={media} muted playsInline aria-hidden="true" preload="metadata" className="h-full w-full object-cover" />
+            ) : (
+              <img src={media} alt="" decoding="async" className="h-full w-full object-cover" />
+            )
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center text-muted-foreground">
+              <Camera className="h-12 w-12" strokeWidth={1.1} aria-hidden="true" />
+              <p className="max-w-xs font-serif text-2xl leading-tight text-foreground">Foto’s geven iedere bouwfase een plek.</p>
+            </div>
+          )}
+          <div className="absolute left-4 top-4">
+            <PrivacyBadge level="public" className="bg-background/95 shadow-sm" />
+          </div>
+        </div>
+        <figcaption className="grid gap-3 border-t border-border px-4 py-4 sm:grid-cols-[1fr_auto] sm:items-end sm:px-5">
+          <div>
+            <p className="font-sans text-[11px] font-semibold uppercase tracking-[0.16em] text-accent">Bewust gedeeld</p>
+            <p className="mt-1 font-serif text-2xl leading-tight">{project?.title ?? "Een verbouwing in opbouw"}</p>
+          </div>
+          {project ? (
+            <Link
+              to={PRODUCT_ROUTES.project(project.id)}
+              className="inline-flex min-h-11 items-center gap-2 rounded-sm text-sm font-semibold underline decoration-border underline-offset-4 outline-none hover:decoration-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4"
+            >
+              Bekijk project <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          ) : (
+            <span className="font-sans text-xs text-muted-foreground">Alleen openbare projecten verschijnen hier.</span>
+          )}
+        </figcaption>
+      </figure>
+    </div>
+  );
 };
 
+const BookPreview = ({ project }: { project?: Project }) => (
+  <figure>
+    <div className="mx-auto grid aspect-[8/5] w-full max-w-xl grid-cols-2 border border-foreground/15 bg-card shadow-xl">
+      <div className="relative flex flex-col justify-between border-r border-border px-5 py-6 sm:px-8 sm:py-9">
+        <div>
+          <p className="font-sans text-[9px] font-semibold uppercase tracking-[0.2em] text-accent sm:text-[11px]">Bouwboek</p>
+          <p className="mt-4 font-serif text-2xl leading-[1.02] sm:text-4xl">Van klusplek naar thuis.</p>
+        </div>
+        <div className="border-t border-border pt-3 font-sans text-[9px] uppercase tracking-[0.16em] text-muted-foreground sm:text-[11px]">
+          Eerste sleutel — laatste plint
+        </div>
+        <div className="absolute inset-y-0 right-1 w-px bg-border" aria-hidden="true" />
+      </div>
+      <div className="m-3 overflow-hidden bg-secondary sm:m-5">
+        {project?.cover?.proxyPath ? (
+          <img src={project.cover.proxyPath} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-4 text-center text-muted-foreground">
+            <BookOpen className="h-9 w-9" strokeWidth={1.2} aria-hidden="true" />
+            <span className="font-sans text-[10px] font-semibold uppercase tracking-[0.16em]">Jouw foto op papier</span>
+          </div>
+        )}
+      </div>
+    </div>
+    <figcaption className="mx-auto mt-4 max-w-xl border-l-2 border-accent pl-4 font-sans text-xs leading-5 text-muted-foreground">
+      Een rustige boekpreview groeit mee met je updates; jij kiest later welke momenten meegaan naar druk.
+    </figcaption>
+  </figure>
+);
+
+const SectionLabel = ({ children }: { children: ReactNode }) => (
+  <p className="mb-3 font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">{children}</p>
+);
+
 const Index = () => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const { pathname } = useLocation();
+  const view = pathname === PRODUCT_ROUTES.projects
+    ? "projects"
+    : pathname === PRODUCT_ROUTES.discover
+      ? "discover"
+      : "landing";
+  const tab: ProjectTab = view === "projects" ? "mine" : "discover";
+  const isLanding = view === "landing";
+  const ProjectHeading = isLanding ? "h2" : "h1";
   usePageMeta({
-    title: "Buildy — Verbouwingsdagboek en Bouwboek maken",
-    description: "Houd je verbouwing bij met foto's, updates, budget en mijlpalen. Deel je renovatie en maak aan het einde automatisch een gedrukt Bouwboek.",
-    path: "/",
+    title: view === "projects"
+      ? "Mijn projecten — Buildy"
+      : view === "discover"
+        ? "Ontdek verbouwingsprojecten — Buildy"
+        : "Buildy — Van eerste sleutel tot laatste plint",
+    description: view === "projects"
+      ? "Bekijk en beheer je eigen verbouwingsprojecten."
+      : view === "discover"
+        ? "Ontdek openbare verbouwingsverhalen die hun makers bewust delen."
+        : "Leg je verbouwing stap voor stap vast, laat vrienden en familie meekijken en maak er later een Bouwboek van.",
+    path: view === "projects"
+      ? PRODUCT_ROUTES.projects
+      : view === "discover"
+        ? PRODUCT_ROUTES.discover
+        : PRODUCT_ROUTES.landing,
+    noIndex: view === "projects",
   });
-  const [tab, setTab] = useState<"discover" | "mine">(user ? "mine" : "discover");
+
   const [search, setSearch] = useState("");
   const [selectedType, setSelectedType] = useState("");
-  const [discover, setDiscover] = useState<Project[]>([]);
-  const [mine, setMine] = useState<Project[]>([]);
-  const [loadingD, setLoadingD] = useState(true);
-  const [loadingM, setLoadingM] = useState(true);
-  const [discoverError, setDiscoverError] = useState(false);
-  const [mineError, setMineError] = useState(false);
+  const discoveryQuery = useProjectDiscovery(view !== "projects");
+  const dashboardQuery = useProjectDashboard(view === "projects" && Boolean(user));
+  const discover = Array.from(new Map(
+    (discoveryQuery.data?.pages ?? []).flatMap((page) => page.items).map((project) => [project.id, project]),
+  ).values());
+  const mine = Array.from(new Map(
+    (dashboardQuery.data?.pages ?? []).flatMap((page) => page.items).map((project) => [project.id, project]),
+  ).values());
+  const loadingDiscover = discoveryQuery.isPending;
+  const loadingMine = dashboardQuery.isPending;
+  const discoverError = discoveryQuery.isError;
+  const mineError = dashboardQuery.isError;
 
-  useEffect(() => { setTab(user ? "mine" : "discover"); }, [user]);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data, error } = await supabase
-          .from("trips")
-          .select("*")
-          .eq("is_public", true)
-          .order("created_at", { ascending: false })
-          .limit(40);
-        if (error) {
-          console.error("Public projects load failed", error);
-          setDiscoverError(true);
-          return;
-        }
-        setDiscover(await enrich(data || []));
-      } catch (error) {
-        console.error("Unexpected public projects load failure", error);
-        setDiscoverError(true);
-      } finally {
-        setLoadingD(false);
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    if (!user) { setLoadingM(false); return; }
-    (async () => {
-      setLoadingM(true);
-      setMineError(false);
-      try {
-        const { data, error } = await supabase
-          .from("trips")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false });
-        if (error) {
-          console.error("Own projects load failed", error);
-          setMineError(true);
-          return;
-        }
-        setMine(await enrich(data || []));
-      } catch (error) {
-        console.error("Unexpected own projects load failure", error);
-        setMineError(true);
-      } finally {
-        setLoadingM(false);
-      }
-    })();
-  }, [user]);
-
-  // Derived sections from public projects
-  const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
-
-  const activeTypes = Array.from(new Set(discover.map((p) => p.project_type).filter(Boolean))) as string[];
-
-  const filtered = discover.filter((p) => {
-    const matchSearch = !search ||
-      p.title.toLowerCase().includes(search.toLowerCase()) ||
-      (p.profile_name || "").toLowerCase().includes(search.toLowerCase());
-    const matchType = !selectedType || p.project_type === selectedType;
-    return matchSearch && matchType;
+  const query = search.trim().toLocaleLowerCase("nl-NL");
+  const activeTypes = Array.from(new Set(discover.flatMap((project) => (
+    project.projectType ? [project.projectType] : []
+  )))).sort((a, b) => a.localeCompare(b, "nl-NL"));
+  const filtered = discover.filter((project) => {
+    const matchesSearch = !query
+      || project.title.toLocaleLowerCase("nl-NL").includes(query)
+      || project.owner.displayName.toLocaleLowerCase("nl-NL").includes(query);
+    const matchesType = !selectedType || project.projectType === selectedType;
+    return matchesSearch && matchesType;
   });
 
-  // Keep discovery sections distinct so the same project is not repeated down the page.
+  const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
   const shownProjectIds = new Set<string>();
-  const takeUnique = (projects: Project[], limit = 6) => {
-    let selected = 0;
-    return projects.filter((project) => {
-      if (selected >= limit || shownProjectIds.has(project.id)) return false;
+  const takeUnique = (projects: Project[], limit = 5) => {
+    const selection: Project[] = [];
+    projects.forEach((project) => {
+      if (selection.length >= limit || shownProjectIds.has(project.id)) return;
       shownProjectIds.add(project.id);
-      selected += 1;
-      return true;
+      selection.push(project);
     });
+    return selection;
   };
-  const trending = takeUnique(
-    [...filtered]
-      .filter((project) => project.follower_count > 0)
-      .sort((a, b) => b.follower_count - a.follower_count),
+
+  const active = takeUnique(
+    [...filtered].sort((a, b) => b.updateCount - a.updateCount),
   );
-  const netBegonnen = takeUnique(
-    filtered.filter((project) => project.step_count === 0 || project.created_at > twoWeeksAgo),
+  const recentlyStarted = takeUnique(
+    filtered.filter((project) => project.updateCount === 0 || project.updatedAt > twoWeeksAgo),
   );
-  const bijnaKlaar = takeUnique(
-    filtered.filter((project) => (project.progress_percentage ?? 0) >= 70 && (project.progress_percentage ?? 0) < 100),
+  const nearlyFinished = takeUnique(
+    filtered.filter((project) => project.progressPercentage >= 70 && project.progressPercentage < 100),
   );
-  const overigeProjecten = filtered.filter((project) => !shownProjectIds.has(project.id));
+  const moreProjects = filtered.filter((project) => !shownProjectIds.has(project.id));
+  const heroProject = discover.find((project) => project.cover) ?? discover[0];
+  const bookProject = discover.find(
+    (project) => project.cover && !looksLikeVideo(project.cover.proxyPath, project.cover.contentType),
+  );
+
+  const clearFilters = () => {
+    setSearch("");
+    setSelectedType("");
+  };
+
+  const renderProjectSection = (label: string, projects: Project[]) => {
+    if (projects.length === 0) return null;
+    return (
+      <section aria-label={label}>
+        <div className="mb-7 flex items-center gap-4 border-b border-border pb-3">
+          <p className="font-sans text-xs font-semibold uppercase tracking-[0.16em] text-foreground">{label}</p>
+          <span className="font-sans text-xs tabular-nums text-muted-foreground">{String(projects.length).padStart(2, "0")}</span>
+        </div>
+        <ProjectCollection projects={projects} loading={false} emptyState={null} />
+      </section>
+    );
+  };
+
+  if (view === "projects" && authLoading) {
+    return (
+      <div className="flex min-h-[55vh] items-center justify-center" role="status">
+        <span className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-foreground" aria-hidden="true" />
+        <span className="sr-only">Account controleren…</span>
+      </div>
+    );
+  }
+
+  if (view === "projects" && !user) {
+    return <Navigate to={authPagePath(PRODUCT_ROUTES.projects)} replace />;
+  }
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Hero */}
-      <section className="relative overflow-hidden border-b border-border" aria-labelledby="home-title">
-        <div className="pointer-events-none absolute inset-0 opacity-[0.32] blueprint-grid [mask-image:linear-gradient(to_bottom,black,transparent_88%)]" />
-        <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-5 py-14 sm:px-6 md:px-8 md:py-20 lg:grid-cols-[1.05fr_0.95fr] lg:gap-20 lg:py-24">
-          <div>
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-accent/25 bg-background/85 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-accent backdrop-blur-sm">
-              <BookOpen className="h-3.5 w-3.5" aria-hidden="true" /> Van eerste sloopdag tot Bouwboek
+      {isLanding ? (
+        <>
+          <section className="border-b border-border" aria-labelledby="home-title">
+        <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 py-12 sm:px-6 md:px-8 md:py-16 lg:min-h-[680px] lg:grid-cols-12 lg:gap-10 lg:py-20">
+          <div className="lg:col-span-6 lg:pr-8">
+            <div className="mb-7 flex items-center gap-3 font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              <span className="h-px w-10 bg-accent" aria-hidden="true" />
+              Sociaal verbouwingsdagboek
             </div>
-            <h1 id="home-title" className="max-w-3xl font-serif text-5xl italic leading-[0.92] tracking-tight sm:text-6xl md:text-7xl lg:text-[5.25rem]">
-              Je verbouwing,<br />
-              <span className="text-accent">een verhaal dat blijft.</span>
+            <h1 id="home-title" className="max-w-2xl font-serif text-5xl leading-[0.94] tracking-[-0.025em] sm:text-6xl lg:text-[5rem]">
+              Van eerste sleutel tot laatste plint.
             </h1>
-            <p className="mt-7 max-w-xl text-base font-light leading-relaxed text-muted-foreground md:text-lg">
-              Bewaar foto's, keuzes, mijlpalen en budget in één rustig dagboek. Deel je voortgang als je wilt en bundel alles later in een gedrukt Bouwboek.
+            <p className="mt-7 max-w-xl font-sans text-base leading-7 text-muted-foreground md:text-lg md:leading-8">
+              Leg je verbouwing stap voor stap vast, laat vrienden en familie meekijken en maak er later een Bouwboek van.
             </p>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Button asChild variant="pill" size="pillLg" className="w-full sm:w-auto">
-                <Link to={user ? "/trips/new" : "/auth?mode=register&next=%2Ftrips%2Fnew"}>
-                  {user ? <Plus className="h-4 w-4" /> : null}
+
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Button asChild size="lg" className="min-h-12 w-full rounded-md px-6 sm:w-auto">
+                <Link to={user ? PRODUCT_ROUTES.newProject : "/auth?mode=register&next=%2Fproject%2Fnieuw"}>
+                  {user ? <Plus className="h-4 w-4" aria-hidden="true" /> : null}
                   {user ? "Nieuw project starten" : "Start gratis je dagboek"}
                 </Link>
               </Button>
-              <Button asChild variant="pillOutline" size="pill" className="w-full bg-background/70 px-6 sm:w-auto">
-                <a href="#zo-werkt-het">Zo werkt het <ArrowRight className="h-4 w-4" /></a>
+              <Button asChild variant="outline" size="lg" className="min-h-12 w-full rounded-md bg-background px-6 sm:w-auto">
+                <a href="#zo-werkt-het">Bekijk hoe het werkt <ArrowRight className="h-4 w-4" aria-hidden="true" /></a>
               </Button>
             </div>
-            <ul className="mt-7 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground" aria-label="Voordelen">
-              {["Gratis beginnen", "Privé of openbaar", "Gemaakt voor je Bouwboek"].map((benefit) => (
-                <li key={benefit} className="flex items-center gap-1.5">
-                  <Check className="h-3.5 w-3.5 text-accent" aria-hidden="true" /> {benefit}
-                </li>
-              ))}
-            </ul>
+
+            <aside className="mt-8 flex max-w-xl items-start gap-3 border-l-2 border-accent pl-4" aria-label="Privacybelofte">
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" aria-hidden="true" />
+              <div className="font-sans text-sm leading-6 text-muted-foreground">
+                <p className="font-semibold text-foreground">Je begint privé.</p>
+                <p>Jij kiest per project wie mag meekijken en wat bewust openbaar wordt.</p>
+              </div>
+            </aside>
           </div>
 
-          <div className="relative mx-auto w-full max-w-lg py-4" aria-hidden="true">
-            <div className="absolute inset-x-10 inset-y-6 rotate-3 rounded-2xl border border-border bg-accent/20" />
-            <div className="relative -rotate-1 overflow-hidden rounded-2xl border border-border bg-card shadow-[0_28px_70px_-32px_hsl(var(--foreground)/0.35)] transition-transform duration-500 hover:rotate-0">
-              <div className="flex items-center justify-between border-b border-border px-5 py-4 sm:px-6">
-                <div>
-                  <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-accent">Voorbeeldproject</p>
-                  <p className="mt-1 font-serif text-2xl italic">Ons jaren-30 huis</p>
-                </div>
-                <span className="flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-                  <LockKeyhole className="h-3 w-3" /> Privé
-                </span>
-              </div>
-              <div className="p-5 sm:p-6">
-                <div className="mb-6 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                  <span>Voortgang</span><span className="text-foreground">64%</span>
-                </div>
-                <div className="mb-7 h-1 overflow-hidden rounded-full bg-muted"><div className="h-full w-[64%] rounded-full bg-accent" /></div>
-                <div className="space-y-5">
-                  {[
-                    { label: "De sleutel", date: "14 maart", done: true },
-                    { label: "Sloopwerk afgerond", date: "2 april", done: true },
-                    { label: "Nieuwe kozijnen", date: "Vandaag", done: false },
-                  ].map((update) => (
-                    <div key={update.label} className="grid grid-cols-[28px_1fr_auto] items-center gap-3">
-                      <span className={`flex h-7 w-7 items-center justify-center rounded-full ${update.done ? "bg-foreground text-background" : "bg-accent text-accent-foreground"}`}>
-                        {update.done ? <Check className="h-3.5 w-3.5" /> : <Camera className="h-3.5 w-3.5" />}
-                      </span>
-                      <span className="text-sm font-semibold">{update.label}</span>
-                      <span className="text-[10px] text-muted-foreground">{update.date}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-7 rounded-xl border border-accent/20 bg-accent/[0.07] px-4 py-3 text-xs text-muted-foreground">
-                  <span className="font-semibold text-foreground">Goed bewaard.</span> Iedere update wordt later een pagina in je Bouwboek.
-                </div>
-              </div>
-            </div>
+          <div className="lg:col-span-6">
+            <HeroProject project={heroProject} loading={loadingDiscover} />
           </div>
         </div>
-      </section>
+          </section>
 
-      <section id="zo-werkt-het" className="scroll-mt-24 border-b border-border bg-card" aria-labelledby="how-title">
-        <div className="mx-auto max-w-7xl px-5 py-16 sm:px-6 md:px-8 md:py-20">
-          <div className="max-w-2xl">
-            <p className="eyebrow mb-3">Zo werkt Buildy</p>
-            <h2 id="how-title" className="font-serif text-4xl italic leading-tight md:text-5xl">Klein beginnen. Mooi terugkijken.</h2>
+          <section id="zo-werkt-het" className="scroll-mt-24 border-b border-border" aria-labelledby="how-title">
+        <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 md:px-8 md:py-20">
+          <div className="grid gap-6 lg:grid-cols-12">
+            <div className="lg:col-span-5">
+              <SectionLabel>Zo werkt Buildy</SectionLabel>
+              <h2 id="how-title" className="max-w-lg font-serif text-4xl leading-[1.02] md:text-5xl">
+                Drie stappen, één compleet bouwverhaal.
+              </h2>
+            </div>
+            <p className="max-w-2xl font-sans text-base leading-7 text-muted-foreground lg:col-span-5 lg:col-start-8 lg:pt-7">
+              Geen losse fotomap en geen ingewikkeld projectmanagement. Buildy houdt het dagelijks vastleggen licht en maakt de opbrengst later tastbaar.
+            </p>
           </div>
-          <ol className="mt-10 grid gap-4 md:grid-cols-3">
-            {[
-              { icon: Camera, title: "Leg het moment vast", text: "Maak per fase een update met foto's, keuzes, kosten en wat je niet wilt vergeten." },
-              { icon: Users, title: "Deel op jouw manier", text: "Begin privé. Nodig later vrienden uit of deel je project met andere verbouwers." },
-              { icon: BookOpen, title: "Maak je Bouwboek", text: "Je tijdlijn vormt vanzelf de basis voor een persoonlijk fotoboek van de hele verbouwing." },
-            ].map(({ icon: Icon, title, text }, index) => (
-              <li key={title} className="rounded-2xl border border-border bg-background p-6">
-                <div className="flex items-center justify-between">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-foreground"><Icon className="h-4 w-4" aria-hidden="true" /></span>
-                  <span className="font-serif text-2xl italic text-accent">0{index + 1}</span>
+
+          <ol className="mt-12 border-y border-border md:grid md:grid-cols-3">
+            {CORE_STEPS.map(({ icon: Icon, title, description }, index) => (
+              <li key={title} className="grid grid-cols-[3rem_1fr] gap-4 border-b border-border py-7 last:border-b-0 md:block md:border-b-0 md:border-r md:px-7 md:first:pl-0 md:last:border-r-0 md:last:pr-0">
+                <div className="flex items-center justify-between md:mb-10">
+                  <span className="font-sans text-xs font-semibold tabular-nums text-accent">0{index + 1}</span>
+                  <Icon className="hidden h-5 w-5 text-muted-foreground md:block" strokeWidth={1.5} aria-hidden="true" />
                 </div>
-                <h3 className="mt-7 font-serif text-2xl italic">{title}</h3>
-                <p className="mt-2 text-sm font-light leading-relaxed text-muted-foreground">{text}</p>
+                <div>
+                  <h3 className="font-sans text-lg font-semibold tracking-[-0.02em]">{title}</h3>
+                  <p className="mt-2 font-sans text-sm leading-6 text-muted-foreground">{description}</p>
+                </div>
               </li>
             ))}
           </ol>
         </div>
-      </section>
+          </section>
 
-      {/* Bouwboek teaser — laat het eindresultaat zien */}
-      <section className="border-b border-border bg-secondary/45">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 py-16 sm:px-6 md:grid-cols-2 md:px-8 md:py-24 lg:gap-20">
-          {/* Tekst */}
-          <div>
-            <p className="eyebrow mb-3">Het eindresultaat</p>
-            <h2 className="font-serif italic text-4xl md:text-5xl leading-tight mb-5">
-              Jouw verbouwing als <span className="text-accent">echt boek.</span>
+          <section className="border-b border-border bg-secondary/55" aria-labelledby="privacy-title">
+        <div className="mx-auto grid max-w-7xl gap-10 px-4 py-16 sm:px-6 md:px-8 md:py-20 lg:grid-cols-12">
+          <div className="lg:col-span-5">
+            <SectionLabel>Privacy zonder kleine lettertjes</SectionLabel>
+            <h2 id="privacy-title" className="max-w-lg font-serif text-4xl leading-[1.02] md:text-5xl">
+              Jouw huis hoeft niet voor iedereen open te staan.
             </h2>
-            <p className="text-muted-foreground leading-relaxed mb-6 font-light">
-              Elke update, elke foto, elke mijlpaal — automatisch gebundeld in een gedrukt
-              Bouwboek dat je trots op je salontafel legt. Geen losse mappen meer.
+            <p className="mt-5 max-w-xl font-sans text-sm leading-6 text-muted-foreground md:text-base md:leading-7">
+              Je kunt delen zonder meteen alles publiek te maken. De zichtbaarheid blijft een concrete keuze bij jouw project.
             </p>
-            <Button asChild variant="pillAccent" size="pill" className="px-7">
-              <Link to={user ? "/trips/new" : "/auth?mode=register&next=%2Ftrips%2Fnew"}>
-                <BookOpen className="h-4 w-4" /> Start je eigen verhaal <ArrowRight className="h-4 w-4" />
+          </div>
+
+          <div className="border-t border-border lg:col-span-6 lg:col-start-7">
+            {PRIVACY_LEVELS.map(({ level, title, description }) => (
+              <div key={level} className="grid gap-3 border-b border-border py-5 sm:grid-cols-[8rem_1fr] sm:gap-6">
+                <PrivacyBadge level={level} className="w-fit self-start" />
+                <div>
+                  <h3 className="font-sans text-base font-semibold">{title}</h3>
+                  <p className="mt-1 font-sans text-sm leading-6 text-muted-foreground">{description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+          </section>
+
+          <section className="border-b border-border" aria-labelledby="book-title">
+        <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 py-16 sm:px-6 md:px-8 md:py-24 lg:grid-cols-12 lg:gap-10">
+          <div className="lg:col-span-5">
+            <SectionLabel>Van scherm naar papier</SectionLabel>
+            <h2 id="book-title" className="max-w-lg font-serif text-4xl leading-[1.02] md:text-5xl">
+              Jouw verbouwing als echt Bouwboek.
+            </h2>
+            <p className="mt-5 max-w-xl font-sans text-base leading-7 text-muted-foreground">
+              Foto’s, updates en mijlpalen vallen vanzelf op hun plek. Jij bekijkt de printproof, kiest wat meegaat en bestelt pas wanneer het boek klopt.
+            </p>
+            <Button asChild variant="outline" size="lg" className="mt-7 min-h-12 rounded-md px-6">
+              <Link to={user ? PRODUCT_ROUTES.newProject : "/auth?mode=register&next=%2Fproject%2Fnieuw"}>
+                Bouw aan je eigen boek <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </Link>
             </Button>
           </div>
-
-          {/* Boek-mockup */}
-          <div className="relative perspective-[1400px]">
-            <div className="relative mx-auto w-full max-w-md group">
-              {/* Schaduw onder boek */}
-              <div className="absolute -bottom-6 left-6 right-6 h-6 bg-foreground/20 blur-2xl rounded-full" />
-
-              {/* Boek */}
-              <div
-                className="relative aspect-[4/5] overflow-hidden rounded-l-md rounded-r-sm border border-border/60 bg-card shadow-2xl transition-transform duration-500 group-hover:-translate-y-1"
-                style={{ transform: "rotateY(-12deg) rotateX(2deg)", transformStyle: "preserve-3d" }}
-              >
-                {/* Boek-rug links */}
-                <div className="absolute left-0 top-0 bottom-0 w-3 bg-gradient-to-r from-foreground/30 via-foreground/10 to-transparent" />
-                {/* Bladwijzer */}
-                <div className="absolute right-6 -top-1 w-3 h-16 bg-accent shadow-md" />
-
-                {/* Cover-content */}
-                <div className="absolute inset-0 flex flex-col">
-                  {/* Foto bovenkant */}
-                  <div className="flex-1 bg-gradient-to-br from-stone-200 via-stone-300 to-stone-400 relative overflow-hidden">
-                    <svg className="absolute inset-0 w-full h-full opacity-20" xmlns="http://www.w3.org/2000/svg">
-                      <defs>
-                        <pattern id="bookgrid" width="20" height="20" patternUnits="userSpaceOnUse">
-                          <path d="M 20 0 H 0 V 20" fill="none" stroke="currentColor" strokeWidth="0.5" />
-                        </pattern>
-                      </defs>
-                      <rect width="100%" height="100%" fill="url(#bookgrid)" />
-                    </svg>
-                    <Hammer className="absolute inset-0 m-auto h-20 w-20 text-stone-600/60" strokeWidth={1.2} />
-                  </div>
-                  {/* Titel onderkant */}
-                  <div className="bg-card px-6 py-5 border-t-2 border-accent">
-                    <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-accent">Bouwboek</p>
-                    <p className="font-serif text-xl italic leading-tight text-foreground">Van kluswoning naar thuis</p>
-                    <p className="mt-2 text-[10px] uppercase tracking-wider text-muted-foreground">Ons verbouwingsverhaal · 2026</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Tweede boek erachter — stapel-effect */}
-              <div
-                className="absolute -bottom-2 -right-2 -z-10 aspect-[4/5] w-[92%] rounded-sm bg-stone-300/70 border border-border/40"
-                style={{ transform: "rotateY(-12deg) rotateX(2deg) translateZ(-20px)" }}
-              />
-            </div>
+          <div className="lg:col-span-7">
+            <BookPreview project={bookProject} />
           </div>
         </div>
-      </section>
+          </section>
+        </>
+      ) : null}
 
-      {/* Projects */}
-      <section id="projecten" className="mx-auto max-w-7xl scroll-mt-24 px-5 py-16 sm:px-6 md:px-8 md:py-24" aria-labelledby="projects-title">
-        <div className="mb-9 max-w-2xl">
-          <p className="eyebrow mb-3">De Buildy-community</p>
-          <h2 id="projects-title" className="font-serif text-4xl italic leading-tight md:text-5xl">Kijk mee met andere verbouwers.</h2>
-          <p className="mt-3 text-sm font-light leading-relaxed text-muted-foreground">Echte projecten, eerlijke voortgang en ideeën die je meteen kunt bewaren voor later.</p>
-        </div>
+      <section id="projecten" className="scroll-mt-24" aria-labelledby="projects-title">
+        <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 md:px-8 md:py-24">
+          <div className="grid gap-6 lg:grid-cols-12">
+            <div className="lg:col-span-6">
+              <SectionLabel>{view === "projects" ? "Jouw bouwdagboeken" : "Ontdekken"}</SectionLabel>
+              <ProjectHeading id="projects-title" className="max-w-2xl font-serif text-4xl leading-[1.02] md:text-5xl">
+                {view === "projects" ? "Mijn projecten." : "Openbare bouwverhalen, bewust gedeeld."}
+              </ProjectHeading>
+            </div>
+            <p className="max-w-xl font-sans text-sm leading-6 text-muted-foreground lg:col-span-4 lg:col-start-9 lg:pt-7 md:text-base md:leading-7">
+              {view === "projects"
+                ? "Hier staan alleen projecten die bij jouw account horen. Start een update of open een project om verder te bouwen."
+                : "Hier staan uitsluitend projecten die hun maker openbaar heeft gezet. Privé- en gedeelde projecten horen nooit in deze selectie."}
+            </p>
+          </div>
 
-        <div className="mb-10 flex items-center gap-8 border-b border-border" role="tablist" aria-label="Projectoverzicht">
-          <button
-            id="discover-tab"
-            type="button"
-            role="tab"
-            aria-selected={tab === "discover"}
-            aria-controls="discover-panel"
-            onClick={() => setTab("discover")}
-            className={`relative rounded-sm py-4 text-[11px] font-bold uppercase tracking-[0.2em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 ${
-              tab === "discover" ? "text-foreground" : "text-muted-foreground/60 hover:text-muted-foreground"
-            }`}
-          >
-            Ontdekken
-            {tab === "discover" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-foreground" />}
-          </button>
-          {user && (
-            <button
-              id="mine-tab"
-              type="button"
-              role="tab"
-              aria-selected={tab === "mine"}
-              aria-controls="mine-panel"
-              onClick={() => setTab("mine")}
-              className={`relative rounded-sm py-4 text-[11px] font-bold uppercase tracking-[0.2em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 ${
-                tab === "mine" ? "text-foreground" : "text-muted-foreground/60 hover:text-muted-foreground"
+          {!isLanding ? (
+            <nav className="mt-10 flex items-center gap-8 border-b border-border" aria-label="Projectoverzicht">
+            <Link
+              id="discover-tab"
+              to={PRODUCT_ROUTES.discover}
+              aria-current={tab === "discover" ? "page" : undefined}
+              className={`relative min-h-12 rounded-sm px-1 font-sans text-xs font-semibold uppercase tracking-[0.16em] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 ${
+                tab === "discover" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              Mijn projecten
-              {tab === "mine" && <span className="absolute bottom-0 left-0 w-full h-0.5 bg-foreground" />}
-            </button>
-          )}
-        </div>
+              Ontdekken
+              {tab === "discover" ? <span className="absolute inset-x-0 bottom-0 h-0.5 bg-accent" aria-hidden="true" /> : null}
+            </Link>
+            {user ? (
+              <Link
+                id="mine-tab"
+                to={PRODUCT_ROUTES.projects}
+                aria-current={tab === "mine" ? "page" : undefined}
+                className={`relative min-h-12 rounded-sm px-1 font-sans text-xs font-semibold uppercase tracking-[0.16em] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 ${
+                  tab === "mine" ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Mijn projecten
+                {tab === "mine" ? <span className="absolute inset-x-0 bottom-0 h-0.5 bg-accent" aria-hidden="true" /> : null}
+              </Link>
+            ) : null}
+            </nav>
+          ) : null}
 
-        {tab === "discover" && (
-          <div id="discover-panel" role="tabpanel" aria-labelledby="discover-tab">
-            {/* Search + type filter */}
-            <div className="mb-10 flex flex-col gap-3 sm:flex-row">
-              <div className="relative max-w-sm flex-1">
-                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-                <input
-                  type="search"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Zoek project of persoon…"
-                  aria-label="Zoek project of persoon"
-                  className="h-11 w-full rounded-lg border border-border bg-background pl-10 pr-10 text-sm outline-none transition-shadow placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                />
-                {search && (
-                  <button type="button" onClick={() => setSearch("")} aria-label="Zoekopdracht wissen" className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
+          {tab === "discover" ? (
+            <div id="discover-panel" className="outline-none">
+              <div className="my-10 grid gap-4 border-b border-border pb-8 md:grid-cols-[minmax(0,1fr)_18rem]">
+                <label className="block">
+                  <span className="mb-2 block font-sans text-xs font-semibold text-foreground">Zoek in openbare projecten</span>
+                  <span className="relative block">
+                    <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                    <input
+                      type="search"
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      placeholder="Projectnaam of maker"
+                      className="h-12 w-full rounded-md border border-input bg-background pl-10 pr-12 font-sans text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    />
+                    {search ? (
+                      <button
+                        type="button"
+                        onClick={() => setSearch("")}
+                        aria-label="Zoekopdracht wissen"
+                        className="absolute right-0.5 top-0.5 flex h-11 w-11 items-center justify-center rounded-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <X className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    ) : null}
+                  </span>
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block font-sans text-xs font-semibold text-foreground">Type project</span>
+                  <select
+                    value={selectedType}
+                    onChange={(event) => setSelectedType(event.target.value)}
+                    className="h-12 w-full rounded-md border border-input bg-background px-3 font-sans text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    <option value="">Alle typen</option>
+                    {activeTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+                  </select>
+                </label>
               </div>
-              {activeTypes.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {activeTypes.map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      aria-pressed={selectedType === t}
-                      onClick={() => setSelectedType(selectedType === t ? "" : t)}
-                      className={`rounded-full border px-3.5 py-2 text-[10px] font-bold uppercase tracking-[0.12em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-                        selectedType === t
-                          ? "bg-foreground text-background border-foreground"
-                          : "border-border text-muted-foreground hover:text-foreground hover:border-foreground"
-                      }`}
-                    >
-                      {t}
-                    </button>
-                  ))}
+
+              {loadingDiscover ? (
+                <ProjectCollection projects={[]} loading emptyState={null} />
+              ) : discoverError ? (
+                <AsyncState
+                  status="error"
+                  title="Openbare projecten zijn even niet bereikbaar"
+                  description="We tonen geen projectgegevens totdat de openbare selectie veilig kon worden gecontroleerd. Probeer het opnieuw."
+                  action={<Button variant="outline" onClick={() => void discoveryQuery.refetch()}>Opnieuw proberen</Button>}
+                />
+              ) : filtered.length === 0 ? (
+                <AsyncState
+                  status="empty"
+                  title={search || selectedType ? "Geen openbare projecten gevonden" : "Nog geen publieke projecten"}
+                  description={search || selectedType
+                    ? "Pas je zoekopdracht of projecttype aan."
+                    : "Zodra iemand een project bewust openbaar deelt, verschijnt het hier."}
+                  action={search || selectedType ? <Button variant="outline" onClick={clearFilters}>Wis filters</Button> : undefined}
+                />
+              ) : (
+                <div className="space-y-20" aria-live="polite">
+                  <p className="sr-only">{filtered.length} openbare {filtered.length === 1 ? "project" : "projecten"} gevonden.</p>
+                  {renderProjectSection("Actieve bouwverhalen", active)}
+                  {renderProjectSection("Net begonnen", recentlyStarted)}
+                  {renderProjectSection("Bijna klaar", nearlyFinished)}
+                  {renderProjectSection("Meer bouwverhalen", moreProjects)}
+                  {discoveryQuery.hasNextPage ? (
+                    <div className="flex justify-center">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={discoveryQuery.isFetchingNextPage}
+                        onClick={() => void discoveryQuery.fetchNextPage()}
+                      >
+                        {discoveryQuery.isFetchingNextPage ? "Projecten laden…" : "Meer projecten laden"}
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>
+          ) : null}
 
-            {loadingD ? (
-              <Grid projects={[]} loading={true} emptyState={null} />
-            ) : discoverError ? (
-              <EmptyState icon={Home} title="Projecten zijn even niet bereikbaar" description="Je eigen gegevens zijn veilig. Vernieuw de pagina om het nog eens te proberen." />
-            ) : filtered.length === 0 ? (
-              <EmptyState icon={Home} title={search || selectedType ? "Geen resultaten" : "Nog geen publieke projecten"} description={search || selectedType ? "Probeer een andere zoekterm of filter." : "Zodra anderen hun verbouwing delen verschijnen ze hier."} />
-            ) : (
-              <div className="space-y-20">
-                {trending.length > 0 && (
-                  <section>
-                    <div className="flex items-baseline gap-3 mb-8">
-                      <h2 className="text-[11px] font-bold uppercase tracking-[0.2em]">Populair</h2>
-                      <div className="flex-1 h-px bg-border" />
-                    </div>
-                    <Grid projects={trending} loading={false} emptyState={null} />
-                  </section>
-                )}
-                {netBegonnen.length > 0 && (
-                  <section>
-                    <div className="flex items-baseline gap-3 mb-8">
-                      <h2 className="text-[11px] font-bold uppercase tracking-[0.2em]">Net begonnen</h2>
-                      <div className="flex-1 h-px bg-border" />
-                    </div>
-                    <Grid projects={netBegonnen} loading={false} emptyState={null} />
-                  </section>
-                )}
-                {bijnaKlaar.length > 0 && (
-                  <section>
-                    <div className="flex items-baseline gap-3 mb-8">
-                      <h2 className="text-[11px] font-bold uppercase tracking-[0.2em]">Bijna klaar</h2>
-                      <div className="flex-1 h-px bg-border" />
-                    </div>
-                    <Grid projects={bijnaKlaar} loading={false} emptyState={null} />
-                  </section>
-                )}
-                {overigeProjecten.length > 0 && (
-                  <section>
-                    <div className="mb-8 flex items-baseline gap-3">
-                      <h2 className="text-[11px] font-bold uppercase tracking-[0.2em]">Meer projecten</h2>
-                      <div className="h-px flex-1 bg-border" />
-                    </div>
-                    <Grid projects={overigeProjecten} loading={false} emptyState={null} />
-                  </section>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-        {tab === "mine" && user && (
-          <div id="mine-panel" role="tabpanel" aria-labelledby="mine-tab">
-            {mineError ? (
-              <EmptyState icon={Hammer} title="Je projecten zijn even niet bereikbaar" description="Vernieuw de pagina om het nog eens te proberen." />
-            ) : (
-              <Grid
-                projects={mine}
-                loading={loadingM}
-                emptyState={
-                  <EmptyState
-                    icon={Hammer}
-                    title="Begin je eerste verbouwing"
-                    description="Documenteer elke stap, deel updates en bewaar foto's voor later."
-                    action={
-                      <Button asChild variant="pill" size="pill">
-                        <Link to="/trips/new"><Plus className="h-4 w-4" /> Nieuw project</Link>
-                      </Button>
-                    }
-                  />
-                }
-              />
-            )}
-          </div>
-        )}
-
-        {!user && (
-          <section className="mt-24 overflow-hidden rounded-2xl bg-foreground px-6 py-10 text-background sm:px-10 md:flex md:items-center md:justify-between md:gap-10 md:py-12" aria-labelledby="final-cta-title">
-            <div className="max-w-2xl">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-background/55">Jouw verhaal begint hier</p>
-              <h2 id="final-cta-title" className="mt-3 font-serif text-4xl italic leading-tight md:text-5xl">Vandaag één update. Straks een heel Bouwboek.</h2>
-              <p className="mt-3 text-sm font-light leading-relaxed text-background/65">Start gratis en bepaal zelf wanneer je iets deelt.</p>
+          {tab === "mine" && user ? (
+            <div id="mine-panel" className="pt-10 outline-none">
+              {loadingMine ? (
+                <ProjectCollection projects={[]} loading emptyState={null} />
+              ) : mineError ? (
+                <AsyncState
+                  status="error"
+                  title="Je projecten zijn even niet bereikbaar"
+                  description="We tonen geen eerder geladen privégegevens. Controleer je verbinding en probeer het opnieuw."
+                  action={<Button variant="outline" onClick={() => void dashboardQuery.refetch()}>Opnieuw proberen</Button>}
+                />
+              ) : (
+                <ProjectCollection
+                  projects={mine}
+                  loading={false}
+                  emptyState={(
+                    <AsyncState
+                      status="empty"
+                      title="Begin je eerste verbouwing"
+                      description="Documenteer iedere fase en bepaal daarna rustig wie mag meekijken."
+                      action={(
+                        <Button asChild>
+                          <Link to={PRODUCT_ROUTES.newProject}><Plus className="h-4 w-4" aria-hidden="true" /> Nieuw project</Link>
+                        </Button>
+                      )}
+                    />
+                  )}
+                />
+              )}
+              {!loadingMine && !mineError && dashboardQuery.hasNextPage ? (
+                <div className="mt-12 flex justify-center">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={dashboardQuery.isFetchingNextPage}
+                    onClick={() => void dashboardQuery.fetchNextPage()}
+                  >
+                    {dashboardQuery.isFetchingNextPage ? "Projecten laden…" : "Meer projecten laden"}
+                  </Button>
+                </div>
+              ) : null}
             </div>
-            <Button asChild variant="pillAccent" size="pill" className="mt-7 w-full shrink-0 px-7 md:mt-0 md:w-auto">
-              <Link to="/auth?mode=register&next=%2Ftrips%2Fnew">Maak je eerste project <ArrowRight className="h-4 w-4" /></Link>
-            </Button>
-          </section>
-        )}
+          ) : null}
+        </div>
+      </section>
 
-        <section className="mt-24 border-t border-border pt-16 grid gap-10 md:grid-cols-[0.9fr_1.1fr]">
-          <div>
-            <p className="eyebrow mb-3">Verbouwingsdagboek</p>
-            <h2 className="font-serif italic text-4xl md:text-5xl leading-tight">
-              Van losse foto's naar een verhaal dat blijft.
-            </h2>
-          </div>
-          <div className="space-y-5 text-sm md:text-base text-muted-foreground leading-relaxed font-light">
-            <p>
-              Buildy helpt je een verbouwing bijhouden zonder dat alles verdwijnt in WhatsApp, notities en fotomappen.
-              Maak per fase een update, leg keuzes en mijlpalen vast en laat vrienden of familie meekijken.
-            </p>
-            <p>
-              Of je nu een keuken, badkamer, aanbouw, zolder, boot, camper, auto of volledige renovatie documenteert: je bouwt automatisch aan
-              een renovatiedagboek dat later geschikt is voor een fysiek fotoboek van je verbouwing.
-            </p>
+      {isLanding && !user ? (
+        <section className="border-t border-border bg-foreground text-background" aria-labelledby="final-cta-title">
+          <div className="mx-auto grid max-w-7xl items-end gap-8 px-4 py-14 sm:px-6 md:px-8 md:py-16 lg:grid-cols-12">
+            <div className="lg:col-span-8">
+              <p className="font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-background/65">Jouw eerste veldnotitie</p>
+              <h2 id="final-cta-title" className="mt-3 max-w-3xl font-serif text-4xl leading-[1.02] md:text-5xl">
+                Vandaag één update. Straks het hele verhaal.
+              </h2>
+              <p className="mt-4 max-w-xl font-sans text-sm leading-6 text-background/70">Gratis beginnen, privé bewaren en pas delen wanneer jij daar klaar voor bent.</p>
+            </div>
+            <div className="lg:col-span-4 lg:flex lg:justify-end">
+              <Button asChild size="lg" className="min-h-12 w-full rounded-md bg-background px-6 text-foreground hover:bg-background/90 sm:w-auto">
+                <Link to="/auth?mode=register&next=%2Fproject%2Fnieuw">
+                  Maak je eerste project <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </Link>
+              </Button>
+            </div>
           </div>
         </section>
-      </section>
+      ) : null}
     </div>
   );
 };

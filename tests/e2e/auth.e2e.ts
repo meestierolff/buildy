@@ -1,5 +1,7 @@
 import { test, expect, BASE, trackConsoleErrors } from "./helpers";
 
+const hasExplicitBackendBaseUrl = Boolean(process.env.PLAYWRIGHT_BASE_URL);
+
 test.describe("Auth flow", () => {
   test("login form has all required controls", async ({ page }) => {
     const errors = trackConsoleErrors(page);
@@ -25,7 +27,7 @@ test.describe("Auth flow", () => {
   test("start-project CTA opens registration and preserves its destination", async ({ page }) => {
     await page.goto(BASE);
     await page.getByRole("link", { name: /start gratis je dagboek/i }).click();
-    await expect(page).toHaveURL(/\/auth\?mode=register&next=%2Ftrips%2Fnew$/);
+    await expect(page).toHaveURL(/\/auth\?mode=register&next=%2Fproject%2Fnieuw$/);
     await expect(page.getByRole("heading", { name: /start je dagboek/i })).toBeVisible();
     await expect(page.getByLabel("Naam", { exact: true })).toBeVisible();
   });
@@ -34,7 +36,7 @@ test.describe("Auth flow", () => {
     const orderId = "11111111-1111-4111-8111-111111111111";
     await page.goto(`${BASE}/bestelling/${orderId}`);
     await expect(page).toHaveURL(
-      new RegExp(`/auth\\?next=${encodeURIComponent(`/bestelling/${orderId}`)}$`),
+      new RegExp(`/auth\\?next=${encodeURIComponent(`/bestellingen/${orderId}`)}$`),
     );
     await expect(page.getByRole("heading", { name: /welkom terug/i })).toBeVisible();
   });
@@ -46,6 +48,7 @@ test.describe("Auth flow", () => {
   });
 
   test("invalid credentials show an error toast without crashing", async ({ page }) => {
+    test.skip(!hasExplicitBackendBaseUrl, "requires explicit backend-backed auth runtime");
     await page.goto(`${BASE}/auth`);
     await page.getByRole("textbox", { name: /e-mailadres/i }).fill("nobody+e2e@buildy.test");
     await page.getByLabel("Wachtwoord", { exact: true }).fill("wrong-password");

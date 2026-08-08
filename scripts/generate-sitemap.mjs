@@ -1,32 +1,28 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const root = process.cwd();
-
-const parseEnvFile = (file) => {
-  if (!existsSync(file)) return {};
-  return Object.fromEntries(
-    readFileSync(file, "utf8")
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("#") && line.includes("="))
-      .map((line) => {
-        const [key, ...rest] = line.split("=");
-        return [key.trim(), rest.join("=").trim().replace(/^["']|["']$/g, "")];
-      }),
-  );
-};
-
-const env = {
-  ...parseEnvFile(join(root, ".env")),
-  ...parseEnvFile(join(root, ".env.production")),
-  ...process.env,
-};
-
-const siteUrl = (env.VITE_SITE_URL || "https://buildy.app").replace(/\/$/, "");
+const outputArgumentIndex = process.argv.indexOf("--output-dir");
+const outputDirectory = resolve(
+  root,
+  outputArgumentIndex >= 0 ? process.argv[outputArgumentIndex + 1] || "dist" : "dist",
+);
+const configuredSiteUrl = process.env.APP_ORIGIN || process.env.VITE_SITE_URL;
+const siteUrl = (() => {
+  if (!configuredSiteUrl) return "https://buildy.invalid";
+  const parsed = new URL(configuredSiteUrl);
+  const localHttp = parsed.protocol === "http:" && ["127.0.0.1", "localhost"].includes(parsed.hostname);
+  if (
+    (parsed.protocol !== "https:" && !localHttp)
+    || parsed.username
+    || parsed.password
+    || parsed.pathname !== "/"
+    || parsed.search
+    || parsed.hash
+  ) throw new Error("APP_ORIGIN/VITE_SITE_URL moet een veilige origin zonder pad zijn.");
+  return parsed.origin;
+})();
 const today = new Date().toISOString().slice(0, 10);
-const supabaseUrl = env.VITE_SUPABASE_URL?.replace(/\/$/, "");
-const supabaseKey = env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 const escapeXml = (value) =>
   String(value)
@@ -36,54 +32,59 @@ const escapeXml = (value) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
 
-const fetchSupabaseRows = async (table, query) => {
-  if (!supabaseUrl || !supabaseKey || typeof fetch !== "function") return [];
+const fetchPublicEntries = async () => {
+  const sourceUrl = process.env.SITEMAP_SOURCE_URL;
+  if (!sourceUrl || typeof fetch !== "function") return { projects: [], profiles: [] };
 
-  const url = `${supabaseUrl}/rest/v1/${table}?${query}`;
   try {
-    const response = await fetch(url, {
-      headers: {
-        apikey: supabaseKey,
-        authorization: `Bearer ${supabaseKey}`,
-      },
+    const response = await fetch(sourceUrl, {
+      headers: process.env.SITEMAP_SOURCE_TOKEN
+        ? { authorization: `Bearer ${process.env.SITEMAP_SOURCE_TOKEN}` }
+        : undefined,
     });
     if (!response.ok) {
-      console.warn(`Skipping ${table} sitemap entries: ${response.status} ${response.statusText}`);
-      return [];
+      console.warn(`Sitemapbron overgeslagen: ${response.status} ${response.statusText}`);
+      return { projects: [], profiles: [] };
     }
-    return await response.json();
+
+    const payload = await response.json();
+    return {
+      projects: Array.isArray(payload.projects) ? payload.projects : [],
+      profiles: Array.isArray(payload.profiles) ? payload.profiles : [],
+    };
   } catch (error) {
-    console.warn(`Skipping ${table} sitemap entries:`, error.message);
-    return [];
+    console.warn("Sitemapbron overgeslagen:", error instanceof Error ? error.message : "onbekende fout");
+    return { projects: [], profiles: [] };
   }
 };
 
 const staticRoutes = [
   { path: "/", changefreq: "weekly", priority: "1.0", lastmod: today },
-  { path: "/vrienden", changefreq: "weekly", priority: "0.7", lastmod: today },
+  { path: "/ontdekken", changefreq: "daily", priority: "0.8", lastmod: today },
+  { path: "/voorwaarden", changefreq: "yearly", priority: "0.2", lastmod: today },
+  { path: "/privacy", changefreq: "yearly", priority: "0.2", lastmod: today },
+  { path: "/herroeping", changefreq: "yearly", priority: "0.2", lastmod: today },
 ];
 
-const publicTrips = await fetchSupabaseRows(
-  "trips",
-  "select=id,updated_at,created_at&is_public=eq.true&order=updated_at.desc&limit=500",
-);
-const publicProfiles = await fetchSupabaseRows(
-  "profiles",
-  "select=user_id,updated_at,created_at&is_private=eq.false&order=updated_at.desc&limit=500",
-);
-
+const publicEntries = await fetchPublicEntries();
 const dynamicRoutes = [
-  ...publicTrips.map((trip) => ({
-    path: `/trip/${trip.id}`,
+  ...publicEntries.projects.filter((project) => (
+    project && typeof project.id === "string"
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(project.id)
+  )).map((project) => ({
+    path: `/project/${encodeURIComponent(project.id.toLowerCase())}`,
     changefreq: "weekly",
     priority: "0.8",
-    lastmod: (trip.updated_at || trip.created_at || today).slice(0, 10),
+    lastmod: String(project.updatedAt || today).slice(0, 10),
   })),
-  ...publicProfiles.map((profile) => ({
-    path: `/profile/${profile.user_id}`,
+  ...publicEntries.profiles.filter((profile) => (
+    profile && typeof profile.slug === "string"
+    && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(profile.slug)
+  )).map((profile) => ({
+    path: `/profiel/${encodeURIComponent(profile.slug)}`,
     changefreq: "monthly",
     priority: "0.5",
-    lastmod: (profile.updated_at || profile.created_at || today).slice(0, 10),
+    lastmod: String(profile.updatedAt || today).slice(0, 10),
   })),
 ];
 
@@ -111,9 +112,22 @@ ${routes
 
 const robots = `User-agent: *
 Allow: /
+Disallow: /account
+Disallow: /beheer/
+Disallow: /bestelling/
+Disallow: /bestellingen/
+Disallow: /connecties
+Disallow: /notificaties
+Disallow: /project/nieuw
+Disallow: /project/*/budget
+Disallow: /project/*/bouwboek
+Disallow: /projecten
+Disallow: /update/nieuw
+Disallow: /volgend
 
 Sitemap: ${siteUrl}/sitemap.xml
 `;
 
-writeFileSync(join(root, "public", "sitemap.xml"), sitemap);
-writeFileSync(join(root, "public", "robots.txt"), robots);
+mkdirSync(outputDirectory, { recursive: true });
+writeFileSync(resolve(outputDirectory, "sitemap.xml"), sitemap);
+writeFileSync(resolve(outputDirectory, "robots.txt"), robots);

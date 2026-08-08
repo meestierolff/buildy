@@ -1,132 +1,56 @@
-import { useEffect, useState } from "react";
-import { Link, Navigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Heart, Home, Flag } from "lucide-react";
-import EmptyState from "@/components/EmptyState";
 import { formatDistanceToNow } from "date-fns";
 import { nl } from "date-fns/locale";
+import { Flag, Heart, Home, Loader2, RefreshCw } from "lucide-react";
+
+import EmptyState from "@/components/EmptyState";
 import { phaseColor } from "@/components/PhaseSelect";
 import ProjectCard from "@/components/ProjectCard";
-import { applyProjectMediaSummaries, loadProjectMediaSummaries } from "@/lib/projectMedia";
-import { hydrateStepsMedia } from "@/lib/mediaUrl";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/hooks/useAuth";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { useFollowingFeed } from "@/hooks/useProjectApi";
+import { Link, Navigate } from "@/lib/router";
+import { authPagePath } from "@/lib/authClient";
+import { PRODUCT_ROUTES } from "@/lib/productNavigation";
 
 const Favorites = () => {
   const { user, loading: authLoading } = useAuth();
+  const feedQuery = useFollowingFeed(Boolean(user));
   usePageMeta({
     title: "Projecten die ik volg — Buildy",
     description: "Bekijk updates van renovatieprojecten die je volgt.",
-    path: "/favorieten",
+    path: PRODUCT_ROUTES.following,
     noIndex: true,
   });
-  const [projects, setProjects] = useState<any[]>([]);
-  const [activity, setActivity] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!user) {
-      setProjects([]);
-      setActivity([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    (async () => {
-      const [{ data: follows, error: followsError }, { data: userFollows, error: userFollowsError }] = await Promise.all([
-        supabase
-          .from("follows")
-          .select("project_id")
-          .eq("user_id", user.id)
-          .eq("status", "accepted"),
-        supabase
-          .from("user_follows")
-          .select("following_id")
-          .eq("follower_id", user.id)
-          .eq("status", "accepted"),
-      ]);
-      if (followsError) console.error("Followed projects load failed:", followsError);
-      if (userFollowsError) console.error("Followed builders load failed:", userFollowsError);
-
-      const explicitIds = (follows || []).map((follow) => follow.project_id);
-      const builderIds = (userFollows || []).map((follow) => follow.following_id);
-      if (explicitIds.length === 0 && builderIds.length === 0) {
-        setProjects([]);
-        setActivity([]);
-        setLoading(false);
-        return;
-      }
-
-      const tripQueries = [];
-      if (explicitIds.length > 0) {
-        tripQueries.push(supabase.from("trips").select("*").in("id", explicitIds));
-      }
-      if (builderIds.length > 0) {
-        // Following a builder adds only their public projects. Private project
-        // access always requires an accepted project-level follow.
-        tripQueries.push(supabase.from("trips").select("*").in("user_id", builderIds).eq("is_public", true));
-      }
-      const tripResults = await Promise.all(tripQueries);
-      tripResults.forEach(({ error }) => {
-        if (error) console.error("Follow feed projects load failed:", error);
-      });
-      const trips = Array.from(new Map(
-        tripResults.flatMap(({ data }) => data || []).map((trip) => [trip.id, trip]),
-      ).values());
-      const ids = trips.map((trip) => trip.id);
-
-      if (trips.length === 0) {
-        setProjects([]);
-        setActivity([]);
-        setLoading(false);
-        return;
-      }
-
-      const userIds = Array.from(new Set(trips.map((t: any) => t.user_id)));
-      const [mediaSummaries, { data: profiles }] = await Promise.all([
-        loadProjectMediaSummaries(ids),
-        supabase.rpc("get_profiles_basic", { _ids: userIds }),
-      ]);
-      const profileById = new Map((profiles || []).map((p: any) => [p.user_id, p]));
-      setProjects(
-        applyProjectMediaSummaries(trips, mediaSummaries).map((t: any) => ({
-          ...t,
-          profile: profileById.get(t.user_id),
-        })),
-      );
-
-      // Activity feed: latest steps from followed projects
-      const { data: recent, error: recentError } = await supabase
-        .from("steps")
-        .select("id, location_name, description, step_date, trip_id, created_at, phase, is_milestone, step_media(media_url, storage_path, media_type, sort_order)")
-        .in("trip_id", ids)
-        .order("created_at", { ascending: false })
-        .limit(20);
-      if (recentError) console.error("Follow activity load failed:", recentError);
-      if (recent) {
-        await hydrateStepsMedia(recent as any);
-        const tMap = new Map((trips || []).map((t: any) => [t.id, t]));
-        setActivity(recent.map((s: any) => ({ ...s, trip: tMap.get(s.trip_id) })));
-      } else {
-        setActivity([]);
-      }
-      setLoading(false);
-    })();
-  }, [user]);
 
   if (authLoading) return <div className="min-h-screen bg-background" />;
-  if (!user) return <Navigate to="/auth?next=%2Ffavorieten" replace />;
+  if (!user) return <Navigate to={authPagePath(PRODUCT_ROUTES.following)} replace />;
+
+  const projects = feedQuery.data?.projects ?? [];
+  const activity = feedQuery.data?.activity ?? [];
 
   return (
-    <div className="max-w-7xl mx-auto px-6 md:px-8 py-16">
+    <main className="mx-auto max-w-7xl px-6 py-16 md:px-8">
       <div className="mb-12">
         <p className="eyebrow mb-2">Jouw feed</p>
-        <h1 className="font-serif italic text-4xl md:text-5xl">Volgend</h1>
+        <h1 className="font-serif text-4xl italic md:text-5xl">Volgend</h1>
       </div>
 
-      {loading ? (
-        <p className="text-muted-foreground text-sm">Laden…</p>
+      {feedQuery.isPending ? (
+        <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Gevolgde projecten laden…
+        </p>
+      ) : feedQuery.isError ? (
+        <section className="rounded-lg border border-dashed p-8 text-center" role="alert">
+          <h2 className="font-semibold">Je feed kon niet worden geladen</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            We tonen geen eerder geladen privéprojecten wanneer de toegangscontrole mislukt.
+          </p>
+          <Button className="mt-5 gap-2" variant="outline" onClick={() => void feedQuery.refetch()}>
+            <RefreshCw className="h-4 w-4" aria-hidden="true" /> Opnieuw proberen
+          </Button>
+        </section>
       ) : projects.length === 0 ? (
         <EmptyState
           icon={Heart}
@@ -135,56 +59,62 @@ const Favorites = () => {
         />
       ) : (
         <Tabs defaultValue="feed">
-          <TabsList className="mb-8 bg-transparent border-b border-border rounded-none p-0 h-auto gap-8">
-            <TabsTrigger value="feed" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Recent</TabsTrigger>
-            <TabsTrigger value="projects" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Projecten ({projects.length})</TabsTrigger>
+          <TabsList className="mb-8 h-auto gap-8 rounded-none border-b border-border bg-transparent p-0">
+            <TabsTrigger value="feed" className="rounded-none border-b-2 border-transparent px-0 pb-3 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60 data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none">
+              Recent
+            </TabsTrigger>
+            <TabsTrigger value="projects" className="rounded-none border-b-2 border-transparent px-0 pb-3 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60 data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none">
+              Projecten ({projects.length})
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="feed">
             {activity.length === 0 ? (
-              <p className="text-muted-foreground text-sm">Nog geen updates van projecten die je volgt.</p>
+              <p className="text-sm text-muted-foreground">Nog geen gepubliceerde updates van projecten die je volgt.</p>
             ) : (
-              <div className="max-w-lg divide-y divide-border/50 rounded-xl overflow-hidden border border-border/60">
-                {activity.map((s: any) => {
-                  const firstPhoto = [...(s.step_media || [])]
-                    .filter((m: any) => m.media_type !== "pdf" && m.media_type !== "video")
-                    .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0))[0]?.media_url;
+              <div className="max-w-lg divide-y divide-border/50 overflow-hidden rounded-xl border border-border/60">
+                {activity.map(({ project, update }) => {
+                  const firstPhoto = update.media.find((media) => (
+                    media.contentType !== "application/pdf" && !media.contentType?.startsWith("video/")
+                  ));
+                  const timestamp = update.publishedAt ?? update.updatedAt;
                   return (
-                    <Link key={s.id} to={`/trip/${s.trip_id}?step=${s.id}`} className="block hover:bg-muted/40 transition-colors bg-card">
-                      {/* project name header */}
-                      <div className="px-4 pt-3 pb-1 flex items-center gap-2">
-                        <Home className="h-3 w-3 text-accent shrink-0" />
-                        <span className="text-[11px] font-semibold text-accent truncate">{s.trip?.title}</span>
-                        <span className="text-[10px] text-muted-foreground ml-auto shrink-0">
-                          {formatDistanceToNow(new Date(s.created_at), { addSuffix: true, locale: nl })}
+                    <Link
+                      key={update.id}
+                      to={PRODUCT_ROUTES.projectUpdate(project.id, update.id)}
+                      className="block bg-card transition-colors hover:bg-muted/40"
+                    >
+                      <div className="flex items-center gap-2 px-4 pb-1 pt-3">
+                        <Home className="h-3 w-3 shrink-0 text-accent" aria-hidden="true" />
+                        <span className="truncate text-[11px] font-semibold text-accent">{project.title}</span>
+                        <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                          {formatDistanceToNow(new Date(timestamp), { addSuffix: true, locale: nl })}
                         </span>
                       </div>
 
-                      {/* photo */}
-                      {firstPhoto && (
-                        <div className="w-full" style={{ aspectRatio: "4/3" }}>
-                          <img src={firstPhoto} alt="" loading="lazy" className="w-full h-full object-cover" />
+                      {firstPhoto ? (
+                        <div className="aspect-[4/3] w-full">
+                          <img src={firstPhoto.proxyPath} alt="" loading="lazy" className="h-full w-full object-cover" />
                         </div>
-                      )}
+                      ) : null}
 
-                      {/* meta + text */}
-                      <div className="px-4 pt-2 pb-3 space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {s.phase && (
-                            <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full ${phaseColor(s.phase)}`}>
-                              {s.phase}
+                      <div className="space-y-1 px-4 pb-3 pt-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {update.phase ? (
+                            <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${phaseColor(update.phase.name)}`}>
+                              {update.phase.name}
                             </span>
-                          )}
-                          {s.is_milestone && (
-                            <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-accent/15 text-accent flex items-center gap-0.5">
-                              <Flag className="h-2.5 w-2.5" /> Mijlpaal
+                          ) : null}
+                          {update.isMilestone ? (
+                            <span className="flex items-center gap-0.5 rounded-full bg-accent/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-accent">
+                              <Flag className="h-2.5 w-2.5" aria-hidden="true" /> Mijlpaal
                             </span>
-                          )}
+                          ) : null}
                         </div>
-                        <p className="font-bold text-sm leading-tight">{s.location_name}</p>
-                        {s.description && (
-                          <p className="text-xs text-muted-foreground line-clamp-2">{s.description}</p>
-                        )}
+                        <p className="text-sm font-bold leading-tight">{update.title ?? update.room ?? "Projectupdate"}</p>
+                        {update.description ? (
+                          <p className="line-clamp-2 text-xs text-muted-foreground">{update.description}</p>
+                        ) : null}
                       </div>
                     </Link>
                   );
@@ -194,27 +124,26 @@ const Favorites = () => {
           </TabsContent>
 
           <TabsContent value="projects">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
-              {projects.map((p) => {
-                return (
-                  <ProjectCard
-                    key={p.id}
-                    id={p.id}
-                    title={p.title}
-                    projectType={p.project_type}
-                    progressPercentage={p.progress_percentage}
-                    coverUrl={p.cover_image_url}
-                    coverMediaType={p.cover_media_type}
-                    profileName={p.profile?.display_name}
-                    stepCount={p.step_count}
-                  />
-                );
-              })}
+            <div className="grid grid-cols-1 gap-x-8 gap-y-12 md:grid-cols-2 lg:grid-cols-3">
+              {projects.map((project) => (
+                <ProjectCard
+                  key={project.id}
+                  id={project.id}
+                  title={project.title}
+                  projectType={project.projectType}
+                  progressPercentage={project.progressPercentage}
+                  coverUrl={project.cover?.proxyPath}
+                  coverMediaType={project.cover?.contentType}
+                  profileName={project.owner.displayName}
+                  updateCount={project.updateCount}
+                  isPublic={project.visibility === "public"}
+                />
+              ))}
             </div>
           </TabsContent>
         </Tabs>
       )}
-    </div>
+    </main>
   );
 };
 

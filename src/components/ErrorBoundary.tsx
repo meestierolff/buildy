@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { recordProductEvent } from "@/lib/betaApi";
 
 interface Props {
   children: ReactNode;
@@ -21,6 +22,10 @@ class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("Unhandled UI error", error, info.componentStack);
+    void recordProductEvent({
+      eventName: "error_encountered",
+      properties: { schemaVersion: 1, category: "unknown" },
+    }).catch(() => undefined);
   }
 
   private handleReload = () => {

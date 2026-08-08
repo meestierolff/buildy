@@ -24,7 +24,7 @@ Geen geslaagde compileer- of HTTP-status wordt in dit document behandeld als bew
 
 ## 2. Samenvattend oordeel
 
-De repository bevat veel waardevolle productlogica en een omvangrijke Supabase-databasegeschiedenis, maar is op dit moment **NO-GO voor publieke productie en echte betalingen**.
+De repository bevat veel waardevolle productlogica en een omvangrijke oude BaaS-provider-databasegeschiedenis, maar is op dit moment **NO-GO voor publieke productie en echte betalingen**.
 
 Belangrijkste redenen:
 
@@ -34,7 +34,7 @@ Belangrijkste redenen:
 4. De browserbaseline eindigt op 26 geslaagde, 5 overgeslagen en 1 mislukte Playwright-test; authenticated ownerflows zijn niet aantoonbaar afgedekt.
 5. `bun audit` rapporteert 53 advisories, inclusief 1 critical en 25 high.
 6. De live launch-check slaagt slechts 10 van 13 controles: het publieke domein resolveert niet, Google OAuth is daardoor niet bereikbaar en de order-schemacontrole geeft HTTP 400.
-7. CI kan bij ontbrekende secrets terugvallen op een in Git vastgelegde Supabase-configuratie en gebruikt gedeelde, niet-synthetische backendrecords.
+7. CI kan bij ontbrekende secrets terugvallen op een in Git vastgelegde oude BaaS-provider-configuratie en gebruikt gedeelde, niet-synthetische backendrecords.
 8. Provider-, mail-, monitoring-, backup-, cron- en incidentprocessen zijn niet als production-grade infrastructuur geïmplementeerd of aantoonbaar getest.
 
 ## 3. Repository-inventaris
@@ -52,8 +52,8 @@ De huidige frontend is een React 18 SPA met TypeScript, Vite, Tailwind CSS en sh
 | Integratiebestanden onder `src/integrations/` | 3 |
 | Vitest testbestanden | 9 plus `setup.ts` |
 | Playwright specs | 6 plus `helpers.ts` |
-| Supabase SQL-migraties | 62 |
-| Supabase Edge Functions | 6 plus 2 gedeelde modules |
+| oude BaaS-provider SQL-migraties | 62 |
+| oude BaaS-provider Edge Functions | 6 plus 2 gedeelde modules |
 | Repositoryscripts | 5, inclusief de baseline-capture |
 
 De twee grootste actieve pagina's zijn:
@@ -70,9 +70,9 @@ Dit bevestigt dat met name Bouwboek en projectdetail te veel datafetching, domei
 | Route | Huidige pagina / functie | Observatie |
 |---|---|---|
 | `/` | `Index` | Landing en publieke ontdekking gecombineerd |
-| `/auth` | `Auth` | Login, registratie, magic link en Google via Lovable |
-| `/wachtwoord-vergeten` | `ForgotPassword` | Supabase resetmail |
-| `/wachtwoord-resetten` | `ResetPassword` | Supabase sessie-/passwordflow |
+| `/auth` | `Auth` | Login, registratie, magic link en Google via oude prototypeprovider |
+| `/wachtwoord-vergeten` | `ForgotPassword` | oude BaaS-provider resetmail |
+| `/wachtwoord-resetten` | `ResetPassword` | oude BaaS-provider sessie-/passwordflow |
 | `/account` | `AccountSettings` | Account, privacy en deleteflow |
 | `/trips/new` | `NewTrip` | Legacy `trip`-terminologie |
 | `/trip/:id` | `TripDetail` | Overzicht, tijdlijn, foto's en plattegrond |
@@ -105,27 +105,27 @@ Deze audit heeft geen bestaande gebruikerswijzigingen overschreven.
 
 ### 4.1 Runtime
 
-De huidige architectuur is browser-to-Supabase:
+De huidige architectuur is browser-to-oude BaaS-provider:
 
 ```text
 React/Vite SPA
-  ├─ Supabase Auth
-  ├─ Supabase PostgREST/RPC
-  ├─ Supabase Storage
-  ├─ Supabase Edge Functions
-  ├─ Lovable OAuth broker
-  ├─ Lovable AI Gateway
+  ├─ oude BaaS-provider Auth
+  ├─ oude BaaS-provider PostgREST/RPC
+  ├─ oude BaaS-provider Storage
+  ├─ oude BaaS-provider Edge Functions
+  ├─ oude prototypeprovider OAuth broker
+  ├─ oude prototypeprovider AI Gateway
   ├─ Stripe REST/Checkout via Edge Functions
   └─ Peecho REST/pingback plus legacy clientwidget-helpers
 ```
 
 Actieve providerafhankelijkheden zijn onder meer:
 
-- `@supabase/supabase-js`;
-- `@lovable.dev/cloud-auth-js`;
-- `lovable-tagger`;
+- `oude browser-SDK`;
+- `oude OAuth-wrapper`;
+- `oude componenttagger`;
 - browser-side `jspdf`;
-- Stripe- en Peecho-aanroepen vanuit Supabase Edge Functions.
+- Stripe- en Peecho-aanroepen vanuit oude BaaS-provider Edge Functions.
 
 De doelafhankelijkheden voor Neon, Drizzle, Vercel Functions, Cloudflare R2/S3 en Brevo ontbreken. Ook ontbreken `db/`, `api/`, `scripts/setup/`, `drizzle.config.ts`, `vercel.json` en provider-neutrale serveradapters.
 
@@ -147,8 +147,8 @@ Risico's:
 
 ### 4.3 Aangetroffen configuratiezwaktes
 
-- `vite.config.ts` bevat een hardcoded Supabase endpoint- en publishable-tokenfallback. Daardoor slaagt een build zonder expliciete environmentconfiguratie en kan een PR onbedoeld een gedeelde backend benaderen.
-- De Lovable component tagger is nog actief in development.
+- `vite.config.ts` bevat een hardcoded oude BaaS-provider endpoint- en publishable-tokenfallback. Daardoor slaagt een build zonder expliciete environmentconfiguratie en kan een PR onbedoeld een gedeelde backend benaderen.
+- De oude prototypeprovider component tagger is nog actief in development.
 - De Vite HMR-overlay staat uit en kan ontwikkelfouten minder zichtbaar maken.
 - `tsconfig.app.json` heeft `strict: false`, `noImplicitAny: false`, geen effectieve strict-nullcontrole en `skipLibCheck: true`.
 - `tsconfig.node.json` typecheckt alleen `vite.config.ts`; Playwright, Vitest, Tailwind, scripts en Edge Functions vallen erbuiten.
@@ -159,7 +159,7 @@ Risico's:
 
 ### 5.1 Statisch bekende schema-oppervlakte
 
-De gegenereerde Supabase-types noemen twintig tabellen:
+De gegenereerde oude BaaS-provider-types noemen twintig tabellen:
 
 - `profiles`;
 - `trips`;
@@ -201,11 +201,11 @@ Aangetroffen functies:
 - `delete-account`;
 - `floorplan-blueprint`.
 
-De repository bevat nuttige logica voor ownershipchecks, Stripe-signatures, Peecho-statusmapping, order-idempotentie, PDF-retentie, accountcleanup en AI-quota. Vijf functies hebben in `supabase/config.toml` `verify_jwt = false` omdat zij webhook-, cron- of eigen authvalidatie uitvoeren. Dit vereist per functie integratietests; broncode-inspectie alleen is onvoldoende.
+De repository bevat nuttige logica voor ownershipchecks, Stripe-signatures, Peecho-statusmapping, order-idempotentie, PDF-retentie, accountcleanup en AI-quota. Vijf functies hebben in `verwijderde providerconfig` `verify_jwt = false` omdat zij webhook-, cron- of eigen authvalidatie uitvoeren. Dit vereist per functie integratietests; broncode-inspectie alleen is onvoldoende.
 
 ### 5.3 Wat live wel en niet is bewezen
 
-De launch-check kon de geconfigureerde Supabaseomgeving bereiken en bevestigde:
+De launch-check kon de geconfigureerde oude BaaS-provideromgeving bereiken en bevestigde:
 
 - publieke projectquery werkt als anonieme gebruiker;
 - notifications en privé-adresgegevens leverden geen anonieme rijen;
@@ -224,7 +224,7 @@ Niet bewezen:
 
 De `photobook_orders`-launchprobe gaf HTTP 400. De precieze response is niet als bewijs van één oorzaak gebruikt, maar de uitkomst is wel een concrete indicatie van schema- of deploydrift.
 
-De read-only asset- en social-audits konden niet worden uitgevoerd omdat `SUPABASE_SERVICE_ROLE_KEY` niet beschikbaar was. Zij eindigden beide met exitcode 2 zonder data te wijzigen.
+De read-only asset- en social-audits konden niet worden uitgevoerd omdat `LEGACY_SOURCE_ADMIN_KEY` niet beschikbaar was. Zij eindigden beide met exitcode 2 zonder data te wijzigen.
 
 ## 6. Waardevolle logica die behouden moet blijven
 
@@ -305,7 +305,7 @@ De negen testbestanden bevatten veel waardevolle pure checkout-, privacy- en pat
 - `example.test.ts` test alleen `true === true`;
 - er zijn geen React componenttests;
 - er is geen coverageprovider of threshold;
-- er zijn geen echte Neon/Supabase-, auth-, storage-, Stripe-, Peecho- of mailintegratietests.
+- er zijn geen echte Neon/oude BaaS-provider-, auth-, storage-, Stripe-, Peecho- of mailintegratietests.
 
 ### 7.3 Build
 
@@ -372,8 +372,8 @@ Een npm-audit op de aparte npm-lockfile gaf een veel kleiner aantal advisories. 
 Aanvullende securityrisico's:
 
 - tracked hardcoded providerfallback in `vite.config.ts`;
-- huidige authsessie in browser/localStorage via Supabase;
-- actieve Lovable OAuth-broker en AI Gateway;
+- huidige authsessie in browser/localStorage via oude BaaS-provider;
+- actieve oude prototypeprovider OAuth-broker en AI Gateway;
 - geen centrale CSRF-, rate-limit- of request-ID-laag;
 - geen provideraccount-ID guard voor Stripe/Peecho;
 - geen CI-secret scan of dependency review;
@@ -418,15 +418,15 @@ De workflow zet `PLAYWRIGHT_STORAGE_STATE` op een secret met de naam `PLAYWRIGHT
 
 De lokale `.env` bestaat, is door `.gitignore` beschermd en bevat vijf aanwezige keys:
 
-- `VITE_SUPABASE_PROJECT_ID`;
-- `VITE_SUPABASE_PUBLISHABLE_KEY`;
-- `VITE_SUPABASE_URL`;
+- `LEGACY_SOURCE_PROJECT_ID`;
+- `LEGACY_SOURCE_PUBLIC_KEY`;
+- `LEGACY_SOURCE_URL`;
 - `VITE_PEECHO_SCRIPT_URL`;
 - `VITE_PEECHO_BUTTON_KEY`.
 
 Er zijn geen waarden in deze audit opgenomen.
 
-`.env.example` bevat 40 keys voor Supabase, Stripe, Peecho, sellergegevens, retentie en Lovable AI. Ontbrekend voor de doelarchitectuur zijn onder andere:
+`.env.example` bevat 40 keys voor oude BaaS-provider, Stripe, Peecho, sellergegevens, retentie en oude prototypeprovider AI. Ontbrekend voor de doelarchitectuur zijn onder andere:
 
 - Neon runtime- en migrationconnecties;
 - authkeys/sessionsecret;
@@ -449,12 +449,12 @@ Er zijn geen `.env.local`, `.env.production` of `.env.test` en er is geen getype
 
 ### Tegenstrijdig of stale
 
-- `AGENTS.md` verplicht Supabase en de publieke Peecho Print Button en noemt TanStack Query v5, terwijl die dependency niet aanwezig is.
-- `LOVABLE_PROMPT.md` vraagt om publieke PDF's en een directe widgetflow, in strijd met zowel de huidige checkoutcode als de nieuwe opdracht.
+- `AGENTS.md` verplicht oude BaaS-provider en de publieke Peecho Print Button en noemt TanStack Query v5, terwijl die dependency niet aanwezig is.
+- `verwijderde providerprompt` vraagt om publieke PDF's en een directe widgetflow, in strijd met zowel de huidige checkoutcode als de nieuwe opdracht.
 - `.github/copilot-instructions.md` herhaalt de oude widgetflow en verbiedt wijzigingen aan juist de legacyonderdelen die gemigreerd moeten worden.
-- `.lovable/plan.md` bevat achterhaalde productstatussen en Lovable-specifiek Stripeadvies.
+- `verwijderd providerplan` bevat achterhaalde productstatussen en oude prototypeprovider-specifiek Stripeadvies.
 - `.team/verification.md` meldt 9 unit- en 14 E2E-tests; de werkelijke suite telt 60 en 32, en Vitest faalt.
-- De huidige documentatie is verspreid over root, `.lovable/` en `.team/`; de verplichte `docs/`-architectuur-, provider-, migration-, operations- en runbookdocumenten bestonden bij aanvang niet.
+- De huidige documentatie is verspreid over root, `verwijderde providerconfig/` en `.team/`; de verplichte `docs/`-architectuur-, provider-, migration-, operations- en runbookdocumenten bestonden bij aanvang niet.
 
 Deze bestanden mogen pas worden verwijderd nadat hun waardevolle context is overgenomen en de betreffende product slice aantoonbaar is gemigreerd.
 
@@ -489,7 +489,7 @@ Niet aanwezig: adapter, senderverificatie, templates, outboxworker, retry/dead-l
 
 ### Stripe en Peecho
 
-Er is veel serverlogica aanwezig in Supabase Edge Functions, maar niet aantoonbaar:
+Er is veel serverlogica aanwezig in oude BaaS-provider Edge Functions, maar niet aantoonbaar:
 
 - welk Stripe-account en welke mode gekoppeld zijn;
 - of account-ID guards bestaan;
@@ -529,7 +529,7 @@ De precieze oorzaak van de lege render is nog onbekend en moet met browserconsol
 2. **Doelarchitectuur ontbreekt volledig.** Er is nog geen production slice op Vercel/Neon/R2/Brevo.
 3. **Canonieke unitgate faalt.** CI gebruikt de falende Vitest-opdracht; `bun test` geeft een misleidend groen signaal.
 4. **Dependencybasis is onveilig en niet deterministisch.** 53 Bun-advisories en drie lockfiles.
-5. **Hardcoded backendfallback.** Builds en PR's kunnen zonder expliciete configuratie een gedeelde Supabaseomgeving raken.
+5. **Hardcoded backendfallback.** Builds en PR's kunnen zonder expliciete configuratie een gedeelde oude BaaS-provideromgeving raken.
 6. **E2E is niet geïsoleerd.** Vaste gedeelde records, conditionele skips en mogelijk muterende tests voldoen niet aan de eis uitsluitend synthetische data te gebruiken.
 7. **Authenticated kernflows zijn niet bewezen.** Vijf tests worden overgeslagen en de CI-storage-stateflow is defect.
 8. **Live schemadrift.** De orderprobe geeft HTTP 400; migrations en runtime zijn niet aantoonbaar gelijk.
@@ -539,7 +539,7 @@ De precieze oorzaak van de lege render is nog onbekend en moet met browserconsol
 12. **Geen Vercel/deeplink/securityheaderconfig.** De deployment is niet production-ready.
 13. **Geen operationele vangrails.** Geen alerts, restore rehearsal, cronbewijs of incidentrunbooks.
 14. **Build is niet reproduceerbaar.** De sitemapgenerator muteert tracked output en slikt netwerkfouten.
-15. **Instructies spreken elkaar tegen.** Oude Lovable/Supabase/Peecho-richtlijnen kunnen nieuwe implementatie terug richting legacy sturen.
+15. **Instructies spreken elkaar tegen.** Oude oude prototypeprovider/oude BaaS-provider/Peecho-richtlijnen kunnen nieuwe implementatie terug richting legacy sturen.
 
 ## 15. Expliciete unknowns en externe blockers
 
@@ -547,9 +547,9 @@ De volgende informatie kan niet betrouwbaar uit de repository worden afgeleid en
 
 - de oorzaak van de lege live browserrender;
 - het definitieve productiedomein, DNS-eigenaarschap en Vercel-project/account;
-- welke Supabase-migraties, policies, constraints en functies werkelijk live staan;
+- welke oude BaaS-provider-migraties, policies, constraints en functies werkelijk live staan;
 - productievolume, datakwaliteit, publieke media, orphans en auth-providerverdeling;
-- Supabase regio, plan, backup, PITR, log- en storageretentie;
+- oude BaaS-provider regio, plan, backup, PITR, log- en storageretentie;
 - mogelijkheid om bestaande passwordhashes naar de gekozen Neon Auth-oplossing te migreren;
 - Neon project/account, EU-regio, branches en restoremogelijkheden;
 - R2 account, buckets, lifecycle en credentials;

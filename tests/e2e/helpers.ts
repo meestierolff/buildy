@@ -10,11 +10,11 @@ import { test, expect, type Page } from "@playwright/test";
 
 export const BASE = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:8090";
 
-/** Trip owned by the primary Buildy test account (Scandic Run 2026). */
-export const OWNER_TRIP_ID = "373b3e31-fb84-45e4-9103-9de7beb43563";
-/** Publicly visible trip used to test guest-facing views. */
-export const PUBLIC_TRIP_ID = "08bab0ef-3afc-4a6a-81c3-640a071ac464";
-/** The primary Buildy test user (owner of OWNER_TRIP_ID). */
+/** Project owned by the primary Buildy test account (Scandic Run 2026). */
+export const OWNER_PROJECT_ID = "373b3e31-fb84-45e4-9103-9de7beb43563";
+/** Publicly visible project used to test guest-facing views. */
+export const PUBLIC_PROJECT_ID = "08bab0ef-3afc-4a6a-81c3-640a071ac464";
+/** The primary Buildy test user (owner of OWNER_PROJECT_ID). */
 export const TEST_USER_ID = "af842993-4095-47f7-91e8-a05575ceb70b";
 
 export { expect, test };
@@ -30,17 +30,13 @@ export const skipWithoutAuth = async (page: Page, reason = "requires authenticat
   test.skip(!(await isSignedIn(page)), reason);
 };
 
-/**
- * Supabase persists the browser session under an `sb-*-auth-token` key. Using
- * that signal is route-independent and avoids treating a public page as an
- * authenticated one while AuthProvider is still resolving its session.
- */
+/** Check the cookie-backed server session without exposing auth tokens to JS. */
 export const isSignedIn = async (page: Page) => {
-  return page.evaluate(() =>
-    Object.entries(window.localStorage).some(([key, value]) =>
-      /^sb-.+-auth-token$/.test(key) && !!value && value !== "null",
-    ),
-  );
+  const response = await page.request.get(`${BASE}/api/auth/get-session`);
+  if (!response.ok()) return false;
+
+  const session = await response.json() as { user?: { id?: string } } | null;
+  return Boolean(session?.user?.id);
 };
 
 /** Wait until every image inside photobook pages has loaded (or timeout softly). */

@@ -5,7 +5,7 @@ const Privacy = () => (
   <LegalLayout
     title="Privacyverklaring"
     description="Welke persoonsgegevens Buildy verwerkt, waarom, met wie, hoe lang en welke privacyrechten je hebt."
-    updated="15 juli 2026"
+    updated="4 augustus 2026"
   >
     <LegalPendingNotice title="Deze verklaring is nog niet gereed voor livegang">
       <p>
@@ -41,7 +41,7 @@ const Privacy = () => (
       <li><strong>Privé-projectinformatie:</strong> het ingevoerde projectadres, budgetten, kosten, uren en informatie of notities over uitvoerders. Deze velden hebben afzonderlijke toegangsbeperkingen.</li>
       <li><strong>Sociale gegevens:</strong> volgverzoeken en -relaties, favorieten, reacties, likes, emoji-reacties, vermeldingen en notificaties.</li>
       <li><strong>Bouwboek:</strong> opmaak- en selectievoorkeuren, uitgesloten media, titel en ondertitel, formaat, pagina-aantal en de tijdelijk gemaakte print-PDF.</li>
-      <li><strong>Bestelling en betaling:</strong> order- en providerreferenties, e-mailadres, boekconfiguratie, bedragen, valuta, betaal- en fulfilmentstatus, trackinginformatie en klachtinformatie. Naam, telefoon-, factuur- en verzendgegevens worden in Stripe Checkout verzameld en voor productie en bezorging aan Peecho verstrekt. Buildy ontvangt geen volledige kaartgegevens.</li>
+      <li><strong>Bestelling en betaling:</strong> order- en providerreferenties, e-mailadres, boekconfiguratie, bedragen, valuta, betaal- en fulfilmentstatus, trackinginformatie en klachtinformatie. Buildy verzamelt de noodzakelijke verzendgegevens in de beveiligde checkout; Stripe verwerkt de betaling en Peecho ontvangt de gegevens die nodig zijn voor productie en bezorging. Buildy ontvangt geen volledige kaartgegevens.</li>
       <li><strong>Techniek en beveiliging:</strong> IP-adres, tijdstippen, aangevraagde pagina's, browser- en apparaatgegevens, sessie- en foutinformatie en beveiligingssignalen die Buildy of zijn infrastructuurleveranciers nodig hebben.</li>
       <li><strong>Contact:</strong> de inhoud en metadata van vragen, privacyverzoeken, meldingen over inhoud en klachten.</li>
     </ul>
@@ -75,11 +75,6 @@ const Privacy = () => (
             <td>Uitvoering van de koopovereenkomst</td>
           </tr>
           <tr>
-            <td>Een plattegrond op jouw verzoek met AI omzetten naar een blauwdruk</td>
-            <td>De gekozen plattegrond, afbeelding-URL en technische aanvraaggegevens</td>
-            <td>Uitvoering van jouw uitdrukkelijke functieverzoek</td>
-          </tr>
-          <tr>
             <td>Dienst beveiligen, fraude en misbruik voorkomen, fouten onderzoeken en rechten verdedigen</td>
             <td>Technische, account-, betaal-, meldings- en relevante inhoudsgegevens</td>
             <td>Gerechtvaardigd belang in een veilige en betrouwbare dienst; waar nodig een wettelijke verplichting</td>
@@ -95,7 +90,9 @@ const Privacy = () => (
     <p>
       Als Buildy later nieuwsbrieven, tracking of gepersonaliseerde reclame introduceert,
       wordt daarvoor vooraf een passende grondslag en, waar vereist, toestemming gevraagd.
-      De huidige applicatiecode bevat geen advertentie- of analyticsintegratie.
+      De huidige applicatiecode bevat geen advertentie- of analyticsintegratie. De oude
+      AI-blauwdrukroute is geen onderdeel van de actieve production runtime; herintroductie
+      vereist vooraf een afzonderlijke leveranciers-/privacybeoordeling en bijgewerkte informatie.
     </p>
 
     <h2>4. Openbaar, privé en delen met andere gebruikers</h2>
@@ -114,15 +111,19 @@ const Privacy = () => (
     </p>
 
     <h2>5. Dienstverleners en andere ontvangers</h2>
-    <p>Buildy gebruikt of benadert op dit moment de volgende categorieën ontvangers:</p>
+    <p>
+      De production target gebruikt de volgende leveranciers. Vóór livegang moeten het
+      werkelijk gekozen account, abonnement, regio, contract, subverwerkers en de rol per
+      leverancier nog door de exploitant worden gecontroleerd:
+    </p>
     <ul>
-      <li><strong>Supabase:</strong> database, authenticatie, bestandsopslag en serverfuncties.</li>
-      <li><strong>Google en de Lovable OAuth-broker:</strong> de gekozen Google-inlog, OAuth-doorverwijzing en uitgifte van sessietokens wanneer je zelf voor Google-login kiest.</li>
+      <li><strong><a href="https://vercel.com/legal/dpa" target="_blank" rel="noreferrer">Vercel</a>:</strong> hosting van de webapp en same-origin serverfuncties, met bijbehorende beveiligings- en requestlogs. De vereiste verwerkersvoorwaarden hangen mede van het gekozen abonnement af.</li>
+      <li><strong><a href="https://neon.com/security" target="_blank" rel="noreferrer">Neon</a>:</strong> de afgeschermde PostgreSQL-database voor accounts, projecten en domeingegevens.</li>
+      <li><strong><a href="https://www.cloudflare.com/cloudflare-customer-dpa/" target="_blank" rel="noreferrer">Cloudflare R2</a>:</strong> private objectopslag en levering via Buildy's autoriserende mediaproxy.</li>
+      <li><strong><a href="https://help.brevo.com/hc/en-us/articles/360001258744-How-does-Brevo-comply-with-the-GDPR" target="_blank" rel="noreferrer">Brevo</a>:</strong> noodzakelijke transactionele e-mails en geminimaliseerde deliverystatus.</li>
+      <li><strong>Google:</strong> alleen de directe OAuth-inlog wanneer jij die methode kiest en Buildy deze na configuratie activeert.</li>
       <li><strong>Stripe:</strong> Checkout, betaling, betaalmethoden en fraudepreventie.</li>
       <li><strong>Peecho en zijn productie- en bezorgpartners:</strong> ontvangst van de tijdelijke print-PDF, ordergegevens, naam, e-mailadres en verzendadres voor druk en levering.</li>
-      <li><strong>Lovable AI Gateway en de geconfigureerde Google Gemini-modeldienst:</strong> alleen wanneer je zelf de functie kiest om een plattegrond als AI-blauwdruk te laten genereren.</li>
-      <li><strong>CARTO:</strong> kaarttegels wanneer je bewust de routekaart opent; daarbij ontvangt CARTO technische verbindingsgegevens en kan het bekeken kaartgebied blijken. De lettertypes en kaarticoontjes levert Buildy zelf.</li>
-      <li><strong>Nog te benoemen hosting- en CDN-leverancier:</strong> levering van de frontend en bijbehorende technische logs.</li>
       <li><strong>Professionele adviseurs, toezichthouders of autoriteiten:</strong> alleen als dat noodzakelijk of wettelijk verplicht is.</li>
     </ul>
     <p>
@@ -135,8 +136,8 @@ const Privacy = () => (
     <h2>6. Verwerking buiten de EER</h2>
     <p>
       Leveranciers of hun subverwerkers kunnen gegevens buiten de Europese Economische
-      Ruimte verwerken. Vóór livegang moet Buildy de gekozen Supabase-regio, de werkelijke
-      hostinglocatie en de locaties en doorgiftegronden van alle leveranciers controleren.
+      Ruimte verwerken. Vóór livegang moet Buildy de gekozen Neon-regio, Vercel- en
+      Cloudflare-configuratie en de locaties en doorgiftegronden van alle leveranciers controleren.
       Als gegevens naar een land zonder passend EU-beschermingsniveau gaan, moet Buildy een
       geldige doorgiftegrond gebruiken, zoals door de Europese Commissie vastgestelde
       standaardcontractbepalingen, en waar nodig aanvullende maatregelen treffen. Via het
@@ -148,7 +149,7 @@ const Privacy = () => (
     <ul>
       <li><strong>Account, profiel, projecten en sociale inhoud:</strong> zolang je account of de betreffende inhoud bestaat. Na een geldig verwijderverzoek verwijdert Buildy deze uit de actieve omgeving, behalve wat nog nodig is voor een lopende bestelling, een geschil of een wettelijke verplichting.</li>
       <li><strong>Tijdelijke Bouwboek-PDF:</strong> een geannuleerde of verlopen checkout wordt opgeruimd; na betaling wordt een verwijdermoment ingepland wanneer Peecho de bestelling als geleverd, geannuleerd of terugbetaald meldt. Vóór livegang moet de periodieke opruimtaak aantoonbaar zijn ingepland en daarnaast een maximale noodtermijn gelden als een providerstatus uitblijft.</li>
-      <li><strong>Financiële basisgegevens:</strong> alleen de gegevens die onderdeel zijn van de fiscale administratie worden normaal zeven jaar bewaard. Een accountverwijdering wist deze wettelijke administratie niet.</li>
+      <li><strong>Financiële basisgegevens:</strong> alleen de gegevens die aantoonbaar nodig zijn voor de toepasselijke fiscale administratie blijven gedurende de door eigenaar en boekhouder goedgekeurde wettelijke termijn bewaard. Een accountverwijdering wist deze verplichte administratie niet.</li>
       <li><strong>Beveiligings-, back-up-, support- en klachtengegevens:</strong> de concrete maximale termijnen zijn nog niet vastgesteld en moeten vóór livegang per systeem en doel worden gepubliceerd.</li>
     </ul>
     <p>
@@ -159,8 +160,8 @@ const Privacy = () => (
 
     <h2>8. Lokale opslag, cookies en externe onderdelen</h2>
     <p>
-      Buildy bewaart de inlogsessie in de lokale opslag van je browser zodat je ingelogd
-      kunt blijven. De huidige applicatiecode plaatst zelf geen advertentie- of
+      Buildy bewaart de inlogsessie in een beveiligde, HttpOnly same-origincookie die
+      browserscript niet kan uitlezen. De huidige applicatiecode plaatst zelf geen advertentie- of
       analyticscookies. Externe pagina's en onderdelen, zoals Stripe Checkout en
       kaartdiensten, verwerken wel technische gegevens en kunnen onder hun eigen beleid
       noodzakelijke beveiligings- of voorkeurscookies gebruiken. Als Buildy later

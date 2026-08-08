@@ -1,14 +1,27 @@
-import { useMemo, useState } from "react";
-import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { useMemo, useRef, useState } from "react";
+import { Link, Navigate, useNavigate, useSearchParams } from "@/lib/router";
 import { BookOpen, Check, Eye, EyeOff, Images, Users } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable";
 import { useAuth } from "@/hooks/useAuth";
+import {
+  authClient,
+  authErrorDetails,
+  authErrorMessage,
+  authPagePath,
+  safeNextPath,
+} from "@/lib/authClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { useBetaStatus } from "@/hooks/useBeta";
+import BetaBadge from "@/components/BetaBadge";
+import { ApiClientError } from "@/lib/apiClient";
+import {
+  createBetaReservationKey,
+  recordSignupStarted,
+  reserveBetaInvite,
+} from "@/lib/betaApi";
 
 const GoogleIcon = () => (
   <svg className="h-4 w-4" viewBox="0 0 48 48" aria-hidden="true">
@@ -19,7 +32,7 @@ const GoogleIcon = () => (
   </svg>
 );
 
-type EmailStatus = "registration" | "magic-link" | null;
+type EmailStatus = "registration" | "verification" | "magic-link" | null;
 
 const Auth = () => {
   usePageMeta({
@@ -29,13 +42,15 @@ const Auth = () => {
     noIndex: true,
   });
 
-  const { user, loading: authLoading } = useAuth();
+  const {
+    user,
+    loading: authLoading,
+    error: sessionError,
+    refetchSession,
+  } = useAuth();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const nextPath = useMemo(() => {
-    const requestedPath = searchParams.get("next");
-    return requestedPath?.startsWith("/") && !requestedPath.startsWith("//") ? requestedPath : "/";
-  }, [searchParams]);
+  const nextPath = useMemo(() => safeNextPath(searchParams.get("next")), [searchParams]);
   const [isLogin, setIsLogin] = useState(searchParams.get("mode") !== "register");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -44,25 +59,86 @@ const Auth = () => {
   const [emailStatus, setEmailStatus] = useState<EmailStatus>(null);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [inviteCode, setInviteCode] = useState("");
+  const reservationAttempt = useRef<{ key: string; signature: string } | null>(null);
+  const betaStatusQuery = useBetaStatus();
+  const betaMode = betaStatusQuery.data?.betaMode ?? true;
 
-  const authReturnUrl = useMemo(() => {
-    const url = new URL("/auth", window.location.origin);
-    if (nextPath !== "/") url.searchParams.set("next", nextPath);
-    return url.toString();
-  }, [nextPath]);
+  const authReturnPath = useMemo(() => authPagePath(nextPath), [nextPath]);
+  const forgotPasswordPath = nextPath === "/"
+    ? "/wachtwoord-vergeten"
+    : `/wachtwoord-vergeten?next=${encodeURIComponent(nextPath)}`;
+  const verificationReturnPath = useMemo(
+    () => authPagePath(nextPath, "verified"),
+    [nextPath],
+  );
+  const callbackError = searchParams.get("error");
+  const feedback = callbackError
+    ? { tone: "error" as const, message: authErrorMessage({ code: callbackError }, "sign-in") }
+    : sessionError
+      ? { tone: "error" as const, message: authErrorMessage(sessionError, "session") }
+      : searchParams.get("verified") === "1"
+        ? { tone: "success" as const, message: "Je e-mailadres is bevestigd. Je kunt nu inloggen." }
+        : searchParams.get("reset") === "success"
+          ? { tone: "success" as const, message: "Je wachtwoord is gewijzigd. Log opnieuw in." }
+          : null;
+
+  const prepareRegistration = async (provider: "email" | "google"): Promise<boolean> => {
+    recordSignupStarted(provider);
+    if (!betaMode) return true;
+    const code = inviteCode.trim();
+    if (!code) {
+      toast.error("Vul je persoonlijke bèta-uitnodiging in.");
+      return false;
+    }
+    const normalizedEmail = provider === "email" ? email.trim().toLowerCase() : undefined;
+    const signature = JSON.stringify({ code, normalizedEmail, provider });
+    if (reservationAttempt.current?.signature !== signature) {
+      reservationAttempt.current = {
+        key: createBetaReservationKey(),
+        signature,
+      };
+    }
+    try {
+      await reserveBetaInvite({
+        inviteCode: code,
+        provider,
+        ...(normalizedEmail ? { email: normalizedEmail } : {}),
+        idempotencyKey: reservationAttempt.current.key,
+      });
+      return true;
+    } catch (error) {
+      if (error instanceof ApiClientError && error.status === 429) {
+        toast.error("Je hebt dit te vaak geprobeerd. Wacht even en probeer opnieuw.");
+      } else {
+        toast.error("Deze uitnodiging kan niet worden gebruikt. Vraag zo nodig een nieuwe aan.");
+      }
+      return false;
+    }
+  };
 
   const handleGoogle = async () => {
     setGoogleLoading(true);
     try {
-      const result = await lovable.auth.signInWithOAuth("google", { redirect_uri: authReturnUrl });
-      if (result.error) {
-        toast.error("Google-login mislukt. Probeer het opnieuw.");
+      if (!isLogin && !await prepareRegistration("google")) return;
+      const { data, error } = await authClient.signIn.social({
+        callbackURL: nextPath,
+        errorCallbackURL: authReturnPath,
+        newUserCallbackURL: nextPath,
+        provider: "google",
+      });
+      if (error) {
+        console.error("Better Auth Google sign-in failed", authErrorDetails(error));
+        toast.error(authErrorMessage(error, "google"));
         return;
       }
-      if (!result.redirected) navigate(nextPath, { replace: true });
+      if (data && !data.redirect) {
+        await refetchSession();
+        navigate(nextPath, { replace: true });
+      }
     } catch (error) {
-      console.error("Google sign-in failed", error);
-      toast.error("Google-login is nu niet bereikbaar. Probeer het later opnieuw.");
+      console.error("Better Auth Google sign-in failed", authErrorDetails(error));
+      toast.error(authErrorMessage(error, "google"));
     } finally {
       setGoogleLoading(false);
     }
@@ -77,18 +153,21 @@ const Auth = () => {
 
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOtp({
+      const { error } = await authClient.signIn.magicLink({
+        callbackURL: nextPath,
         email: normalizedEmail,
-        options: { emailRedirectTo: authReturnUrl },
+        errorCallbackURL: authReturnPath,
+        newUserCallbackURL: nextPath,
       });
       if (error) {
-        toast.error("Kon geen magic link sturen. Controleer je e-mailadres.");
+        console.error("Better Auth magic-link request failed", authErrorDetails(error));
+        toast.error(authErrorMessage(error, "magic-link"));
         return;
       }
       setEmailStatus("magic-link");
     } catch (error) {
-      console.error("Magic-link sign-in failed", error);
-      toast.error("Kon geen magic link sturen. Probeer het later opnieuw.");
+      console.error("Better Auth magic-link request failed", authErrorDetails(error));
+      toast.error(authErrorMessage(error, "magic-link"));
     } finally {
       setLoading(false);
     }
@@ -98,36 +177,62 @@ const Auth = () => {
     event.preventDefault();
     const normalizedEmail = email.trim();
     const normalizedName = displayName.trim();
+
+    if (!isLogin && normalizedName.length < 2) {
+      toast.error("Vul een naam van minimaal 2 tekens in.");
+      return;
+    }
+    if (!isLogin && password.length < 12) {
+      toast.error("Gebruik een wachtwoord van minimaal 12 tekens.");
+      return;
+    }
     setLoading(true);
 
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
+        const { error } = await authClient.signIn.email({
+          callbackURL: nextPath,
+          email: normalizedEmail,
+          password,
+        });
         if (error) {
-          toast.error("Ongeldige inloggegevens. Controleer je e-mail en wachtwoord.");
+          const details = authErrorDetails(error);
+          console.error("Better Auth email sign-in failed", details);
+          if (details.code === "EMAIL_NOT_VERIFIED") {
+            const verification = await authClient.sendVerificationEmail({
+              callbackURL: verificationReturnPath,
+              email: normalizedEmail,
+            });
+            if (!verification.error) {
+              setEmailStatus("verification");
+              return;
+            }
+          }
+          toast.error(authErrorMessage(error, "sign-in"));
           return;
         }
+        await refetchSession();
         navigate(nextPath, { replace: true });
         return;
       }
 
-      const { data, error } = await supabase.auth.signUp({
+      if (!await prepareRegistration("email")) return;
+
+      const { error } = await authClient.signUp.email({
+        callbackURL: verificationReturnPath,
         email: normalizedEmail,
+        name: normalizedName,
         password,
-        options: { data: { display_name: normalizedName }, emailRedirectTo: authReturnUrl },
       });
       if (error) {
-        toast.error("Registratie is niet gelukt. Probeer een ander e-mailadres of log in.");
-        return;
-      }
-      if (data.session) {
-        navigate(nextPath, { replace: true });
+        console.error("Better Auth email sign-up failed", authErrorDetails(error));
+        toast.error(authErrorMessage(error, "sign-up"));
         return;
       }
       setEmailStatus("registration");
     } catch (error) {
-      console.error("Email authentication failed", error);
-      toast.error("Er ging iets mis. Controleer je verbinding en probeer opnieuw.");
+      console.error("Better Auth email flow failed", authErrorDetails(error));
+      toast.error(authErrorMessage(error, isLogin ? "sign-in" : "sign-up"));
     } finally {
       setLoading(false);
     }
@@ -137,6 +242,8 @@ const Auth = () => {
     setIsLogin((current) => !current);
     setEmailStatus(null);
     setPassword("");
+    setInviteCode("");
+    reservationAttempt.current = null;
   };
 
   if (!authLoading && user) return <Navigate to={nextPath} replace />;
@@ -177,6 +284,19 @@ const Auth = () => {
 
         <section className="flex items-center px-5 py-9 sm:px-10 lg:px-14" aria-labelledby="auth-title">
           <div className="mx-auto w-full max-w-md">
+            {feedback && !emailStatus && (
+              <div
+                className={`mb-6 rounded-xl border px-4 py-3 text-sm ${
+                  feedback.tone === "success"
+                    ? "border-accent/30 bg-accent/10 text-foreground"
+                    : "border-destructive/30 bg-destructive/10 text-foreground"
+                }`}
+                role={feedback.tone === "error" ? "alert" : "status"}
+                aria-live="polite"
+              >
+                {feedback.message}
+              </div>
+            )}
             {emailStatus ? (
               <div className="text-center" role="status" aria-live="polite">
                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-accent/12 text-accent">
@@ -185,7 +305,7 @@ const Auth = () => {
                 <p className="eyebrow mt-7">Check je inbox</p>
                 <h1 id="auth-title" className="mt-3 font-serif text-4xl italic leading-tight sm:text-5xl">De link is onderweg.</h1>
                 <p className="mx-auto mt-4 max-w-sm text-sm font-light leading-relaxed text-muted-foreground">
-                  {emailStatus === "registration"
+                  {emailStatus === "registration" || emailStatus === "verification"
                     ? "Bevestig je e-mailadres om je account af te ronden. Daarna kun je meteen je eerste project starten."
                     : "Open de magic link op dit apparaat om veilig in te loggen, zonder wachtwoord."}
                 </p>
@@ -197,12 +317,19 @@ const Auth = () => {
             ) : (
               <>
                 <div className="mb-8">
-                  <p className="eyebrow mb-3">{isLogin ? "Inloggen" : "Gratis beginnen"}</p>
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <p className="eyebrow">{isLogin ? "Inloggen" : betaMode ? "Registreren op uitnodiging" : "Gratis beginnen"}</p>
+                    {!isLogin ? <BetaBadge /> : null}
+                  </div>
                   <h1 id="auth-title" className="font-serif text-4xl italic leading-tight sm:text-5xl">
                     {isLogin ? "Welkom terug." : "Start je dagboek."}
                   </h1>
                   <p className="mt-3 text-sm font-light leading-relaxed text-muted-foreground">
-                    {isLogin ? "Ga verder met je verbouwing en Bouwboek." : "Maak je eerste project. Je kiest zelf wat je deelt."}
+                    {isLogin
+                      ? "Ga verder met je verbouwing en Bouwboek."
+                      : betaMode
+                        ? "Buildy is in private bèta. Met je persoonlijke uitnodiging maak je een account."
+                        : "Maak je eerste project. Je kiest zelf wat je deelt."}
                   </p>
                 </div>
 
@@ -224,6 +351,30 @@ const Auth = () => {
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
+                  {!isLogin && betaMode && (
+                    <div className="space-y-2">
+                      <Label htmlFor="beta-invite" className="text-xs font-semibold">Bèta-uitnodiging</Label>
+                      <Input
+                        id="beta-invite"
+                        name="invite"
+                        autoComplete="one-time-code"
+                        placeholder="BLDY_…"
+                        value={inviteCode}
+                        onChange={(event) => {
+                          setInviteCode(event.target.value);
+                          reservationAttempt.current = null;
+                        }}
+                        required
+                        minLength={37}
+                        maxLength={37}
+                        spellCheck={false}
+                        className="h-12 rounded-lg bg-background font-mono"
+                      />
+                      <p className="text-[11px] leading-relaxed text-muted-foreground">
+                        Je code wordt alleen gebruikt om deze registratie te autoriseren en verschijnt nooit in je profiel.
+                      </p>
+                    </div>
+                  )}
                   {!isLogin && (
                     <div className="space-y-2">
                       <Label htmlFor="display-name" className="text-xs font-semibold">Naam</Label>
@@ -260,7 +411,7 @@ const Auth = () => {
                     <div className="flex items-center justify-between gap-4">
                       <Label htmlFor="auth-password" className="text-xs font-semibold">Wachtwoord</Label>
                       {isLogin && (
-                        <Link to="/wachtwoord-vergeten" className="text-xs text-muted-foreground underline underline-offset-4 transition-colors hover:text-foreground">
+                        <Link to={forgotPasswordPath} className="text-xs text-muted-foreground underline underline-offset-4 transition-colors hover:text-foreground">
                           Wachtwoord vergeten?
                         </Link>
                       )}
@@ -271,11 +422,12 @@ const Auth = () => {
                         name="password"
                         type={showPassword ? "text" : "password"}
                         autoComplete={isLogin ? "current-password" : "new-password"}
-                        placeholder={isLogin ? "Je wachtwoord" : "Minimaal 6 tekens"}
+                        placeholder={isLogin ? "Je wachtwoord" : "Minimaal 12 tekens"}
                         value={password}
                         onChange={(event) => setPassword(event.target.value)}
                         required
-                        minLength={6}
+                        minLength={isLogin ? 1 : 12}
+                        maxLength={128}
                         className="h-12 rounded-lg bg-background pr-12"
                       />
                       <button

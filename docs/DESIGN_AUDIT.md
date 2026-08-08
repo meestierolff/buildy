@@ -4,7 +4,7 @@
 
 **Status:** nulmeting; redesign en productieacceptatie zijn nog niet gestart
 
-**Scope:** bestaande React/Vite-interface, lokale en bereikbare Lovable-liveomgeving, mobiel/tablet/desktop, publieke en voor zover zonder testaccount bereikbare afgeschermde flows
+**Scope:** bestaande React/Vite-interface, lokale en bereikbare oude prototypeprovider-liveomgeving, mobiel/tablet/desktop, publieke en voor zover zonder testaccount bereikbare afgeschermde flows
 
 ## Samenvatting
 
@@ -21,7 +21,7 @@ De baseline staat buiten de productbundel in [`artifacts/baseline/`](../artifact
 | Omgeving | Basis-URL | Viewports | Resultaat |
 |---|---|---|---|
 | Lokaal | `http://127.0.0.1:8090` | 390×844, 768×1024, 1440×1000 | 51 screenshots; 0 capture failures; 0 geregistreerde browserfouten |
-| Huidige liveomgeving | `https://buildy-log.lovable.app` | 390×844, 768×1024, 1440×1000 | 51 screenshots; 0 capture failures; 0 geregistreerde browserfouten |
+| Huidige liveomgeving | `<voormalige-live-referentie>` | 390×844, 768×1024, 1440×1000 | 51 screenshots; 0 capture failures; 0 geregistreerde browserfouten |
 
 De bestandsconventie is `{environment}-{viewport}-{scenario}.png`, bijvoorbeeld:
 
@@ -56,7 +56,7 @@ De bestandsconventie is `{environment}-{viewport}-{scenario}.png`, bijvoorbeeld:
 
 Er waren geen synthetische testcredentials of veilige Playwright `storageState`. Daarom zijn de homepage ingelogd, ownercontrols, updatecomposer, notificatieacties, checkout en echte orderstatus niet als ingelogde flow vastgelegd. De bestanden zijn wel bewust bewaard als bewijs van de huidige toegangsfallback; ze mogen niet als functionele acceptatie van de afgeschermde flow worden gebruikt.
 
-De live screenshots bevatten op meerdere schermen een zwevende “Edit with Lovable”-badge. Dat is een eigenschap van de huidige liveomgeving, geen Buildy-component. Nieuwe visuele regressie-artifacts moeten deze provider-overlay niet bevatten.
+De live screenshots bevatten op meerdere schermen een zwevende “Edit with oude prototypeprovider”-badge. Dat is een eigenschap van de huidige liveomgeving, geen Buildy-component. Nieuwe visuele regressie-artifacts moeten deze provider-overlay niet bevatten.
 
 ## Huidige ontwerpbevindingen
 
@@ -93,7 +93,7 @@ De live screenshots bevatten op meerdere schermen een zwevende “Edit with Lova
 - Mobiel ontbreken “Mijn projecten” en een centrale actie “Update”. De primaire vastlegtaak is daardoor niet altijd binnen één tap bereikbaar.
 - “Vrienden”, “Volgend”, “Favorieten”, projectvolgen en toegang lopen terminologisch door elkaar.
 - De globale header en footer blijven ook rond het Bouwboek staan, waardoor de editor minder als gefocuste werkruimte voelt.
-- De fixed mobiele navigatie kan projectcontent, Lovable-overlay en footer visueel kruisen. Alleen de onderzijde gebruikt een safe-area-inset.
+- De fixed mobiele navigatie kan projectcontent, oude prototypeprovider-overlay en footer visueel kruisen. Alleen de onderzijde gebruikt een safe-area-inset.
 
 ### Projectheader en tijdlijn
 
@@ -210,7 +210,7 @@ Gebruik thumbnails/displayderivatives in feeds, originelen uitsluitend voor prin
 ## Acceptatiecriteria voor de nieuwe UI
 
 - Consistente Nederlandse termen: Mijn projecten, Volgend, Ontdekken, Connecties, Project volgen, Toegang vragen en Bouwboek.
-- Geen Lovable- of travel-template-elementen in routes, copy, kaartfuncties of visuele overlays.
+- Geen oude prototypeprovider- of travel-template-elementen in routes, copy, kaartfuncties of visuele overlays.
 - 44×44px touch targets; geen hover-only kernactie.
 - Volledige toetsenbordflow met zichtbare focus en logisch focusrestore.
 - Toegankelijke before/after, drag/reorder, lightbox, floorplan en boeknavigatie.

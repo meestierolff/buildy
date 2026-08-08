@@ -1,74 +1,67 @@
-# Buildy — Copilot Agent Instructions
+# Buildy — agent instructions
 
-## Project
-Buildy is the "Polarsteps for renovations" — a social platform where homeowners document their renovation projects step by step. Key analogies:
+## Product
 
-| Polarsteps concept | Buildy equivalent |
-|---|---|
-| Trip | Project (verbouwing) |
-| Step | Update/post |
-| Travel Book | Bouwboek (fysiek fotoboek via Peecho) |
-| Followers | Followers |
+Buildy is een privacy-first sociaal verbouwingsdagboek. In code zijn historische
+`trip`/`step` namen alleen nog compatibiliteitsnamen; nieuwe domeincode en UI
+gebruiken `project` en `update`. Nederlandse gebruikerscopy, Engelse
+variabelen/comments.
 
-## Stack
-- **Frontend:** React 18 + TypeScript + Vite + Tailwind CSS + shadcn/ui
-- **Backend:** Supabase (PostgreSQL + Auth + Storage + Edge Functions)
-- **Print:** Peecho print-on-demand (via `peechoExport.ts` + Peecho JS widget)
-- **Maps:** Leaflet (react-leaflet)
-- **State:** TanStack Query v5
+## Doelstack
 
-## Naming conventions
-- Components: PascalCase, files in `src/components/`
-- Pages: PascalCase, files in `src/pages/`
-- Hooks: camelCase prefixed with `use`, files in `src/hooks/`
-- DB table names: snake_case (matching Supabase)
-- "Trip" in code maps to "project" in the UI
-- "Step" maps to "update" in the UI
+- React 18 + TypeScript + Vite + Tailwind/shadcn;
+- typed same-origin Vercel Functions API;
+- Neon PostgreSQL + Drizzle;
+- Better Auth met authoritative HttpOnly cookies;
+- private Cloudflare R2;
+- Brevo transactionele e-mail;
+- Stripe Checkout en raw-signature webhooks;
+- Peecho REST v3 via een durable fulfilmentworker;
+- TanStack Query v5 en Wouter-compatibiliteitsrouter.
 
-## Key files
-- `src/pages/Photobook.tsx` — Bouwboek editor + Peecho ordering
-- `src/lib/peechoExport.ts` — PDF generation (jsPDF) for Peecho specs
-- `src/pages/TripDetail.tsx` — Main project page with timeline
-- `src/integrations/supabase/client.ts` — Supabase client
+Voeg geen browserdatabaseclient, publieke objectbucket, permanente signed URL,
+directe providerwrite vanuit React of afgeschafte prototypeprovider toe.
 
-## Peecho integration model
-1. User edits their Bouwboek in Photobook.tsx
-2. Clicking "Bestel als boek" triggers PDF generation via `buildPeechoPdf()`
-3. PDF is uploaded to Supabase public storage (`trip-media` bucket)
-4. Peecho's Print Button JS widget is rendered with `data-src` = public PDF URL
-5. User clicks the Peecho button → Peecho checkout handles payment + print + shipping
-6. NO PDF download button exposed to users — ordering is direct through Peecho
+## Grenzen
 
-## Environment variables
+- Browsercode gebruikt uitsluitend clients in `src/lib/*Api.ts`.
+- Autorisatie gebeurt altijd opnieuw in de server/repository; clientrollen zijn
+  geen bewijs.
+- Database-, e-mail-, media-, account-, payment-, photobook- en fulfilmentworkers
+  hebben ieder een afzonderlijke login en alleen begrensde function-execute.
+- Gebruik outbox/inbox, lease, idempotency en monotone transitions voor externe
+  side effects.
+- PII nooit in logs, eventmetadata, idempotencykeys, URLs of artifacts. Gebruik
+  envelope-encryptie, vaste AAD en blind indexes waar het datamodel dat vereist.
+- Provideraccount en environment worden server-side gecontroleerd.
+- Checkout blijft uit tenzij `CHECKOUT_ENABLED=true`; dat is een expliciet
+  launchbesluit, niet het gevolg van aanwezige secrets.
+- Verzin geen juridische identiteit, prijs, btw, retentie, provider-ID of
+  succesvolle externe test.
+
+## Codeconventies
+
+- Componenten/pages PascalCase; hooks `use*`; databasevelden snake_case.
+- Geen `any` zonder aantoonbare noodzaak; valideer externe input met Zod.
+- Early returns boven diepe nesting.
+- `toast.error()` voor gebruikersfouten en PII-veilige structured serverlogs.
+- Gepubliceerde SQL-migrations zijn append-only en worden niet herschreven.
+- Gebruik `apply_patch` voor handmatige file-edits en behoud niet-gerelateerde
+  wijzigingen in een dirty worktree.
+
+## Verificatie
+
+```sh
+bun run typecheck
+bun run lint
+bun run test
+bun run build
+node --import tsx db/migrate.ts --check
+bun run test:e2e:preview
+bun run check:launch -- --static
 ```
-VITE_SUPABASE_URL=...
-VITE_SUPABASE_PUBLISHABLE_KEY=...
-VITE_PEECHO_SCRIPT_URL=...  # Peecho account-specific JS URL
-```
 
-## Code style
-- Dutch UI strings (nl-NL)
-- English code (variable names, comments)
-- `toast.error()` for user-facing errors, `console.error()` for dev
-- No `any` types unless absolutely necessary (Supabase responses accepted)
-- Prefer early returns over nested if-blocks
-
-## Auth
-- Supabase Auth with email/password + magic links
-- `useAuth()` hook in `src/hooks/useAuth.tsx`
-- Protected routes must check `user` from `useAuth()` and redirect to `/auth`
-
-## Database (Supabase)
-Main tables:
-- `profiles` — user profiles (user_id, display_name, avatar_url, is_pro, is_private)
-- `trips` — projects (id, user_id, title, project_type, progress_percentage, is_public)
-- `steps` — updates (id, trip_id, user_id, step_date, location_name, phase, description)
-- `step_media` — photos/videos per step
-- `photobook_settings` — per-trip photobook config
-- `photobook_excluded_media`, `photobook_excluded_steps` — exclusion lists
-- `step_budget` — cost tracking per step
-
-## Testing
-- Playwright for E2E tests in `tests/`
-- Vitest for unit tests in `src/test/`
-- Run: `bun test` (Vitest), `bunx playwright test` (E2E)
+Gebruik `bun run test`, niet het kale `bun test`. Echte PostgreSQL-
+integratietests, providerprobes en browserflows mogen nooit stil skippen wanneer
+zij als launchbewijs worden aangevoerd. Zie `docs/LAUNCH_READINESS.md` voor het
+verschil tussen codebewijs en externe gates.

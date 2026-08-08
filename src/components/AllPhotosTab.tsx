@@ -1,60 +1,76 @@
 import { useMemo, useState } from "react";
-import MediaLightbox, { LightboxItem } from "./MediaLightbox";
-import { phaseColor } from "./PhaseSelect";
 import { ImageOff } from "lucide-react";
 
-interface Step {
-  id: string;
-  location_name: string;
-  step_date: string;
-  phase: string | null;
-  step_media: { id: string; media_url: string; media_type: string; sort_order?: number | null }[];
-}
+import type { ProjectUpdate } from "../../shared/contracts/projects";
+import MediaLightbox, { type LightboxItem } from "./MediaLightbox";
+import { phaseColor } from "./PhaseSelect";
 
 interface Props {
-  tripId: string;
-  steps: Step[];
+  projectId: string;
+  updates: readonly ProjectUpdate[];
 }
 
-const AllPhotosTab = ({ tripId, steps }: Props) => {
-  const [phaseFilter, setPhaseFilter] = useState<string | null>(null);
-  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+function isVisualMedia(contentType: string | null): boolean {
+  return contentType !== "application/pdf";
+}
 
-  const items: LightboxItem[] = useMemo(() => {
-    const arr: LightboxItem[] = [];
-    [...steps]
-      .sort((a, b) => +new Date(b.step_date) - +new Date(a.step_date))
-      .forEach((s) => {
-        if (phaseFilter && s.phase !== phaseFilter) return;
-        [...s.step_media]
-          .filter((m) => m.media_type !== "pdf")
-          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-          .forEach((m) => {
-            arr.push({
-              id: m.id,
-              url: m.media_url,
-              type: m.media_type,
-              stepId: s.id,
-              stepTitle: s.location_name,
-              stepDate: s.step_date,
-              phase: s.phase,
+function lightboxMediaType(contentType: string | null): "image" | "video" {
+  return contentType?.startsWith("video/") ? "video" : "image";
+}
+
+function updateLabel(update: ProjectUpdate): string {
+  return update.title?.trim() || update.room?.trim() || "Projectupdate";
+}
+
+const AllPhotosTab = ({ projectId, updates }: Props) => {
+  const [phaseFilter, setPhaseFilter] = useState<string | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
+  const items = useMemo<LightboxItem[]>(() => {
+    const result: LightboxItem[] = [];
+    [...updates]
+      .sort((a, b) => b.updateDate.localeCompare(a.updateDate) || b.sortOrder - a.sortOrder)
+      .forEach((update) => {
+        if (phaseFilter && update.phase?.id !== phaseFilter) return;
+        [...update.media]
+          .filter((media) => isVisualMedia(media.contentType))
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .forEach((media) => {
+            result.push({
+              id: media.id,
+              url: media.proxyPath,
+              type: lightboxMediaType(media.contentType),
+              updateId: update.id,
+              updateTitle: updateLabel(update),
+              updateDate: update.updateDate,
+              phase: update.phase?.name ?? null,
             });
           });
       });
-    return arr;
-  }, [steps, phaseFilter]);
+    return result;
+  }, [phaseFilter, updates]);
 
   const phases = useMemo(() => {
-    const set = new Set<string>();
-    steps.forEach((s) => s.phase && set.add(s.phase));
-    return Array.from(set);
-  }, [steps]);
+    const unique = new Map<string, string>();
+    updates.forEach((update) => {
+      if (update.phase) unique.set(update.phase.id, update.phase.name);
+    });
+    return [...unique.entries()].map(([id, name]) => ({ id, name }));
+  }, [updates]);
+
+  const totalVisuals = useMemo(
+    () => updates.reduce(
+      (count, update) => count + update.media.filter((media) => isVisualMedia(media.contentType)).length,
+      0,
+    ),
+    [updates],
+  );
 
   if (items.length === 0 && !phaseFilter) {
     return (
       <div className="py-16 text-center text-muted-foreground">
-        <ImageOff className="h-10 w-10 mx-auto mb-2 opacity-40" />
-        <p>Nog geen foto's geüpload.</p>
+        <ImageOff className="mx-auto mb-2 h-10 w-10 opacity-40" aria-hidden="true" />
+        <p>Nog geen foto&apos;s of video&apos;s toegevoegd.</p>
       </div>
     );
   }
@@ -62,52 +78,73 @@ const AllPhotosTab = ({ tripId, steps }: Props) => {
   return (
     <div className="py-4">
       {phases.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-4">
+        <div className="mb-4 flex flex-wrap gap-2" aria-label="Filter media op fase">
           <button
+            type="button"
             onClick={() => setPhaseFilter(null)}
-            className={`text-xs px-3 py-1 rounded-full border transition-colors ${
-              phaseFilter === null ? "bg-accent text-accent-foreground border-accent" : "border-border hover:border-accent"
+            aria-pressed={phaseFilter === null}
+            className={`min-h-11 rounded-full border px-3 text-xs transition-colors ${
+              phaseFilter === null
+                ? "border-accent bg-accent text-accent-foreground"
+                : "border-border hover:border-accent"
             }`}
           >
-            Alle ({steps.reduce((n, s) => n + s.step_media.filter((m) => m.media_type !== "pdf").length, 0)})
+            Alle ({totalVisuals})
           </button>
-          {phases.map((p) => (
+          {phases.map((phase) => (
             <button
-              key={p}
-              onClick={() => setPhaseFilter(p)}
-              className={`text-xs px-3 py-1 rounded-full border transition-colors ${
-                phaseFilter === p ? "bg-accent text-accent-foreground border-accent" : `border-border ${phaseColor(p)}`
+              key={phase.id}
+              type="button"
+              onClick={() => setPhaseFilter(phase.id)}
+              aria-pressed={phaseFilter === phase.id}
+              className={`min-h-11 rounded-full border px-3 text-xs transition-colors ${
+                phaseFilter === phase.id
+                  ? "border-accent bg-accent text-accent-foreground"
+                  : `border-border ${phaseColor(phase.name)}`
               }`}
             >
-              {p}
+              {phase.name}
             </button>
           ))}
         </div>
       )}
 
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-1.5">
-        {items.map((it, i) => (
-          <button
-            key={it.id}
-            onClick={() => setLightboxIdx(i)}
-            className="relative aspect-square overflow-hidden rounded-md group bg-muted"
-          >
-            {it.type === "video" ? (
-              <video src={it.url} className="w-full h-full object-cover" />
-            ) : (
-              <img src={it.url} alt={it.stepTitle} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-            )}
-          </button>
-        ))}
-      </div>
+      {items.length === 0 ? (
+        <div className="py-12 text-center text-muted-foreground" role="status">
+          Geen media in deze fase.
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-5">
+          {items.map((item, index) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setLightboxIndex(index)}
+              aria-label={`Open media van ${item.updateTitle}`}
+              className="group relative aspect-square min-h-11 overflow-hidden rounded-md bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              {item.type === "video" ? (
+                <video src={item.url} className="h-full w-full object-cover" />
+              ) : (
+                <img
+                  src={item.url}
+                  alt={item.updateTitle}
+                  loading="lazy"
+                  className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {lightboxIdx !== null && (
+      {lightboxIndex !== null && (
         <MediaLightbox
           items={items}
-          index={lightboxIdx}
-          onClose={() => setLightboxIdx(null)}
-          onIndex={setLightboxIdx}
-          tripId={tripId}
+          index={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+          onIndex={setLightboxIndex}
+          projectId={projectId}
         />
       )}
     </div>

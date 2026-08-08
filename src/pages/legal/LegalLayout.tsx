@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { usePageMeta } from "@/hooks/usePageMeta";
-import { Link } from "react-router-dom";
+import { Link } from "@/lib/router";
 
 interface Props {
   title: string;

@@ -1,149 +1,177 @@
-import { useEffect, useState } from "react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
+import { useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { nl } from "date-fns/locale";
-import { Reply, Trash2 } from "lucide-react";
+import { Flag, Loader2, Reply, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import type { EngagementComment } from "../../shared/contracts/engagement";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
+import ReportDialog from "@/components/moderation/ReportDialog";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  useCreateCommentMutation,
+  useDeleteCommentMutation,
+  useInfiniteComments,
+} from "@/hooks/useEngagement";
+import { createClientIdempotencyKey } from "@/lib/clientIdempotency";
+import { extractMentionSlugs } from "@/lib/engagementApi";
+import { resolveVisibleMentionSlugs } from "@/lib/socialApi";
 
-interface Comment {
-  id: string;
-  content: string;
-  user_id: string;
-  parent_id: string | null;
-  created_at: string;
-  mentions: string[] | null;
-  profile?: { display_name: string; avatar_url?: string | null };
+interface CommentsSheetProps {
+  projectId?: string;
+  updateId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCountChange?: (delta: number) => void;
 }
 
 const CommentsSheet = ({
-  stepId,
+  projectId,
+  updateId,
   open,
   onOpenChange,
   onCountChange,
-  canModerate = false,
-}: {
-  stepId: string;
-  open: boolean;
-  onOpenChange: (o: boolean) => void;
-  onCountChange?: (delta: number) => void;
-  canModerate?: boolean;
-}) => {
+}: CommentsSheetProps) => {
   const { user } = useAuth();
-  const [comments, setComments] = useState<Comment[]>([]);
+  const available = Boolean(projectId && updateId);
+  const commentsQuery = useInfiniteComments(projectId ?? "", updateId, open && available);
+  const createComment = useCreateCommentMutation(projectId ?? "", updateId);
+  const deleteComment = useDeleteCommentMutation(projectId ?? "", updateId);
   const [text, setText] = useState("");
-  const [replyTo, setReplyTo] = useState<Comment | null>(null);
-  const [posting, setPosting] = useState(false);
+  const [replyTo, setReplyTo] = useState<EngagementComment | null>(null);
 
-  const load = async () => {
-    const { data, error } = await supabase
-      .from("comments")
-      .select("*")
-      .eq("step_id", stepId)
-      .order("created_at", { ascending: true });
-    if (error) {
-      console.error("Comments load failed:", error);
-      toast.error("Reacties laden mislukt");
-      return;
+  const comments = useMemo(
+    () => commentsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [commentsQuery.data],
+  );
+  const commentIds = new Set(comments.map((comment) => comment.id));
+  const roots = comments.filter((comment) =>
+    !comment.parentCommentId || !commentIds.has(comment.parentCommentId));
+  const repliesByParent = useMemo(() => {
+    const grouped = new Map<string, EngagementComment[]>();
+    for (const comment of comments) {
+      if (!comment.parentCommentId) continue;
+      const existing = grouped.get(comment.parentCommentId) ?? [];
+      existing.push(comment);
+      grouped.set(comment.parentCommentId, existing);
     }
-    if (!data) return;
-    const ids = [...new Set(data.map((c) => c.user_id))];
-    const { data: profs, error: profilesError } = await supabase.rpc("get_profiles_basic", { _ids: ids });
-    if (profilesError) console.error("Comment profiles load failed:", profilesError);
-    const map = new Map((profs || []).map((p) => [p.user_id, p]));
-    setComments(data.map((c) => ({ ...c, profile: map.get(c.user_id) })));
-  };
-
-  useEffect(() => {
-    if (open) load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, stepId]);
+    return grouped;
+  }, [comments]);
 
   const submit = async () => {
-    if (!user || !text.trim()) return;
-    if (text.trim().length > 2000) {
+    const body = text.trim();
+    if (!user || !projectId || !body || createComment.isPending) return;
+    if (body.length > 2_000) {
       toast.error("Een reactie mag maximaal 2000 tekens bevatten");
       return;
     }
-    setPosting(true);
-    // parse @mentions: @display_name → look up in profiles
-    const mentionTags = Array.from(text.matchAll(/@(\w[\w-]*)/g)).map((m) => m[1]);
-    let mentions: string[] = [];
-    if (mentionTags.length) {
-      const { data } = await supabase
-        .from("profiles")
-        .select("user_id, display_name")
-        .in("display_name", mentionTags);
-      mentions = (data || []).map((p) => p.user_id);
-    }
-    try {
-      const { error } = await supabase.from("comments").insert({
-        step_id: stepId,
-        user_id: user.id,
-        content: text.trim(),
-        parent_id: replyTo?.id ?? null,
-        mentions,
-      });
-      if (error) {
-        console.error("Comment insert failed:", error);
-        toast.error("Kon reactie niet plaatsen");
-      } else {
-        setText("");
-        setReplyTo(null);
-        onCountChange?.(1);
-        await load();
-      }
-    } finally {
-      setPosting(false);
-    }
-  };
 
-  const remove = async (id: string) => {
-    const { error } = await supabase.from("comments").delete().eq("id", id);
-    if (error) {
-      console.error("Comment delete failed:", error);
-      toast.error("Reactie verwijderen mislukt");
+    const slugs = extractMentionSlugs(body);
+    if (slugs.length > 10) {
+      toast.error("Je kunt maximaal 10 bouwers noemen");
       return;
     }
-    const removedCount = comments.filter((comment) => comment.id === id || comment.parent_id === id).length;
-    onCountChange?.(-Math.max(1, removedCount));
-    setComments((p) => p.filter((c) => c.id !== id && c.parent_id !== id));
+    if (slugs.some((slug) => slug.length < 2 || slug.length > 80)) {
+      toast.error("Een gebruikersnaam na @ moet 2 tot 80 tekens bevatten");
+      return;
+    }
+
+    try {
+      const resolved = await resolveVisibleMentionSlugs(slugs);
+      const unresolved = slugs.filter((slug) => !resolved.has(slug));
+      if (unresolved.length > 0) {
+        toast.error(`Onbekende of afgeschermde gebruiker: @${unresolved[0]}`);
+        return;
+      }
+      await createComment.mutateAsync({
+        idempotencyKey: createClientIdempotencyKey("comment-create"),
+        body,
+        ...(replyTo ? { parentCommentId: replyTo.id } : {}),
+        mentionUserIds: slugs.map((slug) => resolved.get(slug)).filter((id): id is string => Boolean(id)),
+      });
+      setText("");
+      setReplyTo(null);
+      onCountChange?.(1);
+    } catch (error) {
+      console.error("Comment create failed", error);
+      toast.error("Kon reactie niet plaatsen");
+    }
   };
 
-  const roots = comments.filter((c) => !c.parent_id);
-  const repliesOf = (id: string) => comments.filter((c) => c.parent_id === id);
+  const remove = async (comment: EngagementComment) => {
+    if (!projectId || deleteComment.isPending) return;
+    try {
+      await deleteComment.mutateAsync({
+        commentId: comment.id,
+        input: {
+          idempotencyKey: createClientIdempotencyKey("comment-delete"),
+          expectedVersion: comment.version,
+        },
+      });
+      if (replyTo?.id === comment.id) setReplyTo(null);
+      onCountChange?.(-1);
+      toast.success("Reactie verwijderd");
+    } catch (error) {
+      console.error("Comment delete failed", error);
+      toast.error("Reactie verwijderen mislukt");
+    }
+  };
 
-  const renderComment = (c: Comment, isReply = false) => (
-    <div key={c.id} className={`flex gap-2.5 ${isReply ? "ml-9 mt-2" : "mt-3"}`}>
+  const renderComment = (comment: EngagementComment, depth = 0) => (
+    <div key={comment.id} className={`flex gap-2.5 ${depth > 0 ? "ml-6 mt-2" : "mt-3"}`}>
       <Avatar className="h-7 w-7 shrink-0">
-        <AvatarImage src={c.profile?.avatar_url ?? ""} />
+        <AvatarImage src={comment.author.avatar?.proxyPath ?? ""} alt="" />
         <AvatarFallback className="bg-accent/20 text-accent text-xs">
-          {c.profile?.display_name?.[0]?.toUpperCase() ?? "?"}
+          {comment.author.displayName[0]?.toUpperCase() ?? "?"}
         </AvatarFallback>
       </Avatar>
       <div className="flex-1 min-w-0">
         <div className="bg-muted/50 rounded-2xl px-3 py-2">
-          <p className="text-xs font-semibold mb-0.5">{c.profile?.display_name ?? "Gebruiker"}</p>
-          <p className="text-sm leading-snug whitespace-pre-wrap">{c.content}</p>
+          <p className="text-xs font-semibold mb-0.5">{comment.author.displayName}</p>
+          <p className="text-sm leading-snug whitespace-pre-wrap break-words">{comment.body}</p>
         </div>
         <div className="flex items-center gap-3 mt-1 px-2 text-[11px] text-muted-foreground">
-          <span>{formatDistanceToNow(new Date(c.created_at), { addSuffix: true, locale: nl })}</span>
-          {!isReply && (
-            <button type="button" onClick={() => setReplyTo(c)} className="hover:text-accent flex items-center gap-1" aria-label={`Antwoord op ${c.profile?.display_name ?? "reactie"}`}>
-              <Reply className="h-3 w-3" /> Antwoord
+          <span>{formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true, locale: nl })}</span>
+          {user && (
+            <button
+              type="button"
+              onClick={() => setReplyTo(comment)}
+              className="hover:text-accent flex items-center gap-1"
+              aria-label={`Antwoord op ${comment.author.displayName}`}
+            >
+              <Reply className="h-3 w-3" aria-hidden="true" /> Antwoord
             </button>
           )}
-          {(user?.id === c.user_id || canModerate) && (
-            <button type="button" onClick={() => remove(c.id)} className="hover:text-destructive flex items-center gap-1" aria-label="Reactie verwijderen">
-              <Trash2 className="h-3 w-3" />
+          {comment.canDelete && (
+            <button
+              type="button"
+              onClick={() => remove(comment)}
+              disabled={deleteComment.isPending}
+              className="hover:text-destructive flex items-center gap-1"
+              aria-label={`Reactie van ${comment.author.displayName} verwijderen`}
+            >
+              <Trash2 className="h-3 w-3" aria-hidden="true" />
             </button>
           )}
+          <ReportDialog
+            compact
+            targetType="comment"
+            targetId={comment.id}
+            targetLabel={`Reactie van ${comment.author.displayName}`}
+            trigger={(
+              <button
+                type="button"
+                className="flex min-h-11 items-center gap-1 hover:text-destructive"
+                aria-label={`Reactie van ${comment.author.displayName} melden`}
+              >
+                <Flag className="h-3 w-3" aria-hidden="true" /> Melden
+              </button>
+            )}
+          />
         </div>
-        {!isReply && repliesOf(c.id).map((r) => renderComment(r, true))}
+        {(repliesByParent.get(comment.id) ?? []).map((reply) => renderComment(reply, depth + 1))}
       </div>
     </div>
   );
@@ -155,35 +183,71 @@ const CommentsSheet = ({
           <SheetTitle>Reacties</SheetTitle>
         </SheetHeader>
         <div className="flex-1 overflow-y-auto -mx-2 px-2">
-          {roots.length === 0 ? (
+          {!available ? (
+            <p className="text-sm text-muted-foreground text-center py-8" role="status">
+              Reacties zijn voor deze update niet beschikbaar.
+            </p>
+          ) : commentsQuery.isPending ? (
+            <p className="text-sm text-muted-foreground text-center py-8 flex items-center justify-center gap-2" role="status">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Reacties laden…
+            </p>
+          ) : commentsQuery.isError ? (
+            <div className="text-center py-8 space-y-3" role="alert">
+              <p className="text-sm text-muted-foreground">Reacties konden niet worden geladen.</p>
+              <Button type="button" size="sm" variant="outline" onClick={() => commentsQuery.refetch()}>
+                Opnieuw proberen
+              </Button>
+            </div>
+          ) : roots.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">Wees de eerste die reageert.</p>
           ) : (
-            roots.map((c) => renderComment(c))
+            <>
+              {roots.map((comment) => renderComment(comment))}
+              {commentsQuery.hasNextPage && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="w-full mt-4"
+                  disabled={commentsQuery.isFetchingNextPage}
+                  onClick={() => commentsQuery.fetchNextPage()}
+                >
+                  {commentsQuery.isFetchingNextPage ? "Meer laden…" : "Meer reacties laden"}
+                </Button>
+              )}
+            </>
           )}
         </div>
-        {user ? (
+        {available && user ? (
           <div className="border-t pt-3 mt-2 space-y-2">
             {replyTo && (
               <div className="text-xs text-muted-foreground flex items-center justify-between bg-muted/50 px-2 py-1 rounded">
-                <span>Antwoord op {replyTo.profile?.display_name}</span>
+                <span>Antwoord op {replyTo.author.displayName}</span>
                 <button type="button" onClick={() => setReplyTo(null)} className="text-accent" aria-label="Antwoord annuleren">×</button>
               </div>
             )}
             <Textarea
               value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder="Schrijf een reactie... gebruik @naam om iemand te taggen"
+              onChange={(event) => setText(event.target.value)}
+              placeholder="Schrijf een reactie… gebruik @gebruikersnaam om iemand te noemen"
+              aria-label="Nieuwe reactie"
               rows={2}
-              maxLength={2000}
+              maxLength={2_000}
             />
             <p className="text-right text-[10px] tabular-nums text-muted-foreground">{text.length}/2000</p>
-            <Button onClick={submit} disabled={posting || !text.trim()} size="sm" className="w-full bg-accent text-accent-foreground hover:bg-accent/90">
-              Plaatsen
+            <Button
+              type="button"
+              onClick={submit}
+              disabled={createComment.isPending || !text.trim()}
+              size="sm"
+              className="w-full bg-accent text-accent-foreground hover:bg-accent/90"
+            >
+              {createComment.isPending ? "Plaatsen…" : "Plaatsen"}
             </Button>
           </div>
-        ) : (
+        ) : available ? (
           <p className="text-xs text-center text-muted-foreground border-t pt-3">Log in om te reageren.</p>
-        )}
+        ) : null}
       </SheetContent>
     </Sheet>
   );

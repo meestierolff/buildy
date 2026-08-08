@@ -5,30 +5,35 @@ import path from "node:path";
 const outputRoot = path.resolve(process.argv[2] || "artifacts/baseline");
 const targets = [
   { environment: "local", baseUrl: process.env.BASELINE_LOCAL_URL || "http://127.0.0.1:8090" },
-  { environment: "live", baseUrl: process.env.BASELINE_LIVE_URL || "https://buildy-log.lovable.app" },
-];
+  process.env.BASELINE_TARGET_URL
+    ? { environment: process.env.BASELINE_TARGET_NAME || "staging", baseUrl: process.env.BASELINE_TARGET_URL }
+    : null,
+].filter(Boolean);
 
-const ownerProjectId = "373b3e31-fb84-45e4-9103-9de7beb43563";
-const publicProjectId = "08bab0ef-3afc-4a6a-81c3-640a071ac464";
-const publicProfileId = "af842993-4095-47f7-91e8-a05575ceb70b";
+const ownerProjectId = process.env.BASELINE_OWNER_PROJECT_ID || "11111111-1111-4111-8111-111111111111";
+const publicProjectId = process.env.BASELINE_PUBLIC_PROJECT_ID || "22222222-2222-4222-8222-222222222222";
+const publicProfileId = process.env.BASELINE_PUBLIC_PROFILE_KEY || "voorbeeld-bouwer";
 
 const scenarios = [
   { name: "landing-logged-out", route: "/" },
+  { name: "discover-logged-out", route: "/ontdekken" },
   { name: "auth-login-register", route: "/auth?mode=register" },
-  { name: "new-project-logged-out", route: "/trips/new" },
-  { name: "own-project-unauthenticated", route: `/trip/${ownerProjectId}` },
-  { name: "public-project", route: `/trip/${publicProjectId}` },
-  { name: "private-project-access", route: `/trip/${ownerProjectId}` },
-  { name: "update-composer-unavailable-logged-out", route: `/trip/${ownerProjectId}` },
-  { name: "before-after-viewer", route: `/trip/${publicProjectId}` },
-  { name: "connections", route: "/vrienden" },
-  { name: "public-profile", route: `/profile/${publicProfileId}` },
-  { name: "notifications-unavailable-logged-out", route: "/" },
-  { name: "budget", route: `/trip/${ownerProjectId}/budget` },
-  { name: "floorplan", route: `/trip/${publicProjectId}` },
-  { name: "photobook", route: `/trip/${ownerProjectId}/photobook` },
-  { name: "checkout-unavailable-logged-out", route: `/trip/${ownerProjectId}/photobook` },
-  { name: "order-status", route: "/bestelling/baseline-synthetic-order" },
+  { name: "new-project-logged-out", route: "/project/nieuw" },
+  { name: "own-project-unauthenticated", route: `/project/${ownerProjectId}` },
+  { name: "public-project", route: `/project/${publicProjectId}` },
+  { name: "private-project-access", route: `/project/${ownerProjectId}` },
+  { name: "update-project-choice-logged-out", route: "/update/nieuw" },
+  { name: "update-composer-unavailable-logged-out", route: `/project/${ownerProjectId}?update=nieuw` },
+  { name: "before-after-viewer", route: `/project/${publicProjectId}` },
+  { name: "connections", route: "/connecties" },
+  { name: "public-profile", route: `/profiel/${publicProfileId}` },
+  { name: "projects-unavailable-logged-out", route: "/projecten" },
+  { name: "notifications-unavailable-logged-out", route: "/notificaties" },
+  { name: "budget", route: `/project/${ownerProjectId}/budget` },
+  { name: "floorplan", route: `/project/${publicProjectId}` },
+  { name: "photobook", route: `/project/${ownerProjectId}/bouwboek` },
+  { name: "checkout-unavailable-logged-out", route: `/project/${ownerProjectId}/bouwboek` },
+  { name: "order-status", route: "/bestellingen/baseline-synthetic-order" },
   { name: "account-settings", route: "/account" },
 ];
 

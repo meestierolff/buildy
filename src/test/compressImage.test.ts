@@ -15,9 +15,18 @@ describe("prepareUpload", () => {
     await expect(prepareUpload(file)).resolves.toBe(file);
   });
 
-  it("rejects phone photo formats the browser cannot reliably print", async () => {
+  it("keeps a small HEIC phone photo for server-side decoding", async () => {
     const file = new File(["photo"], "keuken.heic", { type: "image/heic" });
-    await expect(prepareUpload(file)).rejects.toThrow(/niet-ondersteund fotoformaat/i);
+    await expect(prepareUpload(file)).resolves.toBe(file);
+  });
+
+  it("preserves a large print-quality source byte-for-byte", async () => {
+    const sourceBytes = new Uint8Array(512 * 1024).fill(23);
+    const file = new File([sourceBytes], "bouwboek-bron.jpg", { type: "image/jpeg" });
+    const prepared = await prepareUpload(file);
+
+    expect(prepared).toBe(file);
+    expect(new Uint8Array(await prepared.arrayBuffer())).toEqual(sourceBytes);
   });
 
   it.each([

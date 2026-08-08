@@ -1,0 +1,10 @@
+.env
+.env.*
+.neon
+.playwright-mcp/
+artifacts/
+coverage/
+dist/
+node_modules/
+playwright-report/
+test-results/

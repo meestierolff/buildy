@@ -1,0 +1,525 @@
+name: Buildy CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      run_staging_e2e:
+        description: Voer de volledige, beschermde staging/auth E2E-suite uit
+        required: true
+        default: false
+        type: boolean
+      staging_base_url:
+        description: HTTPS-basis-URL van de expliciet gekozen stagingomgeving
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: buildy-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "true"
+  TZ: Europe/Amsterdam
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  quality:
+    name: Typecheck and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Buildy
+        uses: ./.github/actions/setup-buildy
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint repository
+        run: bun run lint
+
+      - name: Require changed source files to be warning-free
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${BASE_SHA:-}" || "$BASE_SHA" =~ ^0+$ ]]; then
+            echo "Geen bruikbare base SHA; de volledige repositorylint hierboven blijft de gate."
+            exit 0
+          fi
+
+          mapfile -d '' changed_files < <(
+            git diff --name-only -z --diff-filter=ACMR "$BASE_SHA" "$GITHUB_SHA" -- \
+              '*.js' '*.jsx' '*.mjs' '*.cjs' '*.ts' '*.tsx'
+          )
+
+          if (( ${#changed_files[@]} == 0 )); then
+            echo "Geen gewijzigde JavaScript- of TypeScriptbestanden."
+            exit 0
+          fi
+
+          printf 'Strikte lint op %d gewijzigd(e) bestand(en).\n' "${#changed_files[@]}"
+          bunx eslint --max-warnings=0 "${changed_files[@]}"
+
+  unit-tests:
+    name: Vitest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Buildy
+        uses: ./.github/actions/setup-buildy
+
+      - name: Run unit and server tests
+        run: bun run test -- --reporter=verbose
+
+      - name: Generate synthetic transactional e-mail previews
+        run: |
+          bun run email:previews
+          rg -q "SYNTHETIC TEST ARTIFACT" artifacts/email/order-confirmation.synthetic.html
+          rg -q "GEEN ECHTE BESTELLING" artifacts/email/order-confirmation.synthetic.txt
+          rg -q "Welkom" artifacts/email/lifecycle-welcome.synthetic.html
+          rg -q "GEEN ECHT ACCOUNT" artifacts/email/migration-account.synthetic.txt
+          rg -q "Verwijderverzoek" artifacts/email/security-account-alert.synthetic.html
+
+      - name: Upload synthetic e-mail preview artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: transactional-email-previews-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/email
+          if-no-files-found: error
+          retention-days: 14
+
+  build:
+    name: Production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VITE_SITE_URL: https://ci.buildy.invalid
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Buildy
+        uses: ./.github/actions/setup-buildy
+
+      - name: Build production bundle
+        run: bun run build
+
+      - name: Enforce raw and gzip bundle budgets
+        run: bun run check:bundle
+
+      - name: Verify expected build outputs
+        run: |
+          set -euo pipefail
+          test -s dist/index.html
+          test -s dist/sitemap.xml
+          test -s dist/robots.txt
+
+      - name: Upload browser artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: web-dist-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Buildy
+        uses: ./.github/actions/setup-buildy
+
+      - name: Fail on high or critical advisories
+        run: bun audit --audit-level=high
+
+  migration-sql:
+    name: PostgreSQL migration validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Uitsluitend de directe, dedicated migrationverbinding. De runner leest
+      # DATABASE_URL bewust nooit en accepteert extern geen verbinding zonder TLS.
+      DATABASE_MIGRATION_URL: postgresql://buildy_migrator:buildy_ci_migrator@127.0.0.1:5432/buildy_ci?sslmode=disable
+      CI_DATABASE_ADMIN_URL: postgresql://postgres:buildy_ci_admin@127.0.0.1:5432/buildy_ci?sslmode=disable
+    services:
+      postgres:
+        image: postgres:16.4-alpine
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: buildy_ci_admin
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Buildy
+        uses: ./.github/actions/setup-buildy
+
+      - name: Unit-test migration discovery and validation
+        run: bunx vitest run tests/db --reporter=verbose
+
+      - name: Validate SQL migration source without a database
+        run: bunx tsx db/migrate.ts --check
+
+      - name: Bootstrap a least-privileged ephemeral migration role
+        env:
+          CI_POSTGRES_ADMIN_URL: postgresql://postgres:buildy_ci_admin@127.0.0.1:5432/postgres?sslmode=disable
+        run: |
+          node --input-type=module <<'NODE'
+          import { Client } from "pg";
+
+          const client = new Client({ connectionString: process.env.CI_POSTGRES_ADMIN_URL });
+          await client.connect();
+          try {
+            await client.query(`
+              CREATE ROLE buildy_migrator
+              LOGIN PASSWORD 'buildy_ci_migrator'
+              NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS
+            `);
+            for (const [role, password] of [
+              ["buildy_web", "buildy_ci_web"],
+              ["buildy_account_worker", "buildy_ci_account_worker"],
+              ["buildy_email_worker", "buildy_ci_email_worker"],
+              ["buildy_media_worker", "buildy_ci_media_worker"],
+              ["buildy_payment_worker", "buildy_ci_payment_worker"],
+              ["buildy_fulfilment_worker", "buildy_ci_fulfilment_worker"],
+              ["buildy_photobook_worker", "buildy_ci_photobook_worker"],
+            ]) {
+              await client.query(`
+                CREATE ROLE ${role}
+                LOGIN PASSWORD '${password}'
+                NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS
+              `);
+            }
+            await client.query("CREATE DATABASE buildy_ci OWNER buildy_migrator");
+          } finally {
+            await client.end();
+          }
+          NODE
+
+      - name: Show the locked migration plan
+        run: bunx tsx db/migrate.ts --dry-run
+
+      - name: Apply migrations through the checksum ledger
+        run: bunx tsx db/migrate.ts
+
+      - name: Configure isolated runtime roles and function grants
+        run: |
+          psql "$CI_DATABASE_ADMIN_URL" \
+            -v buildy_web_role=buildy_web \
+            -v buildy_account_worker_role=buildy_account_worker \
+            -v buildy_email_worker_role=buildy_email_worker \
+            -v buildy_media_worker_role=buildy_media_worker \
+            -v buildy_payment_worker_role=buildy_payment_worker \
+            -v buildy_fulfilment_worker_role=buildy_fulfilment_worker \
+            -v buildy_photobook_worker_role=buildy_photobook_worker \
+            -f scripts/setup/configure-database-roles.sql
+
+      - name: Verify runtime role isolation
+        run: |
+          psql "$CI_DATABASE_ADMIN_URL" \
+            -v buildy_web_role=buildy_web \
+            -v buildy_account_worker_role=buildy_account_worker \
+            -v buildy_email_worker_role=buildy_email_worker \
+            -v buildy_media_worker_role=buildy_media_worker \
+            -v buildy_payment_worker_role=buildy_payment_worker \
+            -v buildy_fulfilment_worker_role=buildy_fulfilment_worker \
+            -v buildy_photobook_worker_role=buildy_photobook_worker \
+            -f scripts/setup/verify-database-roles.sql
+
+      - name: Exercise real PostgreSQL RLS and worker boundaries
+        env:
+          DATABASE_SECURITY_TEST_URL: ${{ env.CI_DATABASE_ADMIN_URL }}
+          DATABASE_SECURITY_WEB_ROLE: buildy_web
+          DATABASE_SECURITY_WEB_URL: postgresql://buildy_web:buildy_ci_web@127.0.0.1:5432/buildy_ci?sslmode=disable
+          DATABASE_SECURITY_ACCOUNT_WORKER_URL: postgresql://buildy_account_worker:buildy_ci_account_worker@127.0.0.1:5432/buildy_ci?sslmode=disable
+          DATABASE_SECURITY_EMAIL_WORKER_URL: postgresql://buildy_email_worker:buildy_ci_email_worker@127.0.0.1:5432/buildy_ci?sslmode=disable
+          DATABASE_SECURITY_PAYMENT_WORKER_URL: postgresql://buildy_payment_worker:buildy_ci_payment_worker@127.0.0.1:5432/buildy_ci?sslmode=disable
+          DATABASE_SECURITY_FULFILMENT_WORKER_URL: postgresql://buildy_fulfilment_worker:buildy_ci_fulfilment_worker@127.0.0.1:5432/buildy_ci?sslmode=disable
+          DATABASE_SECURITY_PHOTOBOOK_WORKER_URL: postgresql://buildy_photobook_worker:buildy_ci_photobook_worker@127.0.0.1:5432/buildy_ci?sslmode=disable
+        run: |
+          bunx vitest run \
+            tests/db/private-beta.integration.test.ts \
+            tests/db/engagement-rls.integration.test.ts \
+            tests/db/profile-rls.integration.test.ts \
+            tests/db/account-lifecycle.integration.test.ts \
+            tests/db/photobook-worker.integration.test.ts \
+            tests/db/order-checkout.integration.test.ts \
+            tests/db/stripe-payment.integration.test.ts \
+            tests/db/order-email.integration.test.ts \
+            tests/db/community-email.integration.test.ts \
+            tests/db/account-social-email.integration.test.ts \
+            tests/db/project-deletion.integration.test.ts \
+            tests/db/moderation.integration.test.ts \
+            tests/db/moderation-admin.integration.test.ts \
+            tests/db/peecho-fulfilment.integration.test.ts \
+            --no-file-parallelism \
+            --reporter=verbose
+
+      - name: Verify ledger, schema and RLS contract
+        run: bunx tsx db/verify.ts
+
+      - name: Require migration replay to be an idempotent no-op
+        run: bunx tsx db/migrate.ts
+
+      - name: Verify schema after the no-op replay
+        run: bunx tsx db/verify.ts
+
+  public-e2e:
+    name: Public Playwright E2E
+    needs:
+      - quality
+      - unit-tests
+      - build
+      - dependency-audit
+      - migration-sql
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Buildy
+        uses: ./.github/actions/setup-buildy
+
+      - name: Download tested browser artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-dist-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist
+
+      - name: Install Chromium and operating-system dependencies
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run provider-free public scenarios
+        env:
+          PLAYWRIGHT_MODE: preview
+          PLAYWRIGHT_HTML_OPEN: never
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report
+          PLAYWRIGHT_JUNIT_OUTPUT_NAME: test-results/public-junit.xml
+        run: |
+          bunx playwright test \
+            tests/e2e/discovery.e2e.ts \
+            tests/e2e/auth.e2e.ts \
+            tests/e2e/canonical-routes.e2e.ts \
+            --project=chromium \
+            --reporter=list,html,junit \
+            --grep 'first-time visitor|mobile navigation|header nav links|404 route|login form|switch to registration|start-project CTA|order confirmation preserves|forgot-password|oude projectlink'
+
+      - name: Require selected public scenarios without skips
+        run: |
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const xml = readFileSync("test-results/public-junit.xml", "utf8");
+            const tests = (xml.match(/<testcase\b/g) ?? []).length;
+            const skipped = (xml.match(/<skipped\b/g) ?? []).length;
+            if (tests === 0) throw new Error("De publieke E2E-selectie bevatte geen tests.");
+            if (skipped > 0) throw new Error(`De publieke E2E-selectie sloeg ${skipped} test(s) over.`);
+            console.log(`${tests} publieke E2E-tests uitgevoerd zonder skips.`);
+          '
+
+      - name: Reject serious or critical public accessibility violations
+        env:
+          PLAYWRIGHT_MODE: preview
+        run: >-
+          bunx playwright test
+          tests/e2e/public-accessibility.e2e.ts
+          --project=chromium
+          --output=test-results/accessibility-runtime
+          --reporter=list
+
+      - name: Capture deterministic synthetic core flows
+        env:
+          PLAYWRIGHT_MODE: preview
+        run: >-
+          bunx playwright test
+          tests/e2e/quality-visual.e2e.ts
+          --project=chromium
+          --output=test-results/quality-runtime
+          --reporter=list
+
+      - name: Upload deterministic quality screenshots
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quality-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/quality-screenshots
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload Playwright diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: public-playwright-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+          retention-days: 14
+
+  ci-gate:
+    name: CI gate
+    if: always()
+    needs:
+      - quality
+      - unit-tests
+      - build
+      - dependency-audit
+      - migration-sql
+      - public-e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every automatic gate
+        env:
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          UNIT_RESULT: ${{ needs.unit-tests.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          AUDIT_RESULT: ${{ needs.dependency-audit.result }}
+          MIGRATION_RESULT: ${{ needs.migration-sql.result }}
+          E2E_RESULT: ${{ needs.public-e2e.result }}
+        run: |
+          set -euo pipefail
+          for result in \
+            "$QUALITY_RESULT" \
+            "$UNIT_RESULT" \
+            "$BUILD_RESULT" \
+            "$AUDIT_RESULT" \
+            "$MIGRATION_RESULT" \
+            "$E2E_RESULT"; do
+            if [[ "$result" != "success" ]]; then
+              echo "Automatische CI-gate is niet groen: $result" >&2
+              exit 1
+            fi
+          done
+
+  staging-auth-e2e:
+    name: Protected staging and auth E2E
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_staging_e2e }}
+    needs:
+      - ci-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: staging-e2e
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Buildy
+        uses: ./.github/actions/setup-buildy
+
+      - name: Validate explicit staging target
+        env:
+          STAGING_BASE_URL: ${{ inputs.staging_base_url }}
+        run: |
+          node --input-type=module -e '
+            const raw = process.env.STAGING_BASE_URL?.trim();
+            if (!raw) throw new Error("staging_base_url is verplicht wanneer staging E2E is aangezet.");
+            const url = new URL(raw);
+            if (url.protocol !== "https:") throw new Error("Staging E2E accepteert uitsluitend HTTPS.");
+            if (url.username || url.password) throw new Error("Credentials horen niet in staging_base_url.");
+            if (url.pathname !== "/" || url.search || url.hash) throw new Error("Gebruik uitsluitend de staging-origin als basis-URL.");
+          '
+          echo "PLAYWRIGHT_BASE_URL=$STAGING_BASE_URL" >> "$GITHUB_ENV"
+
+      - name: Materialize protected synthetic session
+        env:
+          STORAGE_STATE_JSON: ${{ secrets.PLAYWRIGHT_STORAGE_STATE_JSON }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${STORAGE_STATE_JSON:-}" ]]; then
+            echo "Het staging-e2e environment mist PLAYWRIGHT_STORAGE_STATE_JSON." >&2
+            exit 1
+          fi
+
+          state_file="$RUNNER_TEMP/buildy-playwright-storage-state.json"
+          umask 077
+          printf '%s' "$STORAGE_STATE_JSON" > "$state_file"
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const state = JSON.parse(readFileSync(process.argv[1], "utf8"));
+            if (!Array.isArray(state.cookies) || state.cookies.length === 0) {
+              throw new Error("De beschermde storage state bevat geen sessiecookies.");
+            }
+            if (!Array.isArray(state.origins)) {
+              throw new Error("De beschermde storage state heeft geen geldige origins-array.");
+            }
+          ' "$state_file"
+          echo "PLAYWRIGHT_STORAGE_STATE=$state_file" >> "$GITHUB_ENV"
+
+      - name: Install Chromium and operating-system dependencies
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run complete staging suite
+        env:
+          PLAYWRIGHT_HTML_OPEN: never
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report
+          PLAYWRIGHT_JUNIT_OUTPUT_NAME: test-results/staging-junit.xml
+        run: bunx playwright test --project=chromium --reporter=list,html,junit
+
+      - name: Fail when authenticated scenarios were silently skipped
+        run: |
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const xml = readFileSync("test-results/staging-junit.xml", "utf8");
+            const tests = (xml.match(/<testcase\b/g) ?? []).length;
+            const skipped = (xml.match(/<skipped\b/g) ?? []).length;
+            if (tests === 0) throw new Error("De staging E2E-suite bevatte geen tests.");
+            if (skipped > 0) throw new Error(`Staging E2E sloeg ${skipped} test(s) over; fixtures of auth zijn onvolledig.`);
+            console.log(`${tests} staging E2E-tests uitgevoerd zonder skips.`);
+          '
+
+      - name: Upload protected staging diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: staging-playwright-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+          retention-days: 14

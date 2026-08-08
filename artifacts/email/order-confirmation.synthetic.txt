@@ -1,0 +1,29 @@
+SYNTHETIC TEST ARTIFACT — GEEN ECHTE BESTELLING OF PERSOONSGEGEVENS
+
+Je Bouwboek is besteld
+
+Dank je wel. We hebben je betaling ontvangen en bewaren hieronder alle gegevens van je bestelling.
+
+Je printproof en bestelling zijn nu vergrendeld. In je orderstatus zie je iedere volgende stap van productie en verzending.
+
+Ordernummer: BLD-TEST-00000001
+Besteld op: 4 augustus 2026 om 12:15
+Boekvariant: Bouwboek “Synthetisch testproject” · A4 liggend hardcover
+Pagina’s: 48
+Aantal: 2
+Bedrag: € 80,00
+Btw: € 18,27 inbegrepen
+Verzending: € 6,95
+Totaal: € 105,22 EUR
+Verwachte levering: 5–8 werkdagen na productie
+Verzendbestemming: TESTONTVANGER, TESTADRES — NIET BEZORGEN, 0000 ZZ Teststad, NL
+Verkoper: SYNTHETISCHE TESTVERKOPER B.V. · TEST-KVK-00000000 · TEST-BTW-NL000000000B00
+Contact: Buildy testomgeving · support@example.test · TESTADRES — NIET BEZORGEN
+Voorwaarden: synthetic-terms-v1
+Maatwerk: Gepersonaliseerd testproduct; dit artifact is geen echte bestelling of juridisch bewijs.
+
+Bekijk je orderstatus: https://app.buildy.test/bestellingen/10000000-0000-4000-8000-000000000001
+
+Heb je een vraag over deze bestelling? Reageer niet met privégegevens, maar gebruik de contactgegevens hierboven en vermeld alleen je ordernummer.
+
+Buildy — Van eerste sleutel tot laatste plint.

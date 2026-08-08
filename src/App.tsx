@@ -2,19 +2,26 @@ import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation } from "@/lib/router";
 import { AuthProvider } from "@/hooks/useAuth";
+import { useAuth } from "@/hooks/useAuth";
+import { useOwnProfile } from "@/hooks/useProfiles";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import { AppShell, LegacyRedirect, MobileNav } from "@/components/app";
+import OnboardingDialog from "@/components/app/OnboardingDialog";
+import { PRODUCT_ROUTES, type ProductNavigationItem } from "@/lib/productNavigation";
+import FeedbackLauncher from "@/components/moderation/FeedbackLauncher";
 import Index from "./pages/Index";
 
 const Terms = lazy(() => import("./pages/legal/Terms"));
 const Privacy = lazy(() => import("./pages/legal/Privacy"));
 const Withdrawal = lazy(() => import("./pages/legal/Withdrawal"));
+const ContentPolicy = lazy(() => import("./pages/legal/ContentPolicy"));
+const HouseRules = lazy(() => import("./pages/legal/HouseRules"));
 
-// Heavier / less-frequently visited routes are code-split so the initial bundle
-// stays small (e.g. jspdf + html2canvas only load on Photobook, leaflet on TripDetail).
+// Heavier / less-frequently visited routes are code-split so the initial bundle stays small.
 const Auth = lazy(() => import("./pages/Auth"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
@@ -27,6 +34,12 @@ const Budget = lazy(() => import("./pages/Budget"));
 const Favorites = lazy(() => import("./pages/Favorites"));
 const Friends = lazy(() => import("./pages/Friends"));
 const OrderConfirmation = lazy(() => import("./pages/OrderConfirmation"));
+const Support = lazy(() => import("./pages/Support"));
+const Feedback = lazy(() => import("./pages/Feedback"));
+const Report = lazy(() => import("./pages/Report"));
+const ModerationAdmin = lazy(() => import("./pages/ModerationAdmin"));
+const NewUpdate = lazy(() => import("./pages/NewUpdate"));
+const Notifications = lazy(() => import("./pages/Notifications"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const RouteFallback = () => (
@@ -36,41 +49,129 @@ const RouteFallback = () => (
   </div>
 );
 
+const routeParam = (
+  params: Readonly<Record<string, string | undefined>>,
+  key: string,
+): string | null => params[key]?.trim() || null;
+
+const PUBLIC_MOBILE_NAVIGATION: readonly ProductNavigationItem[] = [
+  { id: "discover", label: "Ontdekken", href: PRODUCT_ROUTES.discover, icon: "discover", exact: true },
+  { id: "connections", label: "Connecties", href: PRODUCT_ROUTES.connections, icon: "connections" },
+  { id: "account", label: "Inloggen", href: "/auth", icon: "account" },
+];
+
+const getAuthenticatedMobileNavigation = (profileSlug?: string): readonly ProductNavigationItem[] => [
+  { id: "projects", label: "Projecten", href: PRODUCT_ROUTES.projects, icon: "projects", exact: true, requiresAuth: true },
+  { id: "following", label: "Volgend", href: PRODUCT_ROUTES.following, icon: "following", requiresAuth: true },
+  {
+    id: "update",
+    label: "Update",
+    href: PRODUCT_ROUTES.createUpdate,
+    icon: "add",
+    primaryAction: true,
+    requiresAuth: true,
+  },
+  { id: "discover", label: "Ontdekken", href: PRODUCT_ROUTES.discover, icon: "discover" },
+  {
+    id: "profile",
+    label: "Profiel",
+    href: profileSlug ? PRODUCT_ROUTES.profile(profileSlug) : PRODUCT_ROUTES.account,
+    icon: "profile",
+    requiresAuth: true,
+  },
+];
+
+const ApplicationFrame = () => {
+  const { user } = useAuth();
+  const profileQuery = useOwnProfile(Boolean(user));
+  const { pathname } = useLocation();
+  const hidesMobileNavigation = ["/auth", "/wachtwoord-vergeten", "/wachtwoord-resetten"].includes(pathname);
+  const navigationItems = user
+    ? getAuthenticatedMobileNavigation(profileQuery.data?.slug)
+    : PUBLIC_MOBILE_NAVIGATION;
+  const showFeedbackLauncher = Boolean(user) && !["/feedback", "/support", "/melden"].includes(pathname);
+
+  return (
+    <>
+      <AppShell
+        header={<Header />}
+        footer={<Footer />}
+        mobileNavigation={hidesMobileNavigation ? undefined : (
+          <MobileNav items={navigationItems} label="Mobiele navigatie" />
+        )}
+      >
+        <ErrorBoundary>
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/ontdekken" element={<Index />} />
+              <Route path="/projecten" element={<Index />} />
+              <Route path="/auth" element={<Auth />} />
+              <Route path="/wachtwoord-vergeten" element={<ForgotPassword />} />
+              <Route path="/wachtwoord-resetten" element={<ResetPassword />} />
+              <Route path="/account" element={<AccountSettings />} />
+              <Route path="/project/nieuw" element={<NewTrip />} />
+              <Route path="/update/nieuw" element={<NewUpdate />} />
+              <Route path="/project/:id/bouwboek" element={<Photobook />} />
+              <Route path="/project/:id/budget" element={<Budget />} />
+              <Route path="/project/:id" element={<TripDetail />} />
+              <Route path="/volgend" element={<Favorites />} />
+              <Route path="/connecties" element={<Friends />} />
+              <Route path="/profiel/:profileKey" element={<Profile />} />
+              <Route path="/notificaties" element={<Notifications />} />
+              <Route path="/trips/new" element={<LegacyRedirect resolve={() => PRODUCT_ROUTES.newProject} />} />
+              <Route path="/trip/:id/photobook" element={<LegacyRedirect resolve={(params) => {
+                const id = routeParam(params, "id");
+                return id ? PRODUCT_ROUTES.projectPhotobook(id) : null;
+              }} />} />
+              <Route path="/projecten/:id/bouwboek" element={<LegacyRedirect resolve={(params) => {
+                const id = routeParam(params, "id");
+                return id ? PRODUCT_ROUTES.projectPhotobook(id) : null;
+              }} />} />
+              <Route path="/trip/:id/budget" element={<LegacyRedirect resolve={(params) => {
+                const id = routeParam(params, "id");
+                return id ? PRODUCT_ROUTES.projectBudget(id) : null;
+              }} />} />
+              <Route path="/trip/:id" element={<LegacyRedirect resolve={(params) => {
+                const id = routeParam(params, "id");
+                return id ? PRODUCT_ROUTES.project(id) : null;
+              }} />} />
+              <Route path="/favorieten" element={<LegacyRedirect resolve={() => PRODUCT_ROUTES.following} />} />
+              <Route path="/vrienden" element={<LegacyRedirect resolve={() => PRODUCT_ROUTES.connections} />} />
+              <Route path="/profile/:profileKey" element={<LegacyRedirect resolve={(params) => {
+                const profileKey = routeParam(params, "profileKey");
+                return profileKey ? PRODUCT_ROUTES.profile(profileKey) : null;
+              }} />} />
+              <Route path="/bestelling/:orderId" element={<OrderConfirmation />} />
+              <Route path="/bestellingen/:orderId" element={<OrderConfirmation />} />
+              <Route path="/voorwaarden" element={<Terms />} />
+              <Route path="/privacy" element={<Privacy />} />
+              <Route path="/herroeping" element={<Withdrawal />} />
+              <Route path="/contentbeleid" element={<ContentPolicy />} />
+              <Route path="/huisregels" element={<HouseRules />} />
+              <Route path="/support" element={<Support />} />
+              <Route path="/feedback" element={<Feedback />} />
+              <Route path="/melden" element={<Report />} />
+              <Route path="/beheer/moderatie" element={<ModerationAdmin />} />
+              <Route path="/beheer/moderatie/:reportId" element={<ModerationAdmin />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
+      </AppShell>
+      <OnboardingDialog enabled={Boolean(user)} />
+      {showFeedbackLauncher ? <FeedbackLauncher /> : null}
+    </>
+  );
+};
+
 const App = () => (
   <TooltipProvider>
     <Toaster />
     <Sonner />
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <BrowserRouter>
       <AuthProvider>
-        <div className="min-h-screen flex flex-col">
-          <Header />
-          <main className="flex-1 pb-[56px] md:pb-0">
-            <ErrorBoundary>
-              <Suspense fallback={<RouteFallback />}>
-                <Routes>
-                  <Route path="/" element={<Index />} />
-                  <Route path="/auth" element={<Auth />} />
-                  <Route path="/wachtwoord-vergeten" element={<ForgotPassword />} />
-                  <Route path="/wachtwoord-resetten" element={<ResetPassword />} />
-                  <Route path="/account" element={<AccountSettings />} />
-                  <Route path="/trips/new" element={<NewTrip />} />
-                  <Route path="/trip/:id" element={<TripDetail />} />
-                  <Route path="/trip/:id/photobook" element={<Photobook />} />
-                  <Route path="/trip/:id/budget" element={<Budget />} />
-                  <Route path="/favorieten" element={<Favorites />} />
-                  <Route path="/vrienden" element={<Friends />} />
-                  <Route path="/profile/:userId" element={<Profile />} />
-                  <Route path="/bestelling/:orderId" element={<OrderConfirmation />} />
-                  <Route path="/voorwaarden" element={<Terms />} />
-                  <Route path="/privacy" element={<Privacy />} />
-                  <Route path="/herroeping" element={<Withdrawal />} />
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </Suspense>
-            </ErrorBoundary>
-          </main>
-          <Footer />
-        </div>
+        <ApplicationFrame />
       </AuthProvider>
     </BrowserRouter>
   </TooltipProvider>

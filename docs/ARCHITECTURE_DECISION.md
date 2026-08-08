@@ -4,7 +4,7 @@
 - **Datum:** 2026-08-04
 - **Beslissers:** Buildy product- en engineeringverantwoordelijke
 - **Reikwijdte:** webapp, server-API, authenticatie, database, object storage, Bouwboek, betalingen, fulfilment, e-mail en migratie
-- **Vervangt:** de actieve Lovable/Supabase-runtimearchitectuur en de Peecho Print Button-flow
+- **Vervangt:** de actieve oude prototypeprovider/oude BaaS-provider-runtimearchitectuur en de Peecho Print Button-flow
 
 ## Samenvatting van het besluit
 
@@ -18,7 +18,7 @@ De migratie volgt een stranglerpatroon per verticale slice. Een legacy-slice wor
 
 ## Context en probleemstelling
 
-De huidige applicatie bevat bruikbare productlogica, maar koppelt React rechtstreeks aan Supabase Auth, Postgres RPC/RLS en Storage. Lovable wordt gebruikt voor OAuth en AI; order- en fulfilmentlogica draait in Supabase Edge Functions. Deze coupling belemmert een gecontroleerde migratie en maakt beveiligingsgaranties afhankelijk van verspreide clientlogica, RLS-versies en bearer-URL's.
+De huidige applicatie bevat bruikbare productlogica, maar koppelt React rechtstreeks aan oude BaaS-provider Auth, Postgres RPC/RLS en Storage. oude prototypeprovider wordt gebruikt voor OAuth en AI; order- en fulfilmentlogica draait in oude BaaS-provider Edge Functions. Deze coupling belemmert een gecontroleerde migratie en maakt beveiligingsgaranties afhankelijk van verspreide clientlogica, RLS-versies en bearer-URL's.
 
 De repository-audit bracht onder meer de volgende architectuurproblemen aan het licht:
 
@@ -45,14 +45,14 @@ De architectuur moet daarom geen big-bang rewrite zijn. Zij moet bestaande UUID'
 6. **Side effects verlaten de database via een outbox.** E-mail, notificaties, provideracties en cleanup worden niet als onbetrouwbare fire-and-forgetactie aan een kernwrite gekoppeld.
 7. **Expand, migrate, contract.** Destructieve schema- of storagecleanup vindt nooit plaats in dezelfde release als de cutover.
 8. **Fail closed.** Ontbrekende providerconfiguratie, juridische waarden, prijsgoedkeuring of autorisatie levert geen best-effort liveflow op, maar een server-side uitgeschakelde capability.
-9. **Provideradapters lekken niet het domein in.** Domeinservices gebruiken Buildy-contracten en kennen geen Stripe-, Peecho-, Brevo-, R2- of legacy-Supabasepayloads.
+9. **Provideradapters lekken niet het domein in.** Domeinservices gebruiken Buildy-contracten en kennen geen Stripe-, Peecho-, Brevo-, R2- of legacy-oude BaaS-providerpayloads.
 10. **Bewijs boven redirect of UI-state.** Alleen geverifieerde serverevents, gecontroleerde bytes en databasecommits wijzigen financiële of privacygevoelige toestand.
 
 ## Besluit per laag
 
 ### Frontend: React en Vite blijven
 
-De bestaande React/Vite-app blijft de frontend. Routes en gebruikersflows worden verticaal gemigreerd naar een typed API-client; directe Supabase-, Lovable-, database- en storagecalls verdwijnen per slice.
+De bestaande React/Vite-app blijft de frontend. Routes en gebruikersflows worden verticaal gemigreerd naar een typed API-client; directe oude BaaS-provider-, oude prototypeprovider-, database- en storagecalls verdwijnen per slice.
 
 Een frameworkmigratie naar Next.js is geen voorwaarde voor veilige cookies, server-API's of metadata. Een volledige frameworkmigratie zou auth, uploads, Bouwboekrendering en alle UI-routes gelijktijdig raken en daarmee het stranglermodel ondermijnen. Publieke Open Graph-responses worden door specifieke Vercel Functions gegenereerd; hiervoor hoeft de hele app niet server-rendered te worden.
 
@@ -125,7 +125,7 @@ De keuze is gebaseerd op de concrete Buildy-eisen:
 - expliciete legacy-user-ID mapping en beheerste first-loginmigratie;
 - server-side private-bèta-invitevalidatie en usage limits;
 - lifecyclehooks die transactionele Buildy-outboxevents voor Brevo genereren;
-- Google OAuth zonder Lovable-broker en expliciete accountlinkingregels;
+- Google OAuth zonder oude prototypeprovider-broker en expliciete accountlinkingregels;
 - één deploy- en observabilitygrens met de overige Vercel API.
 
 Authcookies zijn host-only tenzij een later domeinbesluit cross-subdomaingebruik aantoonbaar noodzakelijk maakt. Productie forceert HTTPS en secure cookies. State-changing endpoints valideren `Origin`/`Sec-Fetch-Site`, gebruiken SameSite als defense-in-depth en vereisen daarnaast een CSRF-token waar de requestvorm of browsercompatibiliteit dat vraagt. Geen access-, refresh- of sessiontoken wordt in `localStorage`, analytics of logs opgeslagen.
@@ -136,7 +136,7 @@ Beta-invites worden niet als onbetrouwbare `after`-hook verwerkt. Een voorregist
 
 #### Legacy-identiteit
 
-Applicatietabellen verwijzen naar een stabiele `app_users.id`, bij voorkeur de bestaande Supabase-auth UUID. Een `auth_identity_mappings`-record koppelt deze ID aan de Better Auth user/account-identiteit en bewaart alleen noodzakelijke provider- en migratiestatusmetadata. Hierdoor hoeven projectownership en sociale relaties niet te worden herschreven wanneer de authprovider verandert.
+Applicatietabellen verwijzen naar een stabiele `app_users.id`, bij voorkeur de bestaande oude BaaS-provider-auth UUID. Een `auth_identity_mappings`-record koppelt deze ID aan de Better Auth user/account-identiteit en bewaart alleen noodzakelijke provider- en migratiestatusmetadata. Hierdoor hoeven projectownership en sociale relaties niet te worden herschreven wanneer de authprovider verandert.
 
 Wachtwoorden worden nooit als plaintext geëxporteerd. Bestaande hashes worden alleen geïmporteerd wanneer het gebruikte formaat officieel ondersteund en met synthetische accounts getest is. Anders geldt een gecontroleerde magic-link/first-login/password-setflow. Oude sessies worden bij cutover ongeldig; OAuth-gebruikers koppelen Google opnieuw via geverifieerde flows.
 
@@ -218,7 +218,7 @@ Schermgerichte readmodels voorkomen N+1/waterfalls en lekken geen privévelden. 
 
 `outbox_events` wordt in dezelfde database-transactie geschreven als de domeinmutatie. Een worker claimt records met een lease, voert de side effect uit en bewaart attempt, volgende retry, geminimaliseerd resultaat en foutklasse. Retries gebruiken exponential backoff met jitter; na de limiet volgt `dead_letter` en een operationele alert. Een idempotency key is uniek per logisch effect, bijvoorbeeld `order:{id}:confirmation:v1`.
 
-`provider_inbox_events` bewaart één record per provider/event-ID of, wanneer de provider geen ID geeft, per geverifieerde payloadhash en scoped reference. Verwerking gebeurt via atomic claim. Een event kan `applied`, `ignored`, `retry` of `dead_letter` eindigen; ontvangst alleen verandert geen orderstatus.
+`provider_event_inbox` bewaart één record per provider/event-ID of, wanneer de provider geen ID geeft, per geverifieerde payloadhash en scoped reference. Verwerking gebeurt via atomic claim. Een event kan `applied`, `ignored`, `retry` of `dead_letter` eindigen; ontvangst alleen verandert geen orderstatus.
 
 Durable jobs worden ook gebruikt voor PDF-rendering, derivatives, data-export, reconciliatie en deletionsaga's. Jobs zijn kleine hervatbare stappen; leases kunnen verlopen en opnieuw worden geclaimd. Iedere stap is idempotent en controleert de reeds bereikte toestand vóór een externe call.
 
@@ -363,7 +363,7 @@ De migratievolgorde staat vast. Per slice wordt eerst de backendgrens gebouwd, d
 | 7. Bouwboek | Photobook/Proof services | canonical model, deterministic render, PDF-thumbnails, assetset, SHA-256, invalidate/lock |
 | 8. Checkout en fulfilment | Checkout/Payment/Fulfilment services | Stripe sandbox, replay/out-of-order, price/land gate, Peecho timeout/reconcile/retry, Brevo ordermail |
 | 9. Accountdelete en operations | Export/Deletion/Moderation services | export, active-order block, resumable cleanup, archivepolicy, dead-letter, restore/alerts |
-| 10. Legacyverwijdering | Nieuwe stack volledig | zero runtime requests/imports/env naar Lovable/Supabase, final delta, rollbackwindow voltooid |
+| 10. Legacyverwijdering | Nieuwe stack volledig | zero runtime requests/imports/env naar oude prototypeprovider/oude BaaS-provider, final delta, rollbackwindow voltooid |
 
 Tijdens een slice-cutover geldt:
 
@@ -453,9 +453,9 @@ Destructieve cleanup, public-bucket disable/delete en oude authprojectdelete zit
 
 ## Alternatieven en afwijzingen
 
-### Supabase/Lovable behouden
+### oude BaaS-provider/oude prototypeprovider behouden
 
-Afgewezen als doelarchitectuur. Het zou directe clientdataaccess, public/signed URL-coupling, een Lovable OAuth-broker en versnipperde RLS/Edge Function-logica behouden. Waardevolle SQL- en providerregels worden wel geport en met regressietests beschermd.
+Afgewezen als doelarchitectuur. Het zou directe clientdataaccess, public/signed URL-coupling, een oude prototypeprovider OAuth-broker en versnipperde RLS/Edge Function-logica behouden. Waardevolle SQL- en providerregels worden wel geport en met regressietests beschermd.
 
 ### Big-bang rewrite
 
@@ -517,7 +517,7 @@ Mitigaties zijn contracttests, pinned dependencies, dependency/security-updates,
 ## Implementatieregels die uit dit ADR volgen
 
 - Nieuwe code gebruikt `project` en `update`; legacy `trip`/`step` komt alleen in migratieadapters voor.
-- Geen nieuwe import, envnaam of netwerkrequest naar Lovable of Supabase.
+- Geen nieuwe import, envnaam of netwerkrequest naar oude prototypeprovider of oude BaaS-provider.
 - Geen component importeert Drizzle, Better Auth servercode, R2 SDK of een provider-SDK.
 - Geen provideradapter schrijft rechtstreeks statusvelden buiten de domeinservice/transitievalidator.
 - Geen signed URL wordt persistent als canonical media- of PDF-URL opgeslagen.
@@ -546,4 +546,10 @@ Deze bronnen zijn op 2026-08-04 geraadpleegd. Implementatie controleert bij prov
 
 ## Beslisresultaat
 
-Deze ADR is **Accepted for implementation**. Implementatie start met de auth/profiel-vertical slice, maar alleen nadat de live legacycatalogus en storage-inventory als migratiebron zijn vastgelegd. Iedere volgende slice moet de hierboven beschreven acceptance- en rollbackgates passeren. Afwijkingen vereisen een nieuwe ADR of een expliciete, gedateerde amendementsectie; tijdelijke implementatiegemakken wijzigen dit besluit niet.
+Deze ADR is **Accepted for implementation**. Iedere slice moet de hierboven beschreven acceptance- en rollbackgates passeren. Afwijkingen vereisen een nieuwe ADR of een expliciete, gedateerde amendementsectie; tijdelijke implementatiegemakken wijzigen dit besluit niet.
+
+## Amendement 2026-08-05 — runtimecutover versus datacutover
+
+De targetruntime is provider-onafhankelijk geïmplementeerd en de oude runtimebron is uit de working tree verwijderd zonder een live bronaccount te wijzigen. Dat was veilig mogelijk omdat dit uitsluitend code- en dependencydecommission betrof. De externe legacycatalogus, authidentiteiten, database en objectstorage zijn niet geïnventariseerd, gemigreerd of verwijderd.
+
+De eerdere volgorderegel wordt daarom aangescherpt: implementatie en working-tree-decommission mogen met synthetische fixtures plaatsvinden; een data- of accountcutover mag pas na een read-only live inventory, versleutelde export, stagingrehearsal, final delta, reconciliatie, expliciet rollbackwindow en secretrotatie. Tot die artifacts bestaan blijft de datacutover **NO-GO**.

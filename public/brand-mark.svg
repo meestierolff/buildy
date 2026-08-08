@@ -1,8 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none">
-  <rect width="40" height="40" rx="10" fill="#fdfcfb"/>
-  <path d="M9.5 18.2 20 9.8l10.5 8.4" stroke="#1a1a1a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M12.5 17.3v10.2h15V17.3L20 11.2l-7.5 6.1Z" fill="#c27d66"/>
-  <path d="M17.2 19.1h5.6v5.6h-5.6z" fill="#fff"/>
-  <path d="M7.8 29.3c4.4-.5 8.5.4 12.2 2.7 3.7-2.3 7.8-3.2 12.2-2.7" stroke="#1a1a1a" stroke-width="2.2" stroke-linecap="round"/>
-  <path d="M20 28.5V32" stroke="#c27d66" stroke-width="2" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" role="img" aria-labelledby="brand-mark-title brand-mark-description">
+  <title id="brand-mark-title">Buildy</title>
+  <desc id="brand-mark-description">Een huis boven een open boek, met een stijgende voortgangslijn.</desc>
+  <rect x="1" y="1" width="46" height="46" rx="11" fill="#FDFCFB" stroke="#E7E1DA"/>
+  <path d="M12.5 23.3 24 13.7l11.5 9.6M15.8 20.6v10.1M32.2 20.6v10.1" stroke="#1A1A1A" stroke-width="2.35" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M8.6 31.2c5.4-.8 10.5.7 15.4 4.4 4.9-3.7 10-5.2 15.4-4.4M24 27.2v8.4" stroke="#1A1A1A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m17.8 27.5 4.2-4 3.3 2 5-6" stroke="#C27D66" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m27.2 19.5 3.4-.3-.3 3.4" stroke="#C27D66" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

@@ -29,46 +29,82 @@ export const phaseColor = (phase: string | null | undefined) => {
 interface Props {
   value: string;
   onChange: (v: string) => void;
+  options?: ReadonlyArray<{ value: string; label: string }>;
   customPhases?: string[];
-  onAddCustom?: (v: string) => Promise<void> | void;
+  onAddCustom?: (v: string) => Promise<string | void> | string | void;
   placeholder?: string;
+  disabled?: boolean;
 }
 
-const PhaseSelect = ({ value, onChange, customPhases = [], onAddCustom, placeholder = "Kies fase" }: Props) => {
+const PhaseSelect = ({
+  value,
+  onChange,
+  options,
+  customPhases = [],
+  onAddCustom,
+  placeholder = "Kies fase",
+  disabled = false,
+}: Props) => {
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
+  const [savingCustom, setSavingCustom] = useState(false);
+  const [customError, setCustomError] = useState<string | null>(null);
   const all = [...DEFAULT_PHASES, ...customPhases.filter((p) => !DEFAULT_PHASES.includes(p))];
+  const phaseOptions = options ?? all.map((phase) => ({ value: phase, label: phase }));
 
   const submitCustom = async () => {
     const v = draft.trim();
-    if (!v) return;
-    if (onAddCustom) await onAddCustom(v);
-    onChange(v);
-    setDraft("");
-    setAdding(false);
+    if (!v || savingCustom) return;
+    setSavingCustom(true);
+    setCustomError(null);
+    try {
+      const createdValue = onAddCustom ? await onAddCustom(v) : undefined;
+      onChange(typeof createdValue === "string" ? createdValue : v);
+      setDraft("");
+      setAdding(false);
+    } catch (error) {
+      console.error("Create custom project phase failed", error);
+      setCustomError(error instanceof Error ? error.message : "De fase kon niet worden toegevoegd.");
+    } finally {
+      setSavingCustom(false);
+    }
   };
 
   if (adding) {
     return (
-      <div className="flex gap-2">
-        <Input
-          autoFocus
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="Naam van eigen fase"
-          onKeyDown={(e) => {
-            if (e.key === "Enter") { e.preventDefault(); submitCustom(); }
-            if (e.key === "Escape") setAdding(false);
-          }}
-        />
-        <Button type="button" size="sm" onClick={submitCustom}>OK</Button>
-        <Button type="button" size="sm" variant="ghost" onClick={() => setAdding(false)}>X</Button>
+      <div>
+        <div className="flex gap-2">
+          <Input
+            autoFocus
+            value={draft}
+            maxLength={80}
+            disabled={disabled || savingCustom}
+            onChange={(e) => { setDraft(e.target.value); setCustomError(null); }}
+            placeholder="Naam van eigen fase"
+            aria-invalid={Boolean(customError)}
+            aria-describedby={customError ? "custom-phase-error" : undefined}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); void submitCustom(); }
+              if (e.key === "Escape" && !savingCustom) setAdding(false);
+            }}
+          />
+          <Button type="button" size="sm" onClick={() => void submitCustom()} disabled={disabled || savingCustom || !draft.trim()}>OK</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => setAdding(false)} disabled={disabled || savingCustom} aria-label="Eigen fase annuleren">X</Button>
+        </div>
+        {customError && <p id="custom-phase-error" role="alert" className="mt-1 text-xs text-destructive">{customError}</p>}
       </div>
     );
   }
 
   return (
-    <Select value={value} onValueChange={(v) => v === "__add__" ? setAdding(true) : onChange(v)}>
+    <Select value={value} onValueChange={(v) => {
+      if (v === "__add__") {
+        setCustomError(null);
+        setAdding(true);
+      } else {
+        onChange(v);
+      }
+    }} disabled={disabled}>
       <SelectTrigger>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
@@ -77,8 +113,8 @@ const PhaseSelect = ({ value, onChange, customPhases = [], onAddCustom, placehol
         className="z-[1100] bg-popover"
         sideOffset={4}
       >
-        {all.map((p) => (
-          <SelectItem key={p} value={p}>{p}</SelectItem>
+        {phaseOptions.map((phase) => (
+          <SelectItem key={phase.value} value={phase.value}>{phase.label}</SelectItem>
         ))}
         {onAddCustom && (
           <SelectItem value="__add__" className="text-accent font-medium">

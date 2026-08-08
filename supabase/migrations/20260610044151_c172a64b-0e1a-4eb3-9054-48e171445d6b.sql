@@ -1,1 +1,0 @@
-DROP POLICY IF EXISTS "Profiles are publicly viewable" ON public.profiles;

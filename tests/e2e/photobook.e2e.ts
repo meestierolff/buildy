@@ -2,20 +2,25 @@ import {
   test,
   expect,
   BASE,
-  PUBLIC_TRIP_ID,
-  OWNER_TRIP_ID,
+  PUBLIC_PROJECT_ID,
+  OWNER_PROJECT_ID,
   waitForPhotobookImages,
   collectImageDiagnostics,
   isSignedIn,
   trackConsoleErrors,
 } from "./helpers";
 
-const PHOTOBOOK_TRIP_ID = PUBLIC_TRIP_ID;
+const PHOTOBOOK_PROJECT_ID = PUBLIC_PROJECT_ID;
+const hasExplicitBackendBaseUrl = Boolean(process.env.PLAYWRIGHT_BASE_URL);
 
 test.describe("Photobook — preview", () => {
+  test.beforeEach(() => {
+    test.skip(!hasExplicitBackendBaseUrl, "requires explicit backend-backed photobook data");
+  });
+
   test("cover preview renders with navigation controls", async ({ page }) => {
     const errors = trackConsoleErrors(page);
-    await page.goto(`${BASE}/trip/${PHOTOBOOK_TRIP_ID}/photobook`);
+    await page.goto(`${BASE}/project/${PHOTOBOOK_PROJECT_ID}/bouwboek`);
     await page.waitForTimeout(2000);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await expect(page.getByText("Cover").first()).toBeVisible();
@@ -25,7 +30,7 @@ test.describe("Photobook — preview", () => {
 
   test("desktop spreads stay print-safe (no broken imgs, no overlaps)", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto(`${BASE}/trip/${PHOTOBOOK_TRIP_ID}/photobook`, { waitUntil: "networkidle" });
+    await page.goto(`${BASE}/project/${PHOTOBOOK_PROJECT_ID}/bouwboek`, { waitUntil: "networkidle" });
     await waitForPhotobookImages(page);
 
     for (let i = 0; i < 4; i += 1) {
@@ -47,7 +52,7 @@ test.describe("Photobook — preview", () => {
 
   test("mobile page-by-page preview stays print-safe", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(`${BASE}/trip/${PHOTOBOOK_TRIP_ID}/photobook`, { waitUntil: "networkidle" });
+    await page.goto(`${BASE}/project/${PHOTOBOOK_PROJECT_ID}/bouwboek`, { waitUntil: "networkidle" });
     await expect(page.getByText(/opmaakvoorbeeld.*print-pdf.*apart opgebouwd en gecontroleerd/i)).toBeVisible();
     await waitForPhotobookImages(page);
 
@@ -69,27 +74,30 @@ test.describe("Photobook — preview", () => {
 });
 
 test.describe("Photobook — owner controls", () => {
-  test("bestel-dialog shows Peecho ordering controls", async ({ page }) => {
-    await page.goto(`${BASE}/trip/${OWNER_TRIP_ID}/photobook`);
+  test.beforeEach(() => {
+    test.skip(!hasExplicitBackendBaseUrl, "requires explicit backend-backed photobook data");
+  });
+
+  test("bestel-dialog vraagt een server-owned prijs en levering op", async ({ page }) => {
+    await page.goto(`${BASE}/project/${OWNER_PROJECT_ID}/bouwboek`);
     await page.waitForTimeout(2000);
     const orderButton = page.getByRole("button", { name: /bestel als boek/i });
-    test.skip(await orderButton.count() === 0, "requires authenticated trip owner session");
+    test.skip(await orderButton.count() === 0, "requires authenticated project owner session");
     await orderButton.click();
-    await expect(page.getByRole("dialog")).toBeVisible();
     const dialog = page.getByRole("dialog");
-    const hasPeecho = await dialog.locator(".peecho-print-button").count();
-    const hasPrepareButton = await dialog.getByRole("button", { name: /boek klaarmaken/i }).count();
-    expect(hasPeecho + hasPrepareButton).toBeGreaterThan(0);
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("heading", { name: "Bouwboek bestellen" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: /prijs en levering opvragen/i })).toBeVisible();
   });
 
   test("orientation toggle switches between liggend and staand", async ({ page }) => {
-    await page.goto(`${BASE}/trip/${OWNER_TRIP_ID}/photobook`);
+    await page.goto(`${BASE}/project/${OWNER_PROJECT_ID}/bouwboek`);
     test.skip(!(await isSignedIn(page)), "requires authenticated owner");
     await page.waitForTimeout(1500);
     const liggend = page.getByRole("button", { name: /liggend/i });
     const staand = page.getByRole("button", { name: /staand/i });
     if ((await staand.count()) === 0 || (await liggend.count()) === 0) {
-      test.skip(true, "orientation toggle not available on this trip");
+      test.skip(true, "orientation toggle not available on this project");
     }
     await staand.first().click();
     await page.waitForTimeout(400);

@@ -1,202 +1,146 @@
 # Buildy
 
-Buildy is een sociaal verbouwingsdagboek: bewoners leggen hun project vast in
-updates, volgen elkaar en maken van hun verhaal een gedrukt Bouwboek. De frontend
-is React/TypeScript met Vite, Tailwind en shadcn/ui; Supabase verzorgt auth,
-PostgreSQL, storage en Edge Functions. Stripe handelt de betaling af en Peecho
-verzorgt print en fulfilment.
+Buildy is een privacy-first sociaal verbouwingsdagboek. Bewoners leggen een
+renovatie vast in updates, foto's, planning en budget, bepalen per project wie
+mag meekijken en kunnen een goedgekeurde tijdlijn laten drukken als Bouwboek.
 
-## Lokaal starten
+De doelruntime bestaat uit React 18/TypeScript/Vite, een typed same-origin API op
+Vercel Functions, Neon PostgreSQL met Drizzle, Better Auth met HttpOnly cookies,
+private Cloudflare R2-opslag, Brevo transactionele mail, Stripe Checkout en een
+server-side Peecho REST v3 fulfilmentworker.
 
-Vereisten: [Bun](https://bun.sh/) en, voor de lokale backend, Docker plus de
-Supabase CLI.
+## Lokale ontwikkeling
+
+Vereisten: de Bun-versie uit `packageManager` in `package.json` en Node voor de
+server/toolingscripts. Kopieer alleen de benodigde namen; commit nooit waarden:
 
 ```sh
-cp .env.example .env.local
-bun install
+cp .env.example .env
+bun install --frozen-lockfile
 bun run dev
 ```
 
-Vul minimaal `VITE_SUPABASE_URL` en `VITE_SUPABASE_PUBLISHABLE_KEY` in. Voor een
-schone lokale database:
+De frontend draait standaard op `http://127.0.0.1:8080` en proxyt `/api` naar de
+lokale API op poort 8787. Zonder database-/providerconfig blijft de betreffende
+capability bewust `unconfigured`; de app verzint geen successtatus.
 
-```sh
-bunx supabase start
-bunx supabase db reset
-```
-
-De belangrijkste productroutes zijn `/`, `/auth`, `/trips/new`, `/trip/:id`,
-`/trip/:id/photobook`, `/vrienden`, `/account` en `/bestelling/:orderId`.
-
-## Buildy launch configuration
-
-### Local checks
+## Belangrijkste commands
 
 ```sh
 bun run typecheck
 bun run lint
-bun test
+bun run test
 bun run build
+bun run check:bundle
 bun run test:e2e:preview
-bun run check:launch
+
+node --import tsx db/migrate.ts --check
+bun run check:launch -- --static
+bun run setup:providers -- --staging
+bun run setup:providers -- --staging --check
 ```
 
-Playwright starts the Buildy dev server at `http://127.0.0.1:8090` by default. Set `PLAYWRIGHT_BASE_URL` if you want to test against another running environment.
+Gebruik `bun run test` voor Vitest. Het kale `bun test` commando start Bun's
+eigen testrunner en is voor deze repository niet de juiste suite.
 
-To run owner-only flows with your own account:
+## Structuur
+
+- `src/` — React-interface en typed API-clients;
+- `api/router.ts` — enkele Vercel Function-entrypoint;
+- `server/http/router.ts` — routes, origincontrole, health en readiness;
+- `server/` — domeinservices, repositories, workers en provideradapters;
+- `shared/contracts/` — Zod-contracten gedeeld door browser en server;
+- `db/schema/` — Drizzle-schema;
+- `db/migrations/` — append-only SQL-migrations met checksumledger;
+- `scripts/setup/` — provider-/databasecontrole zonder secretoutput;
+- `scripts/migration/` — hervatbare, fail-closed legacycutovertooling;
+- `tests/server`, `tests/db`, `tests/e2e`, `src/test` — testlagen;
+- `docs/` — architectuur, runbooks en actuele launchmatrix.
+
+## Security- en privacygrenzen
+
+- De browser spreekt alleen met de Buildy-API en krijgt nooit database- of
+  providercredentials.
+- Auth gebruikt authoritative server-sessies en Secure/HttpOnly/SameSite cookies;
+  mutaties vereisen een vertrouwde exacte Origin.
+- Runtime en iedere worker hebben een afzonderlijke database-login. Zij hebben
+  geen tabel-DML en alleen `EXECUTE` op hun begrensde `SECURITY DEFINER`-functies.
+- R2 is privé. Uploads, reads en printdownloads gebruiken korte, doelgebonden
+  grants; objectkeys, magic bytes, bytes en checksums worden server-side bewaakt.
+- PII wordt waar mogelijk envelope-encrypted met contextgebonden AAD en blind
+  geïndexeerd. Logs accepteren geen e-mail, adres, token, payload of signed URL.
+- Webhooks verifiëren raw signatures/account/environment en gaan daarna door een
+  idempotente inbox/state-machine.
+- Checkout staat los van providerconfig en blijft standaard uit met
+  `CHECKOUT_ENABLED=false`.
+- AI-plattegrondgeneratie is niet onderdeel van de actieve runtime.
+
+Zie [ARCHITECTURE_DECISION.md](docs/ARCHITECTURE_DECISION.md) en
+[CI_CD.md](docs/CI_CD.md) voor de volledige grenzen.
+
+## Database en migraties
+
+Gebruik een directe TLS-verbinding alleen voor migrations en pooled URLs voor de
+runtime/workerrollen:
 
 ```sh
-mkdir -p tests/e2e/.auth
-bunx playwright codegen --save-storage=tests/e2e/.auth/user.json http://127.0.0.1:8090/auth
-PLAYWRIGHT_STORAGE_STATE=tests/e2e/.auth/user.json bunx playwright test
+DATABASE_MIGRATION_URL='postgresql://…?sslmode=require' node --import tsx db/migrate.ts
+DATABASE_MIGRATION_URL='postgresql://…?sslmode=require' node --import tsx db/verify.ts
+DATABASE_MIGRATION_URL='postgresql://…?sslmode=require' node --import tsx db/migrate.ts
 ```
 
-### Buildy Bouwboek checkout
+De laatste stap moet een no-op zijn. Wijzig nooit een gepubliceerde migration;
+maak een volgende forward migration. Richt daarna de rollen in en verifieer ze
+met de SQL-scripts in `scripts/setup/`. Details staan in
+[PROVIDER_SETUP.md](docs/PROVIDER_SETUP.md).
 
-The app now uses a Buildy-owned checkout flow:
+## Bouwboek, checkout en fulfilment
 
-1. Buildy generates and validates a print-ready PDF in the browser.
-2. The PDF is uploaded to the private `photobook-pdfs` bucket.
-3. `create-photobook-checkout` verifies ownership, PDF bytes/page count, launch configuration and the server-owned price before it creates the order and an idempotent Stripe Checkout Session.
-4. The customer sees the exact total (book, VAT-inclusive price and shipping) before opening Stripe.
-5. `stripe-webhook` verifies Stripe's signature, session identity, subtotal, shipping, exact total and currency, then atomically claims fulfillment.
-6. The webhook creates a Peecho order and calls Peecho's separate `/order/payment` endpoint. Only after that second call is the book submitted to production.
-7. Peecho receives a temporary signed PDF URL; terminal orders remove the private source PDF.
+De server bouwt één canonical document, rendert een deterministische proof,
+controleert minimaal 24 en een even aantal pagina's, bewaart hashes en vergrendelt
+alleen een expliciet goedgekeurde revision. De klant kan geen prijs, seller,
+valuta, offering of proofrevision bepalen.
 
-Checkout is intentionally fail-closed: missing price, shipping, Stripe or Peecho configuration prevents payment instead of accepting money for an order that cannot be fulfilled. The Peecho account must have sufficient credit or an invoicing agreement for `/order/payment` to succeed.
+Stripe-bevestiging reserveert niet rechtstreeks een printorder. Een durable
+Peecho-worker claimt fulfilment, maakt een order en betaalt die als twee aparte
+idempotente stappen. Bij een onzekere create haalt hij eerst de canonical
+providerorder op. Een Stripe-refund is nooit automatisch bewijs van annulering
+bij de printer. Zie [PEECHO_V3_ADAPTER.md](docs/PEECHO_V3_ADAPTER.md),
+[TRANSACTIONAL_EMAIL.md](docs/TRANSACTIONAL_EMAIL.md) en
+[ORDER_SUPPORT_RUNBOOK.md](docs/ORDER_SUPPORT_RUNBOOK.md).
 
-Legacy client-side Peecho button env is still supported by helper code but no longer shown in the main order dialog:
+## Staging en deployment
 
-```sh
-VITE_PEECHO_SCRIPT_URL="https://d3aln0nj58oevo.cloudfront.net/button/script/YOUR_BUTTON_KEY.js"
-# or:
-VITE_PEECHO_BUTTON_KEY="YOUR_BUTTON_KEY"
-```
+1. Vul uitsluitend stagingcredentials in Vercel en houd Stripe/Peecho in testmode.
+2. Voer `bun run setup:providers -- --staging --check` uit; deze probes zijn
+   read-only en tonen geen secrets.
+3. Pas migrations toe, configureer rollen en controleer `/api/health` en
+   `/api/readiness`.
+4. Deploy het gebouwde artifact en voer `bun run check:launch -- --staging
+   --base-url=https://…` uit.
+5. Bewijs private R2, Better Auth/Brevo, Stripe sandbox, Peecho sandbox,
+   callbacks, workers, fault injection en restore op niet-productie.
+6. Activeer checkout alleen voor de gecontroleerde sandboxflow. Productie en
+   publieke registratie blijven dicht tot alle relevante gates zijn getekend.
 
-Server-side Supabase secrets for Stripe checkout:
+De setup-, DPA-, DNS-, cron-, juridische en providerstappen staan in
+[PROVIDER_SETUP.md](docs/PROVIDER_SETUP.md) en
+[EXTERNAL_INPUTS_REQUIRED.md](docs/EXTERNAL_INPUTS_REQUIRED.md).
 
-```sh
-supabase secrets set STRIPE_SECRET_KEY="sk_live_..."
-supabase secrets set STRIPE_WEBHOOK_SECRET="whsec_..."
-supabase secrets set SITE_URL="https://buildy.app"
-supabase secrets set PHOTOBOOK_CURRENCY="eur"
-supabase secrets set PHOTOBOOK_BASE_PRICE_CENTS="1295"
-supabase secrets set PHOTOBOOK_PRICE_PER_PAGE_CENTS="75"
-supabase secrets set PHOTOBOOK_SHIPPING_PRICE_CENTS="695"
-supabase secrets set PHOTOBOOK_PRICES_INCLUDE_VAT="true"
-supabase secrets set PHOTOBOOK_DELIVERY_ESTIMATE="5–10 werkdagen na productie"
-supabase secrets set PHOTOBOOK_TERMS_VERSION="2026-07-15"
-supabase secrets set SELLER_LEGAL_NAME="Exacte juridische verkopersnaam"
-supabase secrets set SELLER_CONTACT_EMAIL="bestellingen@example.com"
-supabase secrets set SELLER_CONTACT_PHONE="+31 20 123 45 67"
-supabase secrets set SELLER_POSTAL_ADDRESS="Straat 1, 1234 AB Plaats, Nederland"
-supabase secrets set SELLER_REGISTRATION_NUMBER="KvK 12345678 · btw-id NL..."
-supabase secrets set STRIPE_SHIPPING_COUNTRIES="NL,BE,DE"
-supabase secrets set STRIPE_AUTOMATIC_TAX="true" # optional; configure Stripe Tax first
-```
+De eenmalige legacy-import gebruikt bewust een andere, directe targetverbinding
+(`DATABASE_DIRECT_URL`) en de bevestigingsgrenzen uit
+[MIGRATION_AND_CUTOVER.md](docs/MIGRATION_AND_CUTOVER.md). Verwissel die nooit
+met de least-privileged schema-runnerverbinding.
 
-Server-side Supabase secrets for Peecho fulfillment and status webhooks:
+## Launchstatus
 
-```sh
-supabase secrets set PEECHO_SECRET_KEY="..."
-supabase secrets set PEECHO_ORDER_API_URL="https://www.peecho.com/rest/v3/order/"
-supabase secrets set PEECHO_PAYMENT_API_URL="https://www.peecho.com/rest/v3/order/payment" # optional; derived by default
-supabase secrets set PEECHO_MERCHANT_API_KEY="..."
-supabase secrets set PEECHO_OFFERING_ID_A4_LANDSCAPE="..."
-supabase secrets set PEECHO_OFFERING_ID_A4_PORTRAIT="..."
-supabase secrets set PEECHO_OFFERING_ID_SQUARE_210="..."
-supabase secrets set PEECHO_PDF_SIGNED_URL_TTL_SECONDS="2592000"
-supabase secrets set PHOTOBOOK_ABANDONED_PDF_RETENTION_HOURS="48"
-supabase secrets set PHOTOBOOK_PAID_PDF_MAX_RETENTION_DAYS="90"
-supabase secrets set PHOTOBOOK_PDF_COMPLAINT_RETENTION_DAYS="30"
-supabase secrets set PHOTOBOOK_RETENTION_CRON_SECRET="a-long-random-secret"
-```
+De actuele beslissing staat in [LAUNCH_READINESS.md](docs/LAUNCH_READINESS.md).
+Op 4 augustus 2026 is publieke productie **NO-GO**: echte provideraccounts,
+stagingcutover, volledige authenticated browseracceptatie, monitoring,
+restore rehearsal en een ontvangen fysieke proefdruk zijn nog niet bewezen. Een
+groene build of ingevulde secret sluit geen van die gates zelfstandig.
 
-AI-blauwdrukken staan standaard zowel in de frontend als server-side uit. Zet ze
-pas aan nadat de leveranciers-/privacybeoordeling, een kostenalarm en de
-daglimiet zijn goedgekeurd:
-
-```sh
-# frontend build
-VITE_AI_BLUEPRINT_ENABLED="true"
-
-# Supabase secrets
-supabase secrets set AI_BLUEPRINT_ENABLED="true"
-supabase secrets set AI_BLUEPRINT_DAILY_LIMIT="3"
-supabase secrets set LOVABLE_API_KEY="..."
-```
-
-Deploy the functions after setting secrets:
-
-```sh
-supabase db push
-supabase functions deploy create-photobook-checkout
-supabase functions deploy stripe-webhook
-supabase functions deploy peecho-pingback
-supabase functions deploy cleanup-photobook-retention
-supabase functions deploy delete-account
-supabase functions deploy floorplan-blueprint
-```
-
-Deploy `floorplan-blueprint` ook wanneer AI uit blijft: de geharde versie dwingt
-de server-side featureflag en het dagquotum af en faalt standaard gesloten.
-
-Schedule a daily authenticated `POST` to
-`/functions/v1/cleanup-photobook-retention` with header
-`x-cron-secret: $PHOTOBOOK_RETENTION_CRON_SECRET`. It deletes delivered-book PDFs
-after the complaint window, abandoned checkout PDFs after their short TTL, and
-paid PDFs at the configured hard maximum even when a Peecho pingback never
-arrives. `SHIPPED` starts the complaint-retention window because Peecho API v3
-does not guarantee a later `DELIVERED` callback. The job also purges anonymized
-fiscal order archives only after their seven-year `retain_until` date. Open
-checkouts and paid/refunded orders whose physical Peecho fulfillment is not yet
-shipped, delivered or provider-confirmed cancelled deliberately block account deletion.
-
-Configure Stripe's webhook endpoint for `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `charge.refunded`, `refund.created`, and `refund.updated`. `STRIPE_WEBHOOK_SECRET` must be the signing secret for this exact endpoint and environment. Refund events update the customer-visible status idempotently, but deliberately leave Peecho fulfillment in manual review: a Stripe refund is not proof that the physical print order was cancelled.
-
-```txt
-https://YOUR_PROJECT_REF.supabase.co/functions/v1/stripe-webhook
-```
-
-Configure Peecho's `Status update URL` webhook to keep delivery status synced:
-
-```txt
-https://YOUR_PROJECT_REF.supabase.co/functions/v1/peecho-pingback
-```
-
-The webhook verifies Peecho's `signature` as `SHA256(PEECHO_SECRET_KEY + order_id)` and updates the local `photobook_orders` row via `order_reference`.
-
-Each new order stores the exact VAT-inclusive quote, delivery promise, allowed
-countries, seller identity, accepted terms version and personalized-product
-exception in `checkout_snapshot`. These values are also shown on the authenticated
-order page and retained in the minimized fiscal archive when an account is deleted.
-
-> **Launch blocker:** the repository does not yet send a durable transactional
-> order confirmation by email or PDF. A Stripe receipt is not a replacement for
-> the complete Buildy sales confirmation. Before enabling live payments, connect
-> a transactional mail provider and verify that the buyer receives the order,
-> exact price/shipping/VAT, delivery promise, seller details and applicable terms
-> version in a form they can retain. Do not announce or accept real orders until
-> this test mail succeeds and the legal seller fields above match the public legal
-> pages, Stripe account and support channel.
-
-## Productiedeployment
-
-1. Rond eerst alle P0-punten in [LAUNCH_READINESS.md](./LAUNCH_READINESS.md) af.
-2. Koppel het productiedomein met geldige DNS en HTTPS en zet `VITE_SITE_URL` en
-   `SITE_URL` op exact die origin.
-3. Vul de expliciete productieconfiguratie uit `.env.example` als hosting- en
-   Supabase-secrets in. Gebruik geen testkeys of voorbeeldwaarden.
-4. Link de juiste Supabase-projectref, voer `supabase db push` uit en deploy alle
-   Edge Functions, inclusief `cleanup-photobook-retention`.
-5. Configureer de Stripe-webhook en Peecho-statuscallback, en plan de dagelijkse
-   retentiejob met het aparte cronsecret.
-6. Draai de volledige lokale suite en vervolgens tegen productie:
-   `bun run check:launch`, `bun run audit:private-assets` en
-   `bun run audit:social`. Valideer de elf social-FK's pas nadat de audit
-   `PASS` geeft; de exacte SQL staat in [LAUNCH_READINESS.md](./LAUNCH_READINESS.md).
-7. Rond daarna één gecontroleerde Stripe/Peecho-testorder end-to-end af.
-
-Een geslaagde build is geen launch-go: DNS, live secrets, sellergegevens,
-providercontracten, duurzame orderbevestiging en een echte fulfilmenttest zijn
-expliciete releasevoorwaarden.
+Zie het [implementatielog](docs/IMPLEMENTATION_LOG.md), het
+[migratierapport](docs/MIGRATION_REPORT.md) en de actuele
+[launchmatrix](docs/LAUNCH_READINESS.md) voor gemeten commandostatussen,
+synthetische browserartifacts en de precieze resterende externe bewijzen.

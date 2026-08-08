@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
-import { Heart, Clock } from "lucide-react";
+import { Heart, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+import { useProjectFollowMutation, useSocialProjectState } from "@/hooks/useSocial";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
@@ -12,88 +11,71 @@ interface FollowButtonProps {
   className?: string;
 }
 
-type FollowStatus = "none" | "pending" | "accepted";
-
-const FollowButton = ({ projectId, size = "sm", variant = "outline", className }: FollowButtonProps) => {
+const FollowButton = ({
+  projectId,
+  size = "sm",
+  variant = "outline",
+  className,
+}: FollowButtonProps) => {
   const { user } = useAuth();
-  const [status, setStatus] = useState<FollowStatus>("none");
-  const [loading, setLoading] = useState(true);
+  const mutation = useProjectFollowMutation();
+  const stateQuery = useSocialProjectState(projectId, Boolean(user && projectId));
 
-  useEffect(() => {
-    let cancelled = false;
-    if (!user) {
-      setStatus("none");
-      setLoading(false);
-      return () => { cancelled = true; };
-    }
-    setLoading(true);
-    supabase
-      .from("follows")
-      .select("status")
-      .eq("user_id", user.id)
-      .eq("project_id", projectId)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) console.error("Project follow status failed:", error);
-        if (!data) setStatus("none");
-        else setStatus(data.status === "accepted" ? "accepted" : "pending");
-        setLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [user, projectId]);
-
-  const toggle = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const toggle = async (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
     if (!user) {
       toast.error("Log in om projecten te volgen");
       return;
     }
-    setLoading(true);
+
+    if (stateQuery.isError) {
+      await stateQuery.refetch();
+      return;
+    }
+
     try {
-      if (status !== "none") {
-        const { error } = await supabase.from("follows").delete().eq("user_id", user.id).eq("project_id", projectId);
-        if (error) {
-          console.error("Project unfollow failed:", error);
-          toast.error("Kon niet bijwerken");
-        } else {
-          setStatus("none");
-          toast.success(status === "pending" ? "Verzoek ingetrokken" : "Niet meer gevolgd");
-        }
+      if (stateQuery.data?.followStatus === "following") {
+        await mutation.mutateAsync({ action: "remove", projectId });
+        toast.success("Je volgt dit project niet meer");
         return;
       }
 
-      const { data, error } = await supabase.rpc("request_project_follow", {
-        _project_id: projectId,
-      });
-      if (error) {
-        console.error("Project follow failed:", error);
-        toast.error("Volgen mislukt");
-      } else {
-        const newStatus: FollowStatus = data === "accepted" ? "accepted" : "pending";
-        setStatus(newStatus);
-        toast.success(newStatus === "accepted" ? "Je volgt dit project nu" : "Volgverzoek verstuurd");
+      const result = await mutation.mutateAsync({ action: "follow", projectId });
+      if (result.state === "following" || result.state === "accepted") {
+        toast.success("Je volgt dit project nu");
+        return;
       }
-    } finally {
-      setLoading(false);
+
+      toast.error("Dit project kan nu niet worden gevolgd");
+    } catch (error) {
+      console.error("Project follow update failed", error);
+      toast.error("Volgen bijwerken mislukt");
     }
   };
 
-  const label = status === "accepted" ? "Volgend" : status === "pending" ? "In afwachting" : "Volgen";
-  const Icon = status === "pending" ? Clock : Heart;
+  const isFollowing = stateQuery.data?.followStatus === "following";
+  const loading = Boolean(user) && stateQuery.isPending;
+  const label = stateQuery.isError
+    ? "Status opnieuw laden"
+    : isFollowing
+      ? "Volgend"
+      : "Volgen";
 
   return (
     <Button
       type="button"
       size={size}
-      variant={status === "accepted" ? "default" : variant}
+      variant={isFollowing ? "default" : variant}
       onClick={toggle}
-      disabled={loading}
-      aria-pressed={status === "accepted"}
-      className={`gap-1.5 ${status === "accepted" ? "bg-accent text-accent-foreground hover:bg-accent/90" : ""} ${className ?? ""}`}
+      disabled={mutation.isPending || loading || !projectId}
+      aria-pressed={isFollowing}
+      aria-label={label}
+      className={`gap-1.5 ${isFollowing ? "bg-accent text-accent-foreground hover:bg-accent/90" : ""} ${className ?? ""}`}
     >
-      <Icon className={`h-4 w-4 ${status === "accepted" ? "fill-current" : ""}`} />
+      {mutation.isPending || loading
+        ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+        : <Heart className={`h-4 w-4 ${isFollowing ? "fill-current" : ""}`} aria-hidden="true" />}
       {label}
     </Button>
   );

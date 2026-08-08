@@ -13,6 +13,7 @@ dist-ssr
 *.local
 .env
 .env.*
+.neon
 !.env.example
 
 # Editor directories and files
@@ -30,3 +31,6 @@ tests/e2e/.auth/
 playwright-report/
 test-results/
 .playwright-mcp/
+artifacts/baseline/*.png
+artifacts/migration/
+.vercel

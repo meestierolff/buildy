@@ -1,503 +1,286 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, Users, Loader2, UserPlus, UserCheck, MapPin, Hammer, Lock, Check, X } from "lucide-react";
-import EmptyState from "@/components/EmptyState";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Loader2,
+  Lock,
+  MapPin,
+  Search,
+  UserCheck,
+  UserPlus,
+  Users,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
+import type { SocialProfile } from "../../shared/contracts/social";
+import EmptyState from "@/components/EmptyState";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/hooks/useAuth";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import {
+  useInfiniteSocialProfiles,
+  useProfileFollowMutation,
+  useRemoveProfileFollowerMutation,
+} from "@/hooks/useSocial";
+import { Link } from "@/lib/router";
+import { authPagePath } from "@/lib/authClient";
+import { PRODUCT_ROUTES } from "@/lib/productNavigation";
 
-interface ProfileResult {
-  user_id: string;
-  display_name: string;
-  avatar_url: string | null;
-  bio: string | null;
-  location: string | null;
-  project_count: number;
-  is_private?: boolean;
-}
-
-interface ProfilePage {
-  items: ProfileResult[];
-  consumed: number;
-}
-
-const PAGE_SIZE = 20;
-const MAX_RESULTS = 200;
+type FriendsTab = "following" | "followers";
 
 const Friends = () => {
   const { user } = useAuth();
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<FriendsTab>("following");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const profilesQuery = useInfiniteSocialProfiles(
+    debouncedQuery,
+    debouncedQuery.length === 0 || debouncedQuery.length >= 2,
+  );
+  const followMutation = useProfileFollowMutation();
+  const removeFollowerMutation = useRemoveProfileFollowerMutation();
+
   usePageMeta({
     title: "Vrienden ontdekken — Buildy",
-    description: "Ontdek andere bouwers, volg renovatieprojecten en krijg inspiratie voor je eigen verbouwing.",
-    path: "/vrienden",
+    description: "Ontdek andere bouwers en volg hun renovatieverhalen.",
+    path: "/connecties",
   });
-  const [query, setQuery] = useState("");
-  const [debounced, setDebounced] = useState("");
-  const [results, setResults] = useState<ProfileResult[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
-  const [nextOffset, setNextOffset] = useState(0);
-  const [following, setFollowing] = useState<Set<string>>(new Set());
-  const [followedProfiles, setFollowedProfiles] = useState<ProfileResult[]>([]);
-  const [followerProfiles, setFollowerProfiles] = useState<ProfileResult[]>([]);
-  const [incomingProfiles, setIncomingProfiles] = useState<ProfileResult[]>([]);
-  const [activeTab, setActiveTab] = useState<"following" | "followers" | "requests">("following");
-  const [loadingFollowed, setLoadingFollowed] = useState(false);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const reqIdRef = useRef(0);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebounced(query.trim()), 300);
-    return () => clearTimeout(t);
+    const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 300);
+    return () => window.clearTimeout(timer);
   }, [query]);
 
-  const [pending, setPending] = useState<Set<string>>(new Set());
+  const profiles = useMemo(() => {
+    const unique = new Map<string, SocialProfile>();
+    for (const profile of profilesQuery.data?.pages.flatMap((page) => page.items) ?? []) {
+      unique.set(profile.id, profile);
+    }
+    return [...unique.values()].filter((profile) => profile.viewerFollowStatus !== "self");
+  }, [profilesQuery.data]);
+  const following = profiles.filter((profile) => profile.viewerFollowStatus === "following");
+  const followers = profiles.filter((profile) => profile.followsViewer);
+  const oneCharacterQuery = debouncedQuery.length === 1;
+  const searching = debouncedQuery.length >= 2;
 
-  useEffect(() => {
+  const toggleFollow = async (profile: SocialProfile) => {
     if (!user) {
-      setFollowing(new Set());
-      setPending(new Set());
-      setFollowedProfiles([]);
-      setFollowerProfiles([]);
-      setIncomingProfiles([]);
-      setLoadingFollowed(false);
+      toast.error("Log in om bouwers te volgen");
       return;
     }
-    setLoadingFollowed(true);
-    (async () => {
-      // 1. Fetch people you follow
-      const { data } = await supabase
-        .from("user_follows")
-        .select("following_id, status")
-        .eq("follower_id", user.id);
-      const accepted = (data || []).filter((r: any) => r.status === "accepted").map((r: any) => r.following_id);
-      const pend = (data || []).filter((r: any) => r.status === "pending").map((r: any) => r.following_id);
-      setFollowing(new Set(accepted));
-      setPending(new Set(pend));
-
-      // 2. Fetch your followers
-      const { data: followerData, error: followersError } = await supabase
-        .from("user_follows")
-        .select("follower_id, status")
-        .eq("following_id", user.id);
-      if (followersError) console.error("Followers load failed:", followersError);
-      const followerIds = (followerData || [])
-        .filter((r: any) => r.status === "accepted")
-        .map((r: any) => r.follower_id);
-      const incomingIds = (followerData || [])
-        .filter((r: any) => r.status === "pending")
-        .map((r: any) => r.follower_id);
-
-      const allIds = Array.from(new Set([...accepted, ...followerIds, ...incomingIds]));
-
-      if (allIds.length === 0) { 
-        setFollowedProfiles([]); 
-        setFollowerProfiles([]);
-        setIncomingProfiles([]);
-        setLoadingFollowed(false); 
-        return; 
-      }
-
-      const { data: profiles } = await supabase.rpc("get_profiles_basic", { _ids: allIds });
-      if (profiles) {
-        const { data: trips } = await supabase.from("trips").select("user_id").in("user_id", allIds);
-        const counts: Record<string, number> = {};
-        (trips || []).forEach((t: any) => { counts[t.user_id] = (counts[t.user_id] || 0) + 1; });
-        
-        const sortedFollowing = [...profiles]
-          .filter((p: any) => accepted.includes(p.user_id))
-          .sort((a: any, b: any) => (a.display_name || "").localeCompare(b.display_name || ""));
-        
-        const sortedFollowers = [...profiles]
-          .filter((p: any) => followerIds.includes(p.user_id))
-          .sort((a: any, b: any) => (a.display_name || "").localeCompare(b.display_name || ""));
-
-        const sortedIncoming = [...profiles]
-          .filter((p: any) => incomingIds.includes(p.user_id))
-          .sort((a: any, b: any) => (a.display_name || "").localeCompare(b.display_name || ""));
-
-        setFollowedProfiles(sortedFollowing.map((p: any) => ({ ...p, bio: null, location: null, project_count: counts[p.user_id] || 0 })));
-        setFollowerProfiles(sortedFollowers.map((p: any) => ({ ...p, bio: null, location: null, project_count: counts[p.user_id] || 0 })));
-        setIncomingProfiles(sortedIncoming.map((p: any) => ({ ...p, bio: null, location: null, project_count: counts[p.user_id] || 0 })));
-      }
-      setLoadingFollowed(false);
-    })();
-  }, [user]);
-
-
-  const fetchPage = useCallback(async (search: string, from: number, reqId: number): Promise<ProfilePage> => {
-    const { data, error } = await supabase.rpc("search_profiles", {
-      _q: search || "",
-      _limit: PAGE_SIZE,
-      _offset: from,
-    });
-
-    if (error) {
-      console.error("Profile search failed:", error);
-      if (reqId === reqIdRef.current) toast.error("Zoeken mislukt");
-      return { items: [], consumed: 0 };
-    }
-    if (!data || reqId !== reqIdRef.current) return { items: [], consumed: 0 };
-    const ids = data.map((p: any) => p.user_id).filter((uid: string) => uid !== user?.id);
-    const filtered = data.filter((p: any) => p.user_id !== user?.id);
-    const counts: Record<string, number> = {};
-    if (ids.length) {
-      const { data: trips } = await supabase.from("trips").select("user_id").in("user_id", ids);
-      (trips || []).forEach((t: any) => { counts[t.user_id] = (counts[t.user_id] || 0) + 1; });
-    }
-    if (reqId !== reqIdRef.current) return { items: [], consumed: 0 };
-    return {
-      items: filtered.map((p: any) => ({ ...p, bio: null, location: null, project_count: counts[p.user_id] || 0 })),
-      consumed: data.length,
-    };
-  }, [user]);
-
-  useEffect(() => {
-    const reqId = ++reqIdRef.current;
-    if (!debounced) {
-      setResults([]);
-      setNextOffset(0);
-      setLoading(false);
-      setHasMore(false);
-      return;
-    }
-    setLoading(true); setHasMore(true);
-    (async () => {
-      const page = await fetchPage(debounced, 0, reqId);
-      if (reqId !== reqIdRef.current) return;
-      setResults(page.items);
-      setNextOffset(page.consumed);
-      setHasMore(page.consumed === PAGE_SIZE && page.items.length < MAX_RESULTS);
-      setLoading(false);
-    })();
-  }, [debounced, fetchPage]);
-
-  const loadMore = async () => {
-    if (loadingMore || !hasMore || results.length >= MAX_RESULTS) return;
-    setLoadingMore(true);
-    const reqId = reqIdRef.current;
-    const page = await fetchPage(debounced, nextOffset, reqId);
-    if (reqId !== reqIdRef.current) { setLoadingMore(false); return; }
-    const nextLength = Math.min(MAX_RESULTS, results.length + page.items.length);
-    setResults((prev) => [...prev, ...page.items].slice(0, MAX_RESULTS));
-    setNextOffset((current) => current + page.consumed);
-    setHasMore(page.consumed === PAGE_SIZE && nextLength < MAX_RESULTS);
-    setLoadingMore(false);
-  };
-
-  const toggleFollow = async (uid: string) => {
-    if (!user) { toast.error("Log in om te volgen"); return; }
-    setBusyId(uid);
-    const isFollowing = following.has(uid);
-    const isPending = pending.has(uid);
+    setBusyId(profile.id);
+    const removing = profile.viewerFollowStatus === "following" || profile.viewerFollowStatus === "pending";
     try {
-      if (isFollowing || isPending) {
-        const { error } = await supabase.from("user_follows").delete().eq("follower_id", user.id).eq("following_id", uid);
-        if (!error) {
-          setFollowing((prev) => { const n = new Set(prev); n.delete(uid); return n; });
-          setPending((prev) => { const n = new Set(prev); n.delete(uid); return n; });
-          setFollowedProfiles((prev) => prev.filter((p) => p.user_id !== uid));
-          toast.success(isPending ? "Verzoek ingetrokken" : "Niet meer gevolgd");
-        } else {
-          console.error("User unfollow failed:", error);
-          toast.error("Kon niet bijwerken");
-        }
-        return;
-      }
-
-      const { data, error } = await supabase.rpc("request_user_follow", {
-        _following_id: uid,
+      const result = await followMutation.mutateAsync({
+        action: removing ? "remove" : "follow",
+        profileId: profile.id,
       });
-      if (!error && data) {
-        const accepted = data === "accepted";
-        if (accepted) {
-          setFollowing((prev) => new Set(prev).add(uid));
-          const profile = [...results, ...followerProfiles].find((p) => p.user_id === uid);
-          if (profile) {
-            setFollowedProfiles((prev) => [...prev, profile].sort((a, b) => (a.display_name || "").localeCompare(b.display_name || "")));
-          }
-          toast.success("Je volgt nu");
-        } else {
-          setPending((prev) => new Set(prev).add(uid));
-          toast.success("Volgverzoek verstuurd");
-        }
+      if (removing) {
+        toast.success(profile.viewerFollowStatus === "pending" ? "Verzoek ingetrokken" : "Je volgt deze bouwer niet meer");
       } else {
-        if (error) console.error("User follow failed:", error);
-        toast.error("Kon niet volgen");
+        toast.success(result.state === "pending" ? "Volgverzoek verstuurd" : "Je volgt deze bouwer nu");
       }
+    } catch (error) {
+      console.error("Profile follow update failed", error);
+      toast.error("Volgen bijwerken mislukt");
     } finally {
       setBusyId(null);
     }
   };
 
-  const respondToRequest = async (profile: ProfileResult, accept: boolean) => {
-    setBusyId(profile.user_id);
-    try {
-      const { data, error } = await supabase.rpc("respond_to_user_follow", {
-        _follower_id: profile.user_id,
-        _accept: accept,
-      });
-      if (error) {
-        console.error("Respond to user follow failed:", error);
-        toast.error("Verzoek behandelen mislukt");
-        return;
-      }
-      setIncomingProfiles((current) => current.filter((item) => item.user_id !== profile.user_id));
-      if (accept && data) {
-        setFollowerProfiles((current) => [...current, profile]
-          .sort((a, b) => (a.display_name || "").localeCompare(b.display_name || "")));
-        toast.success("Volgverzoek goedgekeurd");
-      } else {
-        toast.success(data ? "Volgverzoek afgewezen" : "Dit verzoek bestond niet meer");
-      }
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const removeFollower = async (uid: string) => {
+  const removeFollower = async (profile: SocialProfile) => {
     if (!user) return;
-    setBusyId(uid);
-    const { error } = await supabase
-      .from("user_follows")
-      .delete()
-      .eq("follower_id", uid)
-      .eq("following_id", user.id);
-    if (error) {
-      console.error("Remove profile follower failed:", error);
-      toast.error("Volger verwijderen mislukt");
-    } else {
-      setFollowerProfiles((current) => current.filter((profile) => profile.user_id !== uid));
+    setBusyId(profile.id);
+    try {
+      await removeFollowerMutation.mutateAsync({ followerId: profile.id });
       toast.success("Volger verwijderd");
+    } catch (error) {
+      console.error("Profile follower removal failed", error);
+      toast.error("Volger verwijderen mislukt");
+    } finally {
+      setBusyId(null);
     }
-    setBusyId(null);
   };
 
-  const Row = ({
-    p,
-    isFollowing,
-    isPending,
+  const ProfileRow = ({
+    profile,
     canRemoveFollower = false,
   }: {
-    p: ProfileResult;
-    isFollowing: boolean;
-    isPending: boolean;
+    profile: SocialProfile;
     canRemoveFollower?: boolean;
-  }) => (
-    <div className="flex items-center gap-4 py-5 border-b border-border last:border-b-0 group">
-      <Link to={`/profile/${p.user_id}`} className="flex items-center gap-4 min-w-0 flex-1">
-        <Avatar className="h-12 w-12 shrink-0">
-          <AvatarImage src={p.avatar_url ?? ""} />
-          <AvatarFallback className="bg-muted text-foreground font-semibold text-sm">
-            {p.display_name?.[0]?.toUpperCase() ?? "?"}
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1">
-          <p className="font-serif italic text-xl leading-tight truncate group-hover:text-accent transition-colors">
-            {p.display_name || "Naamloos"}
-          </p>
-          <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-1 font-medium">
-            {p.location && (
-              <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{p.location}</span>
-            )}
-            <span className="flex items-center gap-1"><Hammer className="h-3 w-3" />{p.project_count} {p.project_count === 1 ? "project" : "projecten"}</span>
+  }) => {
+    const isFollowing = profile.viewerFollowStatus === "following";
+    const isPending = profile.viewerFollowStatus === "pending";
+    return (
+      <div className="flex items-center gap-4 py-5 border-b border-border last:border-b-0 group">
+        <Link to={PRODUCT_ROUTES.profile(profile.slug)} className="flex items-center gap-4 min-w-0 flex-1">
+          <Avatar className="h-12 w-12 shrink-0">
+            <AvatarImage src={profile.avatar?.proxyPath ?? ""} alt="" />
+            <AvatarFallback className="bg-muted text-foreground font-semibold text-sm">
+              {profile.displayName[0]?.toUpperCase() ?? "?"}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            <p className="font-serif italic text-xl leading-tight truncate group-hover:text-accent transition-colors flex items-center gap-2">
+              {profile.displayName}
+              {profile.isPrivate && <Lock className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Privéprofiel" />}
+            </p>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground mt-1 font-medium">
+              <span>@{profile.slug}</span>
+              {profile.location && (
+                <span className="flex items-center gap-1">
+                  <MapPin className="h-3 w-3" aria-hidden="true" />{profile.location}
+                </span>
+              )}
+              <span>{profile.followerCount} {profile.followerCount === 1 ? "volger" : "volgers"}</span>
+            </div>
           </div>
-        </div>
-      </Link>
-      {user && (
+        </Link>
         <div className="flex shrink-0 items-center gap-1.5">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => toggleFollow(p.user_id)}
-            disabled={busyId === p.user_id}
-            className={`rounded-full px-4 text-[10px] font-bold uppercase tracking-widest border-border ${isFollowing ? "bg-foreground text-background hover:bg-foreground/90 border-foreground" : ""}`}
-          >
-            {isFollowing
-              ? <><UserCheck className="h-3 w-3 mr-1" />Volgend</>
-              : isPending
-                ? <><UserCheck className="h-3 w-3 mr-1" />Verzoek intrekken</>
-                : <><UserPlus className="h-3 w-3 mr-1" />Volgen</>}
-          </Button>
+          {user ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => toggleFollow(profile)}
+              disabled={busyId === profile.id}
+              aria-pressed={isFollowing}
+              className={`rounded-full px-4 text-[10px] font-bold uppercase tracking-widest border-border ${
+                isFollowing ? "bg-foreground text-background hover:bg-foreground/90 border-foreground" : ""
+              }`}
+            >
+              {busyId === profile.id ? (
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" aria-hidden="true" />
+              ) : isFollowing || isPending ? (
+                <UserCheck className="h-3 w-3 mr-1" aria-hidden="true" />
+              ) : (
+                <UserPlus className="h-3 w-3 mr-1" aria-hidden="true" />
+              )}
+              {isFollowing ? "Volgend" : isPending ? "Verzoek intrekken" : "Volgen"}
+            </Button>
+          ) : (
+            <Button asChild size="sm" variant="outline" className="rounded-full text-[10px] uppercase tracking-widest">
+              <Link to={authPagePath(PRODUCT_ROUTES.profile(profile.slug))}>
+                Bekijken
+              </Link>
+            </Button>
+          )}
           {canRemoveFollower && (
             <Button
               type="button"
               size="icon"
               variant="ghost"
               className="h-8 w-8 rounded-full text-muted-foreground hover:text-destructive"
-              onClick={() => removeFollower(p.user_id)}
-              disabled={busyId === p.user_id}
-              aria-label={`Verwijder ${p.display_name || "gebruiker"} als volger`}
+              onClick={() => removeFollower(profile)}
+              disabled={busyId === profile.id}
+              aria-label={`Verwijder ${profile.displayName} als volger`}
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
           )}
         </div>
-      )}
-    </div>
-  );
-
-  const RequestRow = ({ p }: { p: ProfileResult }) => (
-    <div className="flex items-center gap-4 py-5 border-b border-border last:border-b-0">
-      <Link to={`/profile/${p.user_id}`} className="flex items-center gap-4 min-w-0 flex-1 group">
-        <Avatar className="h-12 w-12 shrink-0">
-          <AvatarImage src={p.avatar_url ?? ""} />
-          <AvatarFallback className="bg-muted text-foreground font-semibold text-sm">
-            {p.display_name?.[0]?.toUpperCase() ?? "?"}
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0">
-          <p className="font-serif italic text-xl truncate group-hover:text-accent transition-colors">{p.display_name || "Naamloos"}</p>
-          <p className="text-[11px] text-muted-foreground mt-1">Wil jou volgen</p>
-        </div>
-      </Link>
-      <div className="flex gap-2">
-        <Button
-          size="icon"
-          onClick={() => respondToRequest(p, true)}
-          disabled={busyId === p.user_id}
-          aria-label={`Volgverzoek van ${p.display_name || "gebruiker"} goedkeuren`}
-          className="h-9 w-9 rounded-full bg-accent text-accent-foreground"
-        >
-          <Check className="h-4 w-4" />
-        </Button>
-        <Button
-          size="icon"
-          variant="outline"
-          onClick={() => respondToRequest(p, false)}
-          disabled={busyId === p.user_id}
-          aria-label={`Volgverzoek van ${p.display_name || "gebruiker"} afwijzen`}
-          className="h-9 w-9 rounded-full"
-        >
-          <X className="h-4 w-4" />
-        </Button>
       </div>
-    </div>
+    );
+  };
+
+  const profileList = (items: SocialProfile[], emptyTitle: string, emptyDescription: string, canRemoveFollower = false) => (
+    items.length > 0 ? (
+      <div>{items.map((profile) => <ProfileRow key={profile.id} profile={profile} canRemoveFollower={canRemoveFollower} />)}</div>
+    ) : (
+      <EmptyState icon={Users} title={emptyTitle} description={emptyDescription} />
+    )
   );
 
+  const content = () => {
+    if (oneCharacterQuery) {
+      return <p className="py-10 text-center text-sm text-muted-foreground">Typ minimaal twee tekens om te zoeken.</p>;
+    }
+    if (profilesQuery.isPending) {
+      return (
+        <p className="text-center text-muted-foreground py-10 flex items-center justify-center gap-2 text-sm" role="status">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> {searching ? "Zoeken…" : "Bouwers laden…"}
+        </p>
+      );
+    }
+    if (profilesQuery.isError) {
+      return (
+        <div className="py-10 text-center space-y-3" role="alert">
+          <p className="text-sm text-muted-foreground">Bouwers konden niet worden geladen.</p>
+          <Button type="button" variant="outline" size="sm" onClick={() => profilesQuery.refetch()}>Opnieuw proberen</Button>
+        </div>
+      );
+    }
+    if (searching) {
+      return profiles.length > 0
+        ? <div>{profiles.map((profile) => <ProfileRow key={profile.id} profile={profile} />)}</div>
+        : <EmptyState icon={Search} title={`Geen resultaten voor “${debouncedQuery}”`} description="Probeer een andere zoekterm." />;
+    }
+    if (!user) {
+      return profileList(profiles, "Nog geen openbare bouwers", "Openbare profielen verschijnen hier zodra ze beschikbaar zijn.");
+    }
+    return (
+      <Tabs value={activeTab} onValueChange={(value) => {
+        if (value === "following" || value === "followers") setActiveTab(value);
+      }} className="w-full">
+        <TabsList className="grid grid-cols-2 bg-transparent border-b border-border rounded-none p-0 h-auto w-full mb-8">
+          <TabsTrigger value="following" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">
+            Volgend, geladen ({following.length})
+          </TabsTrigger>
+          <TabsTrigger value="followers" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">
+            Volgers, geladen ({followers.length})
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="following" className="mt-0">
+          {profileList(following, "Geen gevolgde bouwers geladen", "Zoek hierboven op naam of laad meer zichtbare profielen.")}
+        </TabsContent>
+        <TabsContent value="followers" className="mt-0">
+          {profileList(followers, "Nog geen zichtbare volgers", "Volgers uit de geladen, toegankelijke profielen verschijnen hier.", true)}
+        </TabsContent>
+        <p className="mt-6 text-xs text-muted-foreground">
+          Nieuwe volgverzoeken voor een privéprofiel behandel je veilig via Meldingen.
+        </p>
+      </Tabs>
+    );
+  };
 
   return (
-    <div className="min-h-screen bg-background">
+    <main className="min-h-screen bg-background">
       <div className="max-w-3xl mx-auto px-6 md:px-8 py-12 md:py-20">
         <div className="mb-12">
           <p className="eyebrow mb-3">Vrienden</p>
           <h1 className="font-serif italic text-4xl md:text-5xl leading-tight">Ontdek andere bouwers.</h1>
           <p className="text-sm text-muted-foreground mt-4 font-light max-w-md">
-            Zoek bouwers op naam en volg hun projecten om updates in je feed te zien.
+            Zoek op naam of gebruikersnaam en volg renovatieverhalen die voor jou zichtbaar zijn.
           </p>
         </div>
-
         <div className="relative mb-10">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" aria-hidden="true" />
           <Input
-            aria-label="Zoek bouwers op naam"
-            placeholder="Zoek op naam…"
+            aria-label="Zoek bouwers op naam of gebruikersnaam"
+            placeholder="Zoek op naam of @gebruikersnaam…"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(event) => setQuery(event.target.value)}
             className="pl-11 h-12 rounded-full border-border"
           />
         </div>
-
-        {!debounced ? (
-          loadingFollowed ? (
-            <p className="text-center text-muted-foreground py-10 flex items-center justify-center gap-2 text-sm">
-              <Loader2 className="h-4 w-4 animate-spin" /> Laden…
-            </p>
-          ) : (
-            <div>
-              <Tabs
-                value={activeTab}
-                onValueChange={(value) => {
-                  if (value === "following" || value === "followers" || value === "requests") setActiveTab(value);
-                }}
-                className="w-full"
-              >
-                <TabsList className="grid grid-cols-3 bg-transparent border-b border-border rounded-none p-0 h-auto w-full mb-8">
-                  <TabsTrigger value="following" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">
-                    Volgend ({followedProfiles.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="followers" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">
-                    Volgers ({followerProfiles.length})
-                  </TabsTrigger>
-                  <TabsTrigger value="requests" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">
-                    Verzoeken ({incomingProfiles.length})
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="following" className="mt-0">
-                  {followedProfiles.length > 0 ? (
-                    <div>
-                      {followedProfiles.map((p) => <Row key={p.user_id} p={p} isFollowing={true} isPending={false} />)}
-                    </div>
-                  ) : (
-                    <EmptyState
-                      icon={Users}
-                      title="Volg je eerste bouwer"
-                      description="Zoek hierboven op naam om andere bouwers te ontdekken en hun verbouwingen te volgen."
-                    />
-                  )}
-                </TabsContent>
-
-                <TabsContent value="followers" className="mt-0">
-                  {followerProfiles.length > 0 ? (
-                    <div>
-                      {followerProfiles.map((p) => <Row key={p.user_id} p={p} isFollowing={following.has(p.user_id)} isPending={pending.has(p.user_id)} canRemoveFollower />)}
-                    </div>
-                  ) : (
-                    <EmptyState
-                      icon={Users}
-                      title="Nog geen volgers"
-                      description="Andere bouwers die jou volgen verschijnen hier."
-                    />
-                  )}
-                </TabsContent>
-
-                <TabsContent value="requests" className="mt-0">
-                  {incomingProfiles.length > 0 ? (
-                    <div>{incomingProfiles.map((p) => <RequestRow key={p.user_id} p={p} />)}</div>
-                  ) : (
-                    <EmptyState
-                      icon={Lock}
-                      title="Geen openstaande verzoeken"
-                      description="Nieuwe volgverzoeken voor je privéprofiel verschijnen hier."
-                    />
-                  )}
-                </TabsContent>
-              </Tabs>
-            </div>
-          )
-        ) : loading ? (
-          <p className="text-center text-muted-foreground py-10 flex items-center justify-center gap-2 text-sm">
-            <Loader2 className="h-4 w-4 animate-spin" /> Zoeken…
-          </p>
-        ) : results.length === 0 ? (
-          <EmptyState icon={Search} title={`Geen resultaten voor "${debounced}"`} description="Probeer een andere zoekterm." />
-        ) : (
-          <>
-            <div>
-              {results.map((p) => <Row key={p.user_id} p={p} isFollowing={following.has(p.user_id)} isPending={pending.has(p.user_id)} />)}
-            </div>
-            <div className="mt-10 flex justify-center">
-              {hasMore && results.length < MAX_RESULTS ? (
-                <Button variant="outline" onClick={loadMore} disabled={loadingMore} className="rounded-full text-[11px] font-bold uppercase tracking-widest">
-                  {loadingMore ? <><Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" /> Laden…</> : "Meer laden"}
-                </Button>
-              ) : (
-                <p className="text-[11px] text-muted-foreground uppercase tracking-widest font-medium">
-                  {results.length >= MAX_RESULTS ? "Maximum bereikt — verfijn je zoekopdracht." : "Alle resultaten geladen."}
-                </p>
-              )}
-            </div>
-          </>
+        {content()}
+        {!oneCharacterQuery && profilesQuery.hasNextPage && (
+          <div className="mt-10 flex justify-center">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => profilesQuery.fetchNextPage()}
+              disabled={profilesQuery.isFetchingNextPage}
+              className="rounded-full text-[11px] font-bold uppercase tracking-widest"
+            >
+              {profilesQuery.isFetchingNextPage ? "Meer laden…" : "Meer bouwers laden"}
+            </Button>
+          </div>
         )}
       </div>
-    </div>
+    </main>
   );
 };
 

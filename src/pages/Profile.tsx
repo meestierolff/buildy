@@ -1,586 +1,386 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
+import { useEffect, useState } from "react";
+import {
+  Ban,
+  Check,
+  Loader2,
+  Lock,
+  LogOut,
+  MapPin,
+  UserCheck,
+  UserPlus,
+} from "lucide-react";
+import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { MapPin, Hammer, Camera, Pencil, Lock, UserPlus, UserCheck, Loader2, LogOut } from "lucide-react";
-import { toast } from "sonner";
-import ProjectCard from "@/components/ProjectCard";
-import { applyProjectMediaSummaries, loadProjectMediaSummaries } from "@/lib/projectMedia";
-import { getOwnedPublicAvatarPath, getOwnedPublicTripMediaPath } from "@/lib/storagePaths";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import ReportDialog from "@/components/moderation/ReportDialog";
+import { useAuth } from "@/hooks/useAuth";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { usePublicProfile } from "@/hooks/useProfiles";
+import { useProfileBlockMutation, useProfileFollowMutation, useSocialProfile } from "@/hooks/useSocial";
+import { Link, useParams } from "@/lib/router";
+import { authPagePath } from "@/lib/authClient";
+import { PRODUCT_ROUTES } from "@/lib/productNavigation";
+import { profileSlugSchema } from "../../shared/contracts/profiles";
 
-interface FollowProfile {
-  user_id: string;
-  display_name: string | null;
-  avatar_url: string | null;
-  is_private: boolean;
-}
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+type RestrictedFollowState = "unknown" | "pending" | "following";
 
 const Profile = () => {
-  const { userId } = useParams<{ userId: string }>();
+  const { profileKey = "" } = useParams<{ profileKey: string }>();
   const { user, signOut } = useAuth();
-  const [profile, setProfile] = useState<any>(null);
-  const [trips, setTrips] = useState<any[]>([]);
-  const [stats, setStats] = useState({ updates: 0, photos: 0 });
-  const [statsExtra, setStatsExtra] = useState({ budgetTotal: 0, completedProjects: 0, upcomingProject: null as any });
-  const [followers, setFollowers] = useState<FollowProfile[]>([]);
-  const [following, setFollowing] = useState<FollowProfile[]>([]);
-  const [iFollow, setIFollow] = useState(false);
-  const [followPending, setFollowPending] = useState(false);
-  const [followBusy, setFollowBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [restrictedProfile, setRestrictedProfile] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState({ display_name: "", bio: "", location: "", is_private: false });
-
-  const [activeTab, setActiveTab] = useState("projects");
-
-  const isMe = user?.id === userId;
-  const profileName = profile?.display_name || "Deze bouwer";
-  const profileDescription = profile?.bio && profile.bio.trim().length >= 50
-    ? `${profile.bio.slice(0, 140)}${profile.bio.length > 140 ? "..." : ""}`
-    : `${profileName} deelt renovatieprojecten, updates, foto's en Bouwboeken op Buildy.${profile?.location ? ` Vanuit ${profile.location}.` : ""}`;
-
-  usePageMeta({
-    title: profile?.display_name ? `${profile.display_name} — Buildy` : "Profiel — Buildy",
-    description: profileDescription,
-    image: profile?.avatar_url || undefined,
-    imageAlt: profile?.display_name ? `Profiel van ${profile.display_name} op Buildy` : "Bouwersprofiel op Buildy",
-    path: userId ? `/profile/${userId}` : undefined,
-    noIndex: !!profile?.is_private,
-    type: "profile",
-  });
-  const avatarInputRef = useRef<HTMLInputElement>(null);
-  const [avatarUploading, setAvatarUploading] = useState(false);
-
-  const loadFollows = useCallback(async (uid: string) => {
-    const [{ data: fers }, { data: fing }] = await Promise.all([
-      supabase.from("user_follows").select("follower_id").eq("following_id", uid).eq("status", "accepted"),
-      supabase.from("user_follows").select("following_id").eq("follower_id", uid).eq("status", "accepted"),
-    ]);
-    const followerIds = (fers || []).map((r: any) => r.follower_id);
-    const followingIds = (fing || []).map((r: any) => r.following_id);
-    const allIds = Array.from(new Set([...followerIds, ...followingIds]));
-    const profilesById: Record<string, FollowProfile> = {};
-    if (allIds.length) {
-      const { data: ps, error } = await supabase.rpc("get_profiles_basic", { _ids: allIds });
-      if (error) console.error("Follow profiles load failed:", error);
-      (ps || []).forEach((p) => {
-        profilesById[p.user_id] = { ...p, is_private: false };
-      });
-    }
-    setFollowers(followerIds.map((id) => profilesById[id]).filter(Boolean));
-    setFollowing(followingIds.map((id) => profilesById[id]).filter(Boolean));
-    if (user && !isMe) {
-      const { data: rel } = await supabase
-        .from("user_follows")
-        .select("id, status")
-        .eq("follower_id", user.id)
-        .eq("following_id", uid)
-        .maybeSingle();
-      setIFollow(rel?.status === "accepted");
-      setFollowPending(rel?.status === "pending");
-    } else {
-      setIFollow(false);
-      setFollowPending(false);
-    }
-  }, [isMe, user]);
-
-  const load = useCallback(async () => {
-    if (!userId) return;
-    setLoading(true);
-    setRestrictedProfile(false);
-    const { data: profileData, error: profileError } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (profileError) console.error("Profile load failed:", profileError);
-
-    let visibleProfile: any = profileData;
-    if (!visibleProfile) {
-      const { data: basicRows, error: basicError } = await supabase.rpc("get_profiles_basic", { _ids: [userId] });
-      if (basicError) console.error("Basic profile load failed:", basicError);
-      const basic = basicRows?.[0];
-      if (basic) {
-        visibleProfile = {
-          ...basic,
-          bio: null,
-          location: null,
-          is_private: true,
-          is_pro: false,
-          onboarded: true,
-        };
-        setRestrictedProfile(true);
-      }
-    }
-
-    setProfile(visibleProfile);
-    if (profileData) setDraft({
-      display_name: profileData.display_name || "",
-      bio: profileData.bio || "",
-      location: profileData.location || "",
-      is_private: !!profileData.is_private,
-    });
-
-    await loadFollows(userId);
-    if (!profileData) {
-      setTrips([]);
-      setStats({ updates: 0, photos: 0 });
-      setStatsExtra({ budgetTotal: 0, completedProjects: 0, upcomingProject: null });
-      setLoading(false);
-      return;
-    }
-
-    const tripsQuery = supabase
-      .from("trips")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
-    
-    // Project RLS is separate from profile follows. A private project appears
-    // only to its owner or an accepted project-level follower.
-    const { data: tripsData } = await tripsQuery;
-    const rawTrips = tripsData || [];
-    const tripIds = rawTrips.map((t: any) => t.id);
-    const mediaSummaries = await loadProjectMediaSummaries(tripIds);
-    const tripsWithMedia = applyProjectMediaSummaries(rawTrips, mediaSummaries);
-    setTrips(tripsWithMedia);
-
-    let budgetTotal = 0;
-    if (tripIds.length > 0) {
-      const { data: budgetData } = await supabase
-        .from("step_budget")
-        .select("cost")
-        .in("trip_id", tripIds);
-      budgetTotal = (budgetData || []).reduce((sum, row) => sum + (Number(row.cost) || 0), 0);
-    }
-
-    const completedProjects = rawTrips.filter((t: any) => (t.progress_percentage || 0) >= 100).length;
-    const upcomingProject = rawTrips.find((t: any) => t.start_date && new Date(t.start_date) > new Date()) || null;
-    setStatsExtra({ budgetTotal, completedProjects, upcomingProject });
-
-    const totals = Array.from(mediaSummaries.values()).reduce(
-      (acc, item) => ({
-        updates: acc.updates + item.stepCount,
-        photos: acc.photos + item.mediaCount,
-      }),
-      { updates: 0, photos: 0 },
-    );
-    setStats(totals);
-
-    setLoading(false);
-  }, [loadFollows, userId]);
-
-  useEffect(() => { load(); }, [load]);
+  const legacyProfileId = UUID.test(profileKey) ? profileKey.toLowerCase() : "";
+  const parsedSlug = profileSlugSchema.safeParse(profileKey);
+  const profileSlug = !legacyProfileId && parsedSlug.success ? parsedSlug.data : "";
+  const publicProfileQuery = usePublicProfile(profileSlug, Boolean(profileSlug));
+  const profileId = legacyProfileId || publicProfileQuery.data?.id || "";
+  const profileQuery = useSocialProfile(profileId, Boolean(profileId));
+  const followMutation = useProfileFollowMutation();
+  const blockMutation = useProfileBlockMutation();
+  const [restrictedFollowState, setRestrictedFollowState] = useState<RestrictedFollowState>("unknown");
+  const [blockState, setBlockState] = useState<"active" | "blocked">("active");
+  const [blockError, setBlockError] = useState<string | null>(null);
 
   useEffect(() => {
-    setActiveTab("projects");
-  }, [userId]);
+    setBlockState("active");
+    setBlockError(null);
+  }, [profileId]);
 
-  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
-    const extensions: Record<string, string> = {
-      "image/jpeg": "jpg",
-      "image/png": "png",
-      "image/webp": "webp",
-      "image/gif": "gif",
-    };
-    const ext = extensions[file.type];
-    if (!ext) {
-      toast.error("Kies een JPG-, PNG-, WebP- of GIF-afbeelding");
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("De profielfoto mag maximaal 10 MB zijn");
-      return;
-    }
-    setAvatarUploading(true);
-    const previousAvatarPath = getOwnedPublicAvatarPath(profile?.avatar_url, user.id);
-    const previousLegacyPath = previousAvatarPath
-      ? null
-      : getOwnedPublicTripMediaPath(profile?.avatar_url, user.id);
-    const nextSlot = previousAvatarPath?.split("/").at(-1)?.startsWith("avatar-a.") ? "b" : "a";
-    const path = `${user.id}/avatar-${nextSlot}.${ext}`;
-    const { error: upErr } = await supabase.storage
-      .from("avatars")
-      .upload(path, file, { contentType: file.type, upsert: true });
-    if (upErr) {
-      console.error("Avatar upload failed:", upErr);
-      toast.error("Uploaden mislukt");
-    } else {
-      const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
-      const publicUrl = `${urlData.publicUrl}?v=${Date.now()}`;
-      const { error: saveError } = await supabase
-        .from("profiles")
-        .update({ avatar_url: publicUrl })
-        .eq("user_id", user.id);
-      if (saveError) {
-        console.error("Avatar profile save failed:", saveError);
-        await supabase.storage.from("avatars").remove([path]);
-        toast.error("Profielfoto opslaan mislukt");
-        setAvatarUploading(false);
-        if (avatarInputRef.current) avatarInputRef.current.value = "";
-        return;
-      }
+  const profile = profileQuery.data;
+  const validProfileKey = Boolean(legacyProfileId || profileSlug);
+  const socialProfileFailed = profileQuery.isError && !(blockState === "blocked" && profile);
+  const profileError = legacyProfileId
+    ? socialProfileFailed
+    : publicProfileQuery.isError || (Boolean(publicProfileQuery.data) && socialProfileFailed);
+  const profilePending = legacyProfileId
+    ? profileQuery.isPending
+    : publicProfileQuery.isPending || (Boolean(publicProfileQuery.data) && profileQuery.isPending);
+  const isMe = profile?.viewerFollowStatus === "self";
+  const description = profile?.bio?.trim()
+    ? `${profile.bio.slice(0, 140)}${profile.bio.length > 140 ? "…" : ""}`
+    : profile
+      ? `${profile.displayName} deelt een renovatieverhaal op Buildy.`
+      : "Bouwersprofiel op Buildy.";
 
-      if (previousAvatarPath && previousAvatarPath !== path) {
-        const { error: cleanupError } = await supabase.storage.from("avatars").remove([previousAvatarPath]);
-        if (cleanupError) console.error("Previous avatar cleanup failed:", cleanupError);
-      }
-      const previousName = previousLegacyPath?.split("/").at(-1) || "";
-      const isManagedLegacyAvatar = previousLegacyPath?.startsWith(`${user.id}/avatars/`)
-        || previousName.startsWith("avatar-");
-      if (previousLegacyPath && isManagedLegacyAvatar) {
-        const { error: cleanupError } = await supabase.storage.from("trip-media").remove([previousLegacyPath]);
-        if (cleanupError) console.error("Legacy avatar cleanup failed:", cleanupError);
-      }
-      await load();
-      toast.success("Profielfoto bijgewerkt!");
-    }
-    setAvatarUploading(false);
-    if (avatarInputRef.current) avatarInputRef.current.value = "";
-  };
-
-  const save = async () => {
-    if (!user) return;
-    const displayName = draft.display_name.trim();
-    if (displayName.length < 2 || displayName.length > 60) {
-      toast.error("Kies een naam van 2 tot 60 tekens");
-      return;
-    }
-    if (draft.bio.trim().length > 500 || draft.location.trim().length > 100) {
-      toast.error("Je bio of locatie is te lang");
-      return;
-    }
-    const { error } = await supabase
-      .from("profiles")
-      .update({
-        display_name: displayName,
-        bio: draft.bio.trim() || null,
-        location: draft.location.trim() || null,
-        is_private: draft.is_private,
-      })
-      .eq("user_id", user.id);
-    if (error) {
-      toast.error("Opslaan mislukt");
-    } else {
-      toast.success("Profiel bijgewerkt");
-      setEditing(false);
-      load();
-    }
-  };
+  usePageMeta({
+    title: profile ? `${profile.displayName} — Buildy` : "Profiel — Buildy",
+    description,
+    image: profile?.avatar?.proxyPath,
+    imageAlt: profile ? `Profiel van ${profile.displayName} op Buildy` : "Bouwersprofiel op Buildy",
+    path: validProfileKey ? PRODUCT_ROUTES.profile(profile?.slug || profileSlug || profileKey) : undefined,
+    noIndex: profile?.isPrivate ?? true,
+    type: "profile",
+  });
 
   const toggleFollow = async () => {
-    if (!user) { toast.error("Log in om te volgen"); return; }
-    if (!userId || isMe) return;
-    setFollowBusy(true);
+    if (!user) {
+      toast.error("Log in om deze bouwer te volgen");
+      return;
+    }
+    if (!profile || isMe) return;
+    const removing = profile.viewerFollowStatus === "following" || profile.viewerFollowStatus === "pending";
     try {
-      if (iFollow || followPending) {
-        const { error } = await supabase.from("user_follows").delete().eq("follower_id", user.id).eq("following_id", userId);
-        if (error) throw error;
-        setIFollow(false);
-        setFollowPending(false);
-        toast.success(followPending ? "Volgverzoek ingetrokken" : "Je volgt dit profiel niet meer");
+      const result = await followMutation.mutateAsync({
+        action: removing ? "remove" : "follow",
+        profileId: profile.id,
+      });
+      if (removing) {
+        toast.success(profile.viewerFollowStatus === "pending" ? "Verzoek ingetrokken" : "Je volgt deze bouwer niet meer");
       } else {
-        const { data, error } = await supabase.rpc("request_user_follow", {
-          _following_id: userId,
-        });
-        if (error) throw error;
-        setIFollow(data === "accepted");
-        setFollowPending(data === "pending");
-        toast.success(data === "accepted" ? "Je volgt dit profiel nu" : "Volgverzoek verstuurd");
+        toast.success(result.state === "pending" ? "Volgverzoek verstuurd" : "Je volgt deze bouwer nu");
       }
-      await loadFollows(userId);
     } catch (error) {
-      console.error("Profile follow toggle failed:", error);
+      console.error("Profile follow update failed", error);
       toast.error("Volgen bijwerken mislukt");
-    } finally {
-      setFollowBusy(false);
     }
   };
 
-  if (loading) {
-    return <div className="flex items-center justify-center min-h-[60vh]"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+  const requestRestrictedProfile = async () => {
+    if (!user || !legacyProfileId) return;
+    try {
+      const result = await followMutation.mutateAsync({ action: "follow", profileId: legacyProfileId });
+      if (result.state === "pending") {
+        setRestrictedFollowState("pending");
+        toast.success("Volgverzoek verstuurd");
+        return;
+      }
+      if (result.state === "following" || result.state === "accepted") {
+        setRestrictedFollowState("following");
+        toast.success("Toegang verleend");
+        await profileQuery.refetch();
+        return;
+      }
+      toast.error("Dit profiel is niet beschikbaar");
+    } catch (error) {
+      console.error("Restricted profile follow request failed", error);
+      toast.error("Profiel of volgmogelijkheid niet beschikbaar");
+    }
+  };
+
+  const cancelRestrictedRequest = async () => {
+    if (!user || !legacyProfileId) return;
+    try {
+      await followMutation.mutateAsync({ action: "remove", profileId: legacyProfileId });
+      setRestrictedFollowState("unknown");
+      toast.success("Verzoek ingetrokken");
+    } catch (error) {
+      console.error("Restricted profile follow cancellation failed", error);
+      toast.error("Verzoek intrekken mislukt");
+    }
+  };
+
+  const refetchProfile = async () => {
+    if (legacyProfileId) return profileQuery.refetch();
+    const publicResult = await publicProfileQuery.refetch();
+    if (publicResult.data) return profileQuery.refetch();
+    return publicResult;
+  };
+
+  const toggleBlock = async () => {
+    if (!user || !profile || isMe || blockMutation.isPending) return;
+    const action = blockState === "blocked" ? "unblock" : "block";
+    setBlockError(null);
+    try {
+      const result = await blockMutation.mutateAsync({ action, profileId: profile.id });
+      if (action === "block" && result.state !== "blocked") throw new Error("Unexpected block state");
+      if (action === "unblock" && result.state !== "unblocked") throw new Error("Unexpected unblock state");
+      setBlockState(action === "block" ? "blocked" : "active");
+      toast.success(action === "block" ? "Bouwer geblokkeerd" : "Bouwer gedeblokkeerd");
+      if (action === "unblock") {
+        void refetchProfile().catch((error) => {
+          console.error("Profile refresh after unblock failed", error);
+        });
+      }
+    } catch (error) {
+      console.error("Profile block update failed", error);
+      const message = action === "block"
+        ? "Blokkeren is niet gelukt. Probeer het opnieuw."
+        : "Deblokkeren is niet gelukt. Probeer het opnieuw.";
+      setBlockError(message);
+      toast.error(message);
+    }
+  };
+
+  if (!validProfileKey || profileError) {
+    return (
+      <main className="container py-20 flex justify-center">
+        <section className="max-w-md w-full rounded-xl border bg-card p-8 text-center space-y-4 shadow-sm" aria-labelledby="profile-unavailable-title">
+          <div className="mx-auto h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+            <Lock className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+          </div>
+          <div className="space-y-1">
+            <h1 id="profile-unavailable-title" className="text-xl font-serif font-semibold">Profiel niet beschikbaar</h1>
+            <p className="text-sm text-muted-foreground" role="alert">
+              Dit profiel bestaat niet, is afgeschermd of kan momenteel niet veilig worden geladen.
+            </p>
+          </div>
+          {legacyProfileId && user && restrictedFollowState === "pending" ? (
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full gap-2"
+              disabled={followMutation.isPending}
+              onClick={cancelRestrictedRequest}
+            >
+              {followMutation.isPending
+                ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                : <UserCheck className="h-4 w-4" aria-hidden="true" />}
+              Verzoek intrekken
+            </Button>
+          ) : legacyProfileId && user && restrictedFollowState === "following" ? (
+            <Button type="button" className="w-full gap-2" onClick={() => profileQuery.refetch()}>
+              <Check className="h-4 w-4" aria-hidden="true" /> Profiel opnieuw laden
+            </Button>
+          ) : legacyProfileId && user ? (
+            <Button
+              type="button"
+              className="w-full gap-2"
+              disabled={followMutation.isPending}
+              onClick={requestRestrictedProfile}
+            >
+              {followMutation.isPending
+                ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                : <UserPlus className="h-4 w-4" aria-hidden="true" />}
+              Volgverzoek versturen
+            </Button>
+          ) : validProfileKey && !user ? (
+            <Button asChild className="w-full">
+              <Link to={authPagePath(PRODUCT_ROUTES.profile(profileKey))}>Inloggen om verder te gaan</Link>
+            </Button>
+          ) : null}
+          {validProfileKey && (
+            <Button type="button" variant="ghost" className="w-full" onClick={refetchProfile}>
+              Opnieuw proberen
+            </Button>
+          )}
+          <Link to={PRODUCT_ROUTES.connections} className="block text-xs text-muted-foreground underline">Terug naar connecties</Link>
+        </section>
+      </main>
+    );
   }
 
-  if (!profile) {
-    return <div className="container py-20 text-center text-muted-foreground">Profiel niet gevonden.</div>;
+  if (profilePending || !profile) {
+    return (
+      <main className="flex items-center justify-center min-h-[60vh]" role="status">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true" />
+        <span className="sr-only">Profiel laden…</span>
+      </main>
+    );
   }
 
-  const PeopleList = ({ list, empty }: { list: FollowProfile[]; empty: string }) => (
-    list.length === 0 ? (
-      <p className="text-center text-sm text-muted-foreground py-10 font-light">{empty}</p>
-    ) : (
-      <div>
-        {list.map((p) => (
-          <Link key={p.user_id} to={`/profile/${p.user_id}`} className="flex items-center gap-4 py-4 border-b border-border last:border-b-0 group">
-            <Avatar className="h-11 w-11">
-              <AvatarImage src={p.avatar_url ?? ""} />
-              <AvatarFallback className="bg-muted text-foreground font-semibold text-sm">
-                {p.display_name?.[0]?.toUpperCase() ?? "?"}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1">
-              <p className="font-serif italic text-lg leading-tight truncate flex items-center gap-2 group-hover:text-accent transition-colors">
-                {p.display_name || "Naamloos"}
-                {p.is_private && <Lock className="h-3 w-3 text-muted-foreground shrink-0" />}
-              </p>
-            </div>
-          </Link>
-        ))}
-      </div>
-    )
-  );
+  const isFollowing = profile.viewerFollowStatus === "following";
+  const isPending = profile.viewerFollowStatus === "pending";
 
   return (
-    <div className="min-h-screen bg-background">
+    <main className="min-h-screen bg-background">
       <div className="max-w-4xl mx-auto px-6 md:px-8 py-12 md:py-20">
-        {/* Hero */}
-        <div className="flex flex-col md:flex-row md:items-start gap-8 md:gap-10 mb-16">
-          <div className="relative shrink-0">
-            <Avatar className="h-28 w-28 md:h-32 md:w-32">
-              <AvatarImage src={profile.avatar_url || ""} />
-              <AvatarFallback className="bg-muted text-foreground font-serif italic text-4xl">
-                {profile.display_name?.[0]?.toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            {isMe && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => avatarInputRef.current?.click()}
-                  disabled={avatarUploading}
-                  className="absolute inset-0 rounded-full bg-foreground/40 flex items-center justify-center opacity-0 hover:opacity-100 focus:opacity-100 transition-opacity"
-                  title="Profielfoto wijzigen"
-                >
-                  {avatarUploading
-                    ? <Loader2 className="h-5 w-5 text-background animate-spin" />
-                    : <Camera className="h-5 w-5 text-background" />}
-                </button>
-                <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
-              </>
-            )}
-          </div>
-
+        <section className="flex flex-col md:flex-row md:items-start gap-8 md:gap-10 mb-12" aria-labelledby="profile-title">
+          <Avatar className="h-28 w-28 md:h-32 md:w-32 shrink-0">
+            <AvatarImage src={profile.avatar?.proxyPath ?? ""} alt="" />
+            <AvatarFallback className="bg-muted text-foreground font-serif italic text-4xl">
+              {profile.displayName[0]?.toUpperCase() ?? "?"}
+            </AvatarFallback>
+          </Avatar>
           <div className="flex-1 min-w-0">
-            {profile.is_private && (
-              <p className="eyebrow mb-3 flex items-center gap-1.5"><Lock className="h-3 w-3" /> Privé profiel</p>
-            )}
-            <h1 className="font-serif italic text-4xl md:text-5xl leading-tight">{profile.display_name}</h1>
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              {profile.isPrivate && (
+                <span className="eyebrow flex items-center gap-1.5"><Lock className="h-3 w-3" aria-hidden="true" /> Privéprofiel</span>
+              )}
+              {profile.isPro && <span className="eyebrow">Buildy Pro</span>}
+            </div>
+            <h1 id="profile-title" className="font-serif italic text-4xl md:text-5xl leading-tight">{profile.displayName}</h1>
+            <p className="text-sm text-muted-foreground mt-2">@{profile.slug}</p>
             {profile.location && (
               <p className="text-sm text-muted-foreground flex items-center gap-1.5 mt-3 font-light">
-                <MapPin className="h-3.5 w-3.5" /> {profile.location}
+                <MapPin className="h-3.5 w-3.5" aria-hidden="true" /> {profile.location}
               </p>
             )}
-            {profile.bio && <p className="text-sm mt-4 leading-relaxed font-light max-w-xl">{profile.bio}</p>}
+            {profile.bio && <p className="text-sm mt-4 leading-relaxed font-light max-w-xl whitespace-pre-wrap">{profile.bio}</p>}
 
-            {!restrictedProfile && <div className="flex flex-wrap gap-x-8 gap-y-3 mt-6">
-              {[
-                { label: "Projecten", value: trips.length, tab: "projects" },
-                { label: "Volgers", value: followers.length, tab: "followers" },
-                { label: "Volgend", value: following.length, tab: "following" },
-                { label: "Updates", value: stats.updates, tab: "" },
-                { label: "Foto's", value: stats.photos, tab: "" },
-              ].map((s) => (
-                <div 
-                  key={s.label} 
-                  className={s.tab ? "cursor-pointer hover:opacity-80 transition-opacity" : ""}
-                  onClick={() => s.tab && setActiveTab(s.tab)}
-                >
-                  <p className="font-serif italic text-2xl leading-none tabular-nums">{s.value}</p>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-1">{s.label}</p>
-                </div>
-              ))}
-            </div>}
+            <dl className="flex flex-wrap gap-x-8 gap-y-3 mt-6">
+              <div>
+                <dd className="font-serif italic text-2xl leading-none tabular-nums">{profile.followerCount}</dd>
+                <dt className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-1">Volgers</dt>
+              </div>
+              <div>
+                <dd className="font-serif italic text-2xl leading-none tabular-nums">{profile.followingCount}</dd>
+                <dt className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-1">Volgend</dt>
+              </div>
+            </dl>
 
-            <div className="mt-6 flex gap-2">
-              {!isMe && user && (
-                <Button
-                  size="sm"
-                  onClick={toggleFollow}
-                  disabled={followBusy}
-                  className={`rounded-full px-5 text-[11px] font-bold uppercase tracking-widest gap-1.5 ${iFollow || followPending ? "bg-foreground text-background hover:bg-foreground/90" : "bg-accent text-accent-foreground hover:bg-accent/90"}`}
-                >
-                  {iFollow ? <><UserCheck className="h-3.5 w-3.5" /> Volgend</> : followPending ? <><UserCheck className="h-3.5 w-3.5" /> Verzoek intrekken</> : <><UserPlus className="h-3.5 w-3.5" /> Volgen</>}
+            <div className="mt-6 flex flex-wrap gap-2">
+              {isMe ? (
+                <Button type="button" size="sm" variant="outline" onClick={signOut} className="rounded-full px-5 gap-1.5 text-muted-foreground">
+                  <LogOut className="h-3.5 w-3.5" aria-hidden="true" /> Uitloggen
+                </Button>
+              ) : user ? (
+                blockState === "blocked" ? (
+                  <span className="inline-flex min-h-9 items-center gap-1.5 rounded-full border px-4 text-sm text-muted-foreground" role="status">
+                    <Ban className="h-3.5 w-3.5" aria-hidden="true" /> Geblokkeerd
+                  </span>
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={toggleFollow}
+                    disabled={followMutation.isPending}
+                    aria-pressed={isFollowing}
+                    className={`rounded-full px-5 text-[11px] font-bold uppercase tracking-widest gap-1.5 ${
+                      isFollowing || isPending
+                        ? "bg-foreground text-background hover:bg-foreground/90"
+                        : "bg-accent text-accent-foreground hover:bg-accent/90"
+                    }`}
+                  >
+                    {followMutation.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                    ) : isFollowing || isPending ? (
+                      <UserCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                    ) : (
+                      <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
+                    )}
+                    {isFollowing ? "Volgend" : isPending ? "Verzoek intrekken" : "Volgen"}
+                  </Button>
+                )
+              ) : (
+                <Button asChild size="sm" className="rounded-full px-5 gap-1.5">
+                  <Link to={authPagePath(PRODUCT_ROUTES.profile(profile.slug))}>
+                    <UserPlus className="h-3.5 w-3.5" aria-hidden="true" /> Log in om te volgen
+                  </Link>
                 </Button>
               )}
-              {!isMe && !user && (
-                <Link to={`/auth?next=${encodeURIComponent(`/profile/${userId}`)}`}>
-                  <Button size="sm" className="rounded-full px-5 text-[11px] font-bold uppercase tracking-widest gap-1.5 bg-accent text-accent-foreground hover:bg-accent/90">
-                    <UserPlus className="h-3.5 w-3.5" /> Log in om te volgen
-                  </Button>
-                </Link>
-              )}
-              {isMe && (
-                <>
-                  <Button size="sm" variant="outline" onClick={() => setEditing(true)} className="rounded-full px-5 text-[11px] font-bold uppercase tracking-widest gap-1.5 border-border">
-                    <Pencil className="h-3.5 w-3.5" /> Bewerk profiel
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={signOut} className="rounded-full px-5 text-[11px] font-bold uppercase tracking-widest gap-1.5 border-border text-muted-foreground hover:text-foreground">
-                    <LogOut className="h-3.5 w-3.5" /> Uitloggen
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      {restrictedProfile ? (
-        <div className="rounded-2xl border border-border/70 bg-card px-6 py-10 text-center shadow-sm">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-            <Lock className="h-5 w-5 text-muted-foreground" />
-          </div>
-          <h2 className="font-serif italic text-2xl">Dit profiel is privé</h2>
-          <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
-            Stuur een volgverzoek om de bio, projecten en sociale updates van deze bouwer te bekijken.
-            Privéprojecten vragen daarna nog altijd apart toestemming.
-          </p>
-        </div>
-      ) : (
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-2 sm:inline-flex bg-transparent sm:border-b sm:border-border rounded-none p-0 h-auto gap-x-6 gap-y-2 sm:gap-8 w-full justify-start mb-8">
-          <TabsTrigger value="projects" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Projecten</TabsTrigger>
-          <TabsTrigger value="stats" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Statistieken</TabsTrigger>
-          <TabsTrigger value="followers" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Volgers ({followers.length})</TabsTrigger>
-          <TabsTrigger value="following" className="text-[11px] font-bold uppercase tracking-[0.2em] data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/60 rounded-none border-b-2 border-transparent data-[state=active]:border-foreground pb-3 px-0">Volgend ({following.length})</TabsTrigger>
-        </TabsList>
-
-
-        <TabsContent value="projects" className="mt-6">
-          {trips.length === 0 ? (
-            <p className="text-center text-sm text-muted-foreground py-10">Nog geen projecten.</p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
-              {trips.map((trip) => (
-                <ProjectCard
-                  key={trip.id}
-                  id={trip.id}
-                  title={trip.title}
-                  projectType={trip.project_type}
-                  progressPercentage={trip.progress_percentage}
-                  coverUrl={trip.cover_image_url}
-                  coverMediaType={trip.cover_media_type}
-                  placeholderIcon={Hammer}
+              {!isMe ? (
+                <ReportDialog
+                  compact
+                  targetType="profile"
+                  targetId={profile.id}
+                  targetLabel={`Profiel van ${profile.displayName}`}
                 />
-              ))}
+              ) : null}
+              {!isMe && user ? (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="rounded-full px-5 text-destructive hover:text-destructive"
+                      disabled={blockMutation.isPending}
+                    >
+                      {blockMutation.isPending
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                        : <Ban className="h-3.5 w-3.5" aria-hidden="true" />}
+                      {blockState === "blocked" ? "Deblokkeren" : "Blokkeren"}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        {blockState === "blocked" ? "Deze bouwer deblokkeren?" : "Deze bouwer blokkeren?"}
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {blockState === "blocked"
+                          ? "Na deblokkeren kunnen jullie elkaars openbare profiel en projecten weer zien. Volgrelaties worden niet automatisch hersteld."
+                          : "Jullie zien elkaars profiel en projecten niet meer. Bestaande volgrelaties en projecttoegang worden ingetrokken."}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Annuleren</AlertDialogCancel>
+                      <AlertDialogAction
+                        className={blockState === "blocked" ? "" : "bg-destructive text-destructive-foreground hover:bg-destructive/90"}
+                        disabled={blockMutation.isPending}
+                        onClick={() => void toggleBlock()}
+                      >
+                        {blockState === "blocked" ? "Deblokkeren" : "Blokkeren"}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              ) : null}
             </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="stats" className="mt-6 space-y-8">
-          {/* Big numbers */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[
-              { label: "Projecten", value: trips.length, sub: statsExtra.completedProjects > 0 ? `${statsExtra.completedProjects} afgerond` : null },
-              { label: "Updates", value: stats.updates, sub: null },
-              { label: "Foto's", value: stats.photos, sub: null },
-              { label: "Geïnvesteerd", value: statsExtra.budgetTotal > 0 ? `€${statsExtra.budgetTotal.toLocaleString("nl")}` : "—", sub: null },
-            ].map((item) => (
-              <div key={item.label} className="rounded-lg border bg-card p-4 text-center">
-                <div className="text-3xl font-bold tabular-nums">{item.value}</div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mt-1">{item.label}</div>
-                {item.sub && <div className="text-xs text-accent mt-0.5">{item.sub}</div>}
-              </div>
-            ))}
+            {blockError ? <p className="mt-3 text-sm text-destructive" role="alert">{blockError}</p> : null}
           </div>
+        </section>
 
-          {/* Upcoming project countdown */}
-          {statsExtra.upcomingProject && (() => {
-            const days = Math.ceil((new Date(statsExtra.upcomingProject.start_date).getTime() - Date.now()) / 86_400_000);
-            return (
-              <div className="p-5 rounded-lg border-2 border-accent/40 bg-accent/5">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-accent mb-1">Aankomend project</p>
-                <p className="font-serif italic text-xl leading-tight">{statsExtra.upcomingProject.title}</p>
-                <p className="text-3xl font-bold mt-2">Nog <span className="text-accent">{days}</span> <span className="text-lg font-normal text-muted-foreground">dagen</span></p>
-              </div>
-            );
-          })()}
-
-          {/* Badges */}
-          {(() => {
-            const BADGES = [
-              { id: "early", emoji: "⭐", label: "Vroege Bouwer", desc: "Een van de eerste gebruikers", earned: true },
-              { id: "first_step", emoji: "🔨", label: "Eerste Sloopdag", desc: "Eerste update gepost", earned: stats.updates >= 1 },
-              { id: "craftsman", emoji: "📐", label: "Vakman", desc: "10 updates gepost", earned: stats.updates >= 10 },
-              { id: "documentalist", emoji: "📸", label: "Documentalist", desc: "50 foto's geüpload", earned: stats.photos >= 50 },
-              { id: "completed", emoji: "🏁", label: "Opgeleverd", desc: "Project afgerond op 100%", earned: statsExtra.completedProjects >= 1 },
-              { id: "popular", emoji: "🤝", label: "Buurtbouwer", desc: "5 volgers verzameld", earned: followers.length >= 5 },
-            ];
-            return (
-              <div>
-                <h3 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-4">Badges</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {BADGES.map((b) => (
-                    <div key={b.id} className={`rounded-lg border p-3 flex items-center gap-3 transition-all ${b.earned ? "bg-card" : "opacity-35 bg-muted/10"}`}>
-                      <span className="text-2xl leading-none">{b.emoji}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm">{b.label}</p>
-                        <p className="text-xs text-muted-foreground leading-tight">{b.desc}</p>
-                      </div>
-                      {b.earned && <div className="w-2 h-2 rounded-full bg-accent shrink-0" />}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
-        </TabsContent>
-
-        <TabsContent value="followers" className="mt-6">
-          <PeopleList list={followers} empty="Nog geen volgers." /></TabsContent>
-
-        <TabsContent value="following" className="mt-6">
-          <PeopleList list={following} empty="Volgt nog niemand." />
-        </TabsContent>
-      </Tabs>
-      )}
-
-      <Dialog open={editing} onOpenChange={setEditing}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Profiel bewerken</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Naam</Label>
-              <Input value={draft.display_name} onChange={(e) => setDraft({ ...draft, display_name: e.target.value })} />
-            </div>
-            <div>
-              <Label>Locatie</Label>
-              <Input value={draft.location} onChange={(e) => setDraft({ ...draft, location: e.target.value })} />
-            </div>
-            <div>
-              <Label>Bio</Label>
-              <Textarea value={draft.bio} onChange={(e) => setDraft({ ...draft, bio: e.target.value })} rows={3} />
-            </div>
-            <div className="flex items-start justify-between gap-3 p-3 rounded-lg border bg-muted/30">
-              <div className="flex-1">
-                <Label className="flex items-center gap-1.5 font-medium">
-                  <Lock className="h-3.5 w-3.5" /> Openbaar profiel
-                </Label>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Standaard ben je privé. Zet dit aan om vindbaar te zijn in Vrienden. De zichtbaarheid van ieder project stel je apart in.
-                </p>
-              </div>
-              <Switch
-                checked={!draft.is_private}
-                onCheckedChange={(v) => setDraft({ ...draft, is_private: !v })}
-              />
-            </div>
-            <Button onClick={save} className="w-full bg-accent text-accent-foreground hover:bg-accent/90">Opslaan</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+        <section className="rounded-2xl border border-border/70 bg-card px-6 py-8 shadow-sm" aria-labelledby="profile-content-title">
+          <h2 id="profile-content-title" className="font-serif italic text-2xl">Over deze bouwer</h2>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            Projecten, updates en uitgebreide statistieken worden alleen getoond via hun eigen afgeschermde API’s. Op dit profiel staan daarom uitsluitend de veilig vrijgegeven profielgegevens.
+          </p>
+          <Link to={PRODUCT_ROUTES.connections} className="inline-block mt-5 text-sm underline underline-offset-4">Meer bouwers ontdekken</Link>
+        </section>
       </div>
-    </div>
-
+    </main>
   );
 };
 

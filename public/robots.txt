@@ -1,4 +1,16 @@
 User-agent: *
 Allow: /
+Disallow: /account
+Disallow: /beheer/
+Disallow: /bestelling/
+Disallow: /bestellingen/
+Disallow: /connecties
+Disallow: /notificaties
+Disallow: /project/nieuw
+Disallow: /project/*/budget
+Disallow: /project/*/bouwboek
+Disallow: /projecten
+Disallow: /update/nieuw
+Disallow: /volgend
 
-Sitemap: https://buildy.app/sitemap.xml
+Sitemap: https://buildy.invalid/sitemap.xml

@@ -32,12 +32,57 @@
   src: url('@fontsource/instrument-serif/files/instrument-serif-latin-400-italic.woff2') format('woff2');
 }
 
-@tailwind base;
-
-/* Ensure dialogs render above Leaflet map */
-.leaflet-container {
-  z-index: 0 !important;
+/* The Bouwboek preview shares these exact static font files with the
+   deterministic PDF renderer. Keep them separate from the variable UI font. */
+@font-face {
+  font-family: 'Buildy Proof Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/inter/files/inter-latin-ext-400-normal.woff2') format('woff2');
 }
+
+@font-face {
+  font-family: 'Buildy Proof Inter';
+  font-style: italic;
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/inter/files/inter-latin-ext-400-italic.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Buildy Proof Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 600;
+  src: url('@fontsource/inter/files/inter-latin-ext-600-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Buildy Proof Inter';
+  font-style: italic;
+  font-display: swap;
+  font-weight: 600;
+  src: url('@fontsource/inter/files/inter-latin-ext-600-italic.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Buildy Proof Instrument Serif';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/instrument-serif/files/instrument-serif-latin-ext-400-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Buildy Proof Instrument Serif';
+  font-style: italic;
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/instrument-serif/files/instrument-serif-latin-ext-400-italic.woff2') format('woff2');
+}
+
+@tailwind base;
 
 @tailwind components;
 @tailwind utilities;
@@ -63,9 +108,9 @@
     --secondary-foreground: 0 0% 18%;
 
     --muted: 30 12% 95%;
-    --muted-foreground: 0 0% 45%;
+    --muted-foreground: 0 0% 34%;
 
-    --accent: 14 47% 60%;              /* #C27D66 terracotta */
+    --accent: 14 55% 43%;              /* deeper terracotta for AA small-text contrast */
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 72% 51%;

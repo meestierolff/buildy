@@ -1,628 +1,629 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  FileText,
+  ImagePlus,
+  Loader2,
+  Star,
+  Trash2,
+  X,
+} from "lucide-react";
+import { toast } from "sonner";
+
+import PhaseSelect from "@/components/PhaseSelect";
+import DiscardUpdateDraftDialog from "@/components/project/DiscardUpdateDraftDialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import PhaseSelect from "./PhaseSelect";
-import { toast } from "sonner";
-import { BriefcaseBusiness, FileText, Hammer, MapPin, Star, Trash2, Upload, Video, Wallet, X } from "lucide-react";
-import type { FloorInfo } from "./FloorplanView";
-import { prepareUpload } from "@/lib/compressImage";
-import { hydrateTripAssets } from "@/lib/mediaUrl";
-import type { Database } from "@/integrations/supabase/types";
+import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  useCreateProjectPhaseMutation,
+  useDeleteProjectUpdateMutation,
+  useEditProjectUpdateMutation,
+  useProjectOverview,
+} from "@/hooks/useProjectApi";
+import { usePrivateMediaUpload } from "@/hooks/usePrivateMediaUpload";
+import { ApiClientError } from "@/lib/apiClient";
+import { createClientIdempotencyKey } from "@/lib/clientIdempotency";
+import {
+  isSupportedProjectImageType,
+  preparePrivateProjectImage,
+  PrivateMediaUploadError,
+  type PreparedProjectImage,
+} from "@/lib/privateMediaApi";
+import {
+  buildDeleteUpdateCommand,
+  buildEditUpdateCommand,
+} from "@/lib/projectWriteFlow";
+import { getUpdateComposerCloseIntent } from "@/lib/updateComposerState";
+import type {
+  CreateProjectPhaseInput,
+  DeleteUpdateInput,
+  EditUpdateInput,
+  ProjectUpdate,
+} from "../../shared/contracts/projects";
 
-type StepRow = Database["public"]["Tables"]["steps"]["Row"];
-type StepMediaRow = Database["public"]["Tables"]["step_media"]["Row"];
-type EditableStep = StepRow & { step_media?: StepMediaRow[] | null };
+type CompareRole = "before" | "after";
+
+type EditorMedia = {
+  key: string;
+  assetId?: string;
+  contentType: string | null;
+  previewUrl: string;
+  file?: File;
+  compareRole: CompareRole | null;
+  caption: string | null;
+};
+
+type UploadCacheEntry = {
+  prepared?: PreparedProjectImage;
+  assetId?: string;
+};
 
 interface EditStepDialogProps {
-  step: EditableStep;
+  projectId: string;
+  update: ProjectUpdate;
   onClose: () => void;
-  onUpdated: () => void;
+  onUpdated?: (update: ProjectUpdate) => void;
+  onDeleted?: (updateId: string) => void;
 }
 
-const EditStepDialog = ({ step, onClose, onUpdated }: EditStepDialogProps) => {
+class UpdateEditorError extends Error {}
+
+function initialMedia(update: ProjectUpdate): EditorMedia[] {
+  return [...update.media]
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((media) => ({
+      key: `asset:${media.id}`,
+      assetId: media.id,
+      contentType: media.contentType,
+      previewUrl: media.proxyPath,
+      compareRole: media.role === "before" || media.role === "after" ? media.role : null,
+      caption: media.caption,
+    }));
+}
+
+function samePhaseName(left: string, right: string): boolean {
+  return left.trim().toLocaleLowerCase("nl-NL") === right.trim().toLocaleLowerCase("nl-NL");
+}
+
+const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: EditStepDialogProps) => {
   const { user } = useAuth();
+  const projectQuery = useProjectOverview(projectId, Boolean(user));
+  const editMutation = useEditProjectUpdateMutation(projectId, update.id);
+  const deleteMutation = useDeleteProjectUpdateMutation(projectId, update.id);
+  const createPhaseMutation = useCreateProjectPhaseMutation(projectId);
+  const mediaUpload = usePrivateMediaUpload();
+
+  const [title, setTitle] = useState(update.title ?? "");
+  const [room, setRoom] = useState(update.room ?? "");
+  const [description, setDescription] = useState(update.description ?? "");
+  const [updateDate, setUpdateDate] = useState(update.updateDate);
+  const [phaseId, setPhaseId] = useState(update.phase?.id ?? "");
+  const [isMilestone, setIsMilestone] = useState(update.isMilestone);
+  const [media, setMedia] = useState<EditorMedia[]>(() => initialMedia(update));
+  const [isDirty, setIsDirty] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [locationName, setLocationName] = useState(step.location_name);
-  const [phase, setPhase] = useState<string>(step.phase || "");
-  const [isMilestone, setIsMilestone] = useState<boolean>(!!step.is_milestone);
-  const [description, setDescription] = useState(step.description || "");
-  const [stepDate, setStepDate] = useState(step.step_date);
-  const [cost, setCost] = useState<string>("");
-  const [hoursSpent, setHoursSpent] = useState<string>("");
-  const [workType, setWorkType] = useState<string>("");
-  const [diyCost, setDiyCost] = useState<string>("");
-  const [diyHours, setDiyHours] = useState<string>("");
-  const [outsourcedCost, setOutsourcedCost] = useState<string>("");
-  const [outsourcedHours, setOutsourcedHours] = useState<string>("");
-  const [contractorName, setContractorName] = useState<string>("");
-  const [contractorNotes, setContractorNotes] = useState<string>("");
+  const [retryLocked, setRetryLocked] = useState(false);
+  const [deleteRetryLocked, setDeleteRetryLocked] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveStage, setSaveStage] = useState<"idle" | "uploading" | "processing" | "saving">("idle");
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
+  const [showDiscardPrompt, setShowDiscardPrompt] = useState(false);
+  const [showDeletePrompt, setShowDeletePrompt] = useState(false);
 
-  const [existingMedia, setExistingMedia] = useState<StepMediaRow[]>(
-    [...(step.step_media || [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-  );
-  const [newFiles, setNewFiles] = useState<File[]>([]);
-  const [newFileDragIdx, setNewFileDragIdx] = useState<number | null>(null);
-  const [newFileDragOverIdx, setNewFileDragOverIdx] = useState<number | null>(null);
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
-  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const previewUrlsRef = useRef<string[]>([]);
+  const uploadCacheRef = useRef(new Map<string, UploadCacheEntry>());
+  const pendingEditCommandRef = useRef<EditUpdateInput | null>(null);
+  const pendingDeleteCommandRef = useRef<DeleteUpdateInput | null>(null);
+  const pendingPhaseCommandRef = useRef<{ name: string; input: CreateProjectPhaseInput } | null>(null);
+  const submitGuardRef = useRef(false);
 
-  const reorderExistingMedia = (draggedId: string, targetId: string) => {
-    if (!draggedId || !targetId || draggedId === targetId) return;
-    setExistingMedia((prev) => {
-      const next = [...prev];
-      const from = next.findIndex((item) => item.id === draggedId);
-      const to = next.findIndex((item) => item.id === targetId);
-      if (from < 0 || to < 0) return prev;
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      return next;
+  const formLocked = loading || retryLocked || deleteRetryLocked || deleteMutation.isPending;
+  const canEdit = projectQuery.data?.viewerAccess === "owner" && projectQuery.data.canEdit;
+  const phaseOptions = useMemo(() => projectQuery.data?.phases.map((phase) => ({
+    value: phase.id,
+    label: phase.name,
+  })) ?? [], [projectQuery.data?.phases]);
+
+  useEffect(() => () => {
+    previewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    previewUrlsRef.current = [];
+  }, []);
+
+  const markDirty = () => {
+    setIsDirty(true);
+    setSaveError(null);
+  };
+
+  const requestClose = () => {
+    const intent = getUpdateComposerCloseIntent({
+      isDirty,
+      isSaving: loading || retryLocked || deleteMutation.isPending || deleteRetryLocked,
     });
-  };
-
-  const reorderNewFiles = (draggedKey: string, targetKey: string) => {
-    if (!draggedKey || !targetKey || draggedKey === targetKey) return;
-    setNewFiles((prev) => {
-      const next = [...prev];
-      const from = next.findIndex((item, index) => `${item.name}-${index}` === draggedKey || `${item.name}-${index}-${item.size}` === draggedKey);
-      const to = next.findIndex((item, index) => `${item.name}-${index}` === targetKey || `${item.name}-${index}-${item.size}` === targetKey);
-      if (from < 0 || to < 0) return prev;
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      return next;
-    });
-  };
-  const [customPhases, setCustomPhases] = useState<string[]>([]);
-  const [floorplans, setFloorplans] = useState<FloorInfo[]>([]);
-  const [selectedFloorId, setSelectedFloorId] = useState<string>(step.floorplan_id ?? "__legacy__");
-  const [pinX, setPinX] = useState<number | null>(step.floorplan_x);
-  const [pinY, setPinY] = useState<number | null>(step.floorplan_y);
-
-  useEffect(() => {
-    supabase
-      .from("trips")
-      .select("custom_phases, floorplan_url, floorplan_storage_path, floorplans")
-      .eq("id", step.trip_id)
-      .single()
-      .then(async ({ data }) => {
-        if (data) await hydrateTripAssets([data]);
-        setCustomPhases((data?.custom_phases as string[]) || []);
-        const fpRaw = (data?.floorplans as unknown) as FloorInfo[] | null;
-        const floors = Array.isArray(fpRaw) && fpRaw.length > 0
-          ? fpRaw
-          : data?.floorplan_url
-            ? [{
-                id: "__legacy__",
-                label: "Begane grond",
-                url: data.floorplan_url as string,
-                storage_path: data.floorplan_storage_path,
-              }]
-            : [];
-        setFloorplans(floors);
-        if (!step.floorplan_id) setSelectedFloorId(floors[0]?.id ?? "__legacy__");
-      });
-    supabase
-      .from("step_budget")
-      .select("cost, hours_spent, work_type, diy_cost, diy_hours, outsourced_cost, outsourced_hours")
-      .eq("step_id", step.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) {
-          setCost(data.cost != null ? String(data.cost) : "");
-          setHoursSpent(data.hours_spent != null ? String(data.hours_spent) : "");
-          setWorkType(data.work_type || "");
-          setDiyCost(data.diy_cost != null ? String(data.diy_cost) : "");
-          setDiyHours(data.diy_hours != null ? String(data.diy_hours) : "");
-          setOutsourcedCost(data.outsourced_cost != null ? String(data.outsourced_cost) : "");
-          setOutsourcedHours(data.outsourced_hours != null ? String(data.outsourced_hours) : "");
-        }
-      });
-    supabase
-      .from("step_contractor_info")
-      .select("contractor_name, contractor_notes")
-      .eq("step_id", step.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) {
-          setContractorName(data.contractor_name || "");
-          setContractorNotes(data.contractor_notes || "");
-        }
-      });
-  }, [step.trip_id, step.id, step.floorplan_id]);
-
-
-  const addCustomPhase = async (name: string) => {
-    const next = Array.from(new Set([...customPhases, name]));
-    setCustomPhases(next);
-    await supabase.from("trips").update({ custom_phases: next }).eq("id", step.trip_id);
-  };
-
-
-  const removeExisting = async (m: StepMediaRow) => {
-    if (!confirm("Foto verwijderen?")) return;
-    const { error } = await supabase.from("step_media").delete().eq("id", m.id);
-    if (error) {
-      toast.error("Kon niet verwijderen");
+    if (intent === "ignore") return;
+    if (intent === "confirm-discard") {
+      setShowDiscardPrompt(true);
       return;
     }
-    try {
-      // Prefer the canonical storage_path; fall back to parsing legacy public URLs.
-      if (m.storage_path) {
-        await supabase.storage.from("trip-private").remove([m.storage_path]);
-      } else if (m.media_url) {
-        const url = new URL(m.media_url);
-        const idx = url.pathname.indexOf("/trip-media/");
-        if (idx >= 0) {
-          const path = url.pathname.slice(idx + "/trip-media/".length);
-          await supabase.storage.from("trip-media").remove([decodeURIComponent(path)]);
-        }
-      }
-    } catch { /* ignore */ }
-    setExistingMedia((prev) => prev.filter((x) => x.id !== m.id));
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) setNewFiles((prev) => [...prev, ...Array.from(e.target.files!)]);
-  };
-
-  const handlePinClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    setPinX(((e.clientX - rect.left) / rect.width) * 100);
-    setPinY(((e.clientY - rect.top) / rect.height) * 100);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    setLoading(true);
-
-    const { error } = await supabase
-      .from("steps")
-      .update({
-        location_name: locationName,
-        phase: phase || null,
-        is_milestone: isMilestone,
-        description: description || null,
-        step_date: stepDate,
-        floorplan_x: pinX,
-        floorplan_y: pinY,
-        floorplan_id: pinX != null ? (selectedFloorId === "__legacy__" ? null : selectedFloorId) : null,
-      })
-      .eq("id", step.id);
-
-    if (error) {
-      console.error("Update step failed:", error);
-      toast.error("Kon update niet opslaan. Probeer het opnieuw.");
-      setLoading(false);
-      return;
-    }
-
-    const partialFailures: string[] = [];
-
-    let contractorError;
-    if (contractorName.trim() || contractorNotes.trim()) {
-      ({ error: contractorError } = await supabase.from("step_contractor_info").upsert({
-        step_id: step.id,
-        trip_id: step.trip_id,
-        contractor_name: contractorName.trim() || null,
-        contractor_notes: contractorNotes.trim() || null,
-        updated_at: new Date().toISOString(),
-      }));
-    } else {
-      ({ error: contractorError } = await supabase.from("step_contractor_info").delete().eq("step_id", step.id));
-    }
-    if (contractorError) {
-      console.error("Update contractor info failed:", contractorError);
-      partialFailures.push("aannemersinformatie");
-    }
-
-    const hasBudget = cost !== "" || hoursSpent !== "" || workType !== "" ||
-      diyCost !== "" || diyHours !== "" || outsourcedCost !== "" || outsourcedHours !== "";
-    let budgetError;
-    if (hasBudget) {
-      const isMixed = workType === "mixed";
-      const totalCost = isMixed
-        ? (diyCost !== "" || outsourcedCost !== "" ? Number(diyCost || 0) + Number(outsourcedCost || 0) : null)
-        : (cost === "" ? null : Number(cost));
-      const totalHours = isMixed
-        ? (diyHours !== "" || outsourcedHours !== "" ? Number(diyHours || 0) + Number(outsourcedHours || 0) : null)
-        : (hoursSpent === "" ? null : Number(hoursSpent));
-      ({ error: budgetError } = await supabase.from("step_budget").upsert({
-        step_id: step.id,
-        trip_id: step.trip_id,
-        cost: totalCost,
-        hours_spent: totalHours,
-        work_type: workType || null,
-        diy_cost: isMixed && diyCost !== "" ? Number(diyCost) : null,
-        diy_hours: isMixed && diyHours !== "" ? Number(diyHours) : null,
-        outsourced_cost: isMixed && outsourcedCost !== "" ? Number(outsourcedCost) : null,
-        outsourced_hours: isMixed && outsourcedHours !== "" ? Number(outsourcedHours) : null,
-      }));
-    } else {
-      ({ error: budgetError } = await supabase.from("step_budget").delete().eq("step_id", step.id));
-    }
-    if (budgetError) {
-      console.error("Update step budget failed:", budgetError);
-      partialFailures.push("budgetinformatie");
-    }
-
-
-    // Persist reorder of existing media
-    const reorderResults = await Promise.all(
-      existingMedia.map((m, i) =>
-        (m.sort_order ?? 0) !== i
-          ? supabase.from("step_media").update({ sort_order: i }).eq("id", m.id)
-          : Promise.resolve({ error: null })
-      )
-    );
-    if (reorderResults.some((result) => result?.error)) {
-      console.error("Reorder existing step media failed:", reorderResults.find((result) => result?.error)?.error);
-      partialFailures.push("fotovolgorde");
-    }
-
-    const baseOrder = existingMedia.length;
-    for (let i = 0; i < newFiles.length; i++) {
-      let file: File;
-      try {
-        file = await prepareUpload(newFiles[i]);
-      } catch (err) {
-        console.error("Prepare upload failed:", err);
-        partialFailures.push(newFiles[i].name);
-        continue;
-      }
-      const ext = file.name.split(".").pop();
-      const path = `${user.id}/${step.id}/${Date.now()}-${i}.${ext}`;
-      const { error: upErr } = await supabase.storage.from("trip-private").upload(path, file);
-      if (upErr) {
-        console.error("Upload step media failed:", upErr);
-        partialFailures.push(newFiles[i].name);
-        continue;
-      }
-
-      const { data: signed, error: signedUrlError } = await supabase.storage
-        .from("trip-private")
-        .createSignedUrl(path, 60 * 60);
-      if (signedUrlError || !signed?.signedUrl) {
-        console.error("Sign step media URL failed:", signedUrlError);
-        await supabase.storage.from("trip-private").remove([path]);
-        partialFailures.push(newFiles[i].name);
-        continue;
-      }
-
-      const { error: mediaError } = await supabase.from("step_media").insert({
-        step_id: step.id,
-        user_id: user.id,
-        media_url: signed.signedUrl,
-        storage_path: path,
-        media_type: file.type === "application/pdf" ? "pdf" : file.type.startsWith("video") ? "video" : "image",
-        sort_order: baseOrder + i,
-      });
-      if (mediaError) {
-        console.error("Store step media failed:", mediaError);
-        await supabase.storage.from("trip-private").remove([path]);
-        partialFailures.push(newFiles[i].name);
-      }
-    }
-
-    onUpdated();
     onClose();
-    setLoading(false);
-    if (partialFailures.length > 0) {
-      toast.error(`Update opgeslagen, maar ${partialFailures.length} onderdeel${partialFailures.length === 1 ? "" : "en"} konden niet worden bijgewerkt.`);
-    } else {
-      toast.success("Update opgeslagen!");
+  };
+
+  const addCustomPhase = async (name: string): Promise<string> => {
+    const normalizedName = name.trim();
+    let pending = pendingPhaseCommandRef.current;
+    if (!pending || !samePhaseName(pending.name, normalizedName)) {
+      const latest = await projectQuery.refetch({ throwOnError: true });
+      if (latest.data?.viewerAccess !== "owner" || !latest.data.canEdit) {
+        throw new UpdateEditorError("Je hebt geen bewerkingsrechten voor dit project.");
+      }
+      pending = {
+        name: normalizedName,
+        input: {
+          idempotencyKey: createClientIdempotencyKey("project-phase"),
+          expectedProjectVersion: latest.data.version,
+          name: normalizedName,
+        },
+      };
+      pendingPhaseCommandRef.current = pending;
+    }
+
+    try {
+      const result = await createPhaseMutation.mutateAsync(pending.input);
+      pendingPhaseCommandRef.current = null;
+      markDirty();
+      return result.phase.id;
+    } catch (error) {
+      if (error instanceof ApiClientError && error.status === 409) {
+        const latest = await projectQuery.refetch({ throwOnError: true });
+        const existing = latest.data?.phases.find((phase) => samePhaseName(phase.name, normalizedName));
+        pendingPhaseCommandRef.current = null;
+        if (existing) {
+          markDirty();
+          return existing.id;
+        }
+      }
+      throw error;
     }
   };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!event.target.files || formLocked) return;
+    const selected = Array.from(event.target.files);
+    const supported = selected.filter((file) => isSupportedProjectImageType(file.type));
+    const available = Math.max(0, 50 - media.length);
+    const accepted = supported.slice(0, available);
+
+    if (supported.length !== selected.length) {
+      toast.error("Gebruik alleen JPG-, PNG-, WebP-, AVIF-, HEIC- of HEIF-foto's.");
+    }
+    if (supported.length > available) {
+      toast.error("Je kunt maximaal 50 media-items aan één update koppelen.");
+    }
+
+    try {
+      const additions = accepted.map((file) => {
+        const previewUrl = URL.createObjectURL(file);
+        previewUrlsRef.current.push(previewUrl);
+        return {
+          key: createClientIdempotencyKey("media-upload"),
+          contentType: file.type,
+          previewUrl,
+          file,
+          compareRole: null,
+          caption: null,
+        } satisfies EditorMedia;
+      });
+      setMedia((current) => [...current, ...additions]);
+      if (additions.length > 0) markDirty();
+    } catch (error) {
+      console.error("Create secure upload identifier failed", error);
+      toast.error("Deze browser kan geen veilige uploadopdracht maken.");
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const removeMedia = (key: string) => {
+    if (formLocked) return;
+    const removed = media.find((item) => item.key === key);
+    if (removed?.file) {
+      URL.revokeObjectURL(removed.previewUrl);
+      previewUrlsRef.current = previewUrlsRef.current.filter((url) => url !== removed.previewUrl);
+      uploadCacheRef.current.delete(key);
+    }
+    setMedia((current) => current.filter((item) => item.key !== key));
+    markDirty();
+  };
+
+  const moveMedia = (key: string, direction: -1 | 1) => {
+    if (formLocked) return;
+    setMedia((current) => {
+      const from = current.findIndex((item) => item.key === key);
+      const to = from + direction;
+      if (from < 0 || to < 0 || to >= current.length) return current;
+      const next = [...current];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+    markDirty();
+  };
+
+  const setCompareRole = (key: string, role: CompareRole) => {
+    if (formLocked) return;
+    setMedia((current) => current.map((item) => {
+      if (item.key === key) {
+        return { ...item, compareRole: item.compareRole === role ? null : role };
+      }
+      return item.compareRole === role ? { ...item, compareRole: null } : item;
+    }));
+    markDirty();
+  };
+
+  const readyMediaManifest = async () => {
+    const manifest: Array<{
+      assetId: string;
+      compareRole: CompareRole | null;
+      caption: string | null;
+    }> = [];
+    const pendingUploads = media.filter((item) => !item.assetId);
+    if (pendingUploads.length > 0) {
+      setSaveStage("uploading");
+      setUploadProgress({ current: 0, total: pendingUploads.length });
+    }
+
+    let uploadIndex = 0;
+    for (const item of media) {
+      let assetId = item.assetId;
+      if (!assetId) {
+        uploadIndex += 1;
+        setUploadProgress({ current: uploadIndex, total: pendingUploads.length });
+        if (!item.file) throw new UpdateEditorError("Een nieuw media-item mist het lokale bestand.");
+        const cache = uploadCacheRef.current.get(item.key) ?? {};
+        cache.prepared ??= await preparePrivateProjectImage(item.file);
+        uploadCacheRef.current.set(item.key, cache);
+        if (!cache.assetId) {
+          const asset = await mediaUpload.mutateAsync({
+            projectId,
+            idempotencyKey: item.key,
+            prepared: cache.prepared,
+            onStage: (stage) => {
+              if (stage === "processing") setSaveStage("processing");
+              if (stage === "uploading") setSaveStage("uploading");
+            },
+          });
+          if (asset.projectId !== projectId || asset.status !== "ready") {
+            throw new UpdateEditorError("De server bevestigde de foto niet voor dit project.");
+          }
+          cache.assetId = asset.id;
+        }
+        assetId = cache.assetId;
+      }
+      manifest.push({ assetId, compareRole: item.compareRole, caption: item.caption });
+    }
+    return manifest;
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!user || !isDirty || submitGuardRef.current) return;
+    submitGuardRef.current = true;
+    setLoading(true);
+    setSaveError(null);
+    let requestStarted = false;
+    let savedUpdate: ProjectUpdate | null = null;
+
+    try {
+      if (!pendingEditCommandRef.current) {
+        const latest = await projectQuery.refetch({ throwOnError: true });
+        if (latest.data?.viewerAccess !== "owner" || !latest.data.canEdit) {
+          throw new UpdateEditorError("Je hebt geen bewerkingsrechten voor dit project.");
+        }
+        const readyMedia = await readyMediaManifest();
+        pendingEditCommandRef.current = buildEditUpdateCommand({
+          title,
+          room,
+          description,
+          updateDate,
+          phaseId,
+          isMilestone,
+          media: readyMedia,
+        }, update.version, createClientIdempotencyKey("update-edit"));
+      }
+
+      setSaveStage("saving");
+      requestStarted = true;
+      const result = await editMutation.mutateAsync(pendingEditCommandRef.current);
+      savedUpdate = result.update;
+      pendingEditCommandRef.current = null;
+      setRetryLocked(false);
+    } catch (error) {
+      console.error("Edit update failed", error);
+      const definitiveRejection = requestStarted && error instanceof ApiClientError &&
+        error.status < 500 && ![408, 425, 429].includes(error.status);
+      const uncertainOutcome = requestStarted && !definitiveRejection;
+      if (uncertainOutcome) {
+        setRetryLocked(true);
+        setSaveError("De serverbevestiging ontbreekt. Probeer exact dezelfde wijziging opnieuw; de veilige opdracht-ID blijft behouden.");
+        toast.error("We konden de wijziging nog niet bevestigen. Probeer opnieuw.");
+      } else {
+        if (definitiveRejection) pendingEditCommandRef.current = null;
+        setRetryLocked(false);
+        const message = error instanceof ApiClientError ||
+          error instanceof PrivateMediaUploadError ||
+          error instanceof UpdateEditorError
+          ? error.message
+          : "Opslaan lukte niet. Je wijzigingen staan nog hier.";
+        setSaveError(message);
+        toast.error("Kon update niet opslaan.");
+      }
+    } finally {
+      submitGuardRef.current = false;
+      setLoading(false);
+      setSaveStage("idle");
+    }
+
+    if (savedUpdate) {
+      setIsDirty(false);
+      onUpdated?.(savedUpdate);
+      onClose();
+      toast.success("Update opgeslagen");
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!user || deleteMutation.isPending) return;
+    setSaveError(null);
+    try {
+      const latest = await projectQuery.refetch({ throwOnError: true });
+      if (latest.data?.viewerAccess !== "owner" || !latest.data.canEdit) {
+        throw new UpdateEditorError("Je hebt geen bewerkingsrechten voor dit project.");
+      }
+      pendingDeleteCommandRef.current ??= buildDeleteUpdateCommand(
+        update.version,
+        createClientIdempotencyKey("update-delete"),
+      );
+      await deleteMutation.mutateAsync(pendingDeleteCommandRef.current);
+      pendingDeleteCommandRef.current = null;
+      setDeleteRetryLocked(false);
+      setShowDeletePrompt(false);
+      onDeleted?.(update.id);
+      onClose();
+      toast.success("Update verwijderd");
+    } catch (error) {
+      console.error("Delete update failed", error);
+      const definitiveRejection = error instanceof ApiClientError &&
+        error.status < 500 && ![408, 425, 429].includes(error.status);
+      if (definitiveRejection) {
+        pendingDeleteCommandRef.current = null;
+        setDeleteRetryLocked(false);
+      } else {
+        setDeleteRetryLocked(true);
+      }
+      const message = definitiveRejection && error instanceof Error
+        ? error.message
+        : "De serverbevestiging ontbreekt. Probeer exact dezelfde verwijdering opnieuw.";
+      setSaveError(message);
+      toast.error("Kon update niet verwijderen. Probeer opnieuw.");
+    }
+  };
+
+  const saveStatus = saveStage === "uploading"
+    ? `Foto ${uploadProgress.current} van ${uploadProgress.total} uploaden…`
+    : saveStage === "processing"
+      ? `Foto ${uploadProgress.current} van ${uploadProgress.total} veilig verwerken…`
+      : saveStage === "saving"
+        ? "Wijzigingen opslaan…"
+        : saveError;
 
   return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto z-[1000]">
-        <DialogHeader>
-          <DialogTitle>Update bewerken</DialogTitle>
-          <DialogDescription>
-            Werk de inhoud, media en volgorde van deze projectupdate bij.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <Label>Titel *</Label>
-            <Input value={locationName} onChange={(e) => setLocationName(e.target.value)} required />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Fase</Label>
-              <PhaseSelect value={phase} onChange={setPhase} customPhases={customPhases} onAddCustom={addCustomPhase} />
-            </div>
-            <div>
-              <Label>Datum *</Label>
-              <Input type="date" value={stepDate} onChange={(e) => setStepDate(e.target.value)} required />
-            </div>
-          </div>
-          <div className="flex items-center gap-3 rounded-lg border p-3 bg-secondary/40">
-            <Switch id="milestone-edit" checked={isMilestone} onCheckedChange={setIsMilestone} />
-            <Label htmlFor="milestone-edit" className="flex cursor-pointer items-center gap-1.5">
-              <Star className="h-3.5 w-3.5 text-accent" />
-              Markeren als mijlpaal
-            </Label>
-          </div>
-          <div>
-            <Label>Verhaal</Label>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} />
-          </div>
+    <>
+      <Dialog open onOpenChange={(open) => { if (!open) requestClose(); }}>
+        <DialogContent
+          className="z-[1000] h-[100dvh] w-screen max-w-none overflow-y-auto overscroll-contain rounded-none p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] [&>button]:flex [&>button]:h-11 [&>button]:w-11 [&>button]:items-center [&>button]:justify-center sm:h-auto sm:max-h-[90dvh] sm:max-w-2xl sm:rounded-lg sm:p-6"
+          aria-busy={loading || deleteMutation.isPending}
+        >
+          <DialogHeader className="pr-8 text-left">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Projectupdate</p>
+            <DialogTitle className="font-sans text-2xl">Update bewerken</DialogTitle>
+            <DialogDescription>
+              Wijzig verhaal, fase en media. Losgekoppelde foto&apos;s worden niet uit je opslag verwijderd.
+            </DialogDescription>
+          </DialogHeader>
 
-          <div className="rounded-lg border p-3 space-y-3 bg-secondary/30">
-            <Label className="flex items-center gap-1.5 text-sm font-semibold">
-              <BriefcaseBusiness className="h-3.5 w-3.5 text-muted-foreground" />
-              Aannemer (optioneel)
-            </Label>
-            <div>
-              <Label className="text-xs">Naam / bedrijf</Label>
-              <Input value={contractorName} onChange={(e) => setContractorName(e.target.value)} placeholder="Bijv. Aannemingsbedrijf Jansen" />
-            </div>
-            <div>
-              <Label className="text-xs">Notities</Label>
-              <Textarea value={contractorNotes} onChange={(e) => setContractorNotes(e.target.value)} rows={2} placeholder="Bijv. offerte besproken, startdatum afgesproken…" />
-            </div>
-          </div>
-
-          <div className="rounded-lg border p-3 space-y-3 bg-secondary/30">
-            <Label className="flex items-center gap-1.5 text-sm font-semibold">
-              <Wallet className="h-3.5 w-3.5 text-muted-foreground" />
-              Budget & tijd
-            </Label>
-            {workType !== "mixed" && (
-              <div className="grid grid-cols-2 gap-3">
+          <form onSubmit={handleSubmit} className="mt-2 space-y-7">
+            <section aria-labelledby="edit-media-title">
+              <div className="flex items-end justify-between gap-4">
                 <div>
-                  <Label className="text-xs">Kosten (€)</Label>
-                  <Input type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0,00" />
+                  <Label id="edit-media-title" className="text-base font-semibold">Media</Label>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    De volgorde hieronder wordt in één keer veilig opgeslagen.
+                  </p>
                 </div>
-                <div>
-                  <Label className="text-xs">Uren besteed</Label>
-                  <Input type="number" min="0" step="0.5" value={hoursSpent} onChange={(e) => setHoursSpent(e.target.value)} placeholder="0" />
-                </div>
+                <span className="text-xs tabular-nums text-muted-foreground">{media.length}/50</span>
               </div>
-            )}
-            <div>
-              <Label className="text-xs">Type werk</Label>
-              <select
-                value={workType}
-                onChange={(e) => setWorkType(e.target.value)}
-                className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-              >
-                <option value="">— Kies —</option>
-                <option value="diy">Zelf gedaan</option>
-                <option value="outsourced">Uitbesteed</option>
-                <option value="mixed">Combinatie</option>
-              </select>
-            </div>
-            {workType === "mixed" && (
-              <div className="space-y-2">
-                <p className="text-[11px] text-muted-foreground">Specificeer het aandeel zelf gedaan vs uitbesteed:</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-xs">Kosten zelf gedaan (€)</Label>
-                    <Input type="number" min="0" step="0.01" value={diyCost} onChange={(e) => setDiyCost(e.target.value)} placeholder="0,00" />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Uren zelf gedaan</Label>
-                    <Input type="number" min="0" step="0.5" value={diyHours} onChange={(e) => setDiyHours(e.target.value)} placeholder="0" />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Kosten uitbesteed (€)</Label>
-                    <Input type="number" min="0" step="0.01" value={outsourcedCost} onChange={(e) => setOutsourcedCost(e.target.value)} placeholder="0,00" />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Uren uitbesteed</Label>
-                    <Input type="number" min="0" step="0.5" value={outsourcedHours} onChange={(e) => setOutsourcedHours(e.target.value)} placeholder="0" />
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+              <label className={`mt-3 flex min-h-24 items-center justify-center gap-3 border border-dashed border-border bg-secondary/25 px-4 py-5 text-center focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 ${formLocked ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-accent"}`}>
+                <ImagePlus className="h-5 w-5 text-accent" aria-hidden="true" />
+                <span className="text-sm"><strong>Foto&apos;s toevoegen</strong><span className="block text-xs text-muted-foreground">JPG, PNG, WebP, AVIF, HEIC of HEIF</span></span>
+                <input
+                  type="file"
+                  multiple
+                  accept=".jpg,.jpeg,.png,.webp,.avif,.heic,.heif,image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif"
+                  className="sr-only"
+                  onChange={handleFileChange}
+                  disabled={formLocked || media.length >= 50}
+                />
+              </label>
 
-          <div>
-            <div className="flex items-baseline justify-between">
-              <Label>Bestaande foto's</Label>
-              <p className="text-[10px] text-muted-foreground">Markeer 1 als <strong>Voor</strong> en 1 als <strong>Na</strong> voor de vergelijking-slider.</p>
-            </div>
-            {existingMedia.length === 0 ? (
-              <p className="text-xs text-muted-foreground mt-1">Geen foto's</p>
-            ) : (
-              <div className="grid grid-cols-2 gap-3 mt-2 sm:grid-cols-4 md:grid-cols-5">
-                {existingMedia.map((m, i) => {
-                  const role = m.compare_role as "before" | "after" | null;
-                  const setRole = async (next: "before" | "after" | null) => {
-                    // Ensure uniqueness across the step
-                    setExistingMedia((prev) =>
-                      prev.map((x) => {
-                        if (x.id === m.id) return { ...x, compare_role: next };
-                        if (next && x.compare_role === next) return { ...x, compare_role: null };
-                        return x;
-                      })
-                    );
-                    if (next) {
-                      await supabase.from("step_media").update({ compare_role: null }).eq("step_id", step.id).eq("compare_role", next);
-                    }
-                    await supabase.from("step_media").update({ compare_role: next }).eq("id", m.id);
-                  };
-                  return (
-                    <div
-                      key={m.id}
-                      className={`select-none [-webkit-touch-callout:none] rounded-lg border bg-background p-1.5 transition ${dragIdx === i ? "opacity-30" : ""} ${dragOverIdx === i && dragIdx !== i ? "ring-2 ring-primary" : ""}`}
-                      draggable
-                      onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", m.id); setDragIdx(i); }}
-                      onDragOver={(e) => { e.preventDefault(); setDragOverIdx(i); }}
-                      onDragLeave={() => setDragOverIdx(null)}
-                      onDrop={(e) => {
-                        const draggedId = e.dataTransfer.getData("text/plain");
-                        reorderExistingMedia(draggedId, m.id);
-                        setDragIdx(null);
-                        setDragOverIdx(null);
-                      }}
-                      onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
-                      onContextMenu={(e) => e.preventDefault()}
-                    >
-                      <div className={`relative aspect-square cursor-grab active:cursor-grabbing overflow-hidden rounded-md bg-muted ${role ? "ring-2 ring-accent" : ""}`}>
-                        {m.media_type === "video" ? (
-                          <video src={m.media_url} className="h-full w-full object-contain pointer-events-none" />
-                        ) : m.media_type === "pdf" ? (
-                          <span className="flex h-full flex-col items-center justify-center gap-1 px-1 text-center text-[10px] leading-tight text-muted-foreground pointer-events-none">
-                            <FileText className="h-4 w-4" />
-                            PDF
-                          </span>
-                        ) : (
-                          <img src={m.media_url} alt="" draggable={false} className="h-full w-full object-contain pointer-events-none" />
-                        )}
-                        {role && (
-                          <span className="absolute left-1 top-1 rounded bg-accent px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent-foreground pointer-events-none">
-                            {role === "before" ? "Voor" : "Na"}
-                          </span>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => removeExisting(m)}
-                          className="absolute right-1 top-1 rounded-full bg-destructive p-1 text-destructive-foreground shadow"
-                          aria-label="Foto verwijderen"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
-                      {m.media_type !== "pdf" && m.media_type !== "video" && (
-                        <div className="mt-1 grid grid-cols-2 gap-1">
-                          <button type="button" onClick={() => setRole(role === "before" ? null : "before")} className={`rounded py-1 text-[11px] ${role === "before" ? "bg-accent text-accent-foreground" : "bg-muted hover:bg-muted-foreground/20"}`}>Voor</button>
-                          <button type="button" onClick={() => setRole(role === "after" ? null : "after")} className={`rounded py-1 text-[11px] ${role === "after" ? "bg-accent text-accent-foreground" : "bg-muted hover:bg-muted-foreground/20"}`}>Na</button>
+              {media.length > 0 && (
+                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {media.map((item, index) => {
+                    const canCompare = item.file || !item.contentType || item.contentType.startsWith("image/");
+                    return (
+                      <div key={item.key} className="border bg-background p-2">
+                        <div className="relative aspect-[4/3] overflow-hidden bg-muted">
+                          {item.contentType === "application/pdf" ? (
+                            <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
+                              <FileText className="h-8 w-8" aria-hidden="true" />
+                              <span className="text-xs font-semibold">PDF-document</span>
+                            </div>
+                          ) : item.contentType?.startsWith("video/") ? (
+                            <video src={item.previewUrl} className="h-full w-full object-cover" aria-label={`Video ${index + 1}`} />
+                          ) : (
+                            <img src={item.previewUrl} alt={`Media ${index + 1}`} className="h-full w-full object-cover" />
+                          )}
+                          {item.compareRole && (
+                            <span className="absolute left-2 top-2 bg-accent px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-accent-foreground">
+                              {item.compareRole === "before" ? "Voor" : "Na"}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => removeMedia(item.key)}
+                            className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center bg-background/90 hover:text-destructive"
+                            aria-label={`Media ${index + 1} uit update halen`}
+                            disabled={formLocked}
+                          >
+                            <X className="h-4 w-4" aria-hidden="true" />
+                          </button>
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {existingMedia.some((m) => m.compare_role) && (
-              <p className="text-[10px] text-muted-foreground mt-2">Vergelijking-slider wordt automatisch getoond in de tijdlijn.</p>
-            )}
-          </div>
-
-          <div>
-            <Label>Nieuwe foto's & video's toevoegen</Label>
-            <label className="mt-1 flex items-center justify-center gap-2 border-2 border-dashed rounded-lg p-3 cursor-pointer hover:border-accent transition-colors">
-              <Upload className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Klik om bestanden te selecteren</span>
-              <input type="file" multiple accept="image/*,video/*,application/pdf" className="hidden" onChange={handleFileChange} />
-            </label>
-            {newFiles.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-2">
-                {newFiles.map((f, i) => (
-                  <div
-                    key={`${f.name}-${i}-${f.size}`}
-                    className={`relative group select-none [-webkit-touch-callout:none] ${newFileDragIdx === i ? "opacity-30" : ""} ${newFileDragOverIdx === i && newFileDragIdx !== i ? "ring-2 ring-primary rounded-md" : ""}`}
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.effectAllowed = "move";
-                      e.dataTransfer.setData("text/plain", `${f.name}-${i}-${f.size}`);
-                      setNewFileDragIdx(i);
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      setNewFileDragOverIdx(i);
-                    }}
-                    onDragLeave={() => setNewFileDragOverIdx(null)}
-                    onDrop={(e) => {
-                      const draggedKey = e.dataTransfer.getData("text/plain");
-                      reorderNewFiles(draggedKey, `${f.name}-${i}-${f.size}`);
-                      setNewFileDragIdx(null);
-                      setNewFileDragOverIdx(null);
-                    }}
-                    onDragEnd={() => {
-                      setNewFileDragIdx(null);
-                      setNewFileDragOverIdx(null);
-                    }}
-                    onContextMenu={(e) => e.preventDefault()}
-                  >
-                    <div className="w-16 h-16 rounded-md bg-muted overflow-hidden flex items-center justify-center text-center px-1">
-                      {f.type.startsWith("image") ? (
-                        <img src={URL.createObjectURL(f)} alt="" draggable={false} className="w-full h-full object-contain bg-muted pointer-events-none" />
-                      ) : f.type === "application/pdf" ? (
-                        <span className="flex flex-col items-center gap-1 text-[10px] leading-tight text-muted-foreground pointer-events-none">
-                          <FileText className="h-4 w-4" />
-                          PDF
-                        </span>
-                      ) : (
-                        <Video className="h-5 w-5 text-muted-foreground pointer-events-none" />
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setNewFiles((prev) => prev.filter((_, j) => j !== i))}
-                      className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full p-0.5"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {floorplans.length > 0 && (() => {
-            const activeFloor = floorplans.find((f) => f.id === selectedFloorId) ?? floorplans[0];
-            return (
-            <div>
-              <div className="flex items-center justify-between">
-                <Label className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" /> Plek op plattegrond</Label>
-                {pinX != null && (
-                  <button
-                    type="button"
-                    onClick={() => { setPinX(null); setPinY(null); }}
-                    className="text-xs text-muted-foreground hover:text-destructive"
-                  >
-                    Pin verwijderen
-                  </button>
-                )}
-              </div>
-              {floorplans.length > 1 && (
-                <div className="flex gap-2 mt-2 mb-2 flex-wrap">
-                  {floorplans.map((f) => (
-                    <button
-                      key={f.id}
-                      type="button"
-                      onClick={() => setSelectedFloorId(f.id)}
-                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${selectedFloorId === f.id ? "bg-accent text-accent-foreground border-accent font-medium" : "bg-muted border-border hover:border-accent"}`}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
+                        <div className="mt-2 grid grid-cols-2 gap-1">
+                          <button type="button" onClick={() => moveMedia(item.key, -1)} disabled={index === 0 || formLocked} className="flex min-h-11 items-center justify-center border disabled:opacity-30" aria-label={`Media ${index + 1} naar voren`}><ArrowLeft className="h-4 w-4" /></button>
+                          <button type="button" onClick={() => moveMedia(item.key, 1)} disabled={index === media.length - 1 || formLocked} className="flex min-h-11 items-center justify-center border disabled:opacity-30" aria-label={`Media ${index + 1} naar achteren`}><ArrowRight className="h-4 w-4" /></button>
+                        </div>
+                        {canCompare && (
+                          <div className="mt-1 grid grid-cols-2 gap-1">
+                            {(["before", "after"] as const).map((role) => (
+                              <button
+                                key={role}
+                                type="button"
+                                aria-pressed={item.compareRole === role}
+                                onClick={() => setCompareRole(item.key, role)}
+                                className={`min-h-11 border text-xs font-semibold ${item.compareRole === role ? "border-accent bg-accent text-accent-foreground" : "border-border"}`}
+                                disabled={formLocked}
+                              >
+                                {role === "before" ? "Voor" : "Na"}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
-              <p className="text-xs text-muted-foreground mt-1 mb-2">Klik op de plattegrond om de pin te plaatsen of te verplaatsen.</p>
-              <div className="relative w-full bg-muted rounded-lg overflow-hidden border-2 border-border cursor-crosshair" onClick={handlePinClick}>
-                <img src={activeFloor.url} alt="Plattegrond" className="w-full h-auto block select-none" />
-                {pinX != null && pinY != null && (
-                  <div
-                    className="absolute -translate-x-1/2 -translate-y-full pointer-events-none"
-                    style={{ left: `${pinX}%`, top: `${pinY}%` }}
-                  >
-                    <div className="bg-accent text-accent-foreground rounded-full p-1.5 shadow-lg">
-                      <Hammer className="h-3.5 w-3.5" />
-                    </div>
-                  </div>
-                )}
+            </section>
+
+            <section className="space-y-4 border-t border-border pt-6" aria-labelledby="edit-story-title">
+              <h3 id="edit-story-title" className="font-sans text-base font-semibold">Het verhaal</h3>
+              <div className="space-y-2">
+                <Label htmlFor="edit-update-title">Titel</Label>
+                <Input id="edit-update-title" value={title} onChange={(event) => { setTitle(event.target.value); markDirty(); }} maxLength={120} className="min-h-11" disabled={formLocked} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-update-room">Ruimte</Label>
+                <Input id="edit-update-room" value={room} onChange={(event) => { setRoom(event.target.value); markDirty(); }} maxLength={80} className="min-h-11" disabled={formLocked} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-update-description">Vertel wat je wilt onthouden</Label>
+                <Textarea id="edit-update-description" value={description} onChange={(event) => { setDescription(event.target.value); markDirty(); }} maxLength={10000} rows={5} className="min-h-32 resize-y" disabled={formLocked} />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Fase</Label>
+                  <PhaseSelect
+                    value={phaseId}
+                    onChange={(value) => { setPhaseId(value); markDirty(); }}
+                    options={phaseOptions}
+                    onAddCustom={addCustomPhase}
+                    disabled={formLocked || projectQuery.isLoading || projectQuery.isError}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-update-date">Datum</Label>
+                  <Input id="edit-update-date" type="date" value={updateDate} onChange={(event) => { setUpdateDate(event.target.value); markDirty(); }} required className="min-h-11" disabled={formLocked} />
+                </div>
+              </div>
+              <div className="flex min-h-11 items-center justify-between gap-4 border-y border-border py-2">
+                <Label htmlFor="edit-milestone" className="flex cursor-pointer items-center gap-2"><Star className="h-4 w-4 text-accent" />Markeren als mijlpaal</Label>
+                <Switch id="edit-milestone" checked={isMilestone} onCheckedChange={(checked) => { setIsMilestone(checked); markDirty(); }} disabled={formLocked} />
+              </div>
+            </section>
+
+            {projectQuery.isError && (
+              <p role="alert" className="text-sm text-destructive">Projectrechten konden niet veilig worden gecontroleerd.</p>
+            )}
+            {saveStatus && (
+              <p role={saveError ? "alert" : "status"} aria-live="polite" className={`text-sm ${saveError ? "text-destructive" : "text-muted-foreground"}`}>{saveStatus}</p>
+            )}
+
+            <div className="flex flex-col-reverse gap-3 border-t border-border pt-4 sm:flex-row sm:items-center">
+              <Button type="button" variant="outline" onClick={() => setShowDeletePrompt(true)} className="min-h-11 gap-2 text-destructive hover:text-destructive" disabled={formLocked || !canEdit}>
+                <Trash2 className="h-4 w-4" aria-hidden="true" /> Update verwijderen
+              </Button>
+              <div className="flex flex-1 gap-3 sm:justify-end">
+                <Button type="button" variant="ghost" onClick={requestClose} className="min-h-11 flex-1 sm:flex-none" disabled={loading}>Annuleren</Button>
+                <Button
+                  type="submit"
+                  className="min-h-11 flex-[2] bg-accent text-accent-foreground hover:bg-accent/90 sm:flex-none"
+                  disabled={loading || deleteMutation.isPending || deleteRetryLocked || !isDirty || !canEdit}
+                >
+                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
+                  {retryLocked ? "Zelfde wijziging opnieuw" : loading ? "Opslaan…" : "Wijzigingen opslaan"}
+                </Button>
               </div>
             </div>
-            );
-          })()}
+          </form>
+        </DialogContent>
+      </Dialog>
 
-          <Button type="submit" className="w-full bg-accent text-accent-foreground hover:bg-accent/90" disabled={loading}>
-            {loading ? "Opslaan..." : "Opslaan"}
-          </Button>
-        </form>
-      </DialogContent>
-    </Dialog>
+      <DiscardUpdateDraftDialog
+        open={showDiscardPrompt}
+        onOpenChange={setShowDiscardPrompt}
+        onDiscard={() => {
+          setShowDiscardPrompt(false);
+          setIsDirty(false);
+          onClose();
+        }}
+      />
+
+      <AlertDialog open={showDeletePrompt} onOpenChange={setShowDeletePrompt}>
+        <AlertDialogContent className="z-[1200] w-[calc(100%-2rem)] max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Update definitief uit het project verwijderen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              De update verdwijnt uit de tijdlijn. Gekoppelde mediabestanden worden niet hard verwijderd en blijven volgens het bewaarbeleid beschermd.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-11" disabled={deleteMutation.isPending || deleteRetryLocked}>Annuleren</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => { event.preventDefault(); void handleDelete(); }}
+              disabled={deleteMutation.isPending}
+              className="min-h-11 bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
+              {deleteRetryLocked ? "Zelfde verwijdering opnieuw" : "Ja, update verwijderen"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 };
 

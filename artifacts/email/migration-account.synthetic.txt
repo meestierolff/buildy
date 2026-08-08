@@ -1,0 +1,14 @@
+SYNTHETIC TEST ARTIFACT — GEEN ECHT ACCOUNT OF PERSOONSGEGEVENS
+
+Activeer je vernieuwde Buildy-account
+
+Je bestaande projecten en updates zijn gekoppeld aan de vernieuwde Buildy-omgeving. Oude wachtwoorden en sessies zijn uit veiligheid niet overgenomen.
+
+Open Buildy om je identiteit opnieuw te bevestigen. Afhankelijk van je eerdere inlogmethode stel je een nieuw wachtwoord in of koppel je je aanbieder opnieuw.
+
+
+Activeer mijn account: https://app.buildy.test/auth?migratie=1
+
+Gebruik alleen deze officiële Buildy-route en deel nooit een inlogcode met iemand anders.
+
+Buildy — Van eerste sleutel tot laatste plint.

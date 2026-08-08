@@ -1,105 +1,90 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Pencil, Check } from "lucide-react";
-import ProgressBar from "./ProgressBar";
+import { Check, Loader2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import { useUpdateProjectMutation } from "@/hooks/useProjectApi";
+import { ApiClientError } from "@/lib/apiClient";
+import ProgressBar from "./ProgressBar";
+
 interface Props {
-  tripId: string;
+  projectId: string;
+  expectedVersion: number;
   isOwner: boolean;
-  startDate: string | null;
-  endDate: string | null;
-  progressMode: string | null;
-  progressPercentage: number | null;
-  onChanged: () => void;
+  progressPercentage: number;
 }
 
-export const computeAutoProgress = (start: string | null, end: string | null) => {
-  if (!start || !end) return 0;
-  const s = new Date(start).getTime();
-  const e = new Date(end).getTime();
-  if (e <= s) return 0;
-  const now = Date.now();
-  const pct = ((now - s) / (e - s)) * 100;
-  return Math.max(0, Math.min(100, Math.round(pct)));
-};
-
-const ProgressControl = ({ tripId, isOwner, startDate, endDate, progressMode, progressPercentage, onChanged }: Props) => {
-  const hasEnd = !!endDate && !!startDate;
-  const initialMode = (progressMode === "auto" && hasEnd) ? "auto" : "manual";
-  const [mode, setMode] = useState<"auto" | "manual">(initialMode);
-  const [manualVal, setManualVal] = useState<number>(progressPercentage ?? 0);
+const ProgressControl = ({
+  projectId,
+  expectedVersion,
+  isOwner,
+  progressPercentage,
+}: Props) => {
+  const updateProject = useUpdateProjectMutation(projectId);
+  const [manualValue, setManualValue] = useState(progressPercentage);
   const [editing, setEditing] = useState(false);
 
-  useEffect(() => {
-    setMode(progressMode === "auto" && hasEnd ? "auto" : "manual");
-    setManualVal(progressPercentage ?? 0);
-  }, [progressMode, progressPercentage, hasEnd]);
+  useEffect(() => setManualValue(progressPercentage), [progressPercentage]);
 
-  const displayed = mode === "auto" ? computeAutoProgress(startDate, endDate) : manualVal;
-
-  const persistMode = async (next: "auto" | "manual") => {
-    setMode(next);
-    const { error } = await supabase.from("trips").update({ progress_mode: next }).eq("id", tripId);
-    if (error) toast.error("Kon modus niet opslaan");
-    else onChanged();
-  };
-
-  const persistManual = async (v: number) => {
-    setManualVal(v);
-    const { error } = await supabase
-      .from("trips")
-      .update({ progress_percentage: v, progress_mode: "manual" })
-      .eq("id", tripId);
-    if (error) toast.error("Kon voortgang niet opslaan");
+  const save = async (value: number) => {
+    try {
+      await updateProject.mutateAsync({
+        expectedVersion,
+        progressPercentage: value,
+      });
+      setManualValue(value);
+      setEditing(false);
+      toast.success("Voortgang bijgewerkt");
+    } catch (error) {
+      console.error("Project progress update failed", error);
+      if (error instanceof ApiClientError && error.status === 409) {
+        toast.error("Het project is intussen gewijzigd. Probeer het opnieuw.");
+        return;
+      }
+      toast.error("Kon voortgang niet opslaan");
+    }
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <div className="flex-1"><ProgressBar value={displayed} /></div>
+        <div className="flex-1">
+          <ProgressBar value={manualValue} />
+        </div>
         {isOwner && (
           <Button
+            type="button"
             size="sm"
             variant="ghost"
-            onClick={() => setEditing((v) => !v)}
-            className="h-7 px-2 text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
-            aria-label={editing ? "Klaar" : "Bewerk voortgang"}
+            onClick={() => setEditing((current) => !current)}
+            disabled={updateProject.isPending}
+            className="min-h-11 min-w-11 px-2"
+            aria-label={editing ? "Voortgang bewerken sluiten" : "Voortgang bewerken"}
           >
-            {editing ? <Check className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
+            {updateProject.isPending
+              ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              : editing
+                ? <Check className="h-4 w-4" aria-hidden="true" />
+                : <Pencil className="h-4 w-4" aria-hidden="true" />}
           </Button>
         )}
       </div>
       {isOwner && editing && (
-        <div className="flex flex-wrap items-center gap-3 text-xs text-primary-foreground/80 rounded-md border border-primary-foreground/15 bg-primary-foreground/5 p-2">
-          {hasEnd && (
-            <div className="flex items-center gap-2">
-              <Switch
-                id={`auto-${tripId}`}
-                checked={mode === "auto"}
-                onCheckedChange={(c) => persistMode(c ? "auto" : "manual")}
-              />
-              <Label htmlFor={`auto-${tripId}`} className="cursor-pointer text-primary-foreground/80">
-                Automatisch op tijdlijn
-              </Label>
-            </div>
-          )}
-          {mode === "manual" && (
-            <div className="flex-1 min-w-[140px] max-w-xs">
-              <Slider
-                value={[manualVal]}
-                min={0}
-                max={100}
-                step={1}
-                onValueChange={(v) => setManualVal(v[0])}
-                onValueCommit={(v) => persistManual(v[0])}
-              />
-            </div>
-          )}
+        <div className="rounded-md border border-border bg-secondary/30 p-3">
+          <Slider
+            aria-label="Voortgang in procenten"
+            value={[manualValue]}
+            min={0}
+            max={100}
+            step={1}
+            disabled={updateProject.isPending}
+            onValueChange={(value) => setManualValue(value[0])}
+            onValueCommit={(value) => void save(value[0])}
+          />
+          <p className="mt-2 text-xs text-muted-foreground">
+            Sleep om de voortgang in te stellen op {manualValue}%.
+          </p>
         </div>
       )}
     </div>

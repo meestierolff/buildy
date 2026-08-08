@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { Link } from "react-router-dom";
-import { ChevronLeft, ChevronRight, X, ExternalLink } from "lucide-react";
+import { Link } from "@/lib/router";
+import { ChevronLeft, ChevronRight, X, ExternalLink, Flag } from "lucide-react";
 import { format } from "date-fns";
 import { nl } from "date-fns/locale";
+import ReportDialog from "@/components/moderation/ReportDialog";
+import { PRODUCT_ROUTES } from "@/lib/productNavigation";
 
 export interface LightboxItem {
   id: string;
   url: string;
   type: string;
-  stepId: string;
-  stepTitle: string;
-  stepDate: string;
+  updateId: string;
+  updateTitle: string;
+  updateDate: string;
   phase?: string | null;
 }
 
@@ -19,25 +21,27 @@ interface Props {
   index: number;
   onClose: () => void;
   onIndex: (i: number) => void;
-  tripId?: string;
+  projectId?: string;
 }
 
-const MediaLightbox = ({ items, index, onClose, onIndex, tripId }: Props) => {
+const MediaLightbox = ({ items, index, onClose, onIndex, projectId }: Props) => {
   const item = items[index];
   const touchStartX = useRef<number | null>(null);
   const touchStartY = useRef<number | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [dragX, setDragX] = useState(0);
+  const [reportOpen, setReportOpen] = useState(false);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (reportOpen) return;
       if (e.key === "Escape") onClose();
       if (e.key === "ArrowLeft" && index > 0) onIndex(index - 1);
       if (e.key === "ArrowRight" && index < items.length - 1) onIndex(index + 1);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [index, items.length, onClose, onIndex]);
+  }, [index, items.length, onClose, onIndex, reportOpen]);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -78,7 +82,7 @@ const MediaLightbox = ({ items, index, onClose, onIndex, tripId }: Props) => {
       onClick={closeFromBackdrop}
       role="dialog"
       aria-modal="true"
-      aria-label={`Media van ${item.stepTitle}`}
+      aria-label={`Media van ${item.updateTitle}`}
       data-testid="media-lightbox"
     >
       <div className="flex items-center justify-between p-3 text-white" onClick={(e) => e.stopPropagation()}>
@@ -115,7 +119,7 @@ const MediaLightbox = ({ items, index, onClose, onIndex, tripId }: Props) => {
           ) : (
             <img
               src={item.url}
-              alt={item.stepTitle}
+              alt={item.updateTitle}
               draggable={false}
               className="max-h-full max-w-full object-contain select-none"
               onClick={(e) => e.stopPropagation()}
@@ -152,18 +156,35 @@ const MediaLightbox = ({ items, index, onClose, onIndex, tripId }: Props) => {
             {item.phase && (
               <span className="text-[10px] uppercase tracking-widest text-accent font-bold">{item.phase}</span>
             )}
-            <h3 className="font-semibold truncate">{item.stepTitle}</h3>
-            <p className="text-xs opacity-70">{format(new Date(item.stepDate), "d MMM yyyy", { locale: nl })}</p>
+            <h3 className="font-semibold truncate">{item.updateTitle}</h3>
+            <p className="text-xs opacity-70">{format(new Date(item.updateDate), "d MMM yyyy", { locale: nl })}</p>
           </div>
-          {tripId && (
-            <Link
-              to={`/trip/${tripId}#step-${item.stepId}`}
-              onClick={onClose}
-              className="flex items-center gap-1 text-xs bg-white/10 px-2.5 py-1.5 rounded-full hover:bg-white/20"
-            >
-              Spring naar update <ExternalLink className="h-3 w-3" />
-            </Link>
-          )}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <ReportDialog
+              elevated
+              targetType="media"
+              targetId={item.id}
+              targetLabel={`Media bij ${item.updateTitle}`}
+              onOpenChange={setReportOpen}
+              trigger={(
+                <button
+                  type="button"
+                  className="flex min-h-11 items-center gap-1.5 rounded-full bg-white/10 px-3 text-xs hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                >
+                  <Flag className="h-3.5 w-3.5" aria-hidden="true" /> Melden
+                </button>
+              )}
+            />
+            {projectId && (
+              <Link
+                to={`${PRODUCT_ROUTES.projectUpdate(projectId, item.updateId)}#update-${item.updateId}`}
+                onClick={onClose}
+                className="flex min-h-11 items-center gap-1 rounded-full bg-white/10 px-3 text-xs hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              >
+                Spring naar update <ExternalLink className="h-3 w-3" />
+              </Link>
+            )}
+          </div>
         </div>
       </div>
     </div>

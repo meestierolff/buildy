@@ -1,0 +1,62 @@
+name: Buildy Hobby Worker Crons
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tick-workers:
+    name: Trigger worker endpoints
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HOBBY_CRON_BASE_URL: ${{ secrets.HOBBY_CRON_BASE_URL }}
+      HOBBY_CRON_SECRET: ${{ secrets.HOBBY_CRON_SECRET }}
+    steps:
+      - name: Decide whether cron triggering is configured
+        id: config
+        run: |
+          set -euo pipefail
+          if [[ -z "${HOBBY_CRON_BASE_URL:-}" ]]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "HOBBY_CRON_BASE_URL ontbreekt; workertriggers blijven fail-closed uitgeschakeld."
+            exit 0
+          fi
+          if [[ -z "${HOBBY_CRON_SECRET:-}" ]]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "HOBBY_CRON_SECRET ontbreekt; workertriggers blijven fail-closed uitgeschakeld."
+            exit 0
+          fi
+          node --input-type=module -e '
+            const raw = process.env.HOBBY_CRON_BASE_URL?.trim();
+            const url = new URL(raw);
+            if (url.protocol !== "https:") throw new Error("HOBBY_CRON_BASE_URL moet HTTPS gebruiken.");
+            if (url.username || url.password || url.search || url.hash || url.pathname !== "/") {
+              throw new Error("HOBBY_CRON_BASE_URL moet een kale origin zijn.");
+            }
+          '
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger durable worker endpoints
+        if: steps.config.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          base_url="${HOBBY_CRON_BASE_URL%/}"
+          for path in \
+            /api/internal/cron/account-lifecycle \
+            /api/internal/cron/email \
+            /api/internal/cron/media \
+            /api/internal/cron/photobooks \
+            /api/internal/cron/peecho-fulfilment; do
+            echo "Trigger ${path}"
+            curl --fail-with-body --silent --show-error \
+              --request GET \
+              --header "Authorization: Bearer ${HOBBY_CRON_SECRET}" \
+              --header "User-Agent: buildy-hobby-cron/1" \
+              "${base_url}${path}"
+            echo
+          done

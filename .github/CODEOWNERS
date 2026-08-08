@@ -3,9 +3,11 @@
 
 * @meestierolff
 
-# Supabase migrations — extra care
-/supabase/migrations/ @meestierolff
+# Database migrations — extra care
+/db/migrations/ @meestierolff
 
-# Integrations
-/src/integrations/ @meestierolff
-/src/lib/peechoExport.ts @meestierolff
+# Provider adapters and payment/fulfilment boundaries
+/server/storage/ @meestierolff
+/server/orders/ @meestierolff
+/server/photobooks/ @meestierolff
+/server/webhooks/ @meestierolff

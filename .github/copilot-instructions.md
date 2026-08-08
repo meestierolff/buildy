@@ -3,29 +3,32 @@ applyTo: "**"
 ---
 # Buildy — GitHub Copilot Instructions
 
-## App context
-Buildy = "Polarsteps for renovations". Users document home renovations with photos, steps and phases. End product: a physical hardcover Bouwboek ordered via Peecho.
+Buildy is een privacy-first sociaal verbouwingsdagboek. De production target is
+React/Vite met een same-origin typed Vercel Web API, Better Auth, Neon
+PostgreSQL/Drizzle, private Cloudflare R2, Stripe, Peecho REST v3 en Brevo.
 
-## Peecho ordering rules
-- NEVER add a "Download PDF" button — all ordering goes through Peecho directly
-- After PDF generation + Supabase upload, render the Peecho Print Button JS widget
-- `data-src` = public Supabase storage URL of the generated PDF
-- `data-locale="nl_NL"`, `data-currency="EUR"`
+- Voeg geen browserimport, environmentvariabele of runtimecall naar een oude
+  prototype- of BaaS-provider toe. React praat alleen met de typed Buildy API.
+- Leid actor, owner, storagekey, prijs en providerstatus server-side af. Een
+  verborgen knop of clientveld is nooit autorisatie.
+- Projectmedia, floorplans en print-PDF's blijven privé. Gebruik de
+  autoriserende `/api/media/:assetId`-proxy; persist geen signed URL.
+- Checkout gebruikt uitsluitend een immutable, goedgekeurde printproof en
+  server-owned prijs/seller/terms. Stripe-refund annuleert Peecho nooit
+  automatisch.
+- Gebruik Peecho REST v3 via de provideradapter; voeg geen Print Button of
+  publieke PDF-download toe.
+- Schrijf transactionele mail eerst naar de durable outbox. Log geen recipient,
+  adres, token, raw providerpayload of signed URL.
+- Nieuwe SQL-wijzigingen zijn oplopende migrations in `db/migrations/`; wijzig
+  een al toegepaste migration nooit.
+- Alle UI-copy is Nederlands; code, identifiers en comments zijn Engels.
+- Gebruik `toast.error()` voor gebruikersfouten en `console.error()` alleen voor
+  ontwikkelaarsdiagnostiek zonder gevoelige waarden.
+- Gebruik TanStack Query voor serverstate en shadcn/ui voor productcomponenten.
+- Draai minstens typecheck, relevante Vitest/securitytests en build voordat een
+  verticale slice als afgerond geldt.
 
-## UI language
-- All user-facing strings in Dutch (nl-NL)
-- Error messages: Dutch and friendly
-- Code comments: English
-
-## Do not modify
-- `supabase/migrations/` — never edit existing migration files
-- Supabase client configuration in `src/integrations/supabase/`
-
-## Patterns to follow
-- Use `toast.success()` / `toast.error()` from sonner for user feedback
-- Use `useAuth()` for auth state, never access `supabase.auth` directly in components
-- Fetch data in `useEffect` with `async` + `await`, set state after all fetches complete
-- shadcn/ui components only (no external UI lib additions)
-
-## Renovatie phases (canonical order)
-Aankoop → Voorbereiding/Design → Sloop → Ruwbouw → Installatie → Afbouw → Afwerking → Inrichting → Oplevering
+Canonieke standaardfases: Aankoop → Voorbereiding/Design → Sloop → Ruwbouw →
+Installatie → Afbouw → Afwerking → Inrichting → Oplevering. Projecteigenaren
+kunnen daarnaast custom fases definiëren.

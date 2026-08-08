@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.node.json",
+  "include": [
+    "db/**/*.ts",
+    "server/projects/types.ts",
+    "server/security/dataProtection.ts",
+    "server/storage/objectStorage.ts",
+    "scripts/migration/**/*.ts",
+    "tests/migration/**/*.ts"
+  ]
+}

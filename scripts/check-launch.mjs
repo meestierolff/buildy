@@ -1,5 +1,14 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { dirname, extname, join, normalize, relative, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+
+const root = process.cwd();
+const args = new Set(process.argv.slice(2));
+const optionValue = (name) => {
+  const prefix = `${name}=`;
+  const value = process.argv.slice(2).find((argument) => argument.startsWith(prefix));
+  return value?.slice(prefix.length);
+};
 
 const parseEnvFile = (file) => {
   if (!existsSync(file)) return {};
@@ -15,176 +24,364 @@ const parseEnvFile = (file) => {
   );
 };
 
-const root = process.cwd();
 const env = {
   ...parseEnvFile(join(root, ".env")),
   ...parseEnvFile(join(root, ".env.production")),
   ...process.env,
 };
-
-const supabaseUrl = env.VITE_SUPABASE_URL?.replace(/\/$/, "");
-const publishableKey = env.VITE_SUPABASE_PUBLISHABLE_KEY;
-const siteUrl = (env.VITE_SITE_URL || "https://buildy.app").replace(/\/$/, "");
-
-if (!supabaseUrl || !publishableKey) {
-  console.error("Launch-check kan niet starten: VITE_SUPABASE_URL of VITE_SUPABASE_PUBLISHABLE_KEY ontbreekt.");
-  process.exit(1);
-}
+const staticOnly = args.has("--static");
+const requestedEnvironment = args.has("--production")
+  ? "production"
+  : args.has("--staging")
+    ? "staging"
+    : optionValue("--environment") || env.APP_ENV;
+const rawBaseUrl = optionValue("--base-url") || env.LAUNCH_BASE_URL || env.PRIMARY_DOMAIN || env.APP_ORIGIN;
 
 const checks = [];
+const addResult = (status, category, name, detail) => checks.push({ status, category, name, detail });
 const errorMessage = (error) => {
   if (!(error instanceof Error)) return String(error);
-  const causeCode = error.cause && typeof error.cause === "object" && "code" in error.cause
+  const code = error.cause && typeof error.cause === "object" && "code" in error.cause
     ? String(error.cause.code)
-    : null;
-  return causeCode ? `${error.message} (${causeCode})` : error.message;
+    : undefined;
+  return code ? `${error.message} (${code})` : error.message;
 };
-const runCheck = async (name, task) => {
+const runCheck = async (category, name, task) => {
   try {
-    const detail = await task();
-    checks.push({ status: "PASS", name, detail });
+    addResult("PASS", category, name, await task());
   } catch (error) {
-    checks.push({
-      status: "FAIL",
-      name,
-      detail: errorMessage(error),
-    });
+    addResult("FAIL", category, name, errorMessage(error));
   }
 };
-
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
 };
 
-const apiHeaders = {
-  apikey: publishableKey,
-  Authorization: `Bearer ${publishableKey}`,
-  "Content-Type": "application/json",
-};
+function filesBelow(entry, extensions = new Set([".ts", ".tsx", ".js", ".mjs", ".json"])) {
+  const absolute = resolve(root, entry);
+  if (!existsSync(absolute)) return [];
+  if (!statSync(absolute).isDirectory()) return extensions.has(extname(absolute)) ? [absolute] : [];
+  return readdirSync(absolute, { withFileTypes: true }).flatMap((child) => {
+    if (["node_modules", "dist", "coverage", "artifacts"].includes(child.name)) return [];
+    return filesBelow(join(entry, child.name), extensions);
+  });
+}
 
-const requestJson = async (url, init = {}) => {
-  const response = await fetch(url, init);
-  const raw = await response.text();
-  let body = null;
-  try {
-    body = raw ? JSON.parse(raw) : null;
-  } catch {
-    body = raw;
+const requiredDocs = [
+  "docs/ARCHITECTURE_DECISION.md",
+  "docs/BACKUP_AND_RESTORE.md",
+  "docs/DESIGN_SYSTEM.md",
+  "docs/EXTERNAL_INPUTS_REQUIRED.md",
+  "docs/FEATURE_PARITY_MATRIX.md",
+  "docs/IMPLEMENTATION_LOG.md",
+  "docs/INCIDENT_RUNBOOK.md",
+  "docs/LAUNCH_READINESS.md",
+  "docs/MIGRATION_AND_CUTOVER.md",
+  "docs/MIGRATION_REPORT.md",
+  "docs/OPERATIONS_RUNBOOK.md",
+  "docs/ORDER_SUPPORT_RUNBOOK.md",
+  "docs/PROVIDER_SETUP.md",
+  "docs/USER_TESTING_PLAN.md",
+];
+
+await runCheck("static", "Doelruntime bevat geen legacy-providerkoppeling", async () => {
+  const forbidden = /@supabase|integrations\/supabase|VITE_SUPABASE|LOVABLE_API_KEY|@lovable\.dev|lovable-tagger|cloud-auth-js|supabase[.]co|\/functions\/v1\//i;
+  const files = [
+    ...filesBelow("api"),
+    ...filesBelow("server"),
+    ...filesBelow("shared"),
+    ...filesBelow("src"),
+    ...filesBelow("vite.config.ts"),
+    ...filesBelow("vercel.json"),
+  ];
+  const violations = files.filter((file) => forbidden.test(readFileSync(file, "utf8")));
+  assert(violations.length === 0, `legacy-koppeling in ${violations.map((file) => relative(root, file)).join(", ")}`);
+  return `${files.length} actieve bronbestanden gescand`;
+});
+
+await runCheck("static", "Packagegraph bevat geen legacy runtimepackage", async () => {
+  const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  const packages = { ...manifest.dependencies, ...manifest.devDependencies };
+  const forbidden = Object.keys(packages).filter((name) => /supabase|lovable/i.test(name));
+  assert(forbidden.length === 0, `verwijder eerst: ${forbidden.join(", ")}`);
+  const retiredTemplatePackages = ["@react-leaflet/core", "leaflet", "react-leaflet", "jspdf"]
+    .filter((name) => name in packages);
+  assert(retiredTemplatePackages.length === 0, `verwijder templatepackages: ${retiredTemplatePackages.join(", ")}`);
+  assert(existsSync(join(root, "bun.lock")), "bun.lock ontbreekt");
+  assert(!existsSync(join(root, "bun.lockb")), "verouderde bun.lockb bestaat nog");
+  assert(!existsSync(join(root, "package-lock.json")), "tweede lockfile package-lock.json bestaat nog");
+  return "package.json en canonieke Bun-lockfile zijn schoon";
+});
+
+await runCheck("static", "Template- en providererfenis is fysiek verwijderd", async () => {
+  const retiredPaths = [
+    ".lovable",
+    ".team",
+    "LOVABLE_PROMPT.md",
+    "src/components/TripRouteMap.tsx",
+    "src/integrations",
+    "src/lib/peecho.ts",
+    "supabase",
+  ];
+  const remaining = retiredPaths.filter((path) => existsSync(join(root, path)));
+  assert(remaining.length === 0, `verwijder oude paden: ${remaining.join(", ")}`);
+  return `${retiredPaths.length} retired paden afwezig`;
+});
+
+await runCheck("static", "Productiebrongraaf bevat geen dode modules", async () => {
+  const sourceFiles = filesBelow("src", new Set([".ts", ".tsx"]))
+    .filter((file) => {
+      const path = relative(root, file);
+      return !path.startsWith("src/test/") && !path.endsWith(".test.ts")
+        && !path.endsWith(".test.tsx") && !path.endsWith(".d.ts");
+    })
+    .map(normalize);
+  const sourceSet = new Set(sourceFiles);
+  const resolveModule = (from, specifier) => {
+    const base = specifier.startsWith("@/")
+      ? resolve(root, "src", specifier.slice(2))
+      : specifier.startsWith(".")
+        ? resolve(dirname(from), specifier)
+        : undefined;
+    if (!base) return undefined;
+    return [base, `${base}.ts`, `${base}.tsx`, join(base, "index.ts"), join(base, "index.tsx")]
+      .map(normalize)
+      .find((candidate) => sourceSet.has(candidate));
+  };
+  const edges = new Map(sourceFiles.map((file) => [file, []]));
+  for (const file of sourceFiles) {
+    const contents = readFileSync(file, "utf8");
+    const importPattern = /(?:from\s*|import\s*\()\s*["']([^"']+)["']/g;
+    for (const match of contents.matchAll(importPattern)) {
+      const dependency = resolveModule(file, match[1]);
+      if (dependency) edges.get(file).push(dependency);
+    }
   }
-  return { response, body };
-};
-
-await runCheck("Publiek domein bereikbaar", async () => {
-  const response = await fetch(`${siteUrl}/`, { method: "HEAD", redirect: "follow" });
-  assert(response.ok, `HTTP ${response.status} op ${siteUrl}`);
-  return `${response.status} ${new URL(response.url).host}`;
+  const reachable = new Set();
+  const pending = [normalize(resolve(root, "src/main.tsx"))];
+  while (pending.length > 0) {
+    const file = pending.pop();
+    if (!file || reachable.has(file)) continue;
+    reachable.add(file);
+    pending.push(...(edges.get(file) ?? []));
+  }
+  const unreachable = sourceFiles
+    .filter((file) => !reachable.has(file))
+    .map((file) => relative(root, file));
+  assert(unreachable.length === 0, `dode productiemodules: ${unreachable.join(", ")}`);
+  return `${reachable.size} bereikbare productiemodules vanaf src/main.tsx`;
 });
 
-await runCheck("Supabase publieke projecten", async () => {
-  const { response, body } = await requestJson(
-    `${supabaseUrl}/rest/v1/trips?select=id,cover_storage_path,floorplan_storage_path&is_public=eq.true&limit=1`,
-    { headers: apiHeaders },
-  );
-  assert(response.ok, `privacy-migratie ontbreekt of REST gaf HTTP ${response.status}`);
-  assert(Array.isArray(body), "Onverwacht REST-antwoord");
-  return `${body.length} rij(en) als anon zichtbaar`;
+await runCheck("static", "Vercelconfig is fail-closed", async () => {
+  const config = JSON.parse(readFileSync(join(root, "vercel.json"), "utf8"));
+  assert(config.framework === "vite", "Vercel framework is niet Vite");
+  assert(Array.isArray(config.regions) && config.regions.includes("fra1"), "EU-functieregio fra1 ontbreekt");
+  const expectedCronPaths = [
+    "/api/internal/cron/account-lifecycle",
+    "/api/internal/cron/email",
+    "/api/internal/cron/media",
+    "/api/internal/cron/peecho-fulfilment",
+    "/api/internal/cron/photobooks",
+  ];
+  const cronPaths = new Set((config.crons ?? []).map((cron) => cron.path));
+  const hobbyCronWorkflowPath = join(root, ".github/workflows/hobby-worker-crons.yml");
+  const hobbyCronWorkflow = existsSync(hobbyCronWorkflowPath)
+    ? readFileSync(hobbyCronWorkflowPath, "utf8")
+    : "";
+  const hasVercelCronSet = expectedCronPaths.every((path) => cronPaths.has(path));
+  const hasHobbyCronSet = expectedCronPaths.every((path) => hobbyCronWorkflow.includes(path))
+    && /schedule:\s*[\r\n]+\s*-\s*cron:\s*['"]\*\/5 \* \* \* \*['"]/.test(hobbyCronWorkflow)
+    && hobbyCronWorkflow.includes("HOBBY_CRON_BASE_URL")
+    && hobbyCronWorkflow.includes("HOBBY_CRON_SECRET");
+  assert(hasVercelCronSet || hasHobbyCronSet, "duurzame workertriggers ontbreken voor Vercel of Hobby");
+  const redirects = new Map((config.redirects ?? []).map((redirect) => [redirect.source, redirect]));
+  for (const [source, destination] of [
+    ["/trips/new", "/project/nieuw"],
+    ["/trip/:id", "/project/:id"],
+    ["/trip/:id/photobook", "/project/:id/bouwboek"],
+    ["/projecten/:id/bouwboek", "/project/:id/bouwboek"],
+    ["/trip/:id/budget", "/project/:id/budget"],
+    ["/profile/:profileKey", "/profiel/:profileKey"],
+    ["/favorieten", "/volgend"],
+    ["/vrienden", "/connecties"],
+  ]) {
+    const redirect = redirects.get(source);
+    assert(redirect?.destination === destination && redirect?.permanent === true, `permanente redirect ontbreekt: ${source}`);
+  }
+  const serialized = JSON.stringify(config);
+  assert(!/supabase|lovable/i.test(serialized), "Vercelconfig verwijst naar legacyprovider");
+  assert(serialized.includes("Content-Security-Policy"), "CSP-header ontbreekt");
+  assert(serialized.includes("Strict-Transport-Security"), "HSTS-header ontbreekt");
+  return hasVercelCronSet
+    ? `${cronPaths.size} Vercel-workercrons, ${redirects.size} redirects en securityheaders aanwezig`
+    : `Hobby-workerworkflow plus ${redirects.size} redirects en securityheaders aanwezig`;
 });
 
-for (const [label, table, select] of [
-  ["Fotoboekorders afgeschermd", "photobook_orders", "id,pdf_storage_path,pdf_delete_after,checkout_snapshot"],
-  ["Meldingen afgeschermd", "notifications", "id"],
-  ["Privéadressen afgeschermd", "trip_private_info", "trip_id"],
-]) {
-  await runCheck(label, async () => {
-    const { response, body } = await requestJson(
-      `${supabaseUrl}/rest/v1/${table}?select=${select}&limit=1`,
-      { headers: apiHeaders },
-    );
-    assert(response.ok, `REST gaf HTTP ${response.status}`);
-    assert(Array.isArray(body) && body.length === 0, "Anonieme gebruiker kon privédata lezen");
-    return "0 rijen als anon";
+await runCheck("static", "Verplichte opleverdocumenten bestaan", async () => {
+  const missing = requiredDocs.filter((path) => !existsSync(join(root, path)));
+  assert(missing.length === 0, `ontbreekt: ${missing.join(", ")}`);
+  return `${requiredDocs.length}/${requiredDocs.length} documenten aanwezig`;
+});
+
+await runCheck("static", "Migratiebestanden en ledger zijn statisch geldig", async () => {
+  const result = spawnSync("node", ["--import", "tsx", "db/migrate.ts", "--check"], {
+    cwd: root,
+    encoding: "utf8",
+    env: process.env,
+    timeout: 30_000,
+  });
+  assert(result.status === 0, (result.stderr || result.stdout || "migratiecheck faalde").trim());
+  return (result.stdout || "migratiecheck geslaagd").trim().split("\n").at(-1);
+});
+
+let baseUrl;
+if (!staticOnly) {
+  await runCheck("live", "Doelomgeving is expliciet en veilig", async () => {
+    assert(["staging", "production"].includes(requestedEnvironment), "gebruik --staging of --production");
+    assert(rawBaseUrl, "geef --base-url=https://... of LAUNCH_BASE_URL op");
+    baseUrl = new URL(rawBaseUrl.includes("://") ? rawBaseUrl : `https://${rawBaseUrl}`);
+    assert(baseUrl.protocol === "https:", "live launchprobe vereist HTTPS");
+    assert(!baseUrl.username && !baseUrl.password && !baseUrl.search && !baseUrl.hash, "base URL mag geen credentials/query bevatten");
+    assert(baseUrl.pathname === "/", "base URL moet een origin zonder pad zijn");
+    assert(!baseUrl.hostname.endsWith(".example"), "placeholderdomein is geen launchdoel");
+    return `${requestedEnvironment} op ${baseUrl.origin}`;
   });
 }
 
-await runCheck("E-mailauth en registraties actief", async () => {
-  const { response, body } = await requestJson(`${supabaseUrl}/auth/v1/settings`, {
-    headers: { apikey: publishableKey },
-  });
-  assert(response.ok, `Auth settings gaf HTTP ${response.status}`);
-  assert(body?.external?.email === true, "E-mail-auth staat uit");
-  assert(body?.disable_signup !== true, "Nieuwe registraties staan uit");
-  return "e-mail, magic link en registratie beschikbaar";
-});
-
-await runCheck("Google-loginroute werkt", async () => {
-  const oauthUrl = new URL("/~oauth/initiate", `${siteUrl}/`);
-  oauthUrl.searchParams.set("provider", "google");
-  oauthUrl.searchParams.set("redirect_uri", `${siteUrl}/auth?next=%2Ftrips%2Fnew`);
-  oauthUrl.searchParams.set("state", "buildy-launch-probe");
-  const response = await fetch(oauthUrl, { redirect: "manual" });
-  assert(
-    response.status >= 300 && response.status < 400 && response.headers.has("location"),
-    `OAuth broker gaf HTTP ${response.status} zonder redirect`,
-  );
-  return `HTTP ${response.status} redirect naar provider`;
-});
-
-await runCheck("Checkout weigert anonieme orders", async () => {
-  const { response } = await requestJson(
-    `${supabaseUrl}/functions/v1/create-photobook-checkout`,
-    {
-      method: "POST",
-      headers: apiHeaders,
-      body: JSON.stringify({ orderId: crypto.randomUUID() }),
-    },
-  );
-  assert(response.status === 401, `Verwacht HTTP 401, kreeg ${response.status}`);
-  return "HTTP 401";
-});
-
-for (const [label, functionName, body] of [
-  ["AI-plattegrond weigert anoniem gebruik", "floorplan-blueprint", { imageUrl: `${siteUrl}/test.jpg` }],
-  ["Accountverwijdering weigert anoniem gebruik", "delete-account", {}],
-  ["PDF-retentiejob weigert anoniem gebruik", "cleanup-photobook-retention", {}],
-]) {
-  await runCheck(label, async () => {
-    const { response } = await requestJson(`${supabaseUrl}/functions/v1/${functionName}`, {
-      method: "POST",
-      headers: apiHeaders,
-      body: JSON.stringify(body),
+async function fetchWithin(path, init = {}) {
+  assert(baseUrl, "veilige base URL kon niet worden vastgesteld");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    return await fetch(new URL(path, baseUrl), {
+      cache: "no-store",
+      redirect: "manual",
+      ...init,
+      headers: { "user-agent": "buildy-launch-check/2", ...init.headers },
+      signal: controller.signal,
     });
-    assert(response.status === 401, `Verwacht HTTP 401, kreeg ${response.status}`);
-    return "HTTP 401";
-  });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
-await runCheck("Stripe-webhook geconfigureerd en beveiligd", async () => {
-  const { response, body } = await requestJson(`${supabaseUrl}/functions/v1/stripe-webhook`, {
-    method: "POST",
-    headers: apiHeaders,
-    body: "{}",
-  });
-  const message = typeof body === "object" && body ? body.error || body.message : String(body || "");
-  assert(!/not configured|ontbreekt/i.test(message), "Stripe webhook secret/configuratie ontbreekt");
-  assert(response.status === 400 || response.status === 401, `Ongesigneerd verzoek gaf onverwacht HTTP ${response.status}`);
-  return `HTTP ${response.status} voor ongeldige signature`;
-});
+async function responseJson(response) {
+  const text = await response.text();
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
+    throw new Error(`HTTP ${response.status} gaf geen JSON`);
+  }
+}
 
-await runCheck("Peecho-pingback beveiligd", async () => {
-  const { response } = await requestJson(`${supabaseUrl}/functions/v1/peecho-pingback`, {
-    method: "POST",
-    headers: apiHeaders,
-    body: JSON.stringify({ order_reference: "buildy-launch-probe", order_id: "0", signature: "invalid" }),
+if (!staticOnly && baseUrl) {
+  await runCheck("live", "Publieke app en securityheaders", async () => {
+    const response = await fetchWithin("/");
+    assert(response.status === 200, `homepage gaf HTTP ${response.status}`);
+    assert((response.headers.get("content-type") || "").includes("text/html"), "homepage is geen HTML");
+    for (const header of [
+      "content-security-policy",
+      "cross-origin-opener-policy",
+      "permissions-policy",
+      "referrer-policy",
+      "strict-transport-security",
+      "x-content-type-options",
+      "x-frame-options",
+    ]) assert(response.headers.has(header), `${header} ontbreekt`);
+    assert(!response.headers.get("access-control-allow-origin")?.includes("*"), "wildcard CORS op document");
+    return `HTTP 200 met ${7} verplichte browserheaders`;
   });
-  assert(response.status === 401, `Ongeldige signature gaf HTTP ${response.status}`);
-  return "HTTP 401 voor ongeldige signature";
-});
+
+  await runCheck("live", "Health heeft juiste release en capabilities", async () => {
+    const response = await fetchWithin("/api/health");
+    const body = await responseJson(response);
+    assert(response.status === 200 && body?.data?.status === "ok", `health gaf HTTP ${response.status}`);
+    assert(body.data.environment === requestedEnvironment, `verwacht ${requestedEnvironment}, kreeg ${body.data.environment}`);
+    assert(body.data.release && body.data.release !== "development", "deployrelease ontbreekt");
+    const capabilities = body.data.capabilities ?? {};
+    const unconfigured = Object.entries(capabilities)
+      .filter(([, state]) => state !== "ready")
+      .map(([name]) => name);
+    assert(unconfigured.length === 0, `capabilities niet ready: ${unconfigured.join(", ")}`);
+    assert(response.headers.has("x-request-id"), "request-ID ontbreekt");
+    return `${Object.keys(capabilities).length} capabilities ready; release ${body.data.release}`;
+  });
+
+  await runCheck("live", "Readiness en least-privilegerollen", async () => {
+    const response = await fetchWithin("/api/readiness");
+    const body = await responseJson(response);
+    assert(response.status === 200 && body?.data?.ready === true, `readiness gaf HTTP ${response.status}`);
+    const failed = Object.entries(body.data.checks ?? {})
+      .filter(([, state]) => state !== "pass")
+      .map(([name, state]) => `${name}=${state}`);
+    assert(failed.length === 0, `onbewezen checks: ${failed.join(", ")}`);
+    return `${Object.keys(body.data.checks).length} configuratie-/databasegrenzen pass`;
+  });
+
+  await runCheck("live", "Publieke legal-, robots- en sitemaproutes", async () => {
+    for (const path of ["/privacy", "/voorwaarden", "/herroeping", "/robots.txt", "/sitemap.xml"]) {
+      const response = await fetchWithin(path);
+      assert(response.status === 200, `${path} gaf HTTP ${response.status}`);
+    }
+    return "5/5 routes bereikbaar";
+  });
+
+  await runCheck("live", "Anonieme private/mutatiegrenzen", async () => {
+    const randomId = crypto.randomUUID();
+    const privateResponse = await fetchWithin(`/api/media/${randomId}/original`);
+    assert([401, 404].includes(privateResponse.status), `private media gaf HTTP ${privateResponse.status}`);
+    assert(!privateResponse.headers.has("location"), "private media redirectte naar een object-URL");
+
+    const mutationResponse = await fetchWithin("/api/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: baseUrl.origin },
+      body: "{}",
+    });
+    assert(mutationResponse.status === 401, `anonieme projectwrite gaf HTTP ${mutationResponse.status}`);
+
+    const hostileResponse = await fetchWithin("/api/projects", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "https://attacker.invalid" },
+      body: "{}",
+    });
+    assert(hostileResponse.status === 403, `hostile Origin gaf HTTP ${hostileResponse.status}`);
+    return "private media en writes fail-closed";
+  });
+
+  await runCheck("live", "Interne crons vereisen het secret", async () => {
+    for (const path of [
+      "/api/internal/cron/account-lifecycle",
+      "/api/internal/cron/email",
+      "/api/internal/cron/media",
+      "/api/internal/cron/peecho-fulfilment",
+      "/api/internal/cron/photobooks",
+    ]) {
+      const response = await fetchWithin(path);
+      assert(response.status === 401, `${path} gaf HTTP ${response.status}`);
+    }
+    return "5/5 crons weigeren anonieme aanroep";
+  });
+
+  await runCheck("live", "Providerwebhooks weigeren ongeldige authenticatie", async () => {
+    const probes = [
+      ["/api/webhooks/brevo", {}, 401],
+      ["/api/webhooks/stripe", { "content-type": "application/json" }, 400],
+      ["/api/webhooks/peecho", { "content-type": "application/json" }, 401],
+    ];
+    for (const [path, headers, expected] of probes) {
+      const response = await fetchWithin(path, { method: "POST", headers, body: "{}" });
+      assert(response.status === expected, `${path} gaf HTTP ${response.status}, verwacht ${expected}`);
+    }
+    return "Brevo, Stripe en Peecho fail-closed";
+  });
+}
 
 for (const check of checks) {
   const icon = check.status === "PASS" ? "✓" : "✗";
-  console.log(`${icon} ${check.name}: ${check.detail}`);
+  console.log(`${icon} [${check.category}] ${check.name}: ${check.detail}`);
 }
 
 const failures = checks.filter((check) => check.status === "FAIL");
-console.log(`\n${checks.length - failures.length}/${checks.length} launch-checks geslaagd.`);
+console.log(`\n${checks.length - failures.length}/${checks.length} launchchecks geslaagd.`);
+if (staticOnly) console.log("Live provider-, domein- en restorebewijs is in --static bewust niet geclaimd.");
 if (failures.length > 0) process.exitCode = 1;

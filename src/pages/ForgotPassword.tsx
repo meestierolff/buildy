@@ -1,6 +1,12 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { Link, useSearchParams } from "@/lib/router";
+import {
+  authClient,
+  authErrorDetails,
+  authErrorMessage,
+  authPagePath,
+  safeNextPath,
+} from "@/lib/authClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,24 +23,34 @@ const ForgotPassword = () => {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [searchParams] = useSearchParams();
+  const nextPath = safeNextPath(searchParams.get("next"));
+  const resetPath = nextPath === "/"
+    ? "/wachtwoord-resetten"
+    : `/wachtwoord-resetten?next=${encodeURIComponent(nextPath)}`;
+  const loginPath = authPagePath(nextPath);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email.trim()) return;
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) return;
     setLoading(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: `${window.location.origin}/wachtwoord-resetten`,
+      const { error } = await authClient.requestPasswordReset({
+        email: normalizedEmail,
+        redirectTo: resetPath,
       });
       if (error) {
-        toast.error("Kon geen reset-link versturen. Probeer het opnieuw.");
+        console.error("Better Auth password-reset request failed", authErrorDetails(error));
+        toast.error(authErrorMessage(error, "forgot-password"));
         return;
       }
+      setEmail(normalizedEmail);
       setSent(true);
-      toast.success("Check je inbox voor de reset-link.");
+      toast.success("Als dit adres bij Buildy bekend is, staat de reset-link zo in je inbox.");
     } catch (error) {
-      console.error("Password reset email failed", error);
-      toast.error("De reset-link kon niet worden verstuurd. Controleer je verbinding.");
+      console.error("Better Auth password-reset request failed", authErrorDetails(error));
+      toast.error(authErrorMessage(error, "forgot-password"));
     } finally {
       setLoading(false);
     }
@@ -54,9 +70,10 @@ const ForgotPassword = () => {
         {sent ? (
           <div className="text-center space-y-4">
             <p className="text-sm">
-              We hebben een mail gestuurd naar <strong>{email}</strong>. Open die om je wachtwoord te resetten.
+              Als <strong>{email}</strong> bij Buildy bekend is, ontvang je een link om je wachtwoord
+              opnieuw in te stellen. De link is één uur geldig.
             </p>
-            <Link to="/auth" className="text-xs uppercase tracking-[0.2em] font-bold underline underline-offset-4">
+            <Link to={loginPath} className="text-xs uppercase tracking-[0.2em] font-bold underline underline-offset-4">
               Terug naar inloggen
             </Link>
           </div>
@@ -85,7 +102,7 @@ const ForgotPassword = () => {
               {loading ? "Even wachten…" : "Stuur reset-link"}
             </Button>
             <p className="text-center text-xs text-muted-foreground mt-4">
-              <Link to="/auth" className="hover:text-foreground underline underline-offset-4">
+              <Link to={loginPath} className="hover:text-foreground underline underline-offset-4">
                 Terug naar inloggen
               </Link>
             </p>

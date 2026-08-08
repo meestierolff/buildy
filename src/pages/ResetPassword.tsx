@@ -1,6 +1,14 @@
-import { useState, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { useEffect, useState } from "react";
+import { useNavigate, Link, useSearchParams } from "@/lib/router";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  authClient,
+  authErrorDetails,
+  authErrorMessage,
+  authPagePath,
+  parsePasswordResetLink,
+  safeNextPath,
+} from "@/lib/authClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,50 +22,67 @@ const ResetPassword = () => {
     path: "/wachtwoord-resetten",
     noIndex: true,
   });
+  const navigate = useNavigate();
+  const { refetchSession } = useAuth();
+  const [searchParams] = useSearchParams();
+  const nextPath = safeNextPath(searchParams.get("next"));
+  const [resetLink] = useState(() => parsePasswordResetLink(
+    typeof window === "undefined" ? "" : window.location.search,
+  ));
+  const [linkError, setLinkError] = useState(resetLink.errorCode);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
-  const [ready, setReady] = useState(false);
-  const [checkingLink, setCheckingLink] = useState(true);
-  const navigate = useNavigate();
 
   useEffect(() => {
-    // Supabase plaatst de tokens als hash-fragment of detecteert ze automatisch.
-    // We luisteren naar PASSWORD_RECOVERY of een bestaande session.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
-        setReady(true);
-        setCheckingLink(false);
-      }
-    });
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) setReady(true);
-    }).finally(() => setCheckingLink(false));
-    return () => subscription.unsubscribe();
-  }, []);
+    if (typeof window === "undefined") return;
+    const cleanPath = nextPath === "/"
+      ? "/wachtwoord-resetten"
+      : `/wachtwoord-resetten?next=${encodeURIComponent(nextPath)}`;
+    window.history.replaceState(window.history.state, "", cleanPath);
+  }, [nextPath]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (password.length < 6) {
-      toast.error("Wachtwoord moet minstens 6 tekens zijn.");
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!resetLink.token) {
+      setLinkError("INVALID_TOKEN");
+      return;
+    }
+    if (password.length < 12) {
+      toast.error("Gebruik een wachtwoord van minimaal 12 tekens.");
+      return;
+    }
+    if (password.length > 128) {
+      toast.error("Gebruik een wachtwoord van maximaal 128 tekens.");
       return;
     }
     if (password !== confirm) {
       toast.error("De wachtwoorden komen niet overeen.");
       return;
     }
+
     setLoading(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password });
+      const { error } = await authClient.resetPassword({
+        newPassword: password,
+        token: resetLink.token,
+      });
       if (error) {
-        toast.error("Wachtwoord opslaan mislukt. Probeer de link opnieuw.");
+        const details = authErrorDetails(error);
+        console.error("Better Auth password reset failed", details);
+        if (details.code === "INVALID_TOKEN" || details.code === "TOKEN_EXPIRED") {
+          setLinkError(details.code);
+        }
+        toast.error(authErrorMessage(error, "reset-password"));
         return;
       }
-      toast.success("Wachtwoord bijgewerkt — je bent ingelogd.");
-      navigate("/");
+
+      await refetchSession();
+      toast.success("Je wachtwoord is gewijzigd. Log opnieuw in met je nieuwe wachtwoord.");
+      navigate(authPagePath(nextPath, "password-reset"), { replace: true });
     } catch (error) {
-      console.error("Password update failed", error);
-      toast.error("Wachtwoord opslaan mislukt. Controleer je verbinding.");
+      console.error("Better Auth password reset failed", authErrorDetails(error));
+      toast.error(authErrorMessage(error, "reset-password"));
     } finally {
       setLoading(false);
     }
@@ -71,11 +96,18 @@ const ResetPassword = () => {
           <h1 className="font-serif italic text-4xl leading-tight">Stel je wachtwoord opnieuw in.</h1>
         </div>
 
-        {!ready ? (
-          <div className="text-center text-sm text-muted-foreground space-y-3" role="status" aria-live="polite">
-            <p>{checkingLink ? "We checken je reset-link…" : "Deze reset-link is ongeldig of verlopen."}</p>
+        {linkError ? (
+          <div className="text-center text-sm text-muted-foreground space-y-3" role="alert">
+            <p>{authErrorMessage({ code: linkError }, "reset-password")}</p>
             <p className="text-xs">
-              Heb je geen geldige link? <Link to="/wachtwoord-vergeten" className="underline underline-offset-4">Vraag een nieuwe aan</Link>.
+              <Link
+                to={nextPath === "/"
+                  ? "/wachtwoord-vergeten"
+                  : `/wachtwoord-vergeten?next=${encodeURIComponent(nextPath)}`}
+                className="underline underline-offset-4"
+              >
+                Vraag een nieuwe reset-link aan
+              </Link>
             </p>
           </div>
         ) : (
@@ -87,11 +119,12 @@ const ResetPassword = () => {
                 name="new-password"
                 type="password"
                 autoComplete="new-password"
-                placeholder="Minimaal 6 tekens"
+                placeholder="Minimaal 12 tekens"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(event) => setPassword(event.target.value)}
                 required
-                minLength={6}
+                minLength={12}
+                maxLength={128}
                 className="h-11"
                 autoFocus
               />
@@ -105,9 +138,10 @@ const ResetPassword = () => {
                 autoComplete="new-password"
                 placeholder="Nogmaals je nieuwe wachtwoord"
                 value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
+                onChange={(event) => setConfirm(event.target.value)}
                 required
-                minLength={6}
+                minLength={12}
+                maxLength={128}
                 className="h-11"
               />
             </div>
