@@ -35,6 +35,7 @@ const runtimeSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_ENV: z.enum(["local", "test", "preview", "staging", "production"]).default("local"),
   APP_ORIGIN: z.string().url().default("http://127.0.0.1:8080"),
+  SIMPLE_APP_MODE: booleanFlag,
   PRIMARY_DOMAIN: optionalSecret,
   TRUSTED_ORIGINS: z.string().optional(),
   VERCEL_URL: z.string().optional(),
@@ -94,10 +95,11 @@ const runtimeSchema = z.object({
 });
 
 type ParsedRuntimeConfig = z.infer<typeof runtimeSchema>;
-// Hand-built test fixtures created before private beta may omit this flag;
-// parsed process configuration always receives the conservative `true` default.
-export type RuntimeConfig = Omit<ParsedRuntimeConfig, "BETA_MODE"> & {
+// Hand-built test fixtures may omit conservative feature flags; parsed process
+// configuration always receives explicit defaults from zod.
+export type RuntimeConfig = Omit<ParsedRuntimeConfig, "BETA_MODE" | "SIMPLE_APP_MODE"> & {
   BETA_MODE?: boolean;
+  SIMPLE_APP_MODE?: boolean;
 };
 
 let cachedRuntime: RuntimeConfig | undefined;
@@ -115,7 +117,15 @@ function readyWhen(...values: Array<string | undefined>): "ready" | "unconfigure
   return values.every(Boolean) ? "ready" : "unconfigured";
 }
 
+function optionalCapability(
+  enabled: boolean,
+  ...values: Array<string | undefined>
+): "ready" | "unconfigured" | "disabled" {
+  return enabled ? readyWhen(...values) : "disabled";
+}
+
 export function getCapabilities(config = getRuntimeConfig()): HealthResponse["data"]["capabilities"] {
+  const optionalFeaturesEnabled = !config.SIMPLE_APP_MODE;
   return {
     database: readyWhen(config.DATABASE_URL),
     authentication: readyWhen(
@@ -126,7 +136,8 @@ export function getCapabilities(config = getRuntimeConfig()): HealthResponse["da
       config.PII_ENCRYPTION_CURRENT_VERSION ? String(config.PII_ENCRYPTION_CURRENT_VERSION) : undefined,
       config.PII_BLIND_INDEX_KEY,
     ),
-    accountLifecycle: readyWhen(
+    accountLifecycle: optionalCapability(
+      optionalFeaturesEnabled,
       config.DATABASE_URL,
       config.DATABASE_ACCOUNT_WORKER_URL,
       config.BETTER_AUTH_SECRET,
@@ -143,7 +154,8 @@ export function getCapabilities(config = getRuntimeConfig()): HealthResponse["da
       config.R2_ACCOUNT_WORKER_ACCESS_KEY_ID,
       config.R2_ACCOUNT_WORKER_SECRET_ACCESS_KEY,
     ),
-    media: readyWhen(
+    media: optionalCapability(
+      optionalFeaturesEnabled,
       config.DATABASE_MEDIA_WORKER_URL,
       config.CRON_SECRET,
       config.R2_ACCOUNT_ID,
@@ -153,7 +165,8 @@ export function getCapabilities(config = getRuntimeConfig()): HealthResponse["da
       config.R2_MEDIA_WORKER_ACCESS_KEY_ID,
       config.R2_MEDIA_WORKER_SECRET_ACCESS_KEY,
     ),
-    photobooks: readyWhen(
+    photobooks: optionalCapability(
+      optionalFeaturesEnabled,
       config.DATABASE_PHOTOBOOK_WORKER_URL,
       config.CRON_SECRET,
       config.R2_ACCOUNT_ID,
@@ -163,7 +176,8 @@ export function getCapabilities(config = getRuntimeConfig()): HealthResponse["da
       config.R2_PHOTOBOOK_WORKER_ACCESS_KEY_ID,
       config.R2_PHOTOBOOK_WORKER_SECRET_ACCESS_KEY,
     ),
-    email: readyWhen(
+    email: optionalCapability(
+      optionalFeaturesEnabled,
       config.DATABASE_EMAIL_WORKER_URL,
       config.BREVO_API_KEY,
       config.BREVO_SENDER_EMAIL,
@@ -172,8 +186,8 @@ export function getCapabilities(config = getRuntimeConfig()): HealthResponse["da
       config.BREVO_WEBHOOK_SECRET,
       config.CRON_SECRET,
     ),
-    payments: readyWhen(
-      config.CHECKOUT_ENABLED ? "enabled" : undefined,
+    payments: optionalCapability(
+      optionalFeaturesEnabled && config.CHECKOUT_ENABLED,
       config.DATABASE_URL,
       config.DATABASE_PAYMENT_WORKER_URL,
       config.PII_ENCRYPTION_KEYS,
@@ -186,7 +200,8 @@ export function getCapabilities(config = getRuntimeConfig()): HealthResponse["da
       config.ORDER_SELLER_JSON,
       config.ORDER_TERMS_VERSION,
     ),
-    printFulfilment: readyWhen(
+    printFulfilment: optionalCapability(
+      optionalFeaturesEnabled && config.CHECKOUT_ENABLED,
       config.DATABASE_FULFILMENT_WORKER_URL,
       config.CRON_SECRET,
       config.PII_ENCRYPTION_KEYS,
@@ -203,7 +218,8 @@ export function getCapabilities(config = getRuntimeConfig()): HealthResponse["da
         ? String(config.PEECHO_PDF_SIGNED_URL_TTL_SECONDS)
         : undefined,
     ),
-    privateBeta: readyWhen(
+    privateBeta: optionalCapability(
+      config.BETA_MODE !== false,
       config.DATABASE_URL,
       config.PII_BLIND_INDEX_KEY,
     ),

@@ -17,6 +17,7 @@ import { usePageMeta } from "@/hooks/usePageMeta";
 import { useBetaStatus } from "@/hooks/useBeta";
 import BetaBadge from "@/components/BetaBadge";
 import { ApiClientError } from "@/lib/apiClient";
+import { EMAIL_AUTH_ENABLED, GOOGLE_SIGNIN_ENABLED, SIMPLE_APP_MODE } from "@/lib/appFeatures";
 import {
   createBetaReservationKey,
   recordSignupStarted,
@@ -229,6 +230,11 @@ const Auth = () => {
         toast.error(authErrorMessage(error, "sign-up"));
         return;
       }
+      if (SIMPLE_APP_MODE) {
+        await refetchSession();
+        navigate(nextPath, { replace: true });
+        return;
+      }
       setEmailStatus("registration");
     } catch (error) {
       console.error("Better Auth email flow failed", authErrorDetails(error));
@@ -333,22 +339,26 @@ const Auth = () => {
                   </p>
                 </div>
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={googleLoading || loading || authLoading}
-                  onClick={handleGoogle}
-                  className="h-12 w-full rounded-full border-border text-xs font-semibold hover:border-foreground hover:bg-background hover:text-foreground"
-                >
-                  <GoogleIcon />
-                  {googleLoading ? "Even wachten…" : isLogin ? "Inloggen met Google" : "Registreren met Google"}
-                </Button>
+                {GOOGLE_SIGNIN_ENABLED && (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={googleLoading || loading || authLoading}
+                      onClick={handleGoogle}
+                      className="h-12 w-full rounded-full border-border text-xs font-semibold hover:border-foreground hover:bg-background hover:text-foreground"
+                    >
+                      <GoogleIcon />
+                      {googleLoading ? "Even wachten…" : isLogin ? "Inloggen met Google" : "Registreren met Google"}
+                    </Button>
 
-                <div className="my-6 flex items-center gap-3 text-[10px] uppercase tracking-[0.2em] text-muted-foreground" aria-hidden="true">
-                  <span className="h-px flex-1 bg-border" />
-                  <span>of met e-mail</span>
-                  <span className="h-px flex-1 bg-border" />
-                </div>
+                    <div className="my-6 flex items-center gap-3 text-[10px] uppercase tracking-[0.2em] text-muted-foreground" aria-hidden="true">
+                      <span className="h-px flex-1 bg-border" />
+                      <span>of met e-mail</span>
+                      <span className="h-px flex-1 bg-border" />
+                    </div>
+                  </>
+                )}
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                   {!isLogin && betaMode && (
@@ -410,7 +420,7 @@ const Auth = () => {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-4">
                       <Label htmlFor="auth-password" className="text-xs font-semibold">Wachtwoord</Label>
-                      {isLogin && (
+                      {isLogin && EMAIL_AUTH_ENABLED && (
                         <Link to={forgotPasswordPath} className="text-xs text-muted-foreground underline underline-offset-4 transition-colors hover:text-foreground">
                           Wachtwoord vergeten?
                         </Link>
@@ -445,7 +455,7 @@ const Auth = () => {
                   <Button type="submit" variant="pill" disabled={loading || googleLoading || authLoading} className="h-12 w-full">
                     {loading ? "Even wachten…" : isLogin ? "Inloggen" : "Account aanmaken"}
                   </Button>
-                  {isLogin && (
+                  {isLogin && EMAIL_AUTH_ENABLED && (
                     <Button type="button" variant="pillOutline" disabled={loading || googleLoading || authLoading} onClick={handleMagicLink} className="h-12 w-full">
                       Stuur magic link
                     </Button>

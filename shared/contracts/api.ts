@@ -26,7 +26,7 @@ export const apiErrorSchema = z.object({
   }),
 });
 
-export const capabilityStateSchema = z.enum(["ready", "unconfigured"]);
+export const capabilityStateSchema = z.enum(["ready", "unconfigured", "disabled"]);
 
 export const serviceCapabilitiesSchema = z.object({
   database: capabilityStateSchema,

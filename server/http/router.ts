@@ -288,11 +288,9 @@ registerRoute("GET", "/api/health", (_request, requestId) => {
 registerRoute("GET", "/api/readiness", async (_request, requestId) => {
   const config = getRuntimeConfig();
   const capabilities = getCapabilities(config);
-  const accountLifecycleRequired = !["local", "test"].includes(config.APP_ENV);
   const configurationReady =
     capabilities.database === "ready" &&
     capabilities.authentication === "ready" &&
-    (!accountLifecycleRequired || capabilities.accountLifecycle === "ready") &&
     getServerCompositionStatus() === "ready";
   let database: "pass" | "fail" | "not_checked" = "not_checked";
   let accountWorker: "pass" | "fail" | "not_checked" = "not_checked";
@@ -387,7 +385,7 @@ registerRoute("GET", "/api/readiness", async (_request, requestId) => {
     }
   }
 
-  if (config.DATABASE_EMAIL_WORKER_URL) {
+  if (capabilities.email === "ready" && config.DATABASE_EMAIL_WORKER_URL) {
     try {
       emailWorker = await emailWorkerBoundaryReady(
         getBuildyWorkerDatabase(config.DATABASE_EMAIL_WORKER_URL, "email"),
@@ -401,7 +399,7 @@ registerRoute("GET", "/api/readiness", async (_request, requestId) => {
     }
   }
 
-  if (config.DATABASE_ACCOUNT_WORKER_URL) {
+  if (capabilities.accountLifecycle === "ready" && config.DATABASE_ACCOUNT_WORKER_URL) {
     try {
       accountWorker = await accountWorkerBoundaryReady(
         getBuildyWorkerDatabase(config.DATABASE_ACCOUNT_WORKER_URL, "account"),
@@ -415,7 +413,7 @@ registerRoute("GET", "/api/readiness", async (_request, requestId) => {
     }
   }
 
-  if (config.DATABASE_MEDIA_WORKER_URL) {
+  if (capabilities.media === "ready" && config.DATABASE_MEDIA_WORKER_URL) {
     try {
       mediaWorker = await mediaWorkerBoundaryReady(
         getBuildyWorkerDatabase(config.DATABASE_MEDIA_WORKER_URL, "media"),
@@ -429,7 +427,7 @@ registerRoute("GET", "/api/readiness", async (_request, requestId) => {
     }
   }
 
-  if (config.DATABASE_PHOTOBOOK_WORKER_URL) {
+  if (capabilities.photobooks === "ready" && config.DATABASE_PHOTOBOOK_WORKER_URL) {
     try {
       photobookWorker = await photobookWorkerBoundaryReady(
         getBuildyWorkerDatabase(config.DATABASE_PHOTOBOOK_WORKER_URL, "photobook"),
@@ -443,7 +441,7 @@ registerRoute("GET", "/api/readiness", async (_request, requestId) => {
     }
   }
 
-  if (config.DATABASE_PAYMENT_WORKER_URL) {
+  if (capabilities.payments === "ready" && config.DATABASE_PAYMENT_WORKER_URL) {
     try {
       paymentWorker = await paymentWorkerBoundaryReady(
         getBuildyWorkerDatabase(config.DATABASE_PAYMENT_WORKER_URL, "payment"),
@@ -457,7 +455,7 @@ registerRoute("GET", "/api/readiness", async (_request, requestId) => {
     }
   }
 
-  if (config.DATABASE_FULFILMENT_WORKER_URL) {
+  if (capabilities.printFulfilment === "ready" && config.DATABASE_FULFILMENT_WORKER_URL) {
     try {
       fulfilmentWorker = await fulfilmentWorkerBoundaryReady(
         getBuildyWorkerDatabase(config.DATABASE_FULFILMENT_WORKER_URL, "fulfilment"),

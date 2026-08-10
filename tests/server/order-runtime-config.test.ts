@@ -10,6 +10,7 @@ function configured(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
     NODE_ENV: "test",
     APP_ENV: "test",
     APP_ORIGIN: "https://app.buildy.test",
+    SIMPLE_APP_MODE: false,
     CHECKOUT_ENABLED: true,
     DATABASE_URL: "postgresql://web:secret@127.0.0.1:5432/buildy_test",
     DATABASE_PAYMENT_WORKER_URL: "postgresql://payment:secret@127.0.0.1:5432/buildy_test",
@@ -46,6 +47,6 @@ describe("order runtime configuration", () => {
     const runtime = configured({ CHECKOUT_ENABLED: false });
 
     expect(hasCompleteOrderRuntime(runtime)).toBe(true);
-    expect(getCapabilities(runtime).payments).toBe("unconfigured");
+    expect(getCapabilities(runtime).payments).toBe("disabled");
   });
 });

@@ -9,6 +9,7 @@ export interface AuthConfiguration {
   appOrigin: string;
   betaMode?: boolean;
   databaseUrl: string;
+  simpleAppMode?: boolean;
   google?: {
     clientId: string;
     clientSecret: string;
@@ -113,6 +114,7 @@ export function resolveAuthConfiguration(runtime: RuntimeConfig): AuthConfigurat
     appOrigin,
     betaMode: runtime.BETA_MODE !== false,
     databaseUrl: runtime.DATABASE_URL,
+    simpleAppMode: runtime.SIMPLE_APP_MODE,
     ...(runtime.GOOGLE_CLIENT_ID && runtime.GOOGLE_CLIENT_SECRET
       ? {
           google: {

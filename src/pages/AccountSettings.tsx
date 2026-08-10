@@ -41,6 +41,7 @@ import {
 } from "@/hooks/useAccount";
 import { useOwnProfile, useUpdateOwnProfileMutation } from "@/hooks/useProfiles";
 import { usePageMeta } from "@/hooks/usePageMeta";
+import { ACCOUNT_LIFECYCLE_ENABLED, EMAIL_AUTH_ENABLED } from "@/lib/appFeatures";
 import { ApiClientError } from "@/lib/apiClient";
 import { authClient, authErrorMessage } from "@/lib/authClient";
 import { createClientIdempotencyKey } from "@/lib/clientIdempotency";
@@ -475,9 +476,11 @@ const AccountSettings = () => {
             <Button type="submit" size="sm" disabled={savingPassword || !currentPassword || !newPassword}>
               {savingPassword ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Wachtwoord opslaan"}
             </Button>
-            <Button type="button" variant="outline" size="sm" disabled={sendingReset} onClick={sendPasswordReset}>
-              {sendingReset ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Stuur reset-link"}
-            </Button>
+            {EMAIL_AUTH_ENABLED ? (
+              <Button type="button" variant="outline" size="sm" disabled={sendingReset} onClick={sendPasswordReset}>
+                {sendingReset ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Stuur reset-link"}
+              </Button>
+            ) : null}
           </div>
         </form>
       </section>
@@ -543,6 +546,7 @@ const AccountSettings = () => {
         )}
       </section>
 
+      {ACCOUNT_LIFECYCLE_ENABLED ? (
       <section className="rounded-xl border border-border bg-card p-6 md:p-8" aria-labelledby="export-title">
         <div className="mb-5 flex items-start gap-3">
           <FileArchive className="mt-0.5 h-5 w-5 text-muted-foreground" aria-hidden="true" />
@@ -603,7 +607,9 @@ const AccountSettings = () => {
           </ul>
         )}
       </section>
+      ) : null}
 
+      {ACCOUNT_LIFECYCLE_ENABLED ? (
       <section className="rounded-xl border border-destructive/40 bg-destructive/5 p-6 md:p-8" aria-labelledby="delete-account-title">
         <div className="flex items-start gap-3">
           <ShieldAlert className="mt-0.5 h-5 w-5 text-destructive" aria-hidden="true" />
@@ -669,6 +675,7 @@ const AccountSettings = () => {
           </AlertDialogContent>
         </AlertDialog>
       </section>
+      ) : null}
     </main>
   );
 };

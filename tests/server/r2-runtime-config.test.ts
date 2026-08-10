@@ -8,6 +8,7 @@ function configured(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
     NODE_ENV: "test",
     APP_ENV: "test",
     APP_ORIGIN: "https://app.buildy.test",
+    SIMPLE_APP_MODE: false,
     CHECKOUT_ENABLED: false,
     DATABASE_URL: "postgresql://web:secret@127.0.0.1:5432/buildy_test",
     DATABASE_ACCOUNT_WORKER_URL: "postgresql://account:secret@127.0.0.1:5432/buildy_test",
@@ -44,7 +45,7 @@ function configured(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
 
 describe("R2 boundary runtime configuration", () => {
   it("reports every R2-backed capability ready with all isolated credentialpairs", () => {
-    const capabilities = getCapabilities(configured());
+    const capabilities = getCapabilities(configured({ CHECKOUT_ENABLED: true }));
 
     expect(capabilities.accountLifecycle).toBe("ready");
     expect(capabilities.media).toBe("ready");
@@ -68,7 +69,7 @@ describe("R2 boundary runtime configuration", () => {
     ["printFulfilment", "R2_FULFILMENT_WORKER_ACCESS_KEY_ID"],
     ["printFulfilment", "R2_FULFILMENT_WORKER_SECRET_ACCESS_KEY"],
   ] as const)("keeps %s fail-closed when %s is absent", (capability, key) => {
-    expect(getCapabilities(configured({ [key]: undefined }))[capability]).toBe("unconfigured");
+    expect(getCapabilities(configured({ CHECKOUT_ENABLED: true, [key]: undefined }))[capability]).toBe("unconfigured");
   });
 
   it("does not accept the retired generic keypair as a fallback", () => {
@@ -91,7 +92,7 @@ describe("R2 boundary runtime configuration", () => {
       R2_ACCESS_KEY_ID: "retired-access-key",
       R2_SECRET_ACCESS_KEY: "retired-secret-key",
     };
-    const capabilities = getCapabilities(legacyOnly);
+    const capabilities = getCapabilities({ ...legacyOnly, CHECKOUT_ENABLED: true });
 
     expect(capabilities.accountLifecycle).toBe("unconfigured");
     expect(capabilities.media).toBe("unconfigured");

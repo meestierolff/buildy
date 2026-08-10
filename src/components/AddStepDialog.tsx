@@ -25,6 +25,7 @@ import {
   PrivateMediaUploadError,
   type PreparedProjectImage,
 } from "@/lib/privateMediaApi";
+import { MEDIA_FEATURES_ENABLED } from "@/lib/appFeatures";
 import { buildCreateUpdateCommand } from "@/lib/projectWriteFlow";
 import {
   deleteUpdateComposerDraft,
@@ -519,6 +520,7 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="mt-2 space-y-7">
+            {MEDIA_FEATURES_ENABLED ? (
             <section aria-labelledby="update-media-title">
               <div className="flex items-end justify-between gap-4">
                 <div>
@@ -571,6 +573,7 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
                 </div>
               )}
             </section>
+            ) : null}
 
             <section className="space-y-4 border-t border-border pt-6" aria-labelledby="update-story-title">
               <h3 id="update-story-title" className="font-sans text-base font-semibold">Het verhaal</h3>

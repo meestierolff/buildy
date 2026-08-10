@@ -46,6 +46,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { useDeleteProjectMutation, useProject } from "@/hooks/useProjectApi";
 import { ApiClientError } from "@/lib/apiClient";
+import { MEDIA_FEATURES_ENABLED, PHOTOBOOKS_ENABLED } from "@/lib/appFeatures";
 import { createClientIdempotencyKey } from "@/lib/clientIdempotency";
 import { PRODUCT_ROUTES } from "@/lib/productNavigation";
 import { recordProductEvent } from "@/lib/betaApi";
@@ -390,11 +391,13 @@ const TripDetail = () => {
                       <Wallet className="h-4 w-4" aria-hidden="true" /> Budget
                     </Link>
                   </Button>
-                  <Button asChild variant="outline" className="min-h-11 gap-2">
-                    <Link to={PRODUCT_ROUTES.projectPhotobook(project.id)}>
-                      <BookOpen className="h-4 w-4" aria-hidden="true" /> Bouwboek
-                    </Link>
-                  </Button>
+                  {PHOTOBOOKS_ENABLED ? (
+                    <Button asChild variant="outline" className="min-h-11 gap-2">
+                      <Link to={PRODUCT_ROUTES.projectPhotobook(project.id)}>
+                        <BookOpen className="h-4 w-4" aria-hidden="true" /> Bouwboek
+                      </Link>
+                    </Button>
+                  ) : null}
                   <AlertDialog open={deleteDialogOpen} onOpenChange={(open) => {
                     if (deleteProject.isPending) return;
                     setDeleteDialogOpen(open);
@@ -489,12 +492,16 @@ const TripDetail = () => {
                 <TabsTrigger value="timeline" className="min-h-11 gap-1.5 rounded-none border-b-2 border-transparent px-3 data-[state=active]:border-accent data-[state=active]:bg-transparent">
                   <LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" /> Tijdlijn
                 </TabsTrigger>
-                <TabsTrigger value="floorplan" className="min-h-11 gap-1.5 rounded-none border-b-2 border-transparent px-3 data-[state=active]:border-accent data-[state=active]:bg-transparent">
-                  <MapIcon className="h-3.5 w-3.5" aria-hidden="true" /> Plattegrond
-                </TabsTrigger>
-                <TabsTrigger value="photos" className="min-h-11 gap-1.5 rounded-none border-b-2 border-transparent px-3 data-[state=active]:border-accent data-[state=active]:bg-transparent">
-                  <Images className="h-3.5 w-3.5" aria-hidden="true" /> Alle foto&apos;s
-                </TabsTrigger>
+                {MEDIA_FEATURES_ENABLED ? (
+                  <TabsTrigger value="floorplan" className="min-h-11 gap-1.5 rounded-none border-b-2 border-transparent px-3 data-[state=active]:border-accent data-[state=active]:bg-transparent">
+                    <MapIcon className="h-3.5 w-3.5" aria-hidden="true" /> Plattegrond
+                  </TabsTrigger>
+                ) : null}
+                {MEDIA_FEATURES_ENABLED ? (
+                  <TabsTrigger value="photos" className="min-h-11 gap-1.5 rounded-none border-b-2 border-transparent px-3 data-[state=active]:border-accent data-[state=active]:bg-transparent">
+                    <Images className="h-3.5 w-3.5" aria-hidden="true" /> Alle foto&apos;s
+                  </TabsTrigger>
+                ) : null}
               </TabsList>
               {milestones > 0 && (
                 <Button
@@ -582,16 +589,20 @@ const TripDetail = () => {
               )}
             </TabsContent>
 
-            <TabsContent value="floorplan">
-              <FloorplanBoard
-                projectId={project.id}
-                availableUpdates={availableUpdates}
-              />
-            </TabsContent>
+            {MEDIA_FEATURES_ENABLED ? (
+              <TabsContent value="floorplan">
+                <FloorplanBoard
+                  projectId={project.id}
+                  availableUpdates={availableUpdates}
+                />
+              </TabsContent>
+            ) : null}
 
-            <TabsContent value="photos">
-              <AllPhotosTab projectId={project.id} updates={updates} />
-            </TabsContent>
+            {MEDIA_FEATURES_ENABLED ? (
+              <TabsContent value="photos">
+                <AllPhotosTab projectId={project.id} updates={updates} />
+              </TabsContent>
+            ) : null}
           </Tabs>
         </div>
       </section>
