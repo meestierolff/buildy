@@ -8,6 +8,8 @@ function configured(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
     NODE_ENV: "test",
     APP_ENV: "test",
     APP_ORIGIN: "https://app.buildy.test",
+    PRODUCT_PROFILE: "feedback_beta",
+    CHECKOUT_MODE: "off",
     SIMPLE_APP_MODE: false,
     CHECKOUT_ENABLED: false,
     DATABASE_URL: "postgresql://web:secret@127.0.0.1:5432/buildy_test",
@@ -44,13 +46,13 @@ function configured(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
 }
 
 describe("R2 boundary runtime configuration", () => {
-  it("reports every R2-backed capability ready with all isolated credentialpairs", () => {
+  it("reports only the active feedback-beta storage capabilities as ready", () => {
     const capabilities = getCapabilities(configured({ CHECKOUT_ENABLED: true }));
 
     expect(capabilities.accountLifecycle).toBe("ready");
     expect(capabilities.media).toBe("ready");
     expect(capabilities.photobooks).toBe("ready");
-    expect(capabilities.printFulfilment).toBe("ready");
+    expect(capabilities.printFulfilment).toBe("disabled");
   });
 
   it.each([
@@ -69,7 +71,9 @@ describe("R2 boundary runtime configuration", () => {
     ["printFulfilment", "R2_FULFILMENT_WORKER_ACCESS_KEY_ID"],
     ["printFulfilment", "R2_FULFILMENT_WORKER_SECRET_ACCESS_KEY"],
   ] as const)("keeps %s fail-closed when %s is absent", (capability, key) => {
-    expect(getCapabilities(configured({ CHECKOUT_ENABLED: true, [key]: undefined }))[capability]).toBe("unconfigured");
+    expect(getCapabilities(configured({ CHECKOUT_ENABLED: true, [key]: undefined }))[capability]).toBe(
+      capability === "printFulfilment" ? "disabled" : "unconfigured",
+    );
   });
 
   it("does not accept the retired generic keypair as a fallback", () => {
@@ -97,6 +101,6 @@ describe("R2 boundary runtime configuration", () => {
     expect(capabilities.accountLifecycle).toBe("unconfigured");
     expect(capabilities.media).toBe("unconfigured");
     expect(capabilities.photobooks).toBe("unconfigured");
-    expect(capabilities.printFulfilment).toBe("unconfigured");
+    expect(capabilities.printFulfilment).toBe("disabled");
   });
 });

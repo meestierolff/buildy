@@ -17,7 +17,7 @@ import { usePageMeta } from "@/hooks/usePageMeta";
 import { useBetaStatus } from "@/hooks/useBeta";
 import BetaBadge from "@/components/BetaBadge";
 import { ApiClientError } from "@/lib/apiClient";
-import { EMAIL_AUTH_ENABLED, GOOGLE_SIGNIN_ENABLED, SIMPLE_APP_MODE } from "@/lib/appFeatures";
+import { useAppFeatures } from "@/lib/appFeatures";
 import {
   createBetaReservationKey,
   recordSignupStarted,
@@ -63,7 +63,10 @@ const Auth = () => {
   const [inviteCode, setInviteCode] = useState("");
   const reservationAttempt = useRef<{ key: string; signature: string } | null>(null);
   const betaStatusQuery = useBetaStatus();
-  const betaMode = betaStatusQuery.data?.betaMode ?? true;
+  const appFeatures = useAppFeatures();
+  const betaMode = betaStatusQuery.data?.betaMode ?? appFeatures.betaMode;
+  const emailAuthEnabled = appFeatures.emailAuthEnabled;
+  const googleSignInEnabled = appFeatures.googleSignInEnabled;
 
   const authReturnPath = useMemo(() => authPagePath(nextPath), [nextPath]);
   const forgotPasswordPath = nextPath === "/"
@@ -119,6 +122,10 @@ const Auth = () => {
   };
 
   const handleGoogle = async () => {
+    if (!googleSignInEnabled) {
+      toast.error("Google inloggen is nu niet beschikbaar.");
+      return;
+    }
     setGoogleLoading(true);
     try {
       if (!isLogin && !await prepareRegistration("google")) return;
@@ -146,6 +153,10 @@ const Auth = () => {
   };
 
   const handleMagicLink = async () => {
+    if (!emailAuthEnabled) {
+      toast.error("Inloggen met e-mail is niet beschikbaar.");
+      return;
+    }
     const normalizedEmail = email.trim();
     if (!normalizedEmail) {
       toast.error("Vul eerst je e-mailadres in.");
@@ -176,6 +187,10 @@ const Auth = () => {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!emailAuthEnabled) {
+      toast.error("Inloggen met e-mail is niet beschikbaar.");
+      return;
+    }
     const normalizedEmail = email.trim();
     const normalizedName = displayName.trim();
 
@@ -228,11 +243,6 @@ const Auth = () => {
       if (error) {
         console.error("Better Auth email sign-up failed", authErrorDetails(error));
         toast.error(authErrorMessage(error, "sign-up"));
-        return;
-      }
-      if (SIMPLE_APP_MODE) {
-        await refetchSession();
-        navigate(nextPath, { replace: true });
         return;
       }
       setEmailStatus("registration");
@@ -339,7 +349,7 @@ const Auth = () => {
                   </p>
                 </div>
 
-                {GOOGLE_SIGNIN_ENABLED && (
+                {googleSignInEnabled && (
                   <>
                     <Button
                       type="button"
@@ -352,14 +362,17 @@ const Auth = () => {
                       {googleLoading ? "Even wachten…" : isLogin ? "Inloggen met Google" : "Registreren met Google"}
                     </Button>
 
-                    <div className="my-6 flex items-center gap-3 text-[10px] uppercase tracking-[0.2em] text-muted-foreground" aria-hidden="true">
-                      <span className="h-px flex-1 bg-border" />
-                      <span>of met e-mail</span>
-                      <span className="h-px flex-1 bg-border" />
-                    </div>
+                    {emailAuthEnabled ? (
+                      <div className="my-6 flex items-center gap-3 text-[10px] uppercase tracking-[0.2em] text-muted-foreground" aria-hidden="true">
+                        <span className="h-px flex-1 bg-border" />
+                        <span>of met e-mail</span>
+                        <span className="h-px flex-1 bg-border" />
+                      </div>
+                    ) : null}
                   </>
                 )}
 
+                {emailAuthEnabled ? (
                 <form onSubmit={handleSubmit} className="space-y-4">
                   {!isLogin && betaMode && (
                     <div className="space-y-2">
@@ -420,7 +433,7 @@ const Auth = () => {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-4">
                       <Label htmlFor="auth-password" className="text-xs font-semibold">Wachtwoord</Label>
-                      {isLogin && EMAIL_AUTH_ENABLED && (
+                      {isLogin && emailAuthEnabled && (
                         <Link to={forgotPasswordPath} className="text-xs text-muted-foreground underline underline-offset-4 transition-colors hover:text-foreground">
                           Wachtwoord vergeten?
                         </Link>
@@ -455,12 +468,19 @@ const Auth = () => {
                   <Button type="submit" variant="pill" disabled={loading || googleLoading || authLoading} className="h-12 w-full">
                     {loading ? "Even wachten…" : isLogin ? "Inloggen" : "Account aanmaken"}
                   </Button>
-                  {isLogin && EMAIL_AUTH_ENABLED && (
+                  {isLogin && emailAuthEnabled && (
                     <Button type="button" variant="pillOutline" disabled={loading || googleLoading || authLoading} onClick={handleMagicLink} className="h-12 w-full">
                       Stuur magic link
                     </Button>
                   )}
                 </form>
+                ) : (
+                  <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground" role="status">
+                    {googleSignInEnabled
+                      ? "Gebruik Google om in te loggen en je bouwmoment te bewaren."
+                      : "Inloggen is nog niet beschikbaar in deze omgeving."}
+                  </div>
+                )}
 
                 <p className="mt-7 text-center text-sm text-muted-foreground">
                   {isLogin ? "Nog geen account? " : "Al een account? "}
@@ -468,7 +488,7 @@ const Auth = () => {
                     {isLogin ? "Registreer" : "Inloggen"}
                   </button>
                 </p>
-                {!isLogin && (
+                {!isLogin && emailAuthEnabled && (
                   <p className="mt-5 text-center text-[11px] leading-relaxed text-muted-foreground">
                     Door een account te maken ga je akkoord met onze <Link to="/voorwaarden" className="underline underline-offset-2 hover:text-foreground">voorwaarden</Link>. Lees in de <Link to="/privacy" className="underline underline-offset-2 hover:text-foreground">privacyverklaring</Link> hoe we je gegevens verwerken.
                   </p>

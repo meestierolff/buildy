@@ -10,6 +10,8 @@ function configured(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
     NODE_ENV: "test",
     APP_ENV: "test",
     APP_ORIGIN: "https://app.buildy.test",
+    PRODUCT_PROFILE: "feedback_beta",
+    CHECKOUT_MODE: "off",
     SIMPLE_APP_MODE: false,
     CHECKOUT_ENABLED: true,
     DATABASE_URL: "postgresql://web:secret@127.0.0.1:5432/buildy_test",
@@ -29,18 +31,18 @@ function configured(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
 }
 
 describe("order runtime configuration", () => {
-  it("enables checkout and webhook processing only as one complete capability", () => {
+  it("keeps payments disabled in the feedback-beta product profile", () => {
     const runtime = configured();
 
     expect(hasCompleteOrderRuntime(runtime)).toBe(true);
-    expect(getCapabilities(runtime).payments).toBe("ready");
+    expect(getCapabilities(runtime).payments).toBe("disabled");
   });
 
-  it("keeps payments closed when the isolated webhook credential is absent", () => {
+  it("keeps payments disabled even when the isolated webhook credential is absent", () => {
     const runtime = configured({ DATABASE_PAYMENT_WORKER_URL: undefined });
 
     expect(hasCompleteOrderRuntime(runtime)).toBe(false);
-    expect(getCapabilities(runtime).payments).toBe("unconfigured");
+    expect(getCapabilities(runtime).payments).toBe("disabled");
   });
 
   it("keeps checkout capability closed until it is explicitly activated", () => {

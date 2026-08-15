@@ -6,6 +6,23 @@ import { useProject } from "@/hooks/useProjectApi";
 import { ApiClientError } from "@/lib/apiClient";
 import TripDetail from "@/pages/TripDetail";
 
+vi.mock("@/lib/appFeatures", () => ({
+  useAppFeatures: () => ({
+    profile: "feedback_beta",
+    betaMode: true,
+    inviteRequiredForNewAccounts: true,
+    emailAuthEnabled: false,
+    googleSignInEnabled: true,
+    accountLifecycleEnabled: true,
+    mediaFeaturesEnabled: true,
+    photobooksEnabled: true,
+    checkoutEnabled: false,
+    isPending: false,
+    isError: false,
+    query: null,
+  }),
+}));
+
 vi.mock("@/hooks/useProjectApi", () => ({
   useProject: vi.fn(),
   useDeleteProjectMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),

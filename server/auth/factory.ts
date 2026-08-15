@@ -83,11 +83,11 @@ export function createBuildyAuth(input: CreateBuildyAuthInput): AuthEngine {
     baseURL: input.config.appOrigin,
     database,
     emailAndPassword: {
-      autoSignIn: input.config.simpleAppMode === true,
+      autoSignIn: false,
       enabled: true,
       maxPasswordLength: 128,
       minPasswordLength: 12,
-      requireEmailVerification: input.config.simpleAppMode !== true,
+      requireEmailVerification: true,
       resetPasswordTokenExpiresIn: 60 * 60,
       revokeSessionsOnPasswordReset: true,
       sendResetPassword: email.sendPasswordReset,
@@ -96,19 +96,17 @@ export function createBuildyAuth(input: CreateBuildyAuthInput): AuthEngine {
       autoSignInAfterVerification: false,
       expiresIn: 60 * 60,
       sendOnSignIn: false,
-      sendOnSignUp: input.config.simpleAppMode !== true,
+      sendOnSignUp: true,
       sendVerificationEmail: email.sendVerificationEmail,
     },
-    plugins: input.config.simpleAppMode === true
-      ? []
-      : [
-          magicLink({
-            expiresIn: 15 * 60,
-            rateLimit: { max: 3, window: 15 * 60 },
-            sendMagicLink: email.sendMagicLink,
-            storeToken: "hashed",
-          }),
-        ],
+    plugins: [
+      magicLink({
+        expiresIn: 15 * 60,
+        rateLimit: { max: 3, window: 15 * 60 },
+        sendMagicLink: email.sendMagicLink,
+        storeToken: "hashed",
+      }),
+    ],
     rateLimit: {
       customRules: {
         "/request-password-reset": { max: 3, window: 15 * 60 },

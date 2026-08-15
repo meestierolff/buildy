@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { getBetaStatus } from "@/lib/betaApi";
+import { getProductProfile } from "@/lib/productProfileApi";
 import { queryClient } from "@/lib/queryClient";
 
-export function useBetaStatus() {
+export function useProductProfile() {
   return useQuery({
-    queryKey: ["beta", "status"],
-    queryFn: getBetaStatus,
+    queryKey: ["product", "profile"],
+    queryFn: getProductProfile,
     retry: 1,
     staleTime: 10 * 60 * 1_000,
   }, queryClient);

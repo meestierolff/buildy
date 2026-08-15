@@ -25,7 +25,7 @@ import {
   PrivateMediaUploadError,
   type PreparedProjectImage,
 } from "@/lib/privateMediaApi";
-import { MEDIA_FEATURES_ENABLED } from "@/lib/appFeatures";
+import { useAppFeatures } from "@/lib/appFeatures";
 import { buildCreateUpdateCommand } from "@/lib/projectWriteFlow";
 import {
   deleteUpdateComposerDraft,
@@ -62,6 +62,8 @@ class UpdateDraftError extends Error {}
 export const PHASES = DEFAULT_PHASES;
 
 const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
+  const appFeatures = useAppFeatures();
+  const mediaFeaturesEnabled = appFeatures.mediaFeaturesEnabled;
   const { user } = useAuth();
   const projectQuery = useProjectOverview(projectId, Boolean(user));
   const createUpdate = useCreateProjectUpdateMutation(projectId);
@@ -520,7 +522,7 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="mt-2 space-y-7">
-            {MEDIA_FEATURES_ENABLED ? (
+            {mediaFeaturesEnabled ? (
             <section aria-labelledby="update-media-title">
               <div className="flex items-end justify-between gap-4">
                 <div>

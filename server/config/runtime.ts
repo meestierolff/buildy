@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { HealthResponse } from "../../shared/contracts/api.js";
+import type { ProductProfile } from "../../shared/contracts/productProfile.js";
 
 const emptyStringToUndefined = (value: unknown): unknown =>
   typeof value === "string" && value.trim() === "" ? undefined : value;
@@ -30,11 +31,21 @@ const betaModeFlag = z.preprocess(
   emptyStringToUndefined,
   z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
 );
+const productProfileFlag = z.preprocess(
+  emptyStringToUndefined,
+  z.enum(["feedback_beta"]).default("feedback_beta"),
+);
+const checkoutModeFlag = z.preprocess(
+  emptyStringToUndefined,
+  z.enum(["off"]).default("off"),
+);
 
 const runtimeSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_ENV: z.enum(["local", "test", "preview", "staging", "production"]).default("local"),
   APP_ORIGIN: z.string().url().default("http://127.0.0.1:8080"),
+  PRODUCT_PROFILE: productProfileFlag,
+  CHECKOUT_MODE: checkoutModeFlag,
   SIMPLE_APP_MODE: booleanFlag,
   PRIMARY_DOMAIN: optionalSecret,
   TRUSTED_ORIGINS: z.string().optional(),
@@ -97,9 +108,11 @@ const runtimeSchema = z.object({
 type ParsedRuntimeConfig = z.infer<typeof runtimeSchema>;
 // Hand-built test fixtures may omit conservative feature flags; parsed process
 // configuration always receives explicit defaults from zod.
-export type RuntimeConfig = Omit<ParsedRuntimeConfig, "BETA_MODE" | "SIMPLE_APP_MODE"> & {
+export type RuntimeConfig = Omit<ParsedRuntimeConfig, "BETA_MODE" | "SIMPLE_APP_MODE" | "PRODUCT_PROFILE" | "CHECKOUT_MODE"> & {
   BETA_MODE?: boolean;
   SIMPLE_APP_MODE?: boolean;
+  PRODUCT_PROFILE?: "feedback_beta";
+  CHECKOUT_MODE?: "off";
 };
 
 let cachedRuntime: RuntimeConfig | undefined;
@@ -124,8 +137,19 @@ function optionalCapability(
   return enabled ? readyWhen(...values) : "disabled";
 }
 
+function productProfile(config: RuntimeConfig): "feedback_beta" {
+  return config.PRODUCT_PROFILE ?? "feedback_beta";
+}
+
+function checkoutMode(config: RuntimeConfig): "off" {
+  return config.CHECKOUT_MODE ?? "off";
+}
+
 export function getCapabilities(config = getRuntimeConfig()): HealthResponse["data"]["capabilities"] {
-  const optionalFeaturesEnabled = !config.SIMPLE_APP_MODE;
+  const activeProfile = productProfile(config);
+  const enableCoreExtras = activeProfile === "feedback_beta";
+  const enableEmail = false;
+  const enableCheckout = false;
   return {
     database: readyWhen(config.DATABASE_URL),
     authentication: readyWhen(
@@ -137,7 +161,7 @@ export function getCapabilities(config = getRuntimeConfig()): HealthResponse["da
       config.PII_BLIND_INDEX_KEY,
     ),
     accountLifecycle: optionalCapability(
-      optionalFeaturesEnabled,
+      enableCoreExtras,
       config.DATABASE_URL,
       config.DATABASE_ACCOUNT_WORKER_URL,
       config.BETTER_AUTH_SECRET,
@@ -155,7 +179,7 @@ export function getCapabilities(config = getRuntimeConfig()): HealthResponse["da
       config.R2_ACCOUNT_WORKER_SECRET_ACCESS_KEY,
     ),
     media: optionalCapability(
-      optionalFeaturesEnabled,
+      enableCoreExtras,
       config.DATABASE_MEDIA_WORKER_URL,
       config.CRON_SECRET,
       config.R2_ACCOUNT_ID,
@@ -166,7 +190,7 @@ export function getCapabilities(config = getRuntimeConfig()): HealthResponse["da
       config.R2_MEDIA_WORKER_SECRET_ACCESS_KEY,
     ),
     photobooks: optionalCapability(
-      optionalFeaturesEnabled,
+      enableCoreExtras,
       config.DATABASE_PHOTOBOOK_WORKER_URL,
       config.CRON_SECRET,
       config.R2_ACCOUNT_ID,
@@ -177,7 +201,7 @@ export function getCapabilities(config = getRuntimeConfig()): HealthResponse["da
       config.R2_PHOTOBOOK_WORKER_SECRET_ACCESS_KEY,
     ),
     email: optionalCapability(
-      optionalFeaturesEnabled,
+      enableEmail,
       config.DATABASE_EMAIL_WORKER_URL,
       config.BREVO_API_KEY,
       config.BREVO_SENDER_EMAIL,
@@ -187,7 +211,7 @@ export function getCapabilities(config = getRuntimeConfig()): HealthResponse["da
       config.CRON_SECRET,
     ),
     payments: optionalCapability(
-      optionalFeaturesEnabled && config.CHECKOUT_ENABLED,
+      enableCheckout,
       config.DATABASE_URL,
       config.DATABASE_PAYMENT_WORKER_URL,
       config.PII_ENCRYPTION_KEYS,
@@ -201,7 +225,7 @@ export function getCapabilities(config = getRuntimeConfig()): HealthResponse["da
       config.ORDER_TERMS_VERSION,
     ),
     printFulfilment: optionalCapability(
-      optionalFeaturesEnabled && config.CHECKOUT_ENABLED,
+      enableCheckout,
       config.DATABASE_FULFILMENT_WORKER_URL,
       config.CRON_SECRET,
       config.PII_ENCRYPTION_KEYS,
@@ -223,6 +247,32 @@ export function getCapabilities(config = getRuntimeConfig()): HealthResponse["da
       config.DATABASE_URL,
       config.PII_BLIND_INDEX_KEY,
     ),
+  };
+}
+
+export function getProductProfile(config = getRuntimeConfig()): ProductProfile {
+  const capabilities = getCapabilities(config);
+  const databaseReady = capabilities.database === "ready";
+  const googleConfigured = Boolean(config.GOOGLE_CLIENT_ID && config.GOOGLE_CLIENT_SECRET);
+
+  return {
+    profile: productProfile(config),
+    checkoutMode: checkoutMode(config),
+    betaMode: config.BETA_MODE !== false,
+    inviteRequiredForNewAccounts: config.BETA_MODE !== false,
+    capabilities: {
+      googleSignIn: capabilities.authentication === "ready" && googleConfigured,
+      emailAuth: false,
+      renovations: databaseReady,
+      updates: databaseReady,
+      story: databaseReady,
+      media: capabilities.media === "ready",
+      photobookPreview: capabilities.photobooks === "ready",
+      sharing: databaseReady,
+      feedback: databaseReady,
+      accountDeletion: capabilities.accountLifecycle === "ready",
+      checkout: false,
+    },
   };
 }
 

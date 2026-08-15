@@ -41,7 +41,7 @@ import {
 } from "@/hooks/useAccount";
 import { useOwnProfile, useUpdateOwnProfileMutation } from "@/hooks/useProfiles";
 import { usePageMeta } from "@/hooks/usePageMeta";
-import { ACCOUNT_LIFECYCLE_ENABLED, EMAIL_AUTH_ENABLED } from "@/lib/appFeatures";
+import { useAppFeatures } from "@/lib/appFeatures";
 import { ApiClientError } from "@/lib/apiClient";
 import { authClient, authErrorMessage } from "@/lib/authClient";
 import { createClientIdempotencyKey } from "@/lib/clientIdempotency";
@@ -98,6 +98,9 @@ function deviceLabel(userAgent: string | null): string {
 }
 
 const AccountSettings = () => {
+  const appFeatures = useAppFeatures();
+  const accountLifecycleEnabled = appFeatures.accountLifecycleEnabled;
+  const emailAuthEnabled = appFeatures.emailAuthEnabled;
   usePageMeta({
     title: "Account & instellingen — Buildy",
     description: "Beheer je profiel, privacy en wachtwoord.",
@@ -428,7 +431,11 @@ const AccountSettings = () => {
           <UserRound className="mt-0.5 h-5 w-5 text-muted-foreground" aria-hidden="true" />
           <div>
             <h2 id="login-settings-title" className="text-base font-semibold">Login</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Je login wordt beheerd door de beveiligde Buildy-authenticatie.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {emailAuthEnabled
+                ? "Je login wordt beheerd door de beveiligde Buildy-authenticatie."
+                : "Je logt in met Google. Wachtwoord- en e-maillogin zijn in deze bèta niet actief."}
+            </p>
           </div>
         </div>
 
@@ -440,6 +447,7 @@ const AccountSettings = () => {
           </div>
         </div>
 
+        {emailAuthEnabled ? (
         <form onSubmit={changePassword} className="space-y-4">
           <div className="flex items-start gap-3">
             <KeyRound className="mt-0.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
@@ -476,13 +484,14 @@ const AccountSettings = () => {
             <Button type="submit" size="sm" disabled={savingPassword || !currentPassword || !newPassword}>
               {savingPassword ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Wachtwoord opslaan"}
             </Button>
-            {EMAIL_AUTH_ENABLED ? (
+            {emailAuthEnabled ? (
               <Button type="button" variant="outline" size="sm" disabled={sendingReset} onClick={sendPasswordReset}>
                 {sendingReset ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Stuur reset-link"}
               </Button>
             ) : null}
           </div>
         </form>
+        ) : null}
       </section>
 
       <section className="rounded-xl border border-border bg-card p-6 md:p-8" aria-labelledby="sessions-title">
@@ -546,7 +555,7 @@ const AccountSettings = () => {
         )}
       </section>
 
-      {ACCOUNT_LIFECYCLE_ENABLED ? (
+      {accountLifecycleEnabled ? (
       <section className="rounded-xl border border-border bg-card p-6 md:p-8" aria-labelledby="export-title">
         <div className="mb-5 flex items-start gap-3">
           <FileArchive className="mt-0.5 h-5 w-5 text-muted-foreground" aria-hidden="true" />
@@ -609,7 +618,7 @@ const AccountSettings = () => {
       </section>
       ) : null}
 
-      {ACCOUNT_LIFECYCLE_ENABLED ? (
+      {accountLifecycleEnabled ? (
       <section className="rounded-xl border border-destructive/40 bg-destructive/5 p-6 md:p-8" aria-labelledby="delete-account-title">
         <div className="flex items-start gap-3">
           <ShieldAlert className="mt-0.5 h-5 w-5 text-destructive" aria-hidden="true" />

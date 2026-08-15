@@ -1,7 +1,7 @@
 import { ZodError } from "zod";
 import { sql } from "drizzle-orm";
 import { handleDefaultAuthRequest } from "../auth/http.js";
-import { getCapabilities, getRuntimeConfig, getTrustedOrigins } from "../config/runtime.js";
+import { getCapabilities, getProductProfile, getRuntimeConfig, getTrustedOrigins } from "../config/runtime.js";
 import { getBuildyDatabase, getBuildyWorkerDatabase, type BuildyDatabase } from "../db/client.js";
 import { HttpError } from "./errors.js";
 import { assertTrustedMutationOrigin } from "./origin.js";
@@ -283,6 +283,10 @@ registerRoute("GET", "/api/health", (_request, requestId) => {
     },
     requestId,
   );
+});
+
+registerRoute("GET", "/api/product-profile", (_request, requestId) => {
+  return jsonSuccess(getProductProfile(getRuntimeConfig()), requestId);
 });
 
 registerRoute("GET", "/api/readiness", async (_request, requestId) => {
