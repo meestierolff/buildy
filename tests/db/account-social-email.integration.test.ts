@@ -131,7 +131,20 @@ describeWithDatabase("account and social e-mail PostgreSQL boundary", () => {
         leaseOwner: "account-email-worker",
         leaseSeconds: 90,
       });
-      expect(claimed).toHaveLength(5);
+      const relevantClaimed = claimed.filter((event) => (
+        (event.aggregateType === "account_lifecycle" && event.aggregateId === requesterId)
+        || (event.aggregateType === "identity_migration" && event.aggregateId === requesterId)
+        || (event.aggregateType === "project_access" && event.aggregateId === accessRequestId)
+        || (event.aggregateType === "account_security" && event.aggregateId === deletionJobId)
+      ));
+      expect(relevantClaimed).toHaveLength(5);
+      expect(relevantClaimed.map((event) => event.eventType).sort()).toEqual([
+        "lifecycle.welcome.requested.v1",
+        "migration.account.requested.v1",
+        "security.account_alert.requested.v1",
+        "social.access_accepted.requested.v1",
+        "social.access_requested.requested.v1",
+      ]);
       expect(JSON.stringify(claimed)).not.toContain("integration-owner-ciphertext");
       const loaded = await repository.loadAccountEventEmailContext({
         eventId: requestedEventId,

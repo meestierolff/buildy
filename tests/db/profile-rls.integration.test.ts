@@ -204,7 +204,7 @@ describeWithDatabase("profile PostgreSQL RLS boundary", () => {
       `, [ids.viewer]);
       expect(onboardingEvents.rows).toEqual([{
         event_name: "onboarding_completed",
-        properties: {},
+        properties: { schemaVersion: 1 },
       }]);
       await setActor(client, webRole!, ids.viewer);
 

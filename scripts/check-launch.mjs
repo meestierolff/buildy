@@ -176,24 +176,14 @@ await runCheck("static", "Vercelconfig is fail-closed", async () => {
   const config = JSON.parse(readFileSync(join(root, "vercel.json"), "utf8"));
   assert(config.framework === "vite", "Vercel framework is niet Vite");
   assert(Array.isArray(config.regions) && config.regions.includes("fra1"), "EU-functieregio fra1 ontbreekt");
-  const expectedCronPaths = [
-    "/api/internal/cron/account-lifecycle",
-    "/api/internal/cron/email",
-    "/api/internal/cron/media",
-    "/api/internal/cron/peecho-fulfilment",
-    "/api/internal/cron/photobooks",
-  ];
   const cronPaths = new Set((config.crons ?? []).map((cron) => cron.path));
   const hobbyCronWorkflowPath = join(root, ".github/workflows/hobby-worker-crons.yml");
   const hobbyCronWorkflow = existsSync(hobbyCronWorkflowPath)
     ? readFileSync(hobbyCronWorkflowPath, "utf8")
     : "";
-  const hasVercelCronSet = expectedCronPaths.every((path) => cronPaths.has(path));
-  const hasHobbyCronSet = expectedCronPaths.every((path) => hobbyCronWorkflow.includes(path))
-    && /schedule:\s*[\r\n]+\s*-\s*cron:\s*['"]\*\/5 \* \* \* \*['"]/.test(hobbyCronWorkflow)
-    && hobbyCronWorkflow.includes("HOBBY_CRON_BASE_URL")
-    && hobbyCronWorkflow.includes("HOBBY_CRON_SECRET");
-  assert(hasVercelCronSet || hasHobbyCronSet, "duurzame workertriggers ontbreken voor Vercel of Hobby");
+  const hasScheduledHobbyCronWorkflow = /\bon:\s*[\s\S]*\bschedule\s*:/.test(hobbyCronWorkflow);
+  assert(cronPaths.size === 0, "feedbackbèta mag geen actieve Vercel-crons vereisen");
+  assert(!hasScheduledHobbyCronWorkflow, "feedbackbèta mag geen actieve hobby-workercrons vereisen");
   const redirects = new Map((config.redirects ?? []).map((redirect) => [redirect.source, redirect]));
   for (const [source, destination] of [
     ["/trips/new", "/project/nieuw"],
@@ -212,9 +202,7 @@ await runCheck("static", "Vercelconfig is fail-closed", async () => {
   assert(!/supabase|lovable/i.test(serialized), "Vercelconfig verwijst naar legacyprovider");
   assert(serialized.includes("Content-Security-Policy"), "CSP-header ontbreekt");
   assert(serialized.includes("Strict-Transport-Security"), "HSTS-header ontbreekt");
-  return hasVercelCronSet
-    ? `${cronPaths.size} Vercel-workercrons, ${redirects.size} redirects en securityheaders aanwezig`
-    : `Hobby-workerworkflow plus ${redirects.size} redirects en securityheaders aanwezig`;
+  return `geen actieve frequente workercrons; ${redirects.size} redirects en securityheaders aanwezig`;
 });
 
 await runCheck("static", "Verplichte opleverdocumenten bestaan", async () => {

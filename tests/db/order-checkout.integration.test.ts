@@ -207,9 +207,9 @@ describeWithDatabase("photobook checkout PostgreSQL boundary", () => {
         paymentStatus: "unpaid",
         refundedMinor: 0,
         fulfilmentStatus: "unclaimed",
-        totalMinor: undefined,
         amounts: { totalMinor: 5_808 },
       });
+      expect("totalMinor" in (detail ?? {})).toBe(false);
       expect(await repository.getOrder(strangerId, orderId)).toBeNull();
 
       const persisted = await admin.query<{

@@ -265,7 +265,7 @@ describeWithDatabase("Stripe payment PostgreSQL boundary", () => {
         stripe_charge_id: chargeId,
         event_count: "5",
         inbox_count: "5",
-        outbox_count: "4",
+        outbox_count: "5",
       })]);
     } finally {
       await resources.pool.end();

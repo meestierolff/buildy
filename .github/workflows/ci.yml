@@ -96,11 +96,11 @@ jobs:
       - name: Generate synthetic transactional e-mail previews
         run: |
           bun run email:previews
-          rg -q "SYNTHETIC TEST ARTIFACT" artifacts/email/order-confirmation.synthetic.html
-          rg -q "GEEN ECHTE BESTELLING" artifacts/email/order-confirmation.synthetic.txt
-          rg -q "Welkom" artifacts/email/lifecycle-welcome.synthetic.html
-          rg -q "GEEN ECHT ACCOUNT" artifacts/email/migration-account.synthetic.txt
-          rg -q "Verwijderverzoek" artifacts/email/security-account-alert.synthetic.html
+          grep -q "SYNTHETIC TEST ARTIFACT" artifacts/email/order-confirmation.synthetic.html
+          grep -q "GEEN ECHTE BESTELLING" artifacts/email/order-confirmation.synthetic.txt
+          grep -q "Welkom" artifacts/email/lifecycle-welcome.synthetic.html
+          grep -q "GEEN ECHT ACCOUNT" artifacts/email/migration-account.synthetic.txt
+          grep -q "Verwijderverzoek" artifacts/email/security-account-alert.synthetic.html
 
       - name: Upload synthetic e-mail preview artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

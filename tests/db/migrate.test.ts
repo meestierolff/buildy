@@ -86,6 +86,14 @@ describe("migration discovery", () => {
       "0022_moderation_admin_rbac.sql",
       "0023_profile_onboarding_completion.sql",
       "0024_update_deletion_saga.sql",
+      "0025_lifecycle_function_repairs.sql",
+      "0026_lifecycle_constraint_and_export_fix.sql",
+      "0027_auth_and_account_email_repairs.sql",
+      "0028_account_email_prepare_fix.sql",
+      "0029_onboarding_event_properties_fix.sql",
+      "0030_product_event_and_reaction_visibility_fix.sql",
+      "0031_project_deletion_asset_scope_fix.sql",
+      "0032_audit_event_clock_timestamp.sql",
     ]);
     expect(migrations.every((migration) => /^[0-9a-f]{64}$/.test(migration.sha256))).toBe(true);
   });
