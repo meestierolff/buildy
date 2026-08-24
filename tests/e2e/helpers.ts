@@ -16,8 +16,12 @@ import {
 
 export const BASE = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:8090";
 
+type BrowserDiagnosticMatcher = RegExp | string;
+
 type BrowserDiagnostics = {
   messages: string[];
+  allow: (...matchers: BrowserDiagnosticMatcher[]) => void;
+  unexpected: () => string[];
   dispose: () => void;
 };
 
@@ -50,7 +54,11 @@ export function installBrowserDiagnostics(page: Page): BrowserDiagnostics {
   if (existing) return existing;
 
   const messages: string[] = [];
+  const allowedMatchers: BrowserDiagnosticMatcher[] = [];
   const seen = new Set<string>();
+  const isAllowed = (message: string) => allowedMatchers.some((matcher) => (
+    typeof matcher === "string" ? matcher === message : matcher.test(message)
+  ));
   const record = (message: string) => {
     if (seen.has(message)) return;
     seen.add(message);
@@ -85,6 +93,10 @@ export function installBrowserDiagnostics(page: Page): BrowserDiagnostics {
 
   const diagnostics = {
     messages,
+    allow: (...matchers: BrowserDiagnosticMatcher[]) => {
+      allowedMatchers.push(...matchers);
+    },
+    unexpected: () => messages.filter((message) => !isAllowed(message)),
     dispose: () => {
       page.off("pageerror", onPageError);
       page.off("console", onConsole);
@@ -108,16 +120,21 @@ export const test = base.extend<BrowserHarnessFixtures>({
     await use();
     diagnostics.dispose();
 
-    if (diagnostics.messages.length === 0 || testInfo.status === "skipped") return;
+    const unexpectedMessages = diagnostics.unexpected();
+    if (unexpectedMessages.length === 0 || testInfo.status === "skipped") return;
     await testInfo.attach("unexpected-browser-diagnostics", {
-      body: Buffer.from(`${JSON.stringify(diagnostics.messages, null, 2)}\n`, "utf8"),
+      body: Buffer.from(`${JSON.stringify(unexpectedMessages, null, 2)}\n`, "utf8"),
       contentType: "application/json",
     });
-    expect(diagnostics.messages, "onverwachte browser-, netwerk- of serverfouten").toEqual([]);
+    expect(unexpectedMessages, "onverwachte browser-, netwerk- of serverfouten").toEqual([]);
   }, { auto: true }],
 });
 
 export { expect };
+
+export function allowBrowserDiagnostics(page: Page, ...matchers: BrowserDiagnosticMatcher[]): void {
+  installBrowserDiagnostics(page).allow(...matchers);
+}
 
 /** Wait until every image inside photobook pages has loaded; timeout is a test failure. */
 export const waitForPhotobookImages = async (page: Page) => {

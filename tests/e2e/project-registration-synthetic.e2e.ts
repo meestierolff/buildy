@@ -158,7 +158,7 @@ test("bewaart een concept en plaatst exact één Bouwmoment via private Vercel B
   await page.getByRole("button", { name: "Verder met Bouwmoment" }).click();
   await expect(title).toHaveValue("De eerste muur is open");
 
-  await page.locator("input[type='file']").setInputFiles({
+  await page.getByLabel("Kies foto's uit je bibliotheek").setInputFiles({
     name: "synthetische-bouwfoto.png",
     mimeType: "image/png",
     buffer: ONE_PIXEL_PNG,

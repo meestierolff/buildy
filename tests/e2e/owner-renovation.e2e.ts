@@ -100,7 +100,7 @@ test("maakt een verbouwing en bevestigt gedeelde zichtbaarheid met een afzonderl
   await page.getByRole("option", { name: "Mijn volgers" }).click();
   await page.getByRole("button", { name: "Verbouwing starten" }).click();
 
-  await expect(page).toHaveURL(`${BASE}/project/${SYNTHETIC_IDS.project}`);
+  await expect(page).toHaveURL(`${BASE}/project/${SYNTHETIC_IDS.project}?update=${SYNTHETIC_IDS.update}`);
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Wat is er veranderd?" })).toBeVisible();
   await page.getByRole("button", { name: "Annuleren" }).click();

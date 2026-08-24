@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-import { BASE, expect, test } from "./helpers";
+import { BASE, allowBrowserDiagnostics, expect, test } from "./helpers";
 import {
   SYNTHETIC_IDS,
   fulfillJson,
@@ -99,7 +99,7 @@ test.describe("Tijdelijke projectdeellink", () => {
       window as typeof window & { __buildyCopiedLink?: string }
     ).__buildyCopiedLink)).toBe(`${BASE}/delen#toegang=${RAW_LINK}`);
 
-    await dialog.getByRole("button", { name: "Sluiten" }).click();
+    await dialog.getByRole("button", { name: "Sluiten", exact: true }).last().click();
     await page.getByRole("button", { name: "Deellink" }).click();
     await dialog.getByRole("button", { name: "Nieuwe link maken" }).click();
     await dialog.getByRole("button", { name: "Veilige link kopiëren" }).click();
@@ -129,6 +129,11 @@ test.describe("Tijdelijke projectdeellink", () => {
   });
 
   test("fragment wordt vóór redemption verwijderd en succes navigeert naar een schoon projectpad", async ({ page }) => {
+    allowBrowserDiagnostics(
+      page,
+      /^console: \[JavaScript Error: "downloadable font: download failed .*Instrument Serif.*$/,
+      /^requestfailed: GET .*instrument-serif.* \(cancelled\)$/,
+    );
     const networkUrls: string[] = [];
     page.on("request", (request) => networkUrls.push(request.url()));
     const fixture = await installSyntheticApi(page, {
@@ -170,6 +175,10 @@ test.describe("Tijdelijke projectdeellink", () => {
   });
 
   test("verlopen link houdt een bruikbare, schone foutpagina over", async ({ page }) => {
+    allowBrowserDiagnostics(
+      page,
+      /^console: Failed to load resource: the server responded with a status of 410 \(Gone\)$/,
+    );
     const fixture = await installSyntheticApi(page, {
       authenticated: false,
       handle: async ({ request, route, url }) => {
