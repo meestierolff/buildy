@@ -1,13 +1,19 @@
 import { createHash } from "node:crypto";
 import { canonicalJson } from "../security/canonicalJson.js";
+import type { PrivacyBlindIndex } from "../security/dataProtection.js";
 
-export function profileRequestHash(operation: string, payload: unknown): string {
-  return createHash("sha256")
-    .update("buildy-profile-command:v1\0")
+export function profileRequestHash(
+  operation: string,
+  payload: unknown,
+  blindIndex: PrivacyBlindIndex,
+): string {
+  const canonicalDigest = createHash("sha256")
+    .update("buildy-profile-command-payload:v2\0")
     .update(operation)
     .update("\0")
     .update(canonicalJson(payload))
     .digest("hex");
+  return blindIndex.create(`profile-command-request-v2:${operation}`, canonicalDigest);
 }
 
 export function scopedProfileIdempotencyKey(

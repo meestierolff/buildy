@@ -80,6 +80,28 @@ describe("project write commands", () => {
     expect(command).not.toHaveProperty("budget");
   });
 
+  it("publishes a photo-only Bouwmoment on the selected date without requiring a title", () => {
+    const assetId = "22222222-2222-4222-8222-222222222222";
+
+    const command = buildCreateUpdateCommand({
+      title: "   ",
+      description: "",
+      updateDate: "2026-08-23",
+      phaseId: "",
+      isMilestone: false,
+      media: [{ assetId, compareRole: null }],
+    }, { version: 2 }, UPDATE_KEY);
+
+    expect(command).toMatchObject({
+      expectedProjectVersion: 2,
+      updateDate: "2026-08-23",
+      media: [{ assetId, role: "gallery", sortOrder: 0 }],
+      publish: true,
+    });
+    expect(command).not.toHaveProperty("title");
+    expect(command).not.toHaveProperty("description");
+  });
+
   it("builds one full replacement manifest for an optimistic update edit", () => {
     const firstAssetId = "22222222-2222-4222-8222-222222222222";
     const secondAssetId = "33333333-3333-4333-8333-333333333333";

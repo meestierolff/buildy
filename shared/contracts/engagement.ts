@@ -73,6 +73,10 @@ export const notificationMutationInputSchema = z.object({
   action: z.enum(["read", "archive"]),
 }).strict();
 
+export const notificationMarkAllReadInputSchema = z.object({
+  action: z.literal("read_all"),
+}).strict();
+
 export const engagementAvatarSchema = z.object({
   id: uuidSchema,
   contentType: z.string().nullable(),
@@ -134,14 +138,44 @@ export const reactionMutationResultSchema = z.object({
   replayed: z.boolean(),
 });
 
+export const engagementNotificationTypeSchema = z.enum([
+  "profile.follow.requested",
+  "profile.followed",
+  "profile.follow.accepted",
+  "profile.follow.rejected",
+  "project.followed",
+  "project.access.requested",
+  "project.access.accepted",
+  "project.access.rejected",
+  "comment.created",
+  "comment.reply",
+  "comment.mention",
+  "reaction.created",
+  "moderation.warning",
+  "update.published",
+  "order.payment.succeeded",
+  "order.payment.failed",
+  "order.payment.expired",
+  "order.payment.partially_refunded",
+  "order.payment.refunded",
+  "order.manual_review",
+  "order.fulfilment.ordered",
+  "order.fulfilment.in_production",
+  "order.fulfilment.shipped",
+  "order.fulfilment.completed",
+  "order.fulfilment.cancelled",
+  "order.fulfilment.refund_review",
+]);
+
 export const engagementNotificationSchema = z.object({
   id: uuidSchema,
-  type: z.string().trim().min(1).max(80),
+  type: engagementNotificationTypeSchema,
   status: z.enum(["unread", "read"]),
   actor: engagementActorSchema.nullable(),
   projectId: uuidSchema.nullable(),
   updateId: uuidSchema.nullable(),
   commentId: uuidSchema.nullable(),
+  orderId: uuidSchema.nullable(),
   readAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
 });
@@ -149,6 +183,7 @@ export const engagementNotificationSchema = z.object({
 export const notificationPageSchema = z.object({
   items: z.array(engagementNotificationSchema),
   nextCursor: opaqueCursorSchema.nullable(),
+  unreadCount: z.number().int().nonnegative(),
 });
 
 export const notificationMutationResultSchema = z.object({
@@ -157,12 +192,20 @@ export const notificationMutationResultSchema = z.object({
   replayed: z.boolean(),
 });
 
+export const notificationMarkAllReadResultSchema = z.object({
+  updatedCount: z.number().int().nonnegative(),
+  unreadCount: z.number().int().nonnegative(),
+});
+
 export const commentPageResponseSchema = apiSuccessSchema(commentPageSchema);
 export const commentMutationResponseSchema = apiSuccessSchema(commentMutationResultSchema);
 export const reactionSummaryResponseSchema = apiSuccessSchema(reactionSummarySchema);
 export const reactionMutationResponseSchema = apiSuccessSchema(reactionMutationResultSchema);
 export const notificationPageResponseSchema = apiSuccessSchema(notificationPageSchema);
 export const notificationMutationResponseSchema = apiSuccessSchema(notificationMutationResultSchema);
+export const notificationMarkAllReadResponseSchema = apiSuccessSchema(
+  notificationMarkAllReadResultSchema,
+);
 
 export type EngagementPageQuery = z.infer<typeof engagementPageQuerySchema>;
 export type NotificationPageQuery = z.infer<typeof notificationPageQuerySchema>;
@@ -171,6 +214,7 @@ export type DeleteCommentInput = z.infer<typeof deleteCommentInputSchema>;
 export type ReactionTargetInput = z.infer<typeof reactionTargetInputSchema>;
 export type ReactionQuery = z.infer<typeof reactionQuerySchema>;
 export type NotificationMutationInput = z.infer<typeof notificationMutationInputSchema>;
+export type NotificationMarkAllReadInput = z.infer<typeof notificationMarkAllReadInputSchema>;
 export type SupportedReactionEmoji = z.infer<typeof supportedReactionEmojiSchema>;
 export type EngagementActor = z.infer<typeof engagementActorSchema>;
 export type EngagementComment = z.infer<typeof engagementCommentSchema>;
@@ -179,6 +223,8 @@ export type CommentMutationResult = z.infer<typeof commentMutationResultSchema>;
 export type ReactionCount = z.infer<typeof reactionCountSchema>;
 export type ReactionSummary = z.infer<typeof reactionSummarySchema>;
 export type ReactionMutationResult = z.infer<typeof reactionMutationResultSchema>;
+export type EngagementNotificationType = z.infer<typeof engagementNotificationTypeSchema>;
 export type EngagementNotification = z.infer<typeof engagementNotificationSchema>;
 export type NotificationPage = z.infer<typeof notificationPageSchema>;
 export type NotificationMutationResult = z.infer<typeof notificationMutationResultSchema>;
+export type NotificationMarkAllReadResult = z.infer<typeof notificationMarkAllReadResultSchema>;

@@ -85,6 +85,37 @@ describe("Stripe payment provider", () => {
     });
   });
 
+  it("rejects a signed checkout event whose session identity crosses environments", async () => {
+    const payload = JSON.stringify({
+      id: "evt_cross_session_1",
+      object: "event",
+      api_version: null,
+      created: 1_785_850_000,
+      data: {
+        object: {
+          id: "cs_live_foreign",
+          object: "checkout.session",
+          metadata: {
+            app: "buildy",
+            order_id: "9d061f28-8a45-4e3b-a57c-a036d3799957",
+            order_number: "BLD-2026-TEST01",
+            merchant_reference: "buildy-test-reference",
+          },
+        },
+      },
+      livemode: false,
+      pending_webhooks: 1,
+      request: null,
+      type: "checkout.session.completed",
+    });
+    const signature = stripe.webhooks.generateTestHeaderString({ payload, secret: webhookSecret });
+
+    await expect(provider().verifyWebhook(payload, signature)).rejects.toMatchObject({
+      code: "ENVIRONMENT_MISMATCH",
+      retryable: false,
+    });
+  });
+
   it("normalizes cumulative partial refunds without persisting customer payload fields", async () => {
     const payload = JSON.stringify({
       id: "evt_buildy_refund_1",
@@ -182,7 +213,6 @@ describe("Stripe payment provider", () => {
         { label: "Verzending", unitAmountMinor: 750, quantity: 1 },
       ],
       customerEmail: "bouwer@example.com",
-      allowedShippingCountries: ["NL"],
       successUrl: "https://app.buildy.nl/bestelling/9d061f28-8a45-4e3b-a57c-a036d3799957",
       cancelUrl: "https://app.buildy.nl/bouwboek/annuleren",
       idempotencyKey: "checkout:test:9d061f28-8a45-4e3b-a57c-a036d3799957",
@@ -203,6 +233,11 @@ describe("Stripe payment provider", () => {
       ],
       metadata: { app: "buildy", order_id: input.orderId },
     });
+    const expiresAt = create.mock.calls[0]?.[0].expires_at;
+    expect(expiresAt).toBeTypeOf("number");
+    expect(expiresAt! - Math.floor(Date.now() / 1_000)).toBeGreaterThanOrEqual(34 * 60);
+    expect(expiresAt! - Math.floor(Date.now() / 1_000)).toBeLessThanOrEqual(35 * 60);
+    expect(create.mock.calls[0]?.[0]).not.toHaveProperty("shipping_address_collection");
     expect(create.mock.calls[0]?.[1]).toEqual({ idempotencyKey: input.idempotencyKey });
   });
 
@@ -224,10 +259,37 @@ describe("Stripe payment provider", () => {
       merchantReference: "buildy-test-reference",
       currency: "EUR",
       lines: [{ label: "Bouwboek", unitAmountMinor: 9_900, quantity: 1 }],
-      allowedShippingCountries: ["NL"],
       successUrl: "https://app.buildy.nl/bestelling/9d061f28-8a45-4e3b-a57c-a036d3799957",
       cancelUrl: "https://app.buildy.nl/bouwboek/annuleren",
       idempotencyKey: "checkout:test:9d061f28-8a45-4e3b-a57c-a036d3799957",
     })).rejects.toMatchObject({ code: "ACCOUNT_MISMATCH", retryable: false });
+  });
+
+  it("accepts only a hosted Stripe Checkout URL from the adapter response", async () => {
+    const fakeStripe = {
+      accounts: { retrieveCurrent: vi.fn().mockResolvedValue({ id: "acct_BUILDYTEST" }) },
+      checkout: { sessions: { create: vi.fn().mockResolvedValue({
+        id: "cs_test_buildy_checkout",
+        url: "https://payments.example.test/cs_test_buildy_checkout",
+        expires_at: 1_785_851_800,
+      }) } },
+    } as unknown as Stripe;
+    const paymentProvider = new StripePaymentProvider({
+      secretKey: "sk_test_not_used_in_unit_tests",
+      webhookSecret,
+      expectedAccountId: "acct_BUILDYTEST",
+      environment: "test",
+    }, fakeStripe);
+
+    await expect(paymentProvider.createCheckout({
+      orderId: "9d061f28-8a45-4e3b-a57c-a036d3799957",
+      orderNumber: "BLD-2026-TEST01",
+      merchantReference: "buildy-test-reference",
+      currency: "EUR",
+      lines: [{ label: "Bouwboek", unitAmountMinor: 9_900, quantity: 1 }],
+      successUrl: "https://app.buildy.nl/bestelling/9d061f28-8a45-4e3b-a57c-a036d3799957",
+      cancelUrl: "https://app.buildy.nl/bouwboek/annuleren",
+      idempotencyKey: "checkout:test:9d061f28-8a45-4e3b-a57c-a036d3799957",
+    })).rejects.toMatchObject({ code: "PROVIDER_UNAVAILABLE", retryable: false });
   });
 });

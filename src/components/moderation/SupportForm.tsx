@@ -73,7 +73,7 @@ export default function SupportForm({ initialKind = "support" }: { initialKind?:
       <div className="border-l-2 border-emerald-600 bg-emerald-500/5 p-6" role="status" aria-live="polite">
         <CheckCircle2 className="h-7 w-7 text-emerald-600" aria-hidden="true" />
         <h2 className="mt-3 font-serif text-2xl">Bericht ontvangen</h2>
-        <p className="mt-2 text-sm text-muted-foreground">Bewaar ontvangstcode <strong className="text-foreground">{mutation.data.receiptCode}</strong>. Er staat een e-mailbevestiging klaar.</p>
+        <p className="mt-2 text-sm text-muted-foreground">Bewaar ontvangstcode <strong className="text-foreground">{mutation.data.receiptCode}</strong>. Daarmee kun je bij een vervolgcontact naar dit verzoek verwijzen.</p>
       </div>
     );
   }
@@ -121,4 +121,3 @@ export default function SupportForm({ initialKind = "support" }: { initialKind?:
     </form>
   );
 }
-

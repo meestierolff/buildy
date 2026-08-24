@@ -4,6 +4,7 @@ import { ImageOff } from "lucide-react";
 import type { ProjectUpdate } from "../../shared/contracts/projects";
 import MediaLightbox, { type LightboxItem } from "./MediaLightbox";
 import { phaseColor } from "./PhaseSelect";
+import { ResilientImage, ResilientVideo } from "./ResilientMedia";
 
 interface Props {
   projectId: string;
@@ -19,7 +20,7 @@ function lightboxMediaType(contentType: string | null): "image" | "video" {
 }
 
 function updateLabel(update: ProjectUpdate): string {
-  return update.title?.trim() || update.room?.trim() || "Projectupdate";
+  return update.title?.trim() || update.room?.trim() || "Bouwmoment";
 }
 
 const AllPhotosTab = ({ projectId, updates }: Props) => {
@@ -124,9 +125,9 @@ const AllPhotosTab = ({ projectId, updates }: Props) => {
               className="group relative aspect-square min-h-11 overflow-hidden rounded-md bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
               {item.type === "video" ? (
-                <video src={item.url} className="h-full w-full object-cover" />
+                <ResilientVideo src={item.url} className="h-full w-full object-cover" />
               ) : (
-                <img
+                <ResilientImage
                   src={item.url}
                   alt={item.updateTitle}
                   loading="lazy"

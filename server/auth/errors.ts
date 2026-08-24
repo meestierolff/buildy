@@ -1,8 +1,6 @@
 export type AuthUnavailableReason =
   | "configuration_missing"
   | "configuration_invalid"
-  | "email_outbox_unconfigured"
-  | "email_outbox_failed"
   | "initialization_failed";
 
 /**
@@ -16,5 +14,14 @@ export class AuthUnavailableError extends Error {
     super("De authenticatieservice is niet beschikbaar.");
     this.name = "AuthUnavailableError";
     this.reason = reason;
+  }
+}
+
+export class AuthRegistrationRejectedError extends Error {
+  readonly code = "BETA_INVITE_REQUIRED";
+
+  constructor(options?: ErrorOptions) {
+    super("Voor een nieuw account is een geldige bèta-uitnodiging nodig.", options);
+    this.name = "AuthRegistrationRejectedError";
   }
 }

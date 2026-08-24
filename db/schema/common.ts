@@ -14,7 +14,12 @@ export const identityMigrationStatusEnum = pgEnum("identity_migration_status", [
   "failed",
 ]);
 
-export const projectVisibilityEnum = pgEnum("project_visibility", ["private", "public"]);
+export const projectVisibilityEnum = pgEnum("project_visibility", [
+  "private",
+  "followers",
+  "unlisted",
+  "public",
+]);
 export const projectLifecycleStatusEnum = pgEnum("project_lifecycle_status", [
   "active",
   "deletion_pending",
@@ -129,6 +134,19 @@ export const fulfilmentStatusEnum = pgEnum("fulfilment_status", [
   "retry_scheduled",
   "manual_review",
   "cancelled",
+]);
+
+/** Active, provider-neutral founder-operated print fulfilment state. */
+export const manualFulfilmentStatusEnum = pgEnum("manual_fulfilment_status", [
+  "awaiting_review",
+  "reviewed",
+  "ordered_manually",
+  "in_production",
+  "shipped",
+  "completed",
+  "manual_review",
+  "cancelled",
+  "refund_review",
 ]);
 
 export const providerInboxStatusEnum = pgEnum("provider_inbox_status", [

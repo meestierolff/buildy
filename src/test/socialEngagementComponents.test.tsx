@@ -1,18 +1,16 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ReactionBar from "@/components/ReactionBar";
-import RequestAccessCard from "@/components/RequestAccessCard";
 import NotificationBell from "@/components/NotificationBell";
 import { useAuth } from "@/hooks/useAuth";
 import {
   useInfiniteNotifications,
+  useMarkAllNotificationsReadMutation,
   useNotificationMutation,
   useReactionMutation,
   useReactionSummary,
 } from "@/hooks/useEngagement";
 import {
-  useProjectAccessMutation,
-  useSocialProjectState,
   useSocialRequestDecisionMutation,
 } from "@/hooks/useSocial";
 import { BrowserRouter } from "@/lib/router";
@@ -20,13 +18,12 @@ import { BrowserRouter } from "@/lib/router";
 vi.mock("@/hooks/useAuth", () => ({ useAuth: vi.fn() }));
 vi.mock("@/hooks/useEngagement", () => ({
   useInfiniteNotifications: vi.fn(),
+  useMarkAllNotificationsReadMutation: vi.fn(),
   useNotificationMutation: vi.fn(),
   useReactionMutation: vi.fn(),
   useReactionSummary: vi.fn(),
 }));
 vi.mock("@/hooks/useSocial", () => ({
-  useProjectAccessMutation: vi.fn(),
-  useSocialProjectState: vi.fn(),
   useSocialRequestDecisionMutation: vi.fn(),
 }));
 vi.mock("sonner", () => ({
@@ -109,43 +106,13 @@ describe("ReactionBar via engagement-API", () => {
     expect(screen.getByText("Reacties niet beschikbaar")).toBeInTheDocument();
     expect(mutateAsync).not.toHaveBeenCalled();
   });
-});
 
-describe("RequestAccessCard via social-API", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(useAuth).mockReturnValue(authValue(true));
-  });
+  it("toont aantallen via een deellink zonder reactieknoppen of mutation", () => {
+    render(<ReactionBar projectId={PROJECT_ID} updateId={UPDATE_ID} canReact={false} />);
 
-  it("toont geen projectmetadata en laat een bevestigd pending-verzoek intrekken", async () => {
-    const mutateAsync = vi.fn().mockResolvedValue({ replayed: false, state: "cancelled" });
-    vi.mocked(useSocialProjectState).mockReturnValue({
-      data: {
-        projectId: PROJECT_ID,
-        viewerRole: "viewer",
-        followStatus: "none",
-        accessStatus: "pending",
-      },
-      isPending: false,
-      isError: false,
-      refetch: vi.fn(),
-    } as unknown as ReturnType<typeof useSocialProjectState>);
-    vi.mocked(useProjectAccessMutation).mockReturnValue({
-      isPending: false,
-      mutateAsync,
-    } as unknown as ReturnType<typeof useProjectAccessMutation>);
-
-    render(
-      <BrowserRouter>
-        <RequestAccessCard projectId={PROJECT_ID} />
-      </BrowserRouter>,
-    );
-
-    expect(screen.getByRole("heading", { name: "Privéproject" })).toBeInTheDocument();
-    expect(screen.queryByText(/keuken|badkamer/i)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Verzoek intrekken" }));
-
-    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({ action: "cancel", projectId: PROJECT_ID }));
+    expect(screen.getByLabelText("Reactie 🔨, 2")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /reactie/i })).not.toBeInTheDocument();
+    expect(mutateAsync).not.toHaveBeenCalled();
   });
 });
 
@@ -168,10 +135,12 @@ describe("NotificationBell via engagement- en social-API", () => {
             projectId: null,
             updateId: null,
             commentId: null,
+            orderId: null,
             readAt: null,
             createdAt: new Date().toISOString(),
           }],
           nextCursor: null,
+          unreadCount: 12,
         }],
         pageParams: [undefined],
       },
@@ -190,7 +159,12 @@ describe("NotificationBell via engagement- en social-API", () => {
     vi.mocked(useNotificationMutation).mockReturnValue({
       mutateAsync: notificationMutation,
     } as unknown as ReturnType<typeof useNotificationMutation>);
-    const decide = vi.fn().mockResolvedValue({ replayed: false, state: "accepted" });
+    const markAllRead = vi.fn().mockResolvedValue({ updatedCount: 12, unreadCount: 0 });
+    vi.mocked(useMarkAllNotificationsReadMutation).mockReturnValue({
+      mutateAsync: markAllRead,
+      isPending: false,
+    } as unknown as ReturnType<typeof useMarkAllNotificationsReadMutation>);
+    const decide = vi.fn().mockResolvedValue({ replayed: false, state: "following" });
     vi.mocked(useSocialRequestDecisionMutation).mockReturnValue({
       mutateAsync: decide,
     } as unknown as ReturnType<typeof useSocialRequestDecisionMutation>);
@@ -201,8 +175,9 @@ describe("NotificationBell via engagement- en social-API", () => {
       </BrowserRouter>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Meldingen, 1 ongelezen" }));
+    fireEvent.click(screen.getByRole("button", { name: "Meldingen, 12 ongelezen" }));
     expect(await screen.findByText("Sam wil je volgen")).toBeInTheDocument();
+    await waitFor(() => expect(markAllRead).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole("button", { name: "Goedkeuren" }));
 
     await waitFor(() => expect(decide).toHaveBeenCalledWith({
@@ -214,9 +189,6 @@ describe("NotificationBell via engagement- en social-API", () => {
       action: "archive",
       notificationId: NOTIFICATION_ID,
     }));
-    expect(notificationMutation).toHaveBeenCalledWith({
-      action: "read",
-      notificationId: NOTIFICATION_ID,
-    });
+    expect(notificationMutation).toHaveBeenCalledTimes(1);
   });
 });

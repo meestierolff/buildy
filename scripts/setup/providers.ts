@@ -1,18 +1,26 @@
 #!/usr/bin/env node
 
-import { HeadBucketCommand, S3Client } from "@aws-sdk/client-s3";
+import { head as headBlob, list as listBlobs } from "@vercel/blob";
 import pg from "pg";
 import Stripe from "stripe";
 
+import { resolveAuthConfiguration } from "../../server/auth/config";
 import { getCapabilities, getRuntimeConfig } from "../../server/config/runtime";
-import { parseEmailTemplateCatalog, EMAIL_TEMPLATE_KEYS } from "../../server/email/templates";
-import { parseApprovedPriceMatrix } from "../../server/orders/approvedPriceMatrix";
-import { parseSellerSnapshot } from "../../server/orders/config";
+import {
+  activeCheckoutMode,
+  checkoutConfigurationIssues,
+} from "../../server/orders/checkoutConfiguration";
 import { resolveRuntimeDataProtection } from "../../server/security/runtimeDataProtection";
-import { createPeechoProvider } from "../peecho/_shared";
+import {
+  requireCheckoutModeForTarget,
+  requireListedBlobProbe,
+  verifyInspectedPrivateBlob,
+  verifyStripeAccount,
+} from "./provider-gates";
 
 type TargetEnvironment = "staging" | "production";
 type ResultStatus = "pass" | "fail" | "manual";
+
 interface CheckResult {
   check: string;
   detail: string;
@@ -29,33 +37,6 @@ if (unknown.length > 0 || argv.has("--staging") === argv.has("--production")) {
 const target: TargetEnvironment = argv.has("--production") ? "production" : "staging";
 const remote = argv.has("--check");
 const results: CheckResult[] = [];
-const R2_CREDENTIAL_BOUNDARIES = [
-  {
-    name: "web",
-    accessKeyEnvironmentName: "R2_WEB_ACCESS_KEY_ID",
-    secretEnvironmentName: "R2_WEB_SECRET_ACCESS_KEY",
-  },
-  {
-    name: "account-worker",
-    accessKeyEnvironmentName: "R2_ACCOUNT_WORKER_ACCESS_KEY_ID",
-    secretEnvironmentName: "R2_ACCOUNT_WORKER_SECRET_ACCESS_KEY",
-  },
-  {
-    name: "media-worker",
-    accessKeyEnvironmentName: "R2_MEDIA_WORKER_ACCESS_KEY_ID",
-    secretEnvironmentName: "R2_MEDIA_WORKER_SECRET_ACCESS_KEY",
-  },
-  {
-    name: "photobook-worker",
-    accessKeyEnvironmentName: "R2_PHOTOBOOK_WORKER_ACCESS_KEY_ID",
-    secretEnvironmentName: "R2_PHOTOBOOK_WORKER_SECRET_ACCESS_KEY",
-  },
-  {
-    name: "fulfilment-worker",
-    accessKeyEnvironmentName: "R2_FULFILMENT_WORKER_ACCESS_KEY_ID",
-    secretEnvironmentName: "R2_FULFILMENT_WORKER_SECRET_ACCESS_KEY",
-  },
-] as const;
 
 function record(status: ResultStatus, check: string, detail: string): void {
   results.push({ status, check, detail });
@@ -104,11 +85,11 @@ function exactHttpsOrigin(value: string): URL {
   return url;
 }
 
-async function fetchWithTimeout(url: URL, init: RequestInit = {}): Promise<Response> {
+async function fetchWithTimeout(url: URL): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
   try {
-    return await fetch(url, { ...init, redirect: "manual", signal: controller.signal });
+    return await fetch(url, { redirect: "manual", signal: controller.signal });
   } finally {
     clearTimeout(timeout);
   }
@@ -126,31 +107,24 @@ await check("Runtimeconfig", () => {
   return `${target}; exacte HTTPS-origin; secrets niet getoond`;
 });
 
-await check("Environmentisolatie", () => {
-  const expectedProviderEnvironment = target === "production" ? "live" : "test";
-  if (requireValue("STRIPE_ENVIRONMENT") !== expectedProviderEnvironment) {
-    throw new Error("Stripe environment mismatch");
-  }
-  if (requireValue("PEECHO_ENVIRONMENT") !== expectedProviderEnvironment) {
-    throw new Error("Peecho environment mismatch");
-  }
-  const stripeKey = requireValue("STRIPE_SECRET_KEY");
-  if (target === "production" ? !stripeKey.startsWith("sk_live_") : !stripeKey.startsWith("sk_test_")) {
-    throw new Error("Stripe key mode mismatch");
-  }
-  return `${expectedProviderEnvironment}-providers passen bij ${target}`;
+await check("Google OpenID Connect", () => {
+  if (!runtime) throw new Error("runtimeconfig niet beschikbaar");
+  const auth = resolveAuthConfiguration(runtime);
+  if (!auth.google.clientId || !auth.google.clientSecret) throw new Error("Google-client ontbreekt");
+  const callback = new URL("/api/auth/callback/google", auth.appOrigin);
+  if (callback.origin !== new URL(auth.appOrigin).origin) throw new Error("Google-callbackorigin wijkt af");
+  return `Google OIDC geconfigureerd; callback ${callback.pathname}`;
 });
 
 await check("Database- en workercredentials", () => {
+  if (!runtime) throw new Error("runtimeconfig niet beschikbaar");
   const names = [
     "DATABASE_URL",
     "DATABASE_DIRECT_URL",
     "DATABASE_ACCOUNT_WORKER_URL",
-    "DATABASE_EMAIL_WORKER_URL",
-    "DATABASE_FULFILMENT_WORKER_URL",
     "DATABASE_MEDIA_WORKER_URL",
-    "DATABASE_PAYMENT_WORKER_URL",
     "DATABASE_PHOTOBOOK_WORKER_URL",
+    ...(activeCheckoutMode(runtime) ? ["DATABASE_PAYMENT_WORKER_URL"] : []),
   ];
   const urls = names.map((name) => new URL(requireValue(name)));
   if (urls.some((url) => !["postgres:", "postgresql:"].includes(url.protocol))) {
@@ -162,60 +136,40 @@ await check("Database- en workercredentials", () => {
   if (urls.some((url) => !["require", "verify-ca", "verify-full"].includes(url.searchParams.get("sslmode") ?? ""))) {
     throw new Error("TLS ontbreekt");
   }
-  return `${urls.length} unieke TLS-loginrollen`;
+  return `${urls.length} unieke Neon TLS-loginrollen`;
 });
 
-await check("Encryptie en retentiebeleid", () => {
+await check("Encryptie, retentie en private Blob", () => {
   if (!runtime) throw new Error("runtimeconfig niet beschikbaar");
   resolveRuntimeDataProtection(runtime);
+  requireValue("BLOB_READ_WRITE_TOKEN");
   requireValue("ACCOUNT_RETENTION_POLICY_VERSION");
   const approvedAt = new Date(requireValue("ACCOUNT_RETENTION_POLICY_APPROVED_AT"));
   if (!Number.isFinite(approvedAt.getTime())) throw new Error("retentiedatum ongeldig");
   if (requireValue("CRON_SECRET").length < 32) throw new Error("cronsecret te kort");
-  return "keyring, blind index, retentieversie en cronsecret geldig";
+  return "keyring, blind index, retentieversie, cronsecret en Blob-token aanwezig";
 });
 
-await check("R2 credentialisolatie", () => {
-  requireValue("R2_ACCOUNT_ID");
-  requireValue("R2_BUCKET_NAME");
-  const credentials = R2_CREDENTIAL_BOUNDARIES.map((boundary) => ({
-    accessKeyId: requireValue(boundary.accessKeyEnvironmentName),
-    secretAccessKey: requireValue(boundary.secretEnvironmentName),
-  }));
-  if (new Set(credentials.map((credential) => credential.accessKeyId)).size !== credentials.length) {
-    throw new Error("R2-boundaries delen een access key");
-  }
-  if (new Set(credentials.map((credential) => credential.secretAccessKey)).size !== credentials.length) {
-    throw new Error("R2-boundaries delen een secret key");
-  }
-  return `${credentials.length} afzonderlijke bucket-scoped credentialparen`;
-});
-
-await check("Order- en e-mailconfig", () => {
+await check("Checkoutgrens", () => {
   if (!runtime) throw new Error("runtimeconfig niet beschikbaar");
-  const matrix = parseApprovedPriceMatrix(requireValue("ORDER_PRICE_MATRIX_JSON"));
-  parseSellerSnapshot(requireValue("ORDER_SELLER_JSON"));
-  requireValue("ORDER_TERMS_VERSION");
-  const offeringId = requireValue("PEECHO_OFFERING_ID_A4_LANDSCAPE");
-  if (matrix.environment !== (target === "production" ? "live" : "test")) {
-    throw new Error("prijsmatrix environment mismatch");
-  }
-  if (!matrix.entries.every((entry) => entry.offeringId === offeringId)) {
-    throw new Error("offering mismatch in prijsmatrix");
-  }
-  const templates = parseEmailTemplateCatalog(requireValue("BREVO_TEMPLATE_IDS"));
-  if (!templates.hasAll(EMAIL_TEMPLATE_KEYS)) throw new Error("e-mailtemplates incompleet");
-  return `${matrix.entries.length} prijsregel(s), ${EMAIL_TEMPLATE_KEYS.length} templateversies`;
+  const mode = requireCheckoutModeForTarget(target, activeCheckoutMode(runtime));
+  const issues = checkoutConfigurationIssues(runtime);
+  if (issues.length > 0) throw new Error(`checkoutconfig ongeldig: ${issues.join(",")}`);
+  return `${mode}-checkout; goedgekeurde prijs- en verkoperconfig geldig`;
 });
 
 await check("Capabilityconfig", () => {
   if (!runtime) throw new Error("runtimeconfig niet beschikbaar");
   const capabilities = getCapabilities(runtime);
-  const notReady = Object.entries(capabilities)
-    .filter(([, status]) => status !== "ready")
-    .map(([name]) => name);
-  if (notReady.length > 0) throw new Error(`capabilities niet actief: ${notReady.join(",")}`);
-  return `${Object.keys(capabilities).length} capabilities ready`;
+  const required = ["database", "authentication", "accountLifecycle", "media", "photobooks"] as const;
+  const notReady = required.filter((name) => capabilities[name] !== "ready");
+  if (notReady.length > 0) throw new Error(`kerncapabilities niet ready: ${notReady.join(",")}`);
+  if (capabilities.email !== "disabled" || capabilities.printFulfilment !== "disabled") {
+    throw new Error("retired capabilities zijn niet disabled");
+  }
+  const expectedPayments = activeCheckoutMode(runtime) ? "ready" : "disabled";
+  if (capabilities.payments !== expectedPayments) throw new Error("paymentcapability wijkt af");
+  return `kern ready; e-mail en automatische fulfilment uit; payments ${expectedPayments}`;
 });
 
 if (remote) {
@@ -224,7 +178,7 @@ if (remote) {
     try {
       await client.connect();
       const result = await client.query<{ migration_count: string }>(
-        "select count(*)::text as migration_count from public.buildy_migrations",
+        "select count(*)::text as migration_count from buildy_meta.schema_migrations",
       );
       return `${result.rows[0]?.migration_count ?? "0"} migrationledgerregels bereikbaar`;
     } finally {
@@ -232,51 +186,34 @@ if (remote) {
     }
   });
 
-  await check("R2 private bucket", async () => {
-    const accountId = requireValue("R2_ACCOUNT_ID");
-    const bucket = requireValue("R2_BUCKET_NAME");
-    for (const boundary of R2_CREDENTIAL_BOUNDARIES) {
-      const client = new S3Client({
-        region: "auto",
-        endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
-        credentials: {
-          accessKeyId: requireValue(boundary.accessKeyEnvironmentName),
-          secretAccessKey: requireValue(boundary.secretEnvironmentName),
-        },
-      });
-      try {
-        await client.send(new HeadBucketCommand({ Bucket: bucket }));
-      } finally {
-        client.destroy();
-      }
-    }
-    const anonymous = await fetchWithTimeout(new URL(`https://${accountId}.r2.cloudflarestorage.com/${bucket}`));
-    if (anonymous.status >= 200 && anonymous.status < 300) throw new Error("bucket anoniem bereikbaar");
-    return `${R2_CREDENTIAL_BOUNDARIES.length} authenticated boundaries; anonymous request niet succesvol`;
+  await check("Google discovery", async () => {
+    const response = await fetchWithTimeout(new URL("https://accounts.google.com/.well-known/openid-configuration"));
+    if (response.status !== 200) throw new Error(`Google discovery HTTP ${response.status}`);
+    const body = await response.json() as { issuer?: unknown };
+    if (body.issuer !== "https://accounts.google.com") throw new Error("Google issuer wijkt af");
+    return "Google issuer en discovery bereikbaar";
   });
 
-  await check("Stripe account", async () => {
-    const stripe = new Stripe(requireValue("STRIPE_SECRET_KEY"), { telemetry: false });
-    const account = await stripe.accounts.retrieve();
-    if (account.id !== requireValue("STRIPE_EXPECTED_ACCOUNT_ID")) throw new Error("account-ID mismatch");
-    if (account.livemode !== (target === "production")) throw new Error("accountmode mismatch");
-    return "verwacht account-ID en mode bevestigd";
-  });
-
-  await check("Brevo account", async () => {
-    const response = await fetchWithTimeout(new URL("https://api.brevo.com/v3/account"), {
-      headers: { accept: "application/json", "api-key": requireValue("BREVO_API_KEY") },
+  await check("Private Vercel Blob", async () => {
+    const token = requireValue("BLOB_READ_WRITE_TOKEN");
+    const page = await listBlobs({
+      token,
+      limit: 1,
+      mode: "expanded",
     });
-    if (response.status !== 200) throw new Error(`Brevo HTTP ${response.status}`);
-    return "read-only accountprobe geslaagd";
+    const listed = requireListedBlobProbe(page.blobs);
+    const inspected = await headBlob(listed.pathname, { token });
+    verifyInspectedPrivateBlob(listed, inspected);
+    return "bestaand private Blob-object read-only geïnspecteerd";
   });
 
-  await check("Peecho offering", async () => {
-    const offerings = await createPeechoProvider().getOfferings();
-    const expected = requireValue("PEECHO_OFFERING_ID_A4_LANDSCAPE");
-    if (!offerings.some((offering) => String(offering.id) === expected)) throw new Error("offering niet gevonden");
-    return `verwachte offering gevonden in ${offerings.length} offering(s)`;
-  });
+  if (runtime && activeCheckoutMode(runtime)) {
+    await check("Stripe account", async () => {
+      const stripe = new Stripe(requireValue("STRIPE_SECRET_KEY"), { telemetry: false });
+      await verifyStripeAccount(stripe, requireValue("STRIPE_EXPECTED_ACCOUNT_ID"), target);
+      return "verwacht Stripe-account en mode bevestigd";
+    });
+  }
 
   await check("Vercel runtime readiness", async () => {
     if (!runtime) throw new Error("runtimeconfig niet beschikbaar");
@@ -292,12 +229,12 @@ if (remote) {
 record("manual", "Dashboard- en contractchecks", [
   "DNS/HTTPS en apex-www redirect",
   "Neon plan/regio/DPA/backupretentie",
-  "R2 CORS/lifecycle/DPA",
-  "Brevo SPF/DKIM/DMARC/webhook",
   "Google consent/origins/callback",
-  "Stripe webhook/tax/businessdetails",
-  "Peecho credits/invoicing/callback/contract/proefdruk",
-  "Vercel plan/cron/alerts",
+  "Vercel Blob-store PRIVATE, regio/DPA en tokenrotatie",
+  "Stripe webhook/tax/businessdetails indien checkout aan staat",
+  "betaalde Bouwboeken handmatig controleren, drukken, verzenden en bijwerken in /beheer/bestellingen",
+  "supportprocedure en proefdruk",
+  "Vercel cron, alerts en budgetlimieten",
 ].join("; "));
 
 for (const result of results) {

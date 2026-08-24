@@ -517,6 +517,8 @@ export const feedbackSubmissions = pgTable(
     userAgentFamily: text("user_agent_family"),
     privacyNoticeVersion: text("privacy_notice_version"),
     receiptCode: text("receipt_code"),
+    assignedToId: uuid("assigned_to_id").references(() => appUsers.id, { onDelete: "set null" }),
+    version: integer("version").default(1).notNull(),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     ...timestamps(),
   },
@@ -545,7 +547,43 @@ export const feedbackSubmissions = pgTable(
     check("feedback_submissions_envelope_ck", sql`(${table.messageCiphertext} IS NULL OR ${table.messageCiphertext} LIKE 'v1.%') AND (${table.contactCiphertext} IS NULL OR ${table.contactCiphertext} LIKE 'v1.%')`),
     check("feedback_submissions_api_shape_ck", sql`${table.idempotencyKey} IS NULL OR (${table.requestHash} IS NOT NULL AND ${table.sourceFingerprintHash} IS NOT NULL AND ${table.messageCiphertext} IS NOT NULL AND ${table.privacyNoticeVersion} IS NOT NULL AND ${table.receiptCode} IS NOT NULL)`),
     check("feedback_submissions_route_ck", sql`${table.route} IS NULL OR char_length(${table.route}) <= 500`),
+    check("feedback_submissions_version_ck", sql`${table.version} > 0`),
     check("feedback_submissions_resolution_ck", sql`${table.status} NOT IN ('resolved', 'closed') OR ${table.resolvedAt} IS NOT NULL`),
+  ],
+);
+
+export const feedbackSubmissionReviews = pgTable(
+  "feedback_submission_reviews",
+  {
+    id: uuid("id").primaryKey(),
+    submissionId: uuid("submission_id")
+      .notNull()
+      .references(() => feedbackSubmissions.id, { onDelete: "restrict" }),
+    actorId: uuid("actor_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "restrict" }),
+    actorRole: appRoleKindEnum("actor_role").notNull(),
+    fromStatus: feedbackStatusEnum("from_status").notNull(),
+    toStatus: feedbackStatusEnum("to_status").notNull(),
+    expectedVersion: integer("expected_version").notNull(),
+    submissionVersion: integer("submission_version").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    requestHash: text("request_hash").notNull(),
+    requestId: text("request_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("feedback_submission_reviews_submission_idx").on(
+      table.submissionId,
+      table.createdAt,
+      table.id,
+    ),
+    uniqueIndex("feedback_submission_reviews_idempotency_uq").on(table.idempotencyKey),
+    check("feedback_submission_reviews_transition_ck", sql`${table.fromStatus} <> ${table.toStatus}`),
+    check("feedback_submission_reviews_versions_ck", sql`${table.expectedVersion} > 0 AND ${table.submissionVersion} = ${table.expectedVersion} + 1`),
+    check("feedback_submission_reviews_idempotency_ck", sql`${table.idempotencyKey} ~ '^feedback-admin-command:v1:[0-9a-f]{64}$'`),
+    check("feedback_submission_reviews_request_hash_ck", sql`${table.requestHash} ~ '^[0-9a-f]{64}$'`),
+    check("feedback_submission_reviews_request_id_ck", sql`${table.requestId} ~ '^[0-9a-f-]{36}$'`),
   ],
 );
 

@@ -9,13 +9,17 @@ import { resetDefaultAuthRuntimeForTests } from "../../server/auth/runtime";
 import { handleApiRequest } from "../../server/http/router";
 
 const requestId = "0d18815a-ef3f-4bc2-a52f-6a9e70413429";
+const account = {
+  currentSession: async () => null,
+  listSessions: async () => [],
+  revokeSession: async () => ({ revoked: false, wasCurrent: false }),
+};
 
-describe("Better Auth HTTP boundary", () => {
+describe("Google OIDC HTTP boundary", () => {
   beforeEach(() => {
     vi.stubEnv("APP_ENV", "test");
     vi.stubEnv("APP_ORIGIN", "https://app.buildy.test");
     vi.stubEnv("DATABASE_URL", "");
-    vi.stubEnv("BETTER_AUTH_SECRET", "");
     resetRuntimeConfigForTests();
     resetDefaultAuthRuntimeForTests();
   });
@@ -29,6 +33,7 @@ describe("Better Auth HTTP boundary", () => {
   it("preserves auth cookies while applying no-store security headers", async () => {
     let forwardedRequestId: string | null = null;
     const handler = createAuthHttpHandler(() => ({
+      account,
       async resolveAuthUserId() {
         return null;
       },
@@ -56,8 +61,9 @@ describe("Better Auth HTTP boundary", () => {
     expect(forwardedRequestId).toBe(requestId);
   });
 
-  it("normalizes Better Auth's rate-limit header without consuming its response", async () => {
+  it("normalizes a legacy rate-limit header without consuming its response", async () => {
     const handler = createAuthHttpHandler(() => ({
+      account,
       async resolveAuthUserId() {
         return null;
       },
@@ -70,7 +76,7 @@ describe("Better Auth HTTP boundary", () => {
     }));
 
     const response = await handler(
-      new Request("https://app.buildy.test/api/auth/sign-in/email", { method: "POST" }),
+      new Request("https://app.buildy.test/api/auth/sign-in/google", { method: "POST" }),
       requestId,
     );
 
@@ -120,7 +126,7 @@ describe("Better Auth HTTP boundary", () => {
       if (origin) headers.set("origin", origin);
 
       const response = await handleApiRequest(
-        new Request("https://app.buildy.test/api/auth/sign-in/email", {
+        new Request("https://app.buildy.test/api/auth/sign-in/google", {
           headers,
           method: "POST",
         }),

@@ -114,7 +114,7 @@ describe("Budgetpagina", () => {
     render(<Budget />);
 
     fireEvent.click(screen.getByRole("button", { name: "Wijzig" }));
-    fireEvent.change(screen.getByLabelText("Totaal projectbudget in euro"), {
+    fireEvent.change(screen.getByLabelText("Totaal verbouwingsbudget in euro"), {
       target: { value: "1234,56" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Opslaan" }));
@@ -172,7 +172,7 @@ describe("Budgetpagina", () => {
     render(<Budget />);
 
     expect(screen.getByText(/geen budget beschikbaar of je hebt geen toegang/i)).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Totaal projectbudget in euro"), {
+    fireEvent.change(screen.getByLabelText("Totaal verbouwingsbudget in euro"), {
       target: { value: "50000,00" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Budget instellen" }));

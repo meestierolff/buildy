@@ -1,52 +1,132 @@
-import { test, expect, type Page } from "@playwright/test";
+import {
+  expect,
+  test as base,
+  type ConsoleMessage,
+  type Page,
+  type Request,
+  type Response,
+} from "@playwright/test";
 
 /**
  * Shared constants and helpers for the Buildy Playwright regression suite.
  *
- * Uses well-known project/user IDs that exist in the shared preview database.
- * Every helper is designed to work with OR without an authenticated
- * storageState so the suite can run against the deployed preview in CI.
+ * Data-dependent journeys install explicit same-origin fixtures; public smoke
+ * journeys intentionally exercise the selected local or deployed base URL.
  */
 
 export const BASE = process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:8090";
 
-/** Project owned by the primary Buildy test account (Scandic Run 2026). */
-export const OWNER_PROJECT_ID = "373b3e31-fb84-45e4-9103-9de7beb43563";
-/** Publicly visible project used to test guest-facing views. */
-export const PUBLIC_PROJECT_ID = "08bab0ef-3afc-4a6a-81c3-640a071ac464";
-/** The primary Buildy test user (owner of OWNER_PROJECT_ID). */
-export const TEST_USER_ID = "af842993-4095-47f7-91e8-a05575ceb70b";
+type BrowserDiagnostics = {
+  messages: string[];
+  dispose: () => void;
+};
 
-export { expect, test };
+const diagnosticsByPage = new WeakMap<Page, BrowserDiagnostics>();
+
+function networkTarget(rawUrl: string): string {
+  try {
+    const url = new URL(rawUrl);
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return rawUrl.split(/[?#]/, 1)[0] ?? "onbekende URL";
+  }
+}
+
+function sanitizeDiagnosticText(value: string): string {
+  return value.replace(/https?:\/\/[^\s)\]}'"]+/g, (rawUrl) => networkTarget(rawUrl));
+}
 
 /**
- * Skip the running test when there is no owner (authenticated) session,
- * which is required for CRUD flows like photobook upload, account settings,
- * and budget editing. In CI we point storageState at a signed-in state file
- * via PLAYWRIGHT_STORAGE_STATE.
+ * Installs one fail-closed browser diagnostic collector per page.
+ *
+ * Query strings and fragments are omitted from network diagnostics so test
+ * output cannot accidentally retain tokens or other user-controlled values.
+ * Read-only fetches cancelled by the client query lifecycle have no failed
+ * server response and are excluded; every other failed resource and every 5xx
+ * response remains a hard failure.
  */
-export const skipWithoutAuth = async (page: Page, reason = "requires authenticated owner session") => {
-  await page.goto(`${BASE}/account`);
-  test.skip(!(await isSignedIn(page)), reason);
+export function installBrowserDiagnostics(page: Page): BrowserDiagnostics {
+  const existing = diagnosticsByPage.get(page);
+  if (existing) return existing;
+
+  const messages: string[] = [];
+  const seen = new Set<string>();
+  const record = (message: string) => {
+    if (seen.has(message)) return;
+    seen.add(message);
+    messages.push(message);
+  };
+  const onPageError = (error: Error) => record(`pageerror: ${sanitizeDiagnosticText(error.message)}`);
+  const onConsole = (message: ConsoleMessage) => {
+    if (message.type() === "error") {
+      record(`console: ${sanitizeDiagnosticText(message.text())}`);
+    }
+  };
+  const onRequestFailed = (request: Request) => {
+    const rawFailure = request.failure()?.errorText ?? "onbekende netwerkfout";
+    const isClientCancelledRead = request.resourceType() === "fetch"
+      && ["GET", "HEAD"].includes(request.method())
+      && /(?:ERR_ABORTED|NS_BINDING_ABORTED|cancelled)/i.test(rawFailure);
+    if (isClientCancelledRead) return;
+    const failure = sanitizeDiagnosticText(rawFailure);
+    record(`requestfailed: ${request.method()} ${networkTarget(request.url())} (${failure})`);
+  };
+  const onResponse = (response: Response) => {
+    if (response.status() < 500) return;
+    record(
+      `http-${response.status()}: ${response.request().method()} ${networkTarget(response.url())}`,
+    );
+  };
+
+  page.on("pageerror", onPageError);
+  page.on("console", onConsole);
+  page.on("requestfailed", onRequestFailed);
+  page.on("response", onResponse);
+
+  const diagnostics = {
+    messages,
+    dispose: () => {
+      page.off("pageerror", onPageError);
+      page.off("console", onConsole);
+      page.off("requestfailed", onRequestFailed);
+      page.off("response", onResponse);
+      diagnosticsByPage.delete(page);
+    },
+  };
+  diagnosticsByPage.set(page, diagnostics);
+  return diagnostics;
+}
+
+type BrowserHarnessFixtures = {
+  browserDiagnostics: void;
 };
 
-/** Check the cookie-backed server session without exposing auth tokens to JS. */
-export const isSignedIn = async (page: Page) => {
-  const response = await page.request.get(`${BASE}/api/auth/get-session`);
-  if (!response.ok()) return false;
+/** Every test importing this shared test object gets fail-closed diagnostics. */
+export const test = base.extend<BrowserHarnessFixtures>({
+  browserDiagnostics: [async ({ page }, use, testInfo) => {
+    const diagnostics = installBrowserDiagnostics(page);
+    await use();
+    diagnostics.dispose();
 
-  const session = await response.json() as { user?: { id?: string } } | null;
-  return Boolean(session?.user?.id);
-};
+    if (diagnostics.messages.length === 0 || testInfo.status === "skipped") return;
+    await testInfo.attach("unexpected-browser-diagnostics", {
+      body: Buffer.from(`${JSON.stringify(diagnostics.messages, null, 2)}\n`, "utf8"),
+      contentType: "application/json",
+    });
+    expect(diagnostics.messages, "onverwachte browser-, netwerk- of serverfouten").toEqual([]);
+  }, { auto: true }],
+});
 
-/** Wait until every image inside photobook pages has loaded (or timeout softly). */
+export { expect };
+
+/** Wait until every image inside photobook pages has loaded; timeout is a test failure. */
 export const waitForPhotobookImages = async (page: Page) => {
   await page.waitForFunction(
     () => Array.from(document.querySelectorAll("[data-photobook-page] img"))
       .every((img) => (img as HTMLImageElement).complete),
     undefined,
     { timeout: 5000 },
-  ).catch(() => undefined);
+  );
 };
 
 /**
@@ -98,21 +178,3 @@ export const collectImageDiagnostics = (page: Page) =>
       overlaps,
     };
   });
-
-/**
- * Fail the current test if any unexpected uncaught page errors happen
- * during a scenario. Call after registering listeners early in a test.
- */
-export const trackConsoleErrors = (page: Page) => {
-  const errors: string[] = [];
-  page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
-  page.on("console", (msg) => {
-    if (msg.type() === "error") {
-      const text = msg.text();
-      // Ignore expected auth 401s and third-party ResizeObserver noise.
-      if (/401|ResizeObserver|Failed to load resource/i.test(text)) return;
-      errors.push(`console: ${text}`);
-    }
-  });
-  return errors;
-};

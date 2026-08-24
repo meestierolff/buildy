@@ -253,13 +253,6 @@ export function assertTargetWriteAuthorized(input: TargetWriteGateInput): URL {
   });
 }
 
-export function assertStorageWriteAuthorized(input: TargetWriteGateInput): URL {
-  return assertWriteAuthorizedForPolicy(input, {
-    allowedHostSuffixes: ["r2.cloudflarestorage.com", "localhost"],
-    label: "R2 doel",
-  });
-}
-
 function decodeArtifactKey(encoded: string): Buffer {
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) {
     throw new MigrationSafetyError("ARTIFACT_INVALID", "Artifactkey is geen geldige base64waarde.");

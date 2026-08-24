@@ -1,12 +1,15 @@
 import { Bell, CheckCheck, Loader2, RefreshCw } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { toast } from "sonner";
 
 import AsyncState from "@/components/app/AsyncState";
 import NotificationList from "@/components/notifications/NotificationList";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
-import { useInfiniteNotifications, useNotificationMutation } from "@/hooks/useEngagement";
+import {
+  useInfiniteNotifications,
+  useMarkAllNotificationsReadMutation,
+} from "@/hooks/useEngagement";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { authPagePath } from "@/lib/authClient";
 import { PRODUCT_ROUTES } from "@/lib/productNavigation";
@@ -15,38 +18,32 @@ import { Navigate } from "@/lib/router";
 const Notifications = () => {
   const { user, loading: authLoading } = useAuth();
   const notificationsQuery = useInfiniteNotifications(Boolean(user));
-  const readMutation = useNotificationMutation();
-  const [markingAll, setMarkingAll] = useState(false);
+  const markAllReadMutation = useMarkAllNotificationsReadMutation();
   const notifications = useMemo(
     () => notificationsQuery.data?.pages.flatMap((page) => page.items) ?? [],
     [notificationsQuery.data],
   );
-  const unreadIds = notifications
-    .filter((notification) => notification.status === "unread")
-    .map((notification) => notification.id);
+  const unreadCount = notificationsQuery.data?.pages.at(-1)?.unreadCount ?? 0;
 
   usePageMeta({
     title: "Notificaties — Buildy",
-    description: "Bekijk en beheer meldingen over je projecten en connecties.",
+    description: "Bekijk en beheer meldingen over je verbouwingen en connecties.",
     path: PRODUCT_ROUTES.notifications,
     noIndex: true,
   });
 
-  const markAllVisibleRead = async () => {
-    if (markingAll || unreadIds.length === 0) return;
-    setMarkingAll(true);
+  const markAllRead = async () => {
+    if (markAllReadMutation.isPending || unreadCount === 0) return;
     try {
-      const results = await Promise.allSettled(unreadIds.map((notificationId) =>
-        readMutation.mutateAsync({ action: "read", notificationId })));
-      const failed = results.filter((result) => result.status === "rejected").length;
-      if (failed > 0) {
-        console.error("Some visible notifications could not be marked as read");
-        toast.error("Niet alle meldingen konden als gelezen worden gemarkeerd");
-      } else {
-        toast.success("Zichtbare meldingen gemarkeerd als gelezen");
-      }
-    } finally {
-      setMarkingAll(false);
+      const result = await markAllReadMutation.mutateAsync();
+      toast.success(
+        result.unreadCount === 0
+          ? "Alle meldingen gemarkeerd als gelezen"
+          : `${result.updatedCount} meldingen gemarkeerd; er zijn nieuwe meldingen`,
+      );
+    } catch (error) {
+      console.error("Notifications could not be marked as read", error);
+      toast.error("Meldingen konden niet als gelezen worden gemarkeerd");
     }
   };
 
@@ -68,19 +65,19 @@ const Notifications = () => {
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Jouw activiteit</p>
           <h1 className="font-serif text-4xl leading-tight md:text-5xl">Notificaties</h1>
           <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
-            Verzoeken, reacties en projectupdates die voor jouw account bestemd zijn.
+            Verzoeken, reacties, Bouwmomenten en Bouwboekbestellingen voor jouw account.
           </p>
         </div>
-        {unreadIds.length > 0 ? (
+        {unreadCount > 0 ? (
           <Button
             type="button"
             variant="outline"
             className="min-h-11 shrink-0 gap-2"
-            disabled={markingAll}
-            onClick={() => void markAllVisibleRead()}
+            disabled={markAllReadMutation.isPending}
+            onClick={() => void markAllRead()}
           >
             <CheckCheck className="h-4 w-4" aria-hidden="true" />
-            {markingAll ? "Bezig…" : "Zichtbare gelezen"}
+            {markAllReadMutation.isPending ? "Bezig…" : "Alles gelezen"}
           </Button>
         ) : null}
       </header>

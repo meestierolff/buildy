@@ -3,6 +3,7 @@ import type {
   PhotobookDocument,
   PhotobookPage,
 } from "../../../shared/contracts/photobooks";
+import { ResilientImage } from "@/components/ResilientMedia";
 import { photobookMediaProxyPath } from "@/lib/photobookApi";
 import {
   coverCropImageStyle,
@@ -64,7 +65,7 @@ export const CanonicalPhotobookPage = ({
             key={block.id}
             style={{ ...framePercentStyle(frame, pageSize), zIndex: 10 }}
           >
-            <img
+            <ResilientImage
               alt={decorative ? "" : block.altText}
               className="absolute max-w-none select-none"
               draggable={false}

@@ -102,11 +102,10 @@ describeWithDatabase("moderation/support PostgreSQL boundary", () => {
       `, [reporterId, publicOwnerId, sourceHash], "42501");
 
       const receipt = await client.query<{
-        email_confirmation_queued: boolean;
         id: string;
         replayed: boolean;
       }>(`
-        SELECT id, replayed, email_confirmation_queued
+        SELECT id, replayed
         FROM app_submit_moderation_report(
           $1, $2, $3, 'profile', $4, 'privacy', $5, $6, $7, $8,
           $9, 'content-policy-test', '/profiel/test', $10, $11, $12
@@ -128,7 +127,6 @@ describeWithDatabase("moderation/support PostgreSQL boundary", () => {
       expect(receipt.rows[0]).toEqual({
         id: reportId,
         replayed: false,
-        email_confirmation_queued: true,
       });
 
       const visible = await client.query<{
@@ -189,21 +187,7 @@ describeWithDatabase("moderation/support PostgreSQL boundary", () => {
         WHERE aggregate_id = ANY($1::uuid[])
         ORDER BY event_type
       `, [[reportId, supportId]]);
-      expect(events.rows).toEqual([
-        {
-          event_type: "moderation.report.received.requested.v1",
-          payload: { schemaVersion: 1, reportId, receiptCode: reportReceiptCode },
-        },
-        {
-          event_type: "support.confirmation.requested.v1",
-          payload: {
-            schemaVersion: 1,
-            submissionId: supportId,
-            kind: "third_party_request",
-            receiptCode: supportReceiptCode,
-          },
-        },
-      ]);
+      expect(events.rows).toEqual([]);
       const serializedEvents = JSON.stringify(events.rows);
       expect(serializedEvents).not.toContain("encrypted-contact");
       expect(serializedEvents).not.toContain("encrypted-support-message");

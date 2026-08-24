@@ -14,7 +14,6 @@ export interface CreateCheckoutInput {
   currency: "EUR";
   lines: CheckoutLine[];
   customerEmail?: string;
-  allowedShippingCountries: string[];
   successUrl: string;
   cancelUrl: string;
   idempotencyKey: string;

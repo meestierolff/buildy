@@ -8,6 +8,7 @@ import {
   type DeleteUpdateInput,
   type EditUpdateInput,
   type ProjectOverview,
+  type ProjectVisibility,
   type UpdateMediaInput,
 } from "../../shared/contracts/projects";
 
@@ -18,12 +19,12 @@ export type NewProjectDraft = {
   address: string;
   startDate: string;
   expectedEndDate: string;
-  visibility: "private" | "public";
+  visibility: ProjectVisibility;
 };
 
 export type CreateProjectFlowCommand = {
   input: CreateProjectInput;
-  visibility: "private" | "public";
+  visibility: ProjectVisibility;
 };
 
 function nonEmpty(value: string): string | undefined {
@@ -69,6 +70,8 @@ export function buildCreateUpdateCommand(
   project: Pick<ProjectOverview, "version">,
   idempotencyKey: string,
 ): CreateUpdateInput {
+  const title = nonEmpty(draft.title);
+  const description = nonEmpty(draft.description);
   const media: UpdateMediaInput[] = draft.media.map((item, sortOrder) => ({
     assetId: item.assetId,
     role: item.compareRole ?? "gallery",
@@ -79,8 +82,8 @@ export function buildCreateUpdateCommand(
     idempotencyKey,
     expectedProjectVersion: project.version,
     updateDate: draft.updateDate,
-    title: draft.title.trim(),
-    description: nonEmpty(draft.description),
+    ...(title ? { title } : {}),
+    ...(description ? { description } : {}),
     phaseId: draft.phaseId || undefined,
     isMilestone: draft.isMilestone,
     media,

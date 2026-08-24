@@ -81,7 +81,6 @@ export const moderationReportReceiptSchema = z.object({
   status: z.literal("received"),
   submittedAt: z.string().datetime({ offset: true }),
   replayed: z.boolean(),
-  emailConfirmationQueued: z.boolean(),
 });
 export type ModerationReportReceipt = z.infer<typeof moderationReportReceiptSchema>;
 export const moderationReportResponseSchema = apiSuccessSchema(moderationReportReceiptSchema);
@@ -131,7 +130,6 @@ export const feedbackSubmissionReceiptSchema = z.object({
   status: z.literal("received"),
   submittedAt: z.string().datetime({ offset: true }),
   replayed: z.boolean(),
-  emailConfirmationQueued: z.boolean(),
 });
 export type FeedbackSubmissionReceipt = z.infer<typeof feedbackSubmissionReceiptSchema>;
 export const feedbackSubmissionResponseSchema = apiSuccessSchema(feedbackSubmissionReceiptSchema);

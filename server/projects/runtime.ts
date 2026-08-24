@@ -9,7 +9,7 @@ type ProjectHandler = (
 
 let defaultHandler: ProjectHandler | undefined;
 
-/** Compose only after a trusted Better Auth session-to-app-user mapper exists. */
+/** Compose only after a trusted session-to-app-user mapper exists. */
 export function configureDefaultProjectRuntime(dependencies: ProjectHttpDependencies): void {
   if (defaultHandler) throw new Error("De standaard projectruntime is al geconfigureerd.");
   defaultHandler = createProjectHttpHandler(dependencies);

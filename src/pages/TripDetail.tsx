@@ -12,7 +12,6 @@ import {
   RefreshCw,
   Share2,
   Trash2,
-  Users,
   Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -21,13 +20,12 @@ import AddStepDialog from "@/components/AddStepDialog";
 import AllPhotosTab from "@/components/AllPhotosTab";
 import BlueprintTimeline from "@/components/BlueprintTimeline";
 import EditStepDialog from "@/components/EditStepDialog";
-import FollowButton from "@/components/FollowButton";
 import ProgressControl from "@/components/ProgressControl";
-import ProjectAccessManager from "@/components/ProjectAccessManager";
-import RequestAccessCard from "@/components/RequestAccessCard";
 import ReportDialog from "@/components/moderation/ReportDialog";
+import { ResilientImage } from "@/components/ResilientMedia";
 import PrivacyBadge from "@/components/app/PrivacyBadge";
 import { FloorplanBoard } from "@/components/project/FloorplanBoard";
+import { ShareLinkDialog } from "@/components/project/ShareLinkDialog";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -40,25 +38,49 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePageMeta } from "@/hooks/usePageMeta";
-import { useDeleteProjectMutation, useProject } from "@/hooks/useProjectApi";
+import { useDeleteProjectMutation, useProject, useUpdateProjectMutation } from "@/hooks/useProjectApi";
 import { ApiClientError } from "@/lib/apiClient";
 import { useAppFeatures } from "@/lib/appFeatures";
 import { createClientIdempotencyKey } from "@/lib/clientIdempotency";
+import { LANDING_PHOTO_INTENT } from "@/lib/landingPhotoHandoffStore";
 import { PRODUCT_ROUTES } from "@/lib/productNavigation";
 import { recordProductEvent } from "@/lib/betaApi";
 import { Link, Navigate, useLocation, useNavigate, useParams } from "@/lib/router";
-import type { ProjectUpdate } from "../../shared/contracts/projects";
+import type { ProjectUpdate, ProjectVisibility } from "../../shared/contracts/projects";
+
+const PROJECT_VISIBILITY_OPTIONS: ReadonlyArray<{
+  value: ProjectVisibility;
+  label: string;
+}> = [
+  { value: "private", label: "Alleen ik" },
+  { value: "followers", label: "Mijn volgers" },
+  { value: "unlisted", label: "Alleen via deellink" },
+  { value: "public", label: "Openbaar" },
+];
+
+function visibilityShareText(visibility: ProjectVisibility): string {
+  switch (visibility) {
+    case "private":
+      return "Deze verbouwing is alleen voor de eigenaar zichtbaar.";
+    case "followers":
+      return "Bekijk deze verbouwing op Buildy. Je moet het profiel van de maker actief volgen.";
+    case "unlisted":
+      return "Bekijk deze verbouwing via een tijdelijke Buildy-deellink.";
+    case "public":
+      return "Bekijk deze verbouwing op Buildy.";
+  }
+}
 
 function isAccessError(error: unknown): boolean {
   return error instanceof ApiClientError && [401, 403, 404].includes(error.status);
 }
 
 function updateLabel(title: string | null, room: string | null): string {
-  return title?.trim() || room?.trim() || "Projectupdate";
+  return title?.trim() || room?.trim() || "Bouwmoment";
 }
 
 const TripDetail = () => {
@@ -71,13 +93,18 @@ const TripDetail = () => {
   const { hash, search } = useLocation();
   const { overviewQuery, timelineQuery } = useProject(projectId, Boolean(projectId));
   const deleteProject = useDeleteProjectMutation(projectId);
+  const updateProject = useUpdateProjectMutation(projectId);
   const [showAddUpdate, setShowAddUpdate] = useState(false);
-  const [showAccessManager, setShowAccessManager] = useState(false);
+  const [importLandingPhoto, setImportLandingPhoto] = useState(false);
   const [editingUpdate, setEditingUpdate] = useState<ProjectUpdate | null>(null);
   const [activeTab, setActiveTab] = useState("timeline");
   const [milestonesOnly, setMilestonesOnly] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [isOnline, setIsOnline] = useState(() => (
+    typeof navigator === "undefined" || navigator.onLine
+  ));
   const deletionKey = useRef<string | null>(null);
   const composerRequestHandled = useRef<string | null>(null);
 
@@ -97,6 +124,17 @@ const TripDetail = () => {
     if (latest && latest.version !== editingUpdate.version) setEditingUpdate(latest);
   }, [editingUpdate, updates]);
 
+  useEffect(() => {
+    const markOnline = () => setIsOnline(true);
+    const markOffline = () => setIsOnline(false);
+    window.addEventListener("online", markOnline);
+    window.addEventListener("offline", markOffline);
+    return () => {
+      window.removeEventListener("online", markOnline);
+      window.removeEventListener("offline", markOffline);
+    };
+  }, []);
+
   const coverFallback = useMemo(
     () => updates.flatMap((update) => update.media).find((media) => (
       media.contentType !== "application/pdf" && !media.contentType?.startsWith("video/")
@@ -113,33 +151,38 @@ const TripDetail = () => {
     composerRequestHandled.current = project.id;
     if (project.viewerAccess === "owner" && project.canEdit) {
       setActiveTab("timeline");
+      setImportLandingPhoto(query.get("intent") === LANDING_PHOTO_INTENT);
       setShowAddUpdate(true);
     }
 
     query.delete("update");
+    query.delete("intent");
     const suffix = query.size > 0 ? `?${query.toString()}` : "";
     navigate(`${PRODUCT_ROUTES.project(project.id)}${suffix}${hash}`, { replace: true });
   }, [hash, navigate, project, search]);
 
   usePageMeta({
-    title: project?.title ? `${project.title} — Buildy` : "Project — Buildy",
+    title: project?.title ? `${project.title} — Buildy` : "Verbouwing — Buildy",
     description: project?.description
       ? `${project.description.slice(0, 145)}${project.description.length > 145 ? "..." : ""}`
-      : "Bekijk de updates, foto's, fases en mijlpalen van dit renovatieproject op Buildy.",
+      : "Bekijk de Bouwmomenten, foto's, fases en mijlpalen van deze verbouwing op Buildy.",
     image: pageCover,
-    imageAlt: project?.title ? `Renovatieproject ${project.title} op Buildy` : "Renovatieproject op Buildy",
+    imageAlt: project?.title ? `Verbouwing ${project.title} op Buildy` : "Verbouwing op Buildy",
     path: projectId ? PRODUCT_ROUTES.project(projectId) : undefined,
     noIndex: Boolean(project && project.visibility !== "public"),
     type: "article",
   });
 
   const handleShare = async () => {
+    if (project?.visibility === "private") return;
+    if (project?.visibility === "unlisted") {
+      if (project.viewerAccess === "owner") setShareDialogOpen(true);
+      return;
+    }
     const url = window.location.href;
     const shareData = {
-      title: project?.title ? `${project.title} op Buildy` : "Renovatieproject op Buildy",
-      text: project?.visibility === "public"
-        ? "Bekijk dit renovatieproject op Buildy."
-        : "Bekijk dit privéproject op Buildy. Toegang van de eigenaar is vereist.",
+      title: project?.title ? `${project.title} op Buildy` : "Verbouwing op Buildy",
+      text: project ? visibilityShareText(project.visibility) : "Bekijk deze verbouwing op Buildy.",
       url,
     };
 
@@ -150,10 +193,10 @@ const TripDetail = () => {
           eventName: "project_shared",
           properties: {
             schemaVersion: 1,
-            visibility: project?.visibility === "public" ? "public" : "private",
+            visibility: project?.visibility ?? "private",
           },
         }).catch(() => undefined);
-        toast.success("Project gedeeld");
+        toast.success("Verbouwing gedeeld");
         return;
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -175,14 +218,12 @@ const TripDetail = () => {
         input.remove();
         if (!copied) throw new Error("Clipboard fallback failed");
       }
-      toast.success(project?.visibility === "public"
-        ? "Projectlink gekopieerd"
-        : "Privélink gekopieerd — de ontvanger moet eerst toegang krijgen");
+      toast.success("Link naar de verbouwing gekopieerd");
       void recordProductEvent({
         eventName: "project_shared",
         properties: {
           schemaVersion: 1,
-          visibility: project?.visibility === "public" ? "public" : "private",
+          visibility: project?.visibility ?? "private",
         },
       }).catch(() => undefined);
     } catch (error) {
@@ -191,22 +232,36 @@ const TripDetail = () => {
     }
   };
 
+  const handleVisibilityChange = async (visibility: ProjectVisibility) => {
+    if (!project || project.viewerAccess !== "owner" || visibility === project.visibility) return;
+    try {
+      await updateProject.mutateAsync({
+        expectedVersion: project.version,
+        visibility,
+      });
+      toast.success(`Zichtbaarheid ingesteld op ${PROJECT_VISIBILITY_OPTIONS.find((option) => option.value === visibility)?.label ?? visibility}`);
+    } catch (error) {
+      console.error("Project visibility update failed", error);
+      toast.error(error instanceof ApiClientError ? error.message : "Zichtbaarheid aanpassen lukt nu niet.");
+    }
+  };
+
   const handleProjectDeletion = async () => {
-    if (!project || deleteConfirmation !== "VERWIJDER PROJECT" || deleteProject.isPending) return;
+    if (!project || deleteConfirmation !== "VERWIJDER VERBOUWING" || deleteProject.isPending) return;
     deletionKey.current ??= createClientIdempotencyKey("project-deletion");
     try {
       await deleteProject.mutateAsync({
-        confirmation: "VERWIJDER PROJECT",
+        confirmation: "VERWIJDER VERBOUWING",
         expectedVersion: project.version,
         idempotencyKey: deletionKey.current,
       });
-      toast.success("Projectverwijdering gestart");
+      toast.success("Verwijdering van de verbouwing gestart");
       navigate(PRODUCT_ROUTES.projects, { replace: true });
     } catch (error) {
       console.error("Project deletion request failed", error);
       const message = error instanceof ApiClientError && error.status === 409
         ? error.message
-        : "Project verwijderen lukt nu niet. Probeer dezelfde aanvraag opnieuw.";
+        : "De verbouwing verwijderen lukt nu niet. Probeer dezelfde aanvraag opnieuw.";
       toast.error(message);
     }
   };
@@ -230,8 +285,8 @@ const TripDetail = () => {
   if (!projectId) {
     return (
       <main className="container py-20 text-center" role="alert">
-        <h1 className="text-2xl font-semibold">Project niet gevonden</h1>
-        <p className="mt-2 text-muted-foreground">De projectlink is niet geldig.</p>
+        <h1 className="text-2xl font-semibold">Verbouwing niet gevonden</h1>
+        <p className="mt-2 text-muted-foreground">De link naar deze verbouwing is niet geldig.</p>
         <Button asChild variant="outline" className="mt-6 min-h-11">
           <Link to={PRODUCT_ROUTES.discover}>Terug naar overzicht</Link>
         </Button>
@@ -243,7 +298,7 @@ const TripDetail = () => {
     return (
       <main className="flex min-h-[70vh] items-center justify-center" aria-busy="true">
         <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
-          <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> Project laden…
+          <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> Verbouwing laden…
         </p>
       </main>
     );
@@ -252,15 +307,25 @@ const TripDetail = () => {
   // A denied timeline also fails the entire page closed: cached overview data
   // must not remain visible after project access has been revoked.
   if (isAccessError(overviewQuery.error) || isAccessError(timelineQuery.error)) {
-    return <RequestAccessCard projectId={projectId} />;
+    return (
+      <main className="container py-20 text-center" role="alert">
+        <h1 className="text-2xl font-semibold">Verbouwing niet gevonden</h1>
+        <p className="mt-2 text-muted-foreground">Deze link naar de verbouwing is niet beschikbaar.</p>
+        <Button asChild variant="outline" className="mt-6 min-h-11">
+          <Link to={PRODUCT_ROUTES.discover}>Terug naar overzicht</Link>
+        </Button>
+      </main>
+    );
   }
 
   if (overviewQuery.isError || !project) {
     return (
       <main className="container py-20 text-center" role="alert">
-        <h1 className="text-2xl font-semibold">Project kon niet worden geladen</h1>
+        <h1 className="text-2xl font-semibold">Verbouwing kon niet worden geladen</h1>
         <p className="mt-2 text-muted-foreground">
-          Er ging iets mis bij het ophalen van dit project. Probeer het opnieuw.
+          {isOnline
+            ? "Er ging iets mis bij het ophalen van deze verbouwing. Probeer het opnieuw."
+            : "Je bent offline. Maak opnieuw verbinding en probeer het daarna nog een keer."}
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <Button
@@ -294,9 +359,9 @@ const TripDetail = () => {
     : null;
   const privacyLevel = project.visibility === "public"
     ? "public"
-    : project.viewerAccess === "granted"
-      ? "shared"
-      : "private";
+    : project.visibility === "private"
+      ? "private"
+      : "shared";
   const availableUpdates = updates.map((update) => ({
     id: update.id,
     label: updateLabel(update.title, update.room),
@@ -308,9 +373,10 @@ const TripDetail = () => {
         <div className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 md:pt-6 lg:px-8">
           {pageCover && (
             <figure className="relative aspect-[4/3] max-h-[34rem] w-full overflow-hidden bg-muted sm:aspect-[16/8] lg:aspect-[16/7]">
-              <img
+              <ResilientImage
                 src={pageCover}
                 alt={`Omslagfoto van ${project.title}`}
+                fallbackLabel="Omslagfoto niet beschikbaar"
                 className="h-full w-full object-cover"
               />
             </figure>
@@ -328,10 +394,17 @@ const TripDetail = () => {
                     {project.projectType}
                   </span>
                 )}
-                <PrivacyBadge level={privacyLevel} />
+                <PrivacyBadge
+                  level={privacyLevel}
+                  label={project.visibility === "followers"
+                    ? "Mijn volgers"
+                    : project.visibility === "unlisted"
+                      ? "Deellink"
+                      : undefined}
+                />
                 {isOwner && (
                   <span className="rounded-full border border-border bg-secondary px-2.5 py-1 text-xs font-semibold" aria-label="Eigenaarsweergave">
-                    Jouw project
+                    Jouw verbouwing
                   </span>
                 )}
               </div>
@@ -361,34 +434,38 @@ const TripDetail = () => {
                   onClick={() => setShowAddUpdate(true)}
                   className="min-h-11 flex-1 gap-2 bg-accent text-accent-foreground hover:bg-accent/90 sm:flex-none"
                 >
-                  <Plus className="h-4 w-4" aria-hidden="true" /> Update toevoegen
+                  <Plus className="h-4 w-4" aria-hidden="true" /> Bouwmoment toevoegen
                 </Button>
-              ) : !isOwner ? (
-                <FollowButton projectId={project.id} className="min-h-11 flex-1 sm:flex-none" />
               ) : null}
-              <Button type="button" variant="outline" onClick={() => void handleShare()} className="min-h-11 gap-2">
-                <Share2 className="h-4 w-4" aria-hidden="true" /> Delen
-              </Button>
+              {project.visibility !== "private" && (project.visibility !== "unlisted" || isOwner) ? (
+                <Button type="button" variant="outline" onClick={() => void handleShare()} className="min-h-11 gap-2">
+                  <Share2 className="h-4 w-4" aria-hidden="true" /> {project.visibility === "unlisted" ? "Deellink" : "Delen"}
+                </Button>
+              ) : null}
               {!isOwner ? (
                 <ReportDialog
                   compact
                   targetType="project"
                   targetId={project.id}
-                  targetLabel={`Project ${project.title}`}
+                  targetLabel={`Verbouwing ${project.title}`}
                 />
               ) : null}
               {isOwner && (
                 <>
-                  {project.visibility === "private" ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="min-h-11 gap-2"
-                      onClick={() => setShowAccessManager(true)}
-                    >
-                      <Users className="h-4 w-4" aria-hidden="true" /> Toegang
-                    </Button>
-                  ) : null}
+                  <Select
+                    value={project.visibility}
+                    onValueChange={(value) => void handleVisibilityChange(value as ProjectVisibility)}
+                    disabled={updateProject.isPending}
+                  >
+                    <SelectTrigger className="min-h-11 w-full sm:w-48" aria-label="Zichtbaarheid van de verbouwing">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PROJECT_VISIBILITY_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Button asChild variant="outline" className="min-h-11 gap-2">
                     <Link to={PRODUCT_ROUTES.projectBudget(project.id)}>
                       <Wallet className="h-4 w-4" aria-hidden="true" /> Budget
@@ -413,14 +490,14 @@ const TripDetail = () => {
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>Project definitief verwijderen?</AlertDialogTitle>
+                        <AlertDialogTitle>Verbouwing definitief verwijderen?</AlertDialogTitle>
                         <AlertDialogDescription>
-                          Buildy verbergt het project direct en verwijdert de privébestanden via een controleerbare achtergrondtaak. Een actieve Bouwboekbestelling blokkeert dit. Bewijs van afgeronde bestellingen blijft volgens het bewaarbeleid beschermd.
+                          Buildy verbergt de verbouwing direct en verwijdert de privébestanden via een controleerbare achtergrondtaak. Een actieve Bouwboekbestelling blokkeert dit. Bewijs van afgeronde bestellingen blijft volgens het bewaarbeleid beschermd.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <div className="space-y-2">
                         <label htmlFor="delete-project-confirmation" className="text-sm font-medium">
-                          Typ VERWIJDER PROJECT om te bevestigen
+                          Typ VERWIJDER VERBOUWING om te bevestigen
                         </label>
                         <Input
                           id="delete-project-confirmation"
@@ -436,13 +513,13 @@ const TripDetail = () => {
                         </AlertDialogCancel>
                         <AlertDialogAction
                           className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          disabled={deleteConfirmation !== "VERWIJDER PROJECT" || deleteProject.isPending}
+                          disabled={deleteConfirmation !== "VERWIJDER VERBOUWING" || deleteProject.isPending}
                           onClick={(event) => {
                             event.preventDefault();
                             void handleProjectDeletion();
                           }}
                         >
-                          {deleteProject.isPending ? "Verwijdering starten…" : "Project verwijderen"}
+                          {deleteProject.isPending ? "Verwijdering starten…" : "Verbouwing verwijderen"}
                         </AlertDialogAction>
                       </AlertDialogFooter>
                     </AlertDialogContent>
@@ -454,7 +531,7 @@ const TripDetail = () => {
             <div className="lg:col-span-2">
               <dl className="grid grid-cols-4 border-y border-border">
                 {[
-                  ["Updates", project.updateCount],
+                  ["Bouwmomenten", project.updateCount],
                   ["Media", mediaCount],
                   ["Dagen", days ?? "—"],
                   ["Mijlpalen", milestones],
@@ -480,7 +557,7 @@ const TripDetail = () => {
         </div>
       </section>
 
-      <section className="bg-background" aria-label="Projectinhoud">
+      <section className="bg-background" aria-label="Inhoud van de verbouwing">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <Tabs
             value={activeTab}
@@ -491,9 +568,9 @@ const TripDetail = () => {
             className="pt-5 md:pt-7"
           >
             <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-border pb-3">
-              <TabsList className="h-auto max-w-full justify-start overflow-x-auto bg-transparent p-0" aria-label="Projectweergave">
+              <TabsList className="h-auto max-w-full justify-start overflow-x-auto bg-transparent p-0" aria-label="Weergave van de verbouwing">
                 <TabsTrigger value="timeline" className="min-h-11 gap-1.5 rounded-none border-b-2 border-transparent px-3 data-[state=active]:border-accent data-[state=active]:bg-transparent">
-                  <LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" /> Tijdlijn
+                  <LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" /> Verhaal
                 </TabsTrigger>
                 {mediaFeaturesEnabled ? (
                   <TabsTrigger value="floorplan" className="min-h-11 gap-1.5 rounded-none border-b-2 border-transparent px-3 data-[state=active]:border-accent data-[state=active]:bg-transparent">
@@ -541,11 +618,15 @@ const TripDetail = () => {
 
               {timelineQuery.isPending ? (
                 <p className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground" role="status" aria-busy="true">
-                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> Updates laden…
+                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> Bouwmomenten laden…
                 </p>
               ) : timelineQuery.isError ? (
                 <div className="border-y border-border py-14 text-center" role="alert">
-                  <p className="text-muted-foreground">De updates konden niet worden geladen.</p>
+                  <p className="text-muted-foreground">
+                    {isOnline
+                      ? "De Bouwmomenten konden niet worden geladen."
+                      : "Je bent offline. Maak opnieuw verbinding om de Bouwmomenten te laden."}
+                  </p>
                   <Button type="button" variant="outline" onClick={() => void timelineQuery.refetch()} className="mt-4 min-h-11 gap-2">
                     <RefreshCw className="h-4 w-4" aria-hidden="true" /> Opnieuw proberen
                   </Button>
@@ -553,7 +634,7 @@ const TripDetail = () => {
               ) : visibleUpdates.length === 0 ? (
                 <div className="border-y border-border py-16 text-center text-muted-foreground">
                   <Hammer className="mx-auto mb-3 h-12 w-12 opacity-40" aria-hidden="true" />
-                  <p className="text-lg">{milestonesOnly ? "Geen mijlpalen gevonden." : "Nog geen updates."}</p>
+                  <p className="text-lg">{milestonesOnly ? "Geen mijlpalen gevonden." : "Nog geen Bouwmomenten."}</p>
                   {canEditProject && !milestonesOnly && (
                     <>
                       <p className="mt-1 text-sm">Begin met een foto van de huidige situatie.</p>
@@ -562,7 +643,7 @@ const TripDetail = () => {
                         onClick={() => setShowAddUpdate(true)}
                         className="mt-5 min-h-11 bg-accent text-accent-foreground hover:bg-accent/90"
                       >
-                        <Plus className="mr-2 h-4 w-4" aria-hidden="true" /> Eerste update toevoegen
+                        <Plus className="mr-2 h-4 w-4" aria-hidden="true" /> Eerste Bouwmoment toevoegen
                       </Button>
                     </>
                   )}
@@ -572,6 +653,8 @@ const TripDetail = () => {
                   updates={visibleUpdates}
                   projectId={project.id}
                   canEdit={canEditProject}
+                  canEngage={project.viewerAccess !== "link"}
+                  canCopyUpdateLink={project.visibility === "followers" || project.visibility === "public"}
                   onEdit={setEditingUpdate}
                 />
               )}
@@ -586,7 +669,7 @@ const TripDetail = () => {
                     className="min-h-11 gap-2"
                   >
                     {timelineQuery.isFetchingNextPage && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
-                    {timelineQuery.isFetchingNextPage ? "Meer updates laden…" : "Oudere updates laden"}
+                    {timelineQuery.isFetchingNextPage ? "Meer Bouwmomenten laden…" : "Oudere Bouwmomenten laden"}
                   </Button>
                 </div>
               )}
@@ -613,8 +696,13 @@ const TripDetail = () => {
       {showAddUpdate && (
         <AddStepDialog
           projectId={project.id}
-          onClose={() => setShowAddUpdate(false)}
+          importLandingPhoto={importLandingPhoto}
+          onClose={() => {
+            setShowAddUpdate(false);
+            setImportLandingPhoto(false);
+          }}
           onAdded={() => {
+            setImportLandingPhoto(false);
             void Promise.all([overviewQuery.refetch(), timelineQuery.refetch()]).catch((error) => {
               console.error("Refresh project after update failed", error);
             });
@@ -631,20 +719,20 @@ const TripDetail = () => {
           onDeleted={() => setEditingUpdate(null)}
         />
       )}
-      <Dialog open={showAccessManager} onOpenChange={setShowAccessManager}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Projecttoegang beheren</DialogTitle>
-            <DialogDescription>
-              Alleen geaccepteerde personen kunnen dit privéproject en zijn gepubliceerde updates bekijken.
-            </DialogDescription>
-          </DialogHeader>
-          <ProjectAccessManager
-            projectId={project.id}
-            enabled={showAccessManager && isOwner && project.visibility === "private"}
-          />
-        </DialogContent>
-      </Dialog>
+      {isOwner && project.visibility === "unlisted" && shareDialogOpen ? (
+        <ShareLinkDialog
+          open={shareDialogOpen}
+          onOpenChange={setShareDialogOpen}
+          onCopied={() => {
+            void recordProductEvent({
+              eventName: "project_shared",
+              properties: { schemaVersion: 1, visibility: "unlisted" },
+            }).catch(() => undefined);
+          }}
+          projectId={project.id}
+          projectTitle={project.title}
+        />
+      ) : null}
     </main>
   );
 };

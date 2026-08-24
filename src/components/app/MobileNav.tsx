@@ -6,6 +6,7 @@ import {
   FolderOpen,
   Heart,
   MessageSquareText,
+  PackageCheck,
   Plus,
   Settings,
   UserCircle2,
@@ -28,8 +29,16 @@ const NAVIGATION_ICONS: Record<ProductNavigationIcon, LucideIcon> = {
   profile: UserCircle2,
   connections: Users,
   notifications: Bell,
+  orders: PackageCheck,
   account: Settings,
   feedback: MessageSquareText,
+};
+
+const PRODUCT_LABELS: Readonly<Record<string, string>> = {
+  projects: "Verbouwingen",
+  update: "Bouwmoment",
+  discover: "Verhalen",
+  connections: "Connecties",
 };
 
 export interface MobileNavProps extends Omit<ComponentPropsWithoutRef<"nav">, "children"> {
@@ -53,7 +62,7 @@ const MobileNav = ({
     <nav
       aria-label={label}
       className={cn(
-        "fixed inset-x-0 bottom-0 z-50 border-t border-border/90 bg-background/95 pb-[calc(env(safe-area-inset-bottom)+0.375rem)] shadow-[0_-8px_24px_hsl(var(--foreground)/0.06)] backdrop-blur supports-[backdrop-filter]:bg-background/[0.88] md:hidden",
+        "fixed inset-x-0 bottom-0 z-50 border-t border-border/90 bg-background/95 pb-[calc(env(safe-area-inset-bottom)+0.375rem)] shadow-[0_-8px_24px_hsl(var(--foreground)/0.06)] backdrop-blur supports-[backdrop-filter]:bg-background/[0.88] lg:hidden",
         className,
       )}
       {...props}
@@ -61,6 +70,7 @@ const MobileNav = ({
       <ul className="mx-auto flex max-w-lg items-stretch px-1" role="list">
         {navigationItems.map((item) => {
           const Icon = NAVIGATION_ICONS[item.icon];
+          const label = PRODUCT_LABELS[item.id] ?? item.label;
 
           return (
             <li key={item.id} className="min-w-0 flex-1">
@@ -75,7 +85,7 @@ const MobileNav = ({
                     item.primaryAction && "text-foreground",
                   )
                 }
-                aria-label={item.label}
+                aria-label={label}
               >
                 {({ isActive }) => (
                   <>
@@ -101,7 +111,7 @@ const MobileNav = ({
                       <Icon className={cn("h-5 w-5", item.primaryAction && "h-6 w-6")} strokeWidth={2} />
                     </span>
 
-                    <span className={cn(item.primaryAction && "font-bold text-foreground")}>{item.label}</span>
+                    <span className={cn(item.primaryAction && "font-bold text-foreground")}>{label}</span>
                   </>
                 )}
               </NavLink>

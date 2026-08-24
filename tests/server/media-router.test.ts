@@ -41,6 +41,7 @@ function mediaService(overrides: Partial<MediaHttpService> = {}): MediaHttpServi
       upload: null,
       replayed: false,
     }),
+    handleClientUpload: async () => ({ type: "blob.generate-client-token", clientToken: "test" }),
     completeUpload: async () => ({
       asset: {
         id: ASSET_ID,
@@ -52,7 +53,9 @@ function mediaService(overrides: Partial<MediaHttpService> = {}): MediaHttpServi
     }),
     readDisplay: async () => ({
       status: 200,
-      body: Buffer.from("display"),
+      body: new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(Buffer.from("display")); controller.close(); },
+      }),
       headers: { "content-type": "image/webp", "cache-control": "private, no-store" },
     }),
     createOriginalGrant: async () => ({
@@ -63,7 +66,9 @@ function mediaService(overrides: Partial<MediaHttpService> = {}): MediaHttpServi
     }),
     readOriginal: async () => ({
       status: 200,
-      body: Buffer.from("original"),
+      body: new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(Buffer.from("original")); controller.close(); },
+      }),
       headers: { "content-type": "image/jpeg", "cache-control": "private, no-store" },
     }),
     ...overrides,
@@ -73,13 +78,14 @@ function mediaService(overrides: Partial<MediaHttpService> = {}): MediaHttpServi
 function configure(
   appUserId: string | null,
   service: MediaHttpService,
-  worker: MediaProcessingWorker = {} as MediaProcessingWorker,
+  worker: MediaProcessingWorker = {
+    processAsset: async () => ({ status: "idle" }),
+  } as unknown as MediaProcessingWorker,
 ): void {
   configureDefaultMediaRuntime({
     actors: actorResolver(appUserId),
-    cronSecret: "c".repeat(32),
+    processor: worker,
     service,
-    worker,
   });
 }
 
@@ -88,7 +94,6 @@ describe("private media HTTP routes", () => {
     vi.stubEnv("APP_ENV", "test");
     vi.stubEnv("APP_ORIGIN", ORIGIN);
     vi.stubEnv("DATABASE_URL", "");
-    vi.stubEnv("BETTER_AUTH_SECRET", "");
     resetRuntimeConfigForTests();
     resetDefaultMediaRuntimeForTests();
   });
@@ -158,6 +163,65 @@ describe("private media HTTP routes", () => {
     expect(anonymous.status).toBe(401);
   });
 
+  it("routes same-origin Blob token requests and originless verified-provider callbacks", async () => {
+    const handleClientUpload = vi.fn(async (
+      actorId: string | null,
+      assetId: string | null,
+    ) => ({ type: assetId ? "blob.generate-client-token" : "blob.upload-completed", actorId }));
+    configure(ACTOR_ID, mediaService({ handleClientUpload }));
+
+    const tokenResponse = await handleApiRequest(new Request(
+      `${ORIGIN}/api/media/${ASSET_ID}/blob-upload`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: ORIGIN },
+        body: JSON.stringify({ type: "blob.generate-client-token" }),
+      },
+    ));
+    const callbackResponse = await handleApiRequest(new Request(
+      `${ORIGIN}/api/media/blob-upload-completed`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "blob.upload-completed" }),
+      },
+    ));
+
+    expect(tokenResponse.status).toBe(200);
+    expect(callbackResponse.status).toBe(200);
+    expect(handleClientUpload).toHaveBeenNthCalledWith(
+      1,
+      ACTOR_ID,
+      ASSET_ID,
+      expect.any(Request),
+      { type: "blob.generate-client-token" },
+    );
+    expect(handleClientUpload).toHaveBeenNthCalledWith(
+      2,
+      null,
+      null,
+      expect.any(Request),
+      { type: "blob.upload-completed" },
+    );
+  });
+
+  it("keeps the browser Blob token route behind same-origin protection", async () => {
+    const handleClientUpload = vi.fn(mediaService().handleClientUpload);
+    configure(ACTOR_ID, mediaService({ handleClientUpload }));
+
+    const response = await handleApiRequest(new Request(
+      `${ORIGIN}/api/media/${ASSET_ID}/blob-upload`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: "https://attacker.invalid" },
+        body: "{}",
+      },
+    ));
+
+    expect(response.status).toBe(403);
+    expect(handleClientUpload).not.toHaveBeenCalled();
+  });
+
   it("returns the same non-enumerating 404 for private, blocked or absent media", async () => {
     configure(FORGED_ID, mediaService({
       readDisplay: async () => { throw new MediaError("MEDIA_NOT_FOUND"); },
@@ -212,23 +276,32 @@ describe("private media HTTP routes", () => {
     );
   });
 
-  it("runs one bounded worker claim only with the cron bearer secret", async () => {
-    const processNext = vi.fn(async () => ({ status: "idle" as const }));
-    configure(
-      ACTOR_ID,
-      mediaService(),
-      { processNext } as unknown as MediaProcessingWorker,
+  it("lets a share grant reach display derivatives but never original-media routes", async () => {
+    const shareActor = { kind: "anonymous" as const, shareLinkId: PROJECT_ID };
+    const readDisplay = vi.fn(mediaService().readDisplay);
+    const readOriginal = vi.fn(mediaService().readOriginal);
+    configureDefaultMediaRuntime({
+      actors: { resolve: vi.fn(async () => shareActor) },
+      processor: { processAsset: async () => ({ status: "idle" }) } as unknown as MediaProcessingWorker,
+      service: mediaService({ readDisplay, readOriginal }),
+    });
+
+    const display = await handleApiRequest(new Request(`${ORIGIN}/api/media/${ASSET_ID}?size=medium`));
+    const original = await handleApiRequest(new Request(
+      `${ORIGIN}/api/media/${ASSET_ID}/original?purpose=photobook`,
+      { headers: { "x-buildy-media-purpose-grant": "forged-purpose-grant" } },
+    ));
+
+    expect(display.status).toBe(200);
+    expect(readDisplay).toHaveBeenCalledWith(
+      shareActor,
+      ASSET_ID,
+      { size: "medium" },
+      expect.any(Headers),
+      false,
     );
-
-    const denied = await handleApiRequest(new Request(`${ORIGIN}/api/internal/cron/media`, {
-      headers: { authorization: "Bearer wrong" },
-    }));
-    const accepted = await handleApiRequest(new Request(`${ORIGIN}/api/internal/cron/media`, {
-      headers: { authorization: `Bearer ${"c".repeat(32)}` },
-    }));
-
-    expect(denied.status).toBe(401);
-    expect(accepted.status).toBe(200);
-    expect(processNext).toHaveBeenCalledOnce();
+    expect(original.status).toBe(401);
+    expect(readOriginal).not.toHaveBeenCalled();
   });
+
 });

@@ -6,6 +6,7 @@ import { ZodError } from "zod";
 import type { ProjectActor } from "../../server/projects/actor";
 import {
   ObjectStorageError,
+  type ClientUploadObjectStorage,
   type ObjectPage,
   type ObjectStorage,
   type StoredObjectMetadata,
@@ -13,12 +14,15 @@ import {
 import { MediaError } from "../../server/media/errors";
 import { HmacOriginalMediaPurposeGrants } from "../../server/media/purposeGrant";
 import { MediaService } from "../../server/media/service";
+import { PrivacyBlindIndex } from "../../server/security/dataProtection";
 import type {
   CompleteUploadCommand,
   CreateUploadIntentCommand,
   DisplayObject,
   FinalizeMediaProcessingCommand,
   InternalUploadIntent,
+  MediaCleanupCheckpoint,
+  MediaCleanupPurpose,
   MediaProcessingJob,
   MediaRepository,
   OriginalObject,
@@ -31,6 +35,7 @@ const PROJECT_ID = "33333333-3333-4333-8333-333333333333";
 const ASSET_ID = "44444444-4444-4444-8444-444444444444";
 const OTHER_ASSET_ID = "55555555-5555-4555-8555-555555555555";
 const CHECKSUM_BASE64 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+const BLIND_INDEX = new PrivacyBlindIndex(Buffer.alloc(32, 17).toString("base64"));
 
 class FakeMediaRepository implements MediaRepository {
   readonly intents: CreateUploadIntentCommand[] = [];
@@ -110,9 +115,24 @@ class FakeMediaRepository implements MediaRepository {
     return null;
   }
 
+  async claimProcessingJobForAsset(): Promise<MediaProcessingJob | null> {
+    return null;
+  }
+
   async finalizeProcessing(_command: FinalizeMediaProcessingCommand): Promise<void> {}
 
   async failProcessing(): Promise<void> {}
+
+  async claimOrphanCleanup(
+    _workerId: string,
+    _purpose: MediaCleanupPurpose,
+  ): Promise<MediaCleanupCheckpoint | null> {
+    return null;
+  }
+
+  async finalizeOrphanCleanup(): Promise<void> {}
+
+  async failOrphanCleanup(): Promise<void> {}
 
   async filterProtectedObjectKeys(): Promise<Set<string>> {
     return new Set();
@@ -122,15 +142,11 @@ class FakeMediaRepository implements MediaRepository {
 function storageFixture() {
   const objects = new Map<string, { bytes: Uint8Array; metadata: StoredObjectMetadata }>();
   const createUploadUrl = vi.fn(async (input: Parameters<ObjectStorage["createUploadUrl"]>[0]) => ({
-    method: "PUT" as const,
-    url: "https://private-storage.test/signed-upload",
+    provider: "vercel_blob" as const,
+    method: "POST" as const,
+    pathname: input.key,
+    handleUploadPath: `/api/media/${ASSET_ID}/blob-upload`,
     key: input.key,
-    expiresAt: "2026-08-04T10:05:00.000Z",
-    requiredHeaders: {
-      "content-length": String(input.maximumBytes),
-      "content-type": input.contentType,
-      "x-amz-meta-buildy-sha256": input.checksumSha256Base64,
-    },
     maximumBytes: input.maximumBytes,
   }));
   const completeUpload = vi.fn(async (input: Parameters<ObjectStorage["completeUpload"]>[0]) => ({
@@ -145,10 +161,29 @@ function storageFixture() {
     if (!object) throw new ObjectStorageError("OBJECT_NOT_FOUND", "missing");
     return object.bytes;
   });
-  const storage: ObjectStorage = {
+  const streamObject = vi.fn(async (input: Parameters<ObjectStorage["streamObject"]>[0]) => {
+    const object = objects.get(input.key);
+    if (!object) throw new ObjectStorageError("OBJECT_NOT_FOUND", "missing");
+    const bytes = input.range
+      ? object.bytes.subarray(input.range.start, input.range.end + 1)
+      : object.bytes;
+    return {
+      metadata: object.metadata,
+      stream: new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(bytes); controller.close(); },
+      }),
+      contentLength: bytes.byteLength,
+      range: input.range,
+    };
+  });
+  const handleClientUpload = vi.fn(async (
+    _input: Parameters<ClientUploadObjectStorage["handleClientUpload"]>[0],
+  ): Promise<unknown> => ({ type: "blob.generate-client-token" }));
+  const storage: ClientUploadObjectStorage = {
     createUploadUrl,
     completeUpload,
     createDownloadUrl: async () => { throw new Error("unused"); },
+    streamObject,
     readObject,
     writeObject: async (input) => {
       const bytes = Buffer.from(input.bytes);
@@ -167,8 +202,9 @@ function storageFixture() {
     deleteObject: async (key) => { objects.delete(key); },
     listObjects: async (): Promise<ObjectPage> => ({ objects: [] }),
     getChecksum: async (key) => objects.get(key)?.metadata.checksumSha256Base64,
+    handleClientUpload,
   };
-  return { storage, objects, createUploadUrl, completeUpload, readObject };
+  return { storage, objects, createUploadUrl, completeUpload, streamObject, readObject, handleClientUpload };
 }
 
 function serviceFixture() {
@@ -188,6 +224,7 @@ function serviceFixture() {
     rateLimiter,
     grants,
     "buildy-private-media",
+    BLIND_INDEX,
     () => new Date("2026-08-04T10:00:00Z"),
     () => ids.shift() ?? crypto.randomUUID(),
   );
@@ -212,18 +249,35 @@ describe("private media upload API service", () => {
     const command = repository.intents[0];
 
     expect(command).toMatchObject({ actorId: ACTOR_ID, assetId: ASSET_ID, projectId: PROJECT_ID });
+    expect(command?.storageProvider).toBe("vercel_blob");
     expect(command?.temporaryObjectKey).toBe(`temporary/44/${ASSET_ID}`);
     expect(command?.temporaryObjectKey).not.toContain(ACTOR_ID);
     expect(result.upload).toMatchObject({
-      method: "PUT",
+      provider: "vercel_blob",
+      method: "POST",
+      pathname: `temporary/44/${ASSET_ID}`,
+      handleUploadPath: `/api/media/${ASSET_ID}/blob-upload`,
       exactSizeBytes: 42,
-      requiredHeaders: {
-        "content-length": "42",
-        "content-type": "image/jpeg",
-        "x-amz-meta-buildy-sha256": CHECKSUM_BASE64,
-      },
     });
     expect(JSON.stringify(result)).not.toMatch(/objectKey|bucket|ownerId|storageProvider/);
+  });
+
+  it("fails closed before creating an intent when only legacy direct-upload storage is composed", async () => {
+    const repository = new FakeMediaRepository();
+    const { handleClientUpload: _clientUpload, ...legacyStorage } = storageFixture().storage;
+    const service = new MediaService(
+      repository,
+      legacyStorage,
+      { consume: async () => ({ allowed: true, retryAfterSeconds: null }) },
+      new HmacOriginalMediaPurposeGrants("s".repeat(32)),
+      "legacy-private-storage",
+      BLIND_INDEX,
+    );
+
+    await expect(service.createUploadIntent(ACTOR_ID, uploadInput())).rejects.toMatchObject({
+      reason: "STORAGE_UNAVAILABLE",
+    });
+    expect(repository.intents).toHaveLength(0);
   });
 
   it("keeps a floorplan intent bound to the authenticated owner and floorplan purpose", async () => {
@@ -247,6 +301,39 @@ describe("private media upload API service", () => {
       ...input,
       purpose: "project_media",
     })).rejects.toMatchObject({ reason: "UPLOAD_CONFLICT" });
+  });
+
+  it("rechecks the authenticated owner and exact pending pathname before a Blob token", async () => {
+    const { service, storage } = serviceFixture();
+    await service.createUploadIntent(ACTOR_ID, uploadInput());
+    const pathname = `temporary/44/${ASSET_ID}`;
+    storage.handleClientUpload.mockImplementation(async (input) => input.authorize(pathname));
+
+    await expect(service.handleClientUpload(
+      ACTOR_ID,
+      ASSET_ID,
+      new Request(`https://app.buildy.test/api/media/${ASSET_ID}/blob-upload`, { method: "POST" }),
+      {},
+    )).resolves.toMatchObject({
+      actorId: ACTOR_ID,
+      assetId: ASSET_ID,
+      pathname,
+      contentType: "image/jpeg",
+      maximumBytes: 42,
+      checksumSha256Base64: CHECKSUM_BASE64,
+    });
+    await expect(service.handleClientUpload(
+      BLOCKED_ID,
+      ASSET_ID,
+      new Request(`https://app.buildy.test/api/media/${ASSET_ID}/blob-upload`, { method: "POST" }),
+      {},
+    )).rejects.toMatchObject({ reason: "MEDIA_NOT_FOUND" });
+    await expect(service.handleClientUpload(
+      null,
+      ASSET_ID,
+      new Request(`https://app.buildy.test/api/media/${ASSET_ID}/blob-upload`, { method: "POST" }),
+      {},
+    )).rejects.toMatchObject({ reason: "ACTOR_REQUIRED" });
   });
 
   it("strictly rejects forged owner, key and status fields", async () => {
@@ -354,7 +441,8 @@ describe("authorizing media reads", () => {
     );
 
     expect(response.status).toBe(206);
-    expect(Buffer.from(response.body ?? []).toString()).toBe(bytes.subarray(2, 10).toString());
+    expect(Buffer.from(await new Response(response.body).arrayBuffer()).toString())
+      .toBe(bytes.subarray(2, 10).toString());
     expect(response.headers["content-range"]).toBe(`bytes 2-9/${bytes.length}`);
     expect(response.headers["cache-control"]).toContain("must-revalidate");
     expect(JSON.stringify(response)).not.toContain(objectKey);
@@ -377,7 +465,7 @@ describe("authorizing media reads", () => {
       { size: "medium", v: "2.7" },
       new Headers(),
     )).rejects.toMatchObject({ reason: "MEDIA_NOT_FOUND" });
-    expect(storage.readObject).not.toHaveBeenCalled();
+    expect(storage.streamObject).not.toHaveBeenCalled();
   });
 
   it.each([

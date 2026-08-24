@@ -4,14 +4,12 @@ import {
   ArrowLeft,
   CheckCircle2,
   Clock3,
-  CreditCard,
+  History,
   Loader2,
-  Package,
   ReceiptText,
   RefreshCcw,
   Truck,
   XCircle,
-  type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { PhotobookOrderDetail } from "../../shared/contracts/orders";
@@ -23,23 +21,21 @@ import { useAuth } from "@/hooks/useAuth";
 import { usePhotobookOrder } from "@/hooks/useOrders";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { safeTrackingUrl } from "@/lib/orderApi";
+import { PRODUCT_ROUTES } from "@/lib/productNavigation";
 import { Link, Navigate, useParams, useSearchParams } from "@/lib/router";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const FULFILMENT_LABELS: Record<PhotobookOrderDetail["fulfilmentStatus"], string> = {
-  unclaimed: "Wacht op betaalbevestiging",
-  claimed: "Bestelling veilig vastgelegd",
-  peecho_order_created: "Drukopdracht aangemaakt",
-  peecho_payment_pending: "Drukopdracht wordt bevestigd",
-  submitted_to_production: "Ingediend voor productie",
+  awaiting_review: "Wacht op controle door Buildy",
+  reviewed: "Gecontroleerd door Buildy",
+  ordered_manually: "Besteld bij de drukker",
   in_production: "In productie",
   shipped: "Verzonden",
-  delivered: "Bezorgd",
-  failed: "Productie heeft aandacht nodig",
-  retry_scheduled: "Nieuwe productiepoging gepland",
+  completed: "Afgerond",
   manual_review: "Handmatige controle",
   cancelled: "Productie geannuleerd",
+  refund_review: "Terugbetaling wordt beoordeeld",
 };
 
 const ORDER_STATUS_LABELS: Record<PhotobookOrderDetail["status"], string> = {
@@ -88,7 +84,7 @@ function orderState(order: PhotobookOrderDetail, returnedFromCheckout: boolean) 
   const refunded = ["partially_refunded", "refunded"].includes(order.paymentStatus);
   const review = order.status === "manual_review"
     || order.fulfilmentStatus === "manual_review"
-    || order.fulfilmentStatus === "failed";
+    || order.fulfilmentStatus === "refund_review";
   const confirming = returnedFromCheckout && !paymentConfirmed && !failed;
 
   if (paymentConfirmed && refunded) {
@@ -110,7 +106,7 @@ function orderState(order: PhotobookOrderDetail, returnedFromCheckout: boolean) 
       badge: "Betaald",
       badgeVariant: "default" as const,
       headline: "Betaling bevestigd",
-      description: "De betaling is server-side bevestigd. Je Bouwboek kan nu veilig naar productie.",
+      description: "De betaling is server-side bevestigd. Buildy controleert je Bouwboek nu handmatig voordat de drukopdracht wordt geplaatst.",
       icon: CheckCircle2,
       iconClass: "text-emerald-600",
       paymentConfirmed,
@@ -161,31 +157,47 @@ function orderState(order: PhotobookOrderDetail, returnedFromCheckout: boolean) 
   };
 }
 
-function pipeline(order: PhotobookOrderDetail) {
-  const payment = ["paid", "partially_refunded", "refunded"].includes(order.paymentStatus);
-  const print = [
-    "peecho_order_created",
-    "peecho_payment_pending",
-    "submitted_to_production",
-    "in_production",
-    "shipped",
-    "delivered",
-  ].includes(order.fulfilmentStatus);
-  const production = ["submitted_to_production", "in_production", "shipped", "delivered"].includes(order.fulfilmentStatus);
-  const shipping = ["shipped", "delivered"].includes(order.fulfilmentStatus);
-  return { payment, print, production, shipping };
+function historyLabel(eventType: string): string {
+  const exact: Record<string, string> = {
+    "order.checkout_reserved.v1": "Bestelling aangemaakt",
+    "order.checkout_opened.v1": "Betaalpagina geopend",
+    "order.payment_processing.v1": "Betaling wordt verwerkt",
+    "order.payment_succeeded.v1": "Betaling bevestigd",
+    "order.payment_succeeded_manual_review.v1": "Betaling bevestigd; controle nodig",
+    "order.payment_failed.v1": "Betaling mislukt",
+    "order.checkout_expired.v1": "Betaalperiode verlopen",
+    "order.refund_recorded.v1": "Terugbetaling vastgelegd",
+    "order.stripe_event_ignored.v1": "Betaalstatus gecontroleerd",
+    "order.stripe_reconciliation_failed.v1": "Betaalstatus vraagt controle",
+    "order.refund_reconciliation_failed.v1": "Terugbetaling vraagt controle",
+    "order.refund_out_of_order.v1": "Terugbetaling vraagt controle",
+    "manual_fulfilment.review.v1": "Door Buildy gecontroleerd",
+    "manual_fulfilment.ordered_manually.v1": "Bij de drukker besteld",
+    "manual_fulfilment.mark_in_production.v1": "Productie gestart",
+    "manual_fulfilment.mark_shipped.v1": "Bouwboek verzonden",
+    "manual_fulfilment.mark_completed.v1": "Bestelling afgerond",
+    "manual_fulfilment.manual_review.v1": "Handmatige controle gestart",
+    "manual_fulfilment.cancel.v1": "Productie geannuleerd",
+    "manual_fulfilment.refund_review.v1": "Terugbetaling wordt beoordeeld",
+    "manual_fulfilment.update_details.v1": "Leveringsgegevens bijgewerkt",
+  };
+  if (exact[eventType]) return exact[eventType];
+  return "Bestelstatus bijgewerkt";
 }
 
-const PIPELINE_STEPS: Array<{
-  key: keyof ReturnType<typeof pipeline>;
-  label: string;
-  icon: LucideIcon;
-}> = [
-  { key: "payment", label: "Betaling", icon: CreditCard },
-  { key: "print", label: "Drukopdracht", icon: ReceiptText },
-  { key: "production", label: "Productie", icon: Package },
-  { key: "shipping", label: "Verzending", icon: Truck },
-];
+function statusLabel(status: string | null): string | null {
+  if (!status) return null;
+  const labels: Record<string, string> = {
+    ...ORDER_STATUS_LABELS,
+    ...FULFILMENT_LABELS,
+    processing: "Wordt bevestigd",
+    unpaid: "Nog niet betaald",
+    partially_refunded: "Deels terugbetaald",
+    refunded: "Terugbetaald",
+    failed: "Mislukt",
+  };
+  return labels[status] ?? null;
+}
 
 const OrderConfirmation = () => {
   const { orderId = "" } = useParams<{ orderId: string }>();
@@ -213,7 +225,6 @@ const OrderConfirmation = () => {
     () => order ? orderState(order, returnedFromCheckout) : null,
     [order, returnedFromCheckout],
   );
-  const progress = useMemo(() => order ? pipeline(order) : null, [order]);
 
   if (authLoading) {
     return <OrderLoading />;
@@ -243,7 +254,7 @@ const OrderConfirmation = () => {
     );
   }
 
-  if (orderQuery.isPending || !order || !presentation || !progress) {
+  if (orderQuery.isPending || !order || !presentation) {
     return <OrderLoading />;
   }
 
@@ -256,8 +267,8 @@ const OrderConfirmation = () => {
     <main className="container max-w-4xl space-y-6 py-8 md:py-12">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Button asChild size="sm" variant="ghost">
-          <Link to={`/project/${order.projectId}/bouwboek`}>
-            <ArrowLeft aria-hidden="true" /> Terug naar Bouwboek
+          <Link to={PRODUCT_ROUTES.orders}>
+            <ArrowLeft aria-hidden="true" /> Terug naar bestellingen
           </Link>
         </Button>
         <Badge variant={presentation.badgeVariant}>{presentation.badge}</Badge>
@@ -273,7 +284,7 @@ const OrderConfirmation = () => {
                 {presentation.description}
               </p>
               <p className="mt-2 text-xs text-muted-foreground">
-                Order <span className="font-mono text-foreground">{order.orderNumber}</span>
+                {order.projectTitle} · order <span className="font-mono text-foreground">{order.orderNumber}</span>
               </p>
             </div>
           </div>
@@ -356,26 +367,49 @@ const OrderConfirmation = () => {
         </CardContent>
       </Card>
 
+      <p className="text-center text-sm text-muted-foreground">
+        Je kunt de actuele status van je bestelling hier volgen. Hulp nodig?{" "}
+        <Link className="font-medium text-foreground underline underline-offset-4" to="/support">
+          Neem contact op met Buildy
+        </Link>.
+      </p>
+
       <Card>
-        <CardHeader><CardTitle className="text-lg">Voortgang</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <History className="h-5 w-5 text-accent" aria-hidden="true" /> Vastgelegde voortgang
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Dit bouwspoor bestaat uit de gebeurtenissen die de server werkelijk voor deze bestelling heeft bewaard.
+          </p>
+        </CardHeader>
         <CardContent>
-          <ol className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            {PIPELINE_STEPS.map((step) => {
-              const Icon = step.icon;
-              const complete = progress[step.key];
-              return (
-                <li className="flex flex-col items-center text-center" key={step.key}>
-                  <span className={`flex h-10 w-10 items-center justify-center rounded-full border-2 ${
-                    complete ? "border-emerald-600 bg-emerald-600 text-white" : "border-border bg-muted text-muted-foreground"
-                  }`}>
-                    <Icon className="h-5 w-5" aria-hidden="true" />
-                  </span>
-                  <span className="mt-2 text-xs font-medium">{step.label}</span>
-                  <span className="sr-only">{complete ? "voltooid" : "nog niet voltooid"}</span>
-                </li>
-              );
-            })}
-          </ol>
+          {order.statusHistory.length === 0 ? (
+            <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground" role="status">
+              Er is nog geen statusgebeurtenis vastgelegd.
+            </p>
+          ) : (
+            <ol className="relative space-y-5 before:absolute before:bottom-3 before:left-[0.4375rem] before:top-3 before:w-px before:bg-border" aria-label="Vastgelegde bestelgeschiedenis">
+              {order.statusHistory.map((event, index) => {
+                const from = statusLabel(event.fromStatus);
+                const to = statusLabel(event.toStatus);
+                return (
+                  <li className="relative pl-8" key={event.id}>
+                    <span className={`absolute left-0 top-1.5 z-10 h-3.5 w-3.5 rounded-full border-2 border-background ${index === order.statusHistory.length - 1 ? "bg-accent" : "bg-muted-foreground/50"}`} aria-hidden="true" />
+                    <p className="text-sm font-semibold">{historyLabel(event.eventType)}</p>
+                    {to && to !== from ? (
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {from ? `${from} → ` : ""}{to}
+                      </p>
+                    ) : null}
+                    <time className="mt-1 block text-xs text-muted-foreground" dateTime={event.occurredAt}>
+                      {dateTime(event.occurredAt) ?? "Tijdstip onbekend"}
+                    </time>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
         </CardContent>
       </Card>
 

@@ -24,9 +24,9 @@ type OnboardingDialogProps = {
 };
 
 const benefits = [
-  { icon: LockKeyhole, text: "Je profiel en elk nieuw project beginnen privé." },
-  { icon: PlusCircle, text: "Voeg foto-first updates toe wanneer het jou uitkomt." },
-  { icon: BookOpen, text: "Maak later één echt Bouwboek van je tijdlijn." },
+  { icon: LockKeyhole, text: "Je profiel en elke nieuwe verbouwing beginnen privé." },
+  { icon: PlusCircle, text: "Voeg foto-first Bouwmomenten toe wanneer het jou uitkomt." },
+  { icon: BookOpen, text: "Maak later één echt Bouwboek van je Verhaal." },
 ] as const;
 
 export default function OnboardingDialog({ enabled }: OnboardingDialogProps) {
@@ -135,14 +135,14 @@ export default function OnboardingDialog({ enabled }: OnboardingDialogProps) {
             disabled={updateProfile.isPending}
             onClick={() => void complete(false)}
           >
-            Later een project maken
+            Later een verbouwing maken
           </Button>
           <Button
             type="button"
             disabled={updateProfile.isPending}
             onClick={() => void complete(true)}
           >
-            {updateProfile.isPending ? "Opslaan…" : "Start mijn eerste project"}
+            {updateProfile.isPending ? "Opslaan…" : "Start mijn eerste verbouwing"}
           </Button>
         </DialogFooter>
       </DialogContent>

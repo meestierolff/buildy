@@ -79,7 +79,7 @@ export const clientProductEventInputSchema = z.discriminatedUnion("eventName", [
     eventName: z.literal("project_shared"),
     properties: z.object({
       schemaVersion,
-      visibility: z.enum(["public", "private"]),
+      visibility: z.enum(["private", "followers", "unlisted", "public"]),
     }).strict(),
   }).strict(),
   z.object({

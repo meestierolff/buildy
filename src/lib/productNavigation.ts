@@ -6,12 +6,15 @@ export const PRODUCT_ROUTES = {
   discover: "/ontdekken",
   connections: "/connecties",
   notifications: "/notificaties",
+  orders: "/bestellingen",
   account: "/account",
   feedback: "/feedback",
+  share: "/delen",
   newProject: "/project/nieuw",
   project: (projectId: string) => `/project/${encodeURIComponent(projectId)}`,
   projectBudget: (projectId: string) => `/project/${encodeURIComponent(projectId)}/budget`,
   projectPhotobook: (projectId: string) => `/project/${encodeURIComponent(projectId)}/bouwboek`,
+  order: (orderId: string) => `/bestellingen/${encodeURIComponent(orderId)}`,
   projectUpdateComposer: (projectId: string) => `/project/${encodeURIComponent(projectId)}?update=nieuw`,
   projectUpdate: (projectId: string, updateId: string) => {
     const query = new URLSearchParams({ update: updateId });
@@ -28,6 +31,7 @@ export type ProductNavigationIcon =
   | "profile"
   | "connections"
   | "notifications"
+  | "orders"
   | "account"
   | "feedback";
 
@@ -44,7 +48,7 @@ export interface ProductNavigationItem {
 export const MOBILE_NAVIGATION_ITEMS: readonly ProductNavigationItem[] = [
   {
     id: "projects",
-    label: "Mijn projecten",
+    label: "Verbouwingen",
     href: PRODUCT_ROUTES.projects,
     icon: "projects",
     requiresAuth: true,
@@ -58,7 +62,7 @@ export const MOBILE_NAVIGATION_ITEMS: readonly ProductNavigationItem[] = [
   },
   {
     id: "update",
-    label: "Update",
+    label: "Bouwmoment",
     href: PRODUCT_ROUTES.createUpdate,
     icon: "add",
     primaryAction: true,
@@ -66,7 +70,7 @@ export const MOBILE_NAVIGATION_ITEMS: readonly ProductNavigationItem[] = [
   },
   {
     id: "discover",
-    label: "Ontdekken",
+    label: "Verhalen",
     href: PRODUCT_ROUTES.discover,
     icon: "discover",
   },
@@ -93,6 +97,13 @@ export const PRIMARY_NAVIGATION_ITEMS: readonly ProductNavigationItem[] = [
 ];
 
 export const ACCOUNT_NAVIGATION_ITEMS: readonly ProductNavigationItem[] = [
+  {
+    id: "orders",
+    label: "Bestellingen",
+    href: PRODUCT_ROUTES.orders,
+    icon: "orders",
+    requiresAuth: true,
+  },
   {
     id: "notifications",
     label: "Notificaties",

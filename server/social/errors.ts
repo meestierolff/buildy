@@ -39,7 +39,7 @@ const details: Record<
   },
   TARGET_NOT_FOUND: {
     code: "NOT_FOUND",
-    message: "Dit profiel of project bestaat niet of is niet toegankelijk.",
+    message: "Dit profiel bestaat niet of is niet toegankelijk.",
     status: 404,
   },
 };

@@ -40,4 +40,28 @@ describe("app feature mapping", () => {
     expect(features.photobooksEnabled).toBe(false);
     expect(features.checkoutEnabled).toBe(false);
   });
+
+  it("opens the order UI only from the server-owned checkout capability", () => {
+    const features = deriveAppFeatures({
+      profile: "feedback_beta",
+      checkoutMode: "test",
+      betaMode: true,
+      inviteRequiredForNewAccounts: true,
+      capabilities: {
+        googleSignIn: true,
+        emailAuth: false,
+        renovations: true,
+        updates: true,
+        story: true,
+        media: true,
+        photobookPreview: true,
+        sharing: true,
+        feedback: true,
+        accountDeletion: true,
+        checkout: true,
+      },
+    });
+
+    expect(features.checkoutEnabled).toBe(true);
+  });
 });

@@ -103,7 +103,7 @@ describe("profielbrowsermigratie", () => {
     expect(source.toLocaleLowerCase("nl-NL")).not.toContain("supabase");
   });
 
-  it("gebruikt voor eigen profielnavigatie nooit de Better Auth provider-id", () => {
+  it("gebruikt voor eigen profielnavigatie nooit het externe provider-id", () => {
     const header = readFileSync(resolve(process.cwd(), "src/components/Header.tsx"), "utf8");
     const app = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
     expect(header).toContain("profile.slug");

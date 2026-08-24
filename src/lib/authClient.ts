@@ -1,106 +1,58 @@
-import { createAuthClient } from "better-auth/react";
-import { magicLinkClient } from "better-auth/client/plugins";
+import {
+  authLogoutResponseSchema,
+  authSessionResponseSchema,
+  googleAuthStartResponseSchema,
+  safeAuthNextPath,
+} from "../../shared/contracts/auth";
+import { apiErrorSchema } from "../../shared/contracts/api";
 
-export const authClient = createAuthClient({
-  basePath: "/api/auth",
-  fetchOptions: {
-    credentials: "include",
-    retry: 0,
-  },
-  plugins: [magicLinkClient()],
-  sessionOptions: {
-    refetchInterval: 5 * 60,
-    refetchOnWindowFocus: true,
-    refetchWhenOffline: false,
-  },
-});
+export interface AuthClientUser {
+  id: string;
+  name: string;
+  email: string;
+  emailVerified: true;
+  image: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
-export type AuthSessionData = typeof authClient.$Infer.Session;
-export type AuthClientUser = AuthSessionData["user"];
-export type AuthClientSession = AuthSessionData["session"];
+export interface AuthClientSession {
+  id: string;
+  userId: string;
+  createdAt: Date;
+  updatedAt: Date;
+  expiresAt: Date;
+}
 
-export type AuthFlow =
-  | "session"
-  | "sign-in"
-  | "sign-up"
-  | "magic-link"
-  | "google"
-  | "forgot-password"
-  | "reset-password"
-  | "sign-out";
+export type AuthSessionData =
+  | { session: AuthClientSession; user: AuthClientUser }
+  | { session: null; user: null };
+
+export type AuthFlow = "session" | "google" | "sign-out";
 
 export interface AuthErrorDetails {
   code?: string;
   status?: number;
 }
 
-const BLOCKED_NEXT_PATHS = [
-  "/api",
-  "/auth",
-  "/wachtwoord-vergeten",
-  "/wachtwoord-resetten",
-] as const;
-const NEXT_URL_BASE = "https://navigation.buildy.invalid";
-
-function hasControlCharacters(value: string): boolean {
-  return Array.from(value).some((character) => {
-    const code = character.charCodeAt(0);
-    return code <= 31 || code === 127;
-  });
-}
-
-function decodedPathIsSafe(value: string): boolean {
-  let candidate = value;
-
-  for (let pass = 0; pass < 2; pass += 1) {
-    if (
-      !candidate.startsWith("/") ||
-      candidate.startsWith("//") ||
-      candidate.includes("\\") ||
-      hasControlCharacters(candidate)
-    ) {
-      return false;
-    }
-
-    try {
-      const decoded = decodeURIComponent(candidate);
-      if (decoded === candidate) return true;
-      candidate = decoded;
-    } catch {
-      return false;
-    }
-  }
-
-  return !candidate.startsWith("//") && !candidate.includes("\\");
-}
-
-/** Returns a same-origin application path, never an absolute or auth/API URL. */
-export function safeNextPath(value: string | null | undefined): string {
-  if (!value || value.length > 2_048 || !decodedPathIsSafe(value)) return "/";
-
-  try {
-    const url = new URL(value, NEXT_URL_BASE);
-    if (url.origin !== NEXT_URL_BASE || url.username || url.password) return "/";
-
-    const path = `${url.pathname}${url.search}${url.hash}`;
-    const isBlocked = BLOCKED_NEXT_PATHS.some(
-      (blocked) => url.pathname === blocked || url.pathname.startsWith(`${blocked}/`),
-    );
-    return isBlocked ? "/" : path;
-  } catch {
-    return "/";
+export class AuthClientError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "AuthClientError";
   }
 }
 
-export function authPagePath(
-  next: string | null | undefined,
-  state?: "verified" | "password-reset",
-): string {
-  const url = new URL("/auth", NEXT_URL_BASE);
+export const safeNextPath = safeAuthNextPath;
+
+export function authPagePath(next: string | null | undefined): string {
+  const url = new URL("/auth", "https://navigation.buildy.invalid");
   const nextPath = safeNextPath(next);
   if (nextPath !== "/") url.searchParams.set("next", nextPath);
-  if (state === "verified") url.searchParams.set("verified", "1");
-  if (state === "password-reset") url.searchParams.set("reset", "success");
   return `${url.pathname}${url.search}`;
 }
 
@@ -111,6 +63,12 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 }
 
 export function authErrorDetails(error: unknown): AuthErrorDetails {
+  if (error instanceof AuthClientError) {
+    return {
+      ...(error.code ? { code: error.code } : {}),
+      status: error.status,
+    };
+  }
   const outer = asRecord(error);
   const inner = asRecord(outer?.error);
   const code = typeof outer?.code === "string"
@@ -123,7 +81,6 @@ export function authErrorDetails(error: unknown): AuthErrorDetails {
     : typeof inner?.status === "number"
       ? inner.status
       : undefined;
-
   return {
     ...(code ? { code } : {}),
     ...(status ? { status } : {}),
@@ -132,52 +89,105 @@ export function authErrorDetails(error: unknown): AuthErrorDetails {
 
 export function authErrorMessage(error: unknown, flow: AuthFlow): string {
   const { code, status } = authErrorDetails(error);
-
-  if (status === 429) return "Je hebt dit te vaak geprobeerd. Wacht even en probeer opnieuw.";
-  if (status === 503 || code === "AUTH_UNAVAILABLE") {
+  if (status === 429 || code === "RATE_LIMITED") {
+    return "Je hebt dit te vaak geprobeerd. Wacht even en probeer opnieuw.";
+  }
+  if (status === 503 || code === "AUTH_UNAVAILABLE" || code === "PROVIDER_UNAVAILABLE") {
     return "Inloggen is tijdelijk niet beschikbaar. Probeer het later opnieuw.";
   }
-  if (code === "EMAIL_NOT_VERIFIED") {
-    return "Bevestig eerst je e-mailadres. We kunnen een nieuwe link sturen.";
-  }
-  if (code === "BETA_INVITE_REQUIRED") {
+  if (code === "BETA_INVITE_REQUIRED" || code === "BETA_INVITE_INVALID") {
     return "Voor een nieuw account is een geldige bèta-uitnodiging nodig.";
   }
-  if (code === "INVALID_EMAIL_OR_PASSWORD" || code === "INVALID_PASSWORD") {
-    return "E-mailadres of wachtwoord klopt niet.";
+  if (code === "GOOGLE_CALLBACK_INVALID") {
+    return "Deze Google-login is verlopen of al gebruikt. Start opnieuw.";
   }
-  if (code === "PASSWORD_TOO_SHORT") return "Gebruik een wachtwoord van minimaal 12 tekens.";
-  if (code === "PASSWORD_TOO_LONG") return "Gebruik een wachtwoord van maximaal 128 tekens.";
-  if (code === "INVALID_TOKEN" || code === "TOKEN_EXPIRED") {
-    return "Deze link is ongeldig of verlopen. Vraag een nieuwe link aan.";
+  if (code === "GOOGLE_EMAIL_NOT_VERIFIED") {
+    return "Google heeft geen bevestigd e-mailadres gedeeld. Kies een ander Google-account.";
   }
-
-  const fallbacks: Record<AuthFlow, string> = {
+  if (code === "GOOGLE_LOGIN_FAILED") {
+    return "Google-login is niet afgerond. Probeer het opnieuw.";
+  }
+  const fallback: Record<AuthFlow, string> = {
     session: "Je sessie kon niet worden gecontroleerd. Probeer het opnieuw.",
-    "sign-in": "Inloggen is niet gelukt. Controleer je gegevens en probeer opnieuw.",
-    "sign-up": "Je account kon niet worden aangemaakt. Probeer het later opnieuw.",
-    "magic-link": "De magic link kon niet worden verstuurd. Probeer het later opnieuw.",
     google: "Google-login is nu niet bereikbaar. Probeer het later opnieuw.",
-    "forgot-password": "De reset-link kon niet worden verstuurd. Probeer het later opnieuw.",
-    "reset-password": "Je wachtwoord kon niet worden opgeslagen. Vraag zo nodig een nieuwe link aan.",
     "sign-out": "Uitloggen is niet gelukt. Probeer het opnieuw.",
   };
-  return fallbacks[flow];
+  return fallback[flow];
 }
 
-export interface PasswordResetLink {
-  errorCode?: string;
-  token?: string;
-}
-
-export function parsePasswordResetLink(search: string): PasswordResetLink {
-  const params = new URLSearchParams(search);
-  const errorCode = params.get("error")?.trim();
-  const token = params.get("token")?.trim();
-
-  if (errorCode) return { errorCode };
-  if (!token || token.length > 512 || !/^[A-Za-z0-9_-]+$/.test(token)) {
-    return { errorCode: "INVALID_TOKEN" };
+async function responseBody(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch (error) {
+    throw new AuthClientError("De authenticatieserver gaf een ongeldig antwoord.", response.status, undefined, {
+      cause: error,
+    });
   }
-  return { token };
 }
+
+async function checkedResponse(response: Response): Promise<unknown> {
+  const body = await responseBody(response);
+  if (!response.ok) {
+    const parsed = apiErrorSchema.safeParse(body);
+    throw new AuthClientError(
+      parsed.success ? parsed.data.error.message : "De authenticatie-aanvraag is mislukt.",
+      response.status,
+      parsed.success ? parsed.data.error.code : undefined,
+    );
+  }
+  return body;
+}
+
+export const authClient = {
+  async getSession(): Promise<AuthSessionData> {
+    const response = await fetch("/api/auth/session", {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+      headers: { accept: "application/json" },
+    });
+    const parsed = authSessionResponseSchema.parse(await checkedResponse(response)).data;
+    if (!parsed.session || !parsed.user) return { session: null, user: null };
+    return {
+      session: {
+        ...parsed.session,
+        createdAt: new Date(parsed.session.createdAt),
+        updatedAt: new Date(parsed.session.updatedAt),
+        expiresAt: new Date(parsed.session.expiresAt),
+      },
+      user: {
+        ...parsed.user,
+        createdAt: new Date(parsed.user.createdAt),
+        updatedAt: new Date(parsed.user.updatedAt),
+      },
+    } as AuthSessionData;
+  },
+
+  async beginGoogleSignIn(next: string): Promise<string> {
+    const response = await fetch("/api/auth/sign-in/google", {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ next: safeNextPath(next) }),
+    });
+    return googleAuthStartResponseSchema.parse(await checkedResponse(response)).data.authorizationUrl;
+  },
+
+  async signOut(): Promise<void> {
+    const response = await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      body: "{}",
+    });
+    authLogoutResponseSchema.parse(await checkedResponse(response));
+  },
+};

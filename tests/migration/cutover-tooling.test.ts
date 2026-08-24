@@ -3,9 +3,10 @@ import { mkdir, mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Pool } from "pg";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { DataProtectionKeyring } from "../../server/security/dataProtection";
 import { buildAuthMigrationPlan, evaluateOldSessionInvalidation } from "../../scripts/migration/auth";
+import { main as runMigrationCli } from "../../scripts/migration/buildy-migrate";
 import {
   applyTargetImport,
   reconcileMigration,
@@ -16,7 +17,6 @@ import {
 import {
   artifactEnvelopeSha256,
   assertNetworkReadAuthorized,
-  assertStorageWriteAuthorized,
   assertTargetWriteAuthorized,
   canonicalJson,
   preserveOrMapUuid,
@@ -37,10 +37,7 @@ import {
 import { buildTargetImportBundle, planLegacyStorage } from "../../scripts/migration/mapping";
 import {
   buildStorageMigrationPlan,
-  copyStoragePlan,
   parseLegacyObjectLocator,
-  type MigrationObjectMetadata,
-  type MigrationObjectStore,
   type StorageCopyCheckpoint,
 } from "../../scripts/migration/storage";
 
@@ -157,33 +154,6 @@ function legacyBundle(overrides: Partial<Record<LegacyTableExport["table"], Reco
   };
 }
 
-class MemoryStore implements MigrationObjectStore {
-  readonly reads = vi.fn();
-  readonly writes = vi.fn();
-  readonly objects = new Map<string, { bytes: Uint8Array; metadata: MigrationObjectMetadata }>();
-
-  async head(key: string): Promise<MigrationObjectMetadata | null> {
-    return this.objects.get(key)?.metadata ?? null;
-  }
-
-  async read(key: string, maximumBytes: number): Promise<Uint8Array> {
-    this.reads(key);
-    const object = this.objects.get(key);
-    if (!object || object.bytes.byteLength > maximumBytes) throw new Error("OBJECT_MISSING");
-    return object.bytes;
-  }
-
-  async writeIfAbsent(input: { bytes: Uint8Array; checksumSha256: string; contentType: string; key: string }): Promise<"created" | "exists"> {
-    this.writes(input.key);
-    if (this.objects.has(input.key)) return "exists";
-    this.objects.set(input.key, {
-      bytes: input.bytes,
-      metadata: { checksumSha256: input.checksumSha256, contentType: input.contentType, sizeBytes: input.bytes.byteLength },
-    });
-    return "created";
-  }
-}
-
 describe("migration artifact and endpoint safety", () => {
   it("creates canonical hashes and RFC 4122 UUIDv5 values", () => {
     expect(canonicalJson({ z: 1, a: "e\u0301" })).toBe('{"a":"é","z":1}');
@@ -230,14 +200,6 @@ describe("migration artifact and endpoint safety", () => {
       writeConfirmation: `APPLY:${RUN_ID}:production:ep-test.neon.tech`,
       productionConfirmation: `PRODUCTION-CUTOVER:${RUN_ID}:ep-test.neon.tech`,
     })).toThrow(/backup/);
-    expect(() => assertStorageWriteAuthorized({
-      environment: "staging",
-      execute: true,
-      expectedHost: "account.r2.cloudflarestorage.com",
-      runId: RUN_ID,
-      targetUrl: "https://account.r2.cloudflarestorage.com",
-      writeConfirmation: `APPLY:${RUN_ID}:staging:account.r2.cloudflarestorage.com`,
-    })).not.toThrow();
   });
 
   it("redacts secrets, URLs, e-mail and object keys before logging", () => {
@@ -247,7 +209,7 @@ describe("migration artifact and endpoint safety", () => {
 });
 
 describe("auth bridge", () => {
-  it("preserves ownership IDs without exporting password hashes or sessions", () => {
+  it("preserves ownership IDs and requires fresh Google provider-subject verification", () => {
     const plan = buildAuthMigrationPlan([{
       id: USER_ID,
       email: "Synthetic@Example.test",
@@ -259,11 +221,11 @@ describe("auth bridge", () => {
     }], FINGERPRINT_KEY);
     expect(plan.records[0]).toMatchObject({
       appUserId: USER_ID,
-      email: "synthetic@example.test",
       status: "pending",
-      strategies: ["oauth_relink_required", "password_set_required"],
+      strategies: ["google_oidc_reauthentication_required"],
       targetAuthUserId: null,
     });
+    expect(plan.records[0]).not.toHaveProperty("email");
     expect(plan.passwordHashesExported).toBe(false);
     expect(plan.sessionImportAllowed).toBe(false);
     expect(plan.records[0]).not.toHaveProperty("password");
@@ -272,7 +234,7 @@ describe("auth bridge", () => {
   });
 
   it("routes duplicate e-mails and disabled users to manual review", () => {
-    const base = { email: "same@example.test", emailVerified: true, hasPassword: false, providers: ["email"], createdAt: NOW };
+    const base = { email: "same@example.test", emailVerified: true, hasPassword: false, providers: ["google"], createdAt: NOW };
     const plan = buildAuthMigrationPlan([
       { ...base, id: USER_ID, disabled: false },
       { ...base, id: OTHER_USER_ID, disabled: true },
@@ -282,11 +244,11 @@ describe("auth bridge", () => {
   });
 
   it("requires every old-session invalidation proof", () => {
-    const partial = evaluateOldSessionInvalidation({ betterAuthCookieNamespaceVerified: true });
+    const partial = evaluateOldSessionInvalidation({ sessionCookieBoundaryVerified: true });
     expect(partial.complete).toBe(false);
     expect(partial.missing).toContain("legacy_refresh_tokens_revoked");
     expect(evaluateOldSessionInvalidation({
-      betterAuthCookieNamespaceVerified: true,
+      sessionCookieBoundaryVerified: true,
       legacyAnonKeyRotatedAt: NOW,
       legacyRefreshTokensRevokedAt: NOW,
       legacyTokenRejectedAt: NOW,
@@ -296,16 +258,25 @@ describe("auth bridge", () => {
 });
 
 describe("private storage migration", () => {
-  it("uses a dedicated cutover credential and never a runtime or generic R2 key", async () => {
-    const cliSource = await readFile(
-      join(process.cwd(), "scripts/migration/buildy-migrate.ts"),
-      "utf8",
-    );
-    expect(cliSource).toContain("process.env.R2_MIGRATION_ACCESS_KEY_ID");
-    expect(cliSource).toContain("process.env.R2_MIGRATION_SECRET_ACCESS_KEY");
-    expect(cliSource).not.toMatch(/process\.env\.R2_(?:ACCESS_KEY_ID|SECRET_ACCESS_KEY)/);
-    expect(cliSource).not.toMatch(/process\.env\.R2_(?:WEB|ACCOUNT_WORKER|MEDIA_WORKER|PHOTOBOOK_WORKER|FULFILMENT_WORKER)_/);
+  it("keeps the migration CLI planning-only and free of retired provider adapters", async () => {
+    const sources = await Promise.all([
+      "scripts/migration/buildy-migrate.ts",
+      "scripts/migration/storage.ts",
+      "scripts/migration/auth.ts",
+      "scripts/migration/cutover.ts",
+    ].map((path) => readFile(join(process.cwd(), path), "utf8")));
+    const migrationSource = sources.join("\n");
+    expect(migrationSource).not.toMatch(/@aws-sdk|S3MigrationObjectStore|R2_|copy-storage/);
+    expect(migrationSource).not.toMatch(/enqueue-migration-account-mails|migrationAccountProducer/);
+    expect(migrationSource).not.toMatch(/Better Auth|brevoReady|peechoCallbackReady/);
   });
+
+  it.each(["copy-storage", "enqueue-migration-account-mails"])(
+    "fails closed for retired migration command %s",
+    async (command) => {
+      await expect(runMigrationCli([command])).rejects.toThrow(`Onbekend migratiecommando: ${command}.`);
+    },
+  );
 
   it("parses legacy public/signed URLs without retaining bearer query tokens", () => {
     expect(parseLegacyObjectLocator("https://source.buildy.invalid/storage/v1/object/sign/trip-private/user/photo.jpg?token=secret"))
@@ -334,47 +305,6 @@ describe("private storage migration", () => {
     }], FINGERPRINT_KEY).entries[0].destinationKey).toBe(plan.entries[0].destinationKey);
   });
 
-  it("is dry-run by default and copies with checksum readback when explicitly executed", async () => {
-    const bytes = new TextEncoder().encode("synthetic image bytes");
-    const checksum = sha256Hex(bytes);
-    const source = new MemoryStore();
-    source.objects.set("owner/photo.jpg", { bytes, metadata: { checksumSha256: checksum, contentType: "image/jpeg", sizeBytes: bytes.byteLength } });
-    const target = new MemoryStore();
-    const plan = buildStorageMigrationPlan([{
-      bucket: "trip-private", key: "owner/photo.jpg", field: "storage_path", ownerId: USER_ID,
-      projectId: PROJECT_ID, purpose: "originals", recordId: MEDIA_ID, table: "step_media",
-    }], FINGERPRINT_KEY);
-
-    const dry = await copyStoragePlan({ execute: false, plan, sourceByBucket: new Map(), target });
-    expect(dry.summary.planned).toBe(1);
-    expect(source.reads).not.toHaveBeenCalled();
-    expect(target.writes).not.toHaveBeenCalled();
-
-    const copied = await copyStoragePlan({ execute: true, plan, sourceByBucket: new Map([["trip-private", source]]), target, now: () => new Date(NOW) });
-    expect(copied.summary.verified).toBe(1);
-    expect(copied.checkpoints[0]).toMatchObject({ checksumSha256: checksum, contentType: "image/jpeg", status: "verified" });
-    expect(target.writes).toHaveBeenCalledTimes(1);
-
-    const resumed = await copyStoragePlan({ execute: true, plan, previous: copied.checkpoints, sourceByBucket: new Map([["trip-private", source]]), target });
-    expect(resumed.summary.skippedVerified).toBe(1);
-    expect(target.writes).toHaveBeenCalledTimes(1);
-  });
-
-  it("never overwrites a destination checksum conflict", async () => {
-    const sourceBytes = new TextEncoder().encode("source");
-    const targetBytes = new TextEncoder().encode("different");
-    const source = new MemoryStore();
-    const target = new MemoryStore();
-    source.objects.set("owner/photo.jpg", { bytes: sourceBytes, metadata: { checksumSha256: sha256Hex(sourceBytes), contentType: "image/jpeg", sizeBytes: sourceBytes.byteLength } });
-    const plan = buildStorageMigrationPlan([{
-      bucket: "trip-private", key: "owner/photo.jpg", field: "storage_path", ownerId: USER_ID,
-      projectId: PROJECT_ID, purpose: "originals", recordId: MEDIA_ID, table: "step_media",
-    }], FINGERPRINT_KEY);
-    target.objects.set(plan.entries[0].destinationKey, { bytes: targetBytes, metadata: { checksumSha256: sha256Hex(targetBytes), contentType: "image/jpeg", sizeBytes: targetBytes.byteLength } });
-    const result = await copyStoragePlan({ execute: true, plan, sourceByBucket: new Map([["trip-private", source]]), target });
-    expect(result.summary.conflicts).toBe(1);
-    expect(target.writes).not.toHaveBeenCalled();
-  });
 });
 
 describe("schema mapping and target import boundary", () => {
@@ -400,7 +330,7 @@ describe("schema mapping and target import boundary", () => {
       dataProtectionKeyVersion: 1,
       storageCheckpoints: checkpoints,
       storagePlan: plan,
-      targetBucket: "buildy-private",
+      targetStorageNamespace: "vercel-blob-private",
     });
     const appUser = target.tables.find((table) => table.table === "app_users")?.rows[0];
     const project = target.tables.find((table) => table.table === "projects")?.rows[0];
@@ -410,7 +340,12 @@ describe("schema mapping and target import boundary", () => {
     expect(project).toMatchObject({ id: PROJECT_ID, owner_id: USER_ID, legacy_trip_id: PROJECT_ID, visibility: "private" });
     expect(privateDetails?.address_line_1_ciphertext).not.toBe("Teststraat 1");
     expect(keyring.decrypt(String(privateDetails?.address_line_1_ciphertext), `project:${PROJECT_ID}:private:address_line_1`)).toBe("Teststraat 1");
-    expect(media).toMatchObject({ storage_provider: "r2", bucket: "buildy-private", status: "uploaded", exif_stripped: false });
+    expect(media).toMatchObject({
+      storage_provider: "vercel_blob",
+      bucket: "vercel-blob-private",
+      status: "uploaded",
+      exif_stripped: false,
+    });
     expect(String(media?.object_key)).not.toContain(USER_ID);
     expect(JSON.stringify(target.quarantined)).not.toContain("Teststraat");
   });
@@ -421,7 +356,10 @@ describe("schema mapping and target import boundary", () => {
     const keyring = new DataProtectionKeyring({ currentVersion: 1, keys: { 1: Buffer.alloc(32, 2).toString("base64") } });
     const target = buildTargetImportBundle({
       artifactFingerprintKey: FINGERPRINT_KEY, bundle: source, dataProtection: keyring,
-      dataProtectionKeyVersion: 1, storageCheckpoints: [], storagePlan: plan, targetBucket: "buildy-private",
+      dataProtectionKeyVersion: 1,
+      storageCheckpoints: [],
+      storagePlan: plan,
+      targetStorageNamespace: "vercel-blob-private",
     });
     expect(target.tables.some((table) => table.table === "photobook_orders")).toBe(false);
     expect(target.quarantined).toContainEqual(expect.objectContaining({ reasonCode: "legacy_order_manual_review", sourceTable: "photobook_orders" }));
@@ -452,7 +390,7 @@ function passingReconciliation() {
 
 function fullCutoverEvidence(): CutoverEvidence {
   const sessionInvalidation = evaluateOldSessionInvalidation({
-    betterAuthCookieNamespaceVerified: true,
+    sessionCookieBoundaryVerified: true,
     legacyAnonKeyRotatedAt: NOW,
     legacyRefreshTokensRevokedAt: NOW,
     legacyTokenRejectedAt: NOW,
@@ -460,10 +398,15 @@ function fullCutoverEvidence(): CutoverEvidence {
   });
   return {
     acceptance: { acceptedAt: NOW, acceptedByFingerprint: "owner-hash", artifactSha256: "a".repeat(64), ticket: "CUTOVER-1" },
-    auth: { migrationEmailsRehearsed: true, oauthRelinkRehearsed: true, passwordSetRehearsed: true, sessionInvalidation },
+    auth: { googleOidcReauthenticationRehearsed: true, sessionInvalidation },
     backup: { artifactSha256: "b".repeat(64), readbackVerifiedAt: NOW, restoreRehearsalPassed: true },
     finalDelta: { schemaVersion: 1, baseCapturedAt: "2026-08-04T08:00:00.000Z", capturedAt: NOW, finalDelta: true, tables: [], summary: { changedOrAdded: 0, deletionCandidates: 0, unchanged: 10 } },
-    providerRoutes: { brevoReady: true, peechoCallbackReady: true, stripeWebhookReady: true },
+    providerRoutes: {
+      googleOidcReady: true,
+      manualFulfilmentReady: true,
+      privateBlobReady: true,
+      stripeWebhookReady: true,
+    },
     reconciliation: passingReconciliation(),
     rollback: { ownerFingerprint: "owner-hash", windowEndsAt: "2026-08-06T10:00:00.000Z", planArtifactSha256: "c".repeat(64) },
     smoke: { privateMediaDeniedAnonymously: true, privateProjectDeniedAnonymously: true, syntheticCoreFlowsPassed: true },

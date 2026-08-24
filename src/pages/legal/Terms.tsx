@@ -5,7 +5,7 @@ const Terms = () => (
   <LegalLayout
     title="Algemene voorwaarden"
     description="De voorwaarden voor het gebruik van Buildy en het bestellen van een persoonlijk gedrukt Bouwboek."
-    updated="15 juli 2026"
+    updated="23 augustus 2026"
   >
     <LegalPendingNotice title="Nog aan te vullen vóór registratie en verkoop">
       <p>
@@ -30,7 +30,8 @@ const Terms = () => (
       Buildy is een platform voor het vastleggen en delen van een verbouwing en het
       samenstellen van een persoonlijk fotoboek. De onderneming achter Buildy is de
       aanbieder van het platform én de verkoper van het Bouwboek aan de consument.
-      Stripe verwerkt de betaling en Peecho verzorgt de druk en verzending; zij nemen
+      Als checkout is geactiveerd, verwerkt Stripe de betaling. Buildy controleert iedere
+      betaalde drukopdracht handmatig en kiest de drukker en bezorger; deze partijen nemen
       de wettelijke verplichtingen van Buildy als verkoper niet over.
     </p>
 
@@ -52,9 +53,9 @@ const Terms = () => (
       behalve voor nog lopende bestellingen, wettelijke bewaring en tijdelijke back-ups.
     </p>
     <ul>
-      <li>Bij een openbaar profiel of project kan inhoud zonder account zichtbaar zijn, door zoekmachines worden geïndexeerd en door anderen worden gedeeld.</li>
-      <li>Bij een privéprofiel of privéproject is inhoud alleen zichtbaar volgens de toegangsinstellingen. Geen enkel online toegangsmechanisme kan voorkomen dat een toegelaten kijker zelf een kopie maakt.</li>
-      <li>Het afzonderlijk opgeslagen projectadres en niet-openbare budget- of aannemersinformatie worden niet openbaar gemaakt via de projectpagina.</li>
+      <li>Bij een openbaar profiel of openbare verbouwing kan inhoud zonder account zichtbaar zijn, door zoekmachines worden geïndexeerd en door anderen worden gedeeld.</li>
+      <li>Bij een privéprofiel of privéverbouwing is inhoud alleen zichtbaar volgens de toegangsinstellingen. Geen enkel online toegangsmechanisme kan voorkomen dat een toegelaten kijker zelf een kopie maakt.</li>
+      <li>Het afzonderlijk opgeslagen verbouwingsadres en niet-openbare budget- of aannemersinformatie worden niet openbaar gemaakt via de pagina van de verbouwing.</li>
     </ul>
 
     <h2>4. Rechten van anderen en gedragsregels</h2>
@@ -89,7 +90,7 @@ const Terms = () => (
       <li>Vóór betaling toont Buildy de prijs van het boek in euro's inclusief toepasselijke btw, de verzendkosten en het totaalbedrag.</li>
       <li>De beschikbare betaalmiddelen en eventuele leveringsbeperkingen worden uiterlijk aan het begin van de checkout getoond.</li>
       <li>De overeenkomst voor het Bouwboek komt tot stand wanneer je de bestelling in Stripe Checkout met betalingsverplichting afrondt.</li>
-      <li>Na succesvolle betaling ontvang je de ordergegevens en deze voorwaarden op een manier die je kunt bewaren. De bestelling gaat daarna naar Peecho voor productie.</li>
+      <li>Na server-side bevestiging van de betaling blijven de ordergegevens en deze voorwaarden in Buildy beschikbaar. Een bevoegde beheerder controleert de print-PDF en plaatst de drukopdracht daarna handmatig bij de gekozen drukker.</li>
       <li>Niet vooraf vermelde bijkomende kosten worden niet achteraf in rekening gebracht.</li>
     </ul>
 
@@ -125,7 +126,7 @@ const Terms = () => (
       Als de klacht gegrond is, zorgt Buildy zonder kosten en binnen een redelijke termijn
       voor herstel of vervanging, tenzij dat onmogelijk is of niet kan worden gevergd. In
       de gevallen die de wet noemt, kun je recht hebben op prijsvermindering of ontbinding
-      en terugbetaling. Peecho of de vervoerder kan bij de afhandeling helpen, maar Buildy
+      en terugbetaling. De gekozen drukker of vervoerder kan bij de afhandeling helpen, maar Buildy
       blijft jouw aanspreekpunt als verkoper.
     </p>
 

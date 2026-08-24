@@ -1,6 +1,7 @@
 import type {
   CommentMutationResult,
   CommentPage,
+  NotificationMarkAllReadResult,
   NotificationMutationResult,
   NotificationPage,
   ReactionMutationResult,
@@ -56,6 +57,10 @@ export interface EngagementHttpService {
     input: unknown,
   ): Promise<ReactionMutationResult>;
   notifications(actorId: string, query: unknown): Promise<NotificationPage>;
+  markAllNotificationsRead(
+    actorId: string,
+    input: unknown,
+  ): Promise<NotificationMarkAllReadResult>;
   updateNotification(
     actorId: string,
     notificationId: string,
@@ -167,6 +172,15 @@ export function createEngagementHttpHandler(dependencies: EngagementHttpDependen
             await dependencies.service.notifications(
               authenticatedActorId(),
               queryInput(url),
+            ),
+            requestId,
+          );
+        }
+        if (request.method === "PATCH") {
+          return jsonSuccess(
+            await dependencies.service.markAllNotificationsRead(
+              authenticatedActorId(),
+              await jsonInput(request),
             ),
             requestId,
           );

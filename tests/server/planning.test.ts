@@ -14,6 +14,7 @@ import {
 } from "../../server/planning/repository";
 import { PlanningService } from "../../server/planning/service";
 import type { PlanningRepository } from "../../server/planning/types";
+import { PrivacyBlindIndex } from "../../server/security/dataProtection";
 
 const OWNER_ID = "10000000-0000-4000-8000-000000000001";
 const VIEWER_ID = "20000000-0000-4000-8000-000000000002";
@@ -26,6 +27,7 @@ const UPDATE_ID = "80000000-0000-4000-8000-000000000008";
 const BUDGET_ID = "90000000-0000-4000-8000-000000000009";
 const ITEM_ID = "a0000000-0000-4000-8000-00000000000a";
 const CLIENT_KEY = "planning-test-key-0001";
+const BLIND_INDEX = new PrivacyBlindIndex(Buffer.alloc(32, 16).toString("base64"));
 
 const mutation: PlanningMutationResult = {
   resourceType: "floorplan",
@@ -116,7 +118,7 @@ function repository(overrides: Partial<PlanningRepository> = {}): PlanningReposi
 describe("PlanningService floorplan visibility", () => {
   it("returns one nested set-based board for anonymous public viewers", async () => {
     const listFloorplans = vi.fn(async () => board);
-    const service = new PlanningService(repository({ listFloorplans }));
+    const service = new PlanningService(repository({ listFloorplans }), BLIND_INDEX);
 
     await expect(service.floorplans({ kind: "anonymous" }, PROJECT_ID)).resolves.toEqual(board);
     expect(listFloorplans).toHaveBeenCalledOnce();
@@ -129,7 +131,7 @@ describe("PlanningService floorplan visibility", () => {
     ["pending viewer", VIEWER_ID],
     ["blocked viewer", BLOCKED_ID],
   ])("uses the same non-enumerating error for a %s", async (_case, viewerId) => {
-    const service = new PlanningService(repository({ listFloorplans: async () => null }));
+    const service = new PlanningService(repository({ listFloorplans: async () => null }), BLIND_INDEX);
 
     await expect(service.floorplans(
       { kind: "authenticated", appUserId: viewerId },
@@ -140,9 +142,9 @@ describe("PlanningService floorplan visibility", () => {
     });
   });
 
-  it.each(["granted", "owner"] as const)("returns visible floorplans for a %s", async (access) => {
+  it.each(["follower", "link", "owner"] as const)("returns visible floorplans for a %s", async (access) => {
     const visible = { ...board, viewerAccess: access, canEdit: access === "owner" };
-    const service = new PlanningService(repository({ listFloorplans: async () => visible }));
+    const service = new PlanningService(repository({ listFloorplans: async () => visible }), BLIND_INDEX);
 
     await expect(service.floorplans(
       { kind: "authenticated", appUserId: access === "owner" ? OWNER_ID : VIEWER_ID },
@@ -167,7 +169,7 @@ describe("PlanningService mutations", () => {
       version: 1,
       replayed: false,
     }));
-    const service = new PlanningService(repository({ createBudget }), () => BUDGET_ID);
+    const service = new PlanningService(repository({ createBudget }), BLIND_INDEX, () => BUDGET_ID);
 
     await service.createBudget(OWNER_ID, PROJECT_ID, {
       idempotencyKey: CLIENT_KEY,
@@ -185,7 +187,7 @@ describe("PlanningService mutations", () => {
   });
 
   it("rejects client-owned currency, totals and owner fields", async () => {
-    const service = new PlanningService(repository());
+    const service = new PlanningService(repository(), BLIND_INDEX);
 
     await expect(service.createBudget(OWNER_ID, PROJECT_ID, {
       idempotencyKey: CLIENT_KEY,
@@ -197,7 +199,7 @@ describe("PlanningService mutations", () => {
   });
 
   it("rejects out-of-bounds, non-finite and over-precise pin coordinates", async () => {
-    const service = new PlanningService(repository());
+    const service = new PlanningService(repository(), BLIND_INDEX);
     const input = (x: number, y: number) => ({
       idempotencyKey: CLIENT_KEY,
       updateId: UPDATE_ID,
@@ -216,7 +218,7 @@ describe("PlanningService mutations", () => {
   });
 
   it("requires optimistic versions for updates and deletes", async () => {
-    const service = new PlanningService(repository());
+    const service = new PlanningService(repository(), BLIND_INDEX);
 
     await expect(service.updatePin(OWNER_ID, PROJECT_ID, FLOORPLAN_ID, PIN_ID, {
       idempotencyKey: CLIENT_KEY,
@@ -243,7 +245,7 @@ describe("PlanningService mutations", () => {
       return created;
     };
     let sequence = 0;
-    const service = new PlanningService(repository({ createFloorplan }), () =>
+    const service = new PlanningService(repository({ createFloorplan }), BLIND_INDEX, () =>
       sequence++ === 0 ? FLOORPLAN_ID : PIN_ID);
     const input = {
       idempotencyKey: CLIENT_KEY,
@@ -267,7 +269,7 @@ describe("PlanningService mutations", () => {
 describe("planning budget and outbox DTOs", () => {
   it("returns an owner-only server-computed budget readmodel", async () => {
     const getBudget = vi.fn(async (actorId: string) => actorId === OWNER_ID ? budget : null);
-    const service = new PlanningService(repository({ getBudget }));
+    const service = new PlanningService(repository({ getBudget }), BLIND_INDEX);
 
     await expect(service.budget(OWNER_ID, PROJECT_ID)).resolves.toEqual(budget);
     await expect(service.budget(VIEWER_ID, PROJECT_ID)).rejects.toMatchObject({
@@ -294,6 +296,7 @@ describe("planning budget and outbox DTOs", () => {
     expect(record.aggregateId).toBe(PROJECT_ID);
     expect(record.payload).toEqual({
       schemaVersion: 1,
+      requestHashVersion: 2,
       requestHash: "f".repeat(64),
       resourceId: ITEM_ID,
       resourceType: "budget_item",

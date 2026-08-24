@@ -35,7 +35,6 @@ describe("moderation API client", () => {
       status: "received",
       submittedAt: "2026-08-04T12:00:00.000Z",
       replayed: false,
-      emailConfirmationQueued: true,
     }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -70,7 +69,6 @@ describe("moderation API client", () => {
         status: "received",
         submittedAt: "2026-08-04T12:00:00.000Z",
         replayed: false,
-        emailConfirmationQueued: false,
       }))
       .mockResolvedValueOnce(success({
         id: SUBMISSION_ID,
@@ -79,7 +77,6 @@ describe("moderation API client", () => {
         status: "received",
         submittedAt: "2026-08-04T12:00:00.000Z",
         replayed: false,
-        emailConfirmationQueued: true,
       }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -116,7 +113,6 @@ describe("moderation API client", () => {
       status: "received",
       submittedAt: "2026-08-04T12:00:00.000Z",
       replayed: false,
-      emailConfirmationQueued: false,
     })));
 
     await expect(submitModerationReport({

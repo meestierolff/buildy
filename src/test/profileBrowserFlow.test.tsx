@@ -39,7 +39,7 @@ const mocks = vi.hoisted(() => ({
   },
   user: {
     email: "ada@example.test",
-    id: "better-auth-provider-id",
+    id: "google-oidc-auth-user",
   } as { email: string; id: string } | null,
 }));
 
@@ -112,7 +112,7 @@ function socialProfile() {
 
 describe("profile browser flow", () => {
   beforeEach(() => {
-    mocks.user = { email: "ada@example.test", id: "better-auth-provider-id" };
+    mocks.user = { email: "ada@example.test", id: "google-oidc-auth-user" };
     mocks.updateMutation.mutateAsync.mockReset().mockResolvedValue({
       id: PROFILE_ID,
       version: 4,
@@ -173,7 +173,7 @@ describe("profile browser flow", () => {
     expect(screen.getByRole("heading", { name: "Ada Bouwer" })).toBeInTheDocument();
     expect(mocks.publicProfile).toHaveBeenCalledWith("ada-bouwer", true);
     expect(mocks.socialProfile).toHaveBeenCalledWith(PROFILE_ID, true);
-    expect(mocks.socialProfile).not.toHaveBeenCalledWith("better-auth-provider-id", true);
+    expect(mocks.socialProfile).not.toHaveBeenCalledWith("google-oidc-auth-user", true);
   });
 
   it("blokkeert een ander profiel pas na bevestiging en biedt direct deblokkeerherstel", async () => {
@@ -188,7 +188,7 @@ describe("profile browser flow", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Blokkeren" }));
     const dialog = screen.getByRole("alertdialog");
-    expect(within(dialog).getByText(/volgrelaties en projecttoegang worden ingetrokken/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/bestaande volgrelaties worden ingetrokken/i)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Blokkeren" }));
 
     await waitFor(() => expect(mocks.blockMutation.mutateAsync).toHaveBeenCalledWith({
@@ -196,7 +196,10 @@ describe("profile browser flow", () => {
       profileId: PROFILE_ID,
     }));
     expect(await screen.findByRole("button", { name: "Deblokkeren" })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Geblokkeerd");
+    expect(screen.getByRole("heading", { name: "Bouwer geblokkeerd" })).toBeInTheDocument();
+    expect(screen.getByText(/profielgegevens en verbouwingen zijn verborgen/i)).toBeInTheDocument();
+    expect(screen.queryByText("Ada Bouwer")).not.toBeInTheDocument();
+    expect(screen.queryByText("Utrecht")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Log in om te volgen/i })).not.toBeInTheDocument();
   });
 

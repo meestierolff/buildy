@@ -144,19 +144,14 @@ describeWithDatabase("moderation admin PostgreSQL boundary", () => {
         ) VALUES ($1, $2, 'admin', 'ci:moderation', 'integration_test')
       `, [randomUUID(), adminId]);
       await client.query(`
-        INSERT INTO projects (id, owner_id, slug, title, visibility)
-        VALUES ($1, $2, $3, 'Afgeschermd testproject', 'private')
+        INSERT INTO projects (id, owner_id, slug, title, visibility, published_at)
+        VALUES ($1, $2, $3, 'Afgeschermd testproject', 'unlisted', statement_timestamp())
       `, [projectId, ownerId, `moderation-${projectId.replaceAll("-", "")}`]);
       await client.query(`
         INSERT INTO project_private_details (
           project_id, owner_id, city_ciphertext, country_code
         ) VALUES ($1, $2, 'v1.1.encrypted-city', 'NL')
       `, [projectId, ownerId]);
-      await client.query(`
-        INSERT INTO project_access_requests (
-          id, project_id, project_owner_id, requester_id, status, decided_by_id, decided_at
-        ) VALUES ($1, $2, $3, $4, 'accepted', $3, statement_timestamp())
-      `, [randomUUID(), projectId, ownerId, viewerId]);
       await seedReport(client, reportId, "project", projectId);
 
       await client.query("SELECT set_config('app.actor_id', $1, true)", [adminId]);

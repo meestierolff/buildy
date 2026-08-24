@@ -4,6 +4,7 @@ import type {
   DeleteCommentInput,
   EngagementComment,
   EngagementNotification,
+  NotificationMarkAllReadResult,
   NotificationMutationResult,
   ReactionMutationResult,
   ReactionSummary,
@@ -67,13 +68,17 @@ export interface EngagementRepository {
     cursor: NotificationCursor | undefined,
     limit: number,
     status: NotificationListStatus,
-  ): Promise<EngagementNotification[]>;
+  ): Promise<{ items: EngagementNotification[]; unreadCount: number }>;
   updateNotification(
     recipientId: string,
     notificationId: string,
     action: "read" | "archive",
     now: Date,
   ): Promise<NotificationMutationResult>;
+  markAllNotificationsRead(
+    recipientId: string,
+    now: Date,
+  ): Promise<NotificationMarkAllReadResult>;
 }
 
 export type EngagementClock = () => Date;

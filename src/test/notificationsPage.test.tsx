@@ -2,7 +2,11 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useAuth } from "@/hooks/useAuth";
-import { useInfiniteNotifications, useNotificationMutation } from "@/hooks/useEngagement";
+import {
+  useInfiniteNotifications,
+  useMarkAllNotificationsReadMutation,
+  useNotificationMutation,
+} from "@/hooks/useEngagement";
 import { useSocialRequestDecisionMutation } from "@/hooks/useSocial";
 import { BrowserRouter } from "@/lib/router";
 import Notifications from "@/pages/Notifications";
@@ -12,6 +16,7 @@ vi.mock("@/hooks/useAuth", () => ({ useAuth: vi.fn() }));
 vi.mock("@/hooks/usePageMeta", () => ({ usePageMeta: vi.fn() }));
 vi.mock("@/hooks/useEngagement", () => ({
   useInfiniteNotifications: vi.fn(),
+  useMarkAllNotificationsReadMutation: vi.fn(),
   useNotificationMutation: vi.fn(),
 }));
 vi.mock("@/hooks/useSocial", () => ({ useSocialRequestDecisionMutation: vi.fn() }));
@@ -33,6 +38,7 @@ const notification: EngagementNotification = {
   projectId: PROJECT_ID,
   updateId: UPDATE_ID,
   commentId: "55555555-5555-4555-8555-555555555555",
+  orderId: null,
   readAt: null,
   createdAt: "2026-08-04T10:00:00.000Z",
 };
@@ -67,6 +73,7 @@ describe("notifications page", () => {
     replayed: false,
   });
   const fetchNextPage = vi.fn();
+  const markAllRead = vi.fn().mockResolvedValue({ updatedCount: 31, unreadCount: 0 });
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -75,12 +82,19 @@ describe("notifications page", () => {
       mutateAsync,
       isPending: false,
     } as unknown as ReturnType<typeof useNotificationMutation>);
+    vi.mocked(useMarkAllNotificationsReadMutation).mockReturnValue({
+      mutateAsync: markAllRead,
+      isPending: false,
+    } as unknown as ReturnType<typeof useMarkAllNotificationsReadMutation>);
     vi.mocked(useSocialRequestDecisionMutation).mockReturnValue({
       mutateAsync: vi.fn(),
       isPending: false,
     } as unknown as ReturnType<typeof useSocialRequestDecisionMutation>);
     vi.mocked(useInfiniteNotifications).mockReturnValue({
-      data: { pages: [{ items: [notification], nextCursor: "cursor-2" }], pageParams: [undefined] },
+      data: {
+        pages: [{ items: [notification], nextCursor: "cursor-2", unreadCount: 31 }],
+        pageParams: [undefined],
+      },
       isPending: false,
       isError: false,
       hasNextPage: true,
@@ -94,7 +108,7 @@ describe("notifications page", () => {
     vi.mocked(useAuth).mockReturnValue(auth(true));
     render(<BrowserRouter><Notifications /></BrowserRouter>);
 
-    expect(screen.getByRole("link", { name: /ada reageerde op je update/i }))
+    expect(screen.getByRole("link", { name: /ada reageerde op je Bouwmoment/i }))
       .toHaveAttribute("href", `/project/${PROJECT_ID}?update=${UPDATE_ID}`);
     fireEvent.click(screen.getByRole("button", { name: "Markeer als gelezen" }));
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
@@ -103,6 +117,8 @@ describe("notifications page", () => {
     }));
     fireEvent.click(screen.getByRole("button", { name: "Meer meldingen laden" }));
     expect(fetchNextPage).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Alles gelezen" }));
+    await waitFor(() => expect(markAllRead).toHaveBeenCalledTimes(1));
   });
 
   it("requires a cookie-backed authenticated session", async () => {

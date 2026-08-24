@@ -22,6 +22,7 @@ import { resolveVisibleMentionSlugs } from "@/lib/socialApi";
 interface CommentsSheetProps {
   projectId?: string;
   updateId: string;
+  canComment?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCountChange?: (delta: number) => void;
@@ -30,6 +31,7 @@ interface CommentsSheetProps {
 const CommentsSheet = ({
   projectId,
   updateId,
+  canComment = true,
   open,
   onOpenChange,
   onCountChange,
@@ -134,7 +136,7 @@ const CommentsSheet = ({
         </div>
         <div className="flex items-center gap-3 mt-1 px-2 text-[11px] text-muted-foreground">
           <span>{formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true, locale: nl })}</span>
-          {user && (
+          {user && canComment && (
             <button
               type="button"
               onClick={() => setReplyTo(comment)}
@@ -144,7 +146,7 @@ const CommentsSheet = ({
               <Reply className="h-3 w-3" aria-hidden="true" /> Antwoord
             </button>
           )}
-          {comment.canDelete && (
+          {canComment && comment.canDelete && (
             <button
               type="button"
               onClick={() => remove(comment)}
@@ -218,7 +220,11 @@ const CommentsSheet = ({
             </>
           )}
         </div>
-        {available && user ? (
+        {available && !canComment ? (
+          <p className="border-t pt-3 text-center text-xs text-muted-foreground">
+            Via deze deellink kun je reacties alleen lezen.
+          </p>
+        ) : available && user ? (
           <div className="border-t pt-3 mt-2 space-y-2">
             {replyTo && (
               <div className="text-xs text-muted-foreground flex items-center justify-between bg-muted/50 px-2 py-1 rounded">

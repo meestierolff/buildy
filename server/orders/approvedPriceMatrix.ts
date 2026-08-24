@@ -18,7 +18,10 @@ const matrixEntrySchema = z.object({
   taxRateBasisPoints: z.number().int().min(0).max(10_000),
   taxTreatment: z.enum(["vat_included", "vat_exclusive", "vat_exempt"]),
   deliveryEstimate: z.string().trim().min(1).max(160),
-  offeringId: z.string().regex(/^[A-Za-z0-9._:-]{1,120}$/),
+  productReference: z.string().regex(/^[A-Za-z0-9._:-]{1,120}$/),
+  // Houd de oude eigenschap zichtbaar voor compile-time cutovercontroles, maar
+  // accepteer hem niet meer in actieve prijsconfiguratie.
+  offeringId: z.never().optional(),
 }).strict().superRefine((entry, context) => {
   if (entry.maximumPages < entry.minimumPages) {
     context.addIssue({ code: "custom", message: "maximumPages ligt vóór minimumPages." });
@@ -57,6 +60,12 @@ function safeAmount(value: number): number {
   return value;
 }
 
+function netAmountFromVatInclusiveGross(grossMinor: number, taxRateBasisPoints: number): number {
+  return safeAmount(Math.round(
+    grossMinor * 10_000 / (10_000 + taxRateBasisPoints),
+  ));
+}
+
 export class ApprovedPriceMatrixQuoteProvider implements OrderQuoteProvider {
   private readonly matrix: ApprovedPriceMatrix;
 
@@ -64,16 +73,22 @@ export class ApprovedPriceMatrixQuoteProvider implements OrderQuoteProvider {
     rawMatrix: unknown,
     private readonly environment: "test" | "live",
     private readonly clock: OrderClock = () => new Date(),
+    private readonly quoteTtlMilliseconds = 15 * 60_000,
   ) {
     this.matrix = approvedPriceMatrixSchema.parse(rawMatrix);
     if (this.matrix.environment !== environment) throw new OrderError("PRICE_UNAVAILABLE");
+    if (
+      !Number.isSafeInteger(this.quoteTtlMilliseconds)
+      || this.quoteTtlMilliseconds < 60_000
+      || this.quoteTtlMilliseconds > 30 * 60_000
+    ) throw new OrderError("PRICE_UNAVAILABLE");
   }
 
   async quote(input: Parameters<OrderQuoteProvider["quote"]>[0]) {
     const now = this.clock();
     const approvedAt = new Date(this.matrix.approvedAt);
-    const expiresAt = new Date(this.matrix.expiresAt);
-    if (approvedAt.getTime() > now.getTime() || expiresAt.getTime() <= now.getTime()) {
+    const matrixExpiresAt = new Date(this.matrix.expiresAt);
+    if (approvedAt.getTime() > now.getTime() || matrixExpiresAt.getTime() <= now.getTime()) {
       throw new OrderError("PRICE_UNAVAILABLE");
     }
     const entry = this.matrix.entries.find((candidate) =>
@@ -87,18 +102,54 @@ export class ApprovedPriceMatrixQuoteProvider implements OrderQuoteProvider {
     if (!entry || input.pageCount % 2 !== 0) return null;
 
     const extraPages = input.pageCount - entry.minimumPages;
-    const unitAmountMinor = safeAmount(
+    const configuredUnitAmountMinor = safeAmount(
       entry.unitBaseMinor + extraPages * entry.unitAdditionalPageMinor,
     );
-    const subtotalMinor = safeAmount(unitAmountMinor * input.quantity);
-    const shippingMinor = safeAmount(
+    const configuredSubtotalMinor = safeAmount(configuredUnitAmountMinor * input.quantity);
+    const configuredShippingMinor = safeAmount(
       entry.shippingBaseMinor
       + (input.quantity - 1) * entry.shippingAdditionalCopyMinor,
     );
-    const taxMinor = safeAmount(Math.round(
-      (subtotalMinor + shippingMinor) * entry.taxRateBasisPoints / 10_000,
-    ));
-    const totalMinor = safeAmount(subtotalMinor + shippingMinor + taxMinor);
+    let unitAmountMinor = configuredUnitAmountMinor;
+    let subtotalMinor = configuredSubtotalMinor;
+    let shippingMinor = configuredShippingMinor;
+    let taxMinor = 0;
+    let totalMinor: number;
+
+    if (entry.taxTreatment === "vat_included") {
+      // Inclusive matrix amounts are approved gross consumer prices. Reconcile
+      // their net components per Stripe line and keep the gross total exact;
+      // the residual absorbs unavoidable whole-cent rounding.
+      const grossTotalMinor = safeAmount(configuredSubtotalMinor + configuredShippingMinor);
+      unitAmountMinor = netAmountFromVatInclusiveGross(
+        configuredUnitAmountMinor,
+        entry.taxRateBasisPoints,
+      );
+      subtotalMinor = safeAmount(unitAmountMinor * input.quantity);
+      shippingMinor = netAmountFromVatInclusiveGross(
+        configuredShippingMinor,
+        entry.taxRateBasisPoints,
+      );
+      taxMinor = safeAmount(grossTotalMinor - subtotalMinor - shippingMinor);
+      totalMinor = grossTotalMinor;
+    } else {
+      taxMinor = entry.taxTreatment === "vat_exempt"
+        ? 0
+        : safeAmount(Math.round(
+            (subtotalMinor + shippingMinor) * entry.taxRateBasisPoints / 10_000,
+          ));
+      totalMinor = safeAmount(subtotalMinor + shippingMinor + taxMinor);
+    }
+    const maximumQuoteExpiresAt = Math.min(
+      matrixExpiresAt.getTime(),
+      now.getTime() + this.quoteTtlMilliseconds,
+    );
+    const quoteExpiresAt = input.quoteExpiresAt ?? new Date(maximumQuoteExpiresAt);
+    if (
+      !Number.isFinite(quoteExpiresAt.getTime())
+      || quoteExpiresAt.getTime() <= now.getTime()
+      || quoteExpiresAt.getTime() > maximumQuoteExpiresAt
+    ) throw new OrderError("QUOTE_EXPIRED");
     const quoteInput = {
       matrixVersion: this.matrix.version,
       commercialApprovalId: this.matrix.commercialApprovalId,
@@ -110,12 +161,15 @@ export class ApprovedPriceMatrixQuoteProvider implements OrderQuoteProvider {
       shippingMinor,
       taxMinor,
       totalMinor,
+      taxRateBasisPoints: entry.taxRateBasisPoints,
+      taxTreatment: entry.taxTreatment,
+      expiresAt: quoteExpiresAt.toISOString(),
     };
     const digest = createHash("sha256").update(canonicalJson(quoteInput)).digest("hex");
 
     return {
       quoteReference: `matrix:${this.matrix.commercialApprovalId}:${digest.slice(0, 32)}`,
-      offeringId: entry.offeringId,
+      productReference: entry.productReference,
       sku: input.sku,
       pageCount: input.pageCount,
       quantity: input.quantity,
@@ -131,7 +185,7 @@ export class ApprovedPriceMatrixQuoteProvider implements OrderQuoteProvider {
       deliveryEstimate: entry.deliveryEstimate,
       taxTreatment: entry.taxTreatment,
       commercialApprovalId: this.matrix.commercialApprovalId,
-      expiresAt,
+      expiresAt: quoteExpiresAt,
     };
   }
 }

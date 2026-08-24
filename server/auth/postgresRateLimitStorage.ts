@@ -58,7 +58,7 @@ export function rateLimitRetryAfter(
 }
 
 /**
- * A process-safe Better Auth rate-limit store backed by one atomic PostgreSQL
+ * A process-safe authentication rate-limit store backed by one atomic PostgreSQL
  * upsert. Denied requests cap the counter at max + 1 and do not move the
  * window, preventing concurrent bypasses and attacker-controlled lockout drift.
  */

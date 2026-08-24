@@ -3,6 +3,7 @@ import {
   check,
   foreignKey,
   index,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -21,6 +22,7 @@ import {
   relationshipStatusEnum,
   timestamps,
 } from "./common.js";
+import { photobookOrders } from "./photobooks.js";
 import { projects, updates } from "./projects.js";
 
 export const userRelationships = pgTable(
@@ -169,6 +171,10 @@ export const notifications = pgTable(
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }),
     updateId: uuid("update_id"),
     commentId: uuid("comment_id"),
+    orderId: uuid("order_id").references(() => photobookOrders.id, { onDelete: "cascade" }),
+    sourceAggregateId: uuid("source_aggregate_id"),
+    sourceVersion: integer("source_version"),
+    sourceOccurredAt: timestamp("source_occurred_at", { withTimezone: true }),
     type: text("type").notNull(),
     status: notificationStatusEnum("status").default("unread").notNull(),
     dedupeKey: text("dedupe_key"),
@@ -189,9 +195,31 @@ export const notifications = pgTable(
       foreignColumns: [comments.id, comments.updateId],
     }).onDelete("cascade"),
     uniqueIndex("notifications_dedupe_uq").on(table.dedupeKey),
+    uniqueIndex("notifications_update_published_recipient_uq")
+      .on(table.updateId, table.recipientId, table.type)
+      .where(sql`${table.type} = 'update.published'`),
+    uniqueIndex("notifications_social_version_recipient_uq")
+      .on(table.type, table.sourceAggregateId, table.sourceVersion, table.recipientId)
+      .where(sql`${table.type} IN ('profile.follow.requested', 'profile.followed', 'profile.follow.accepted', 'profile.follow.rejected', 'project.access.requested', 'project.access.accepted', 'project.access.rejected') AND ${table.sourceAggregateId} IS NOT NULL AND ${table.sourceVersion} IS NOT NULL`),
+    uniqueIndex("notifications_project_follow_event_recipient_uq")
+      .on(
+        table.type,
+        table.sourceAggregateId,
+        table.sourceOccurredAt,
+        table.actorId,
+        table.recipientId,
+      )
+      .where(sql`${table.type} = 'project.followed' AND ${table.sourceAggregateId} IS NOT NULL AND ${table.sourceOccurredAt} IS NOT NULL AND ${table.actorId} IS NOT NULL`),
+    uniqueIndex("notifications_engagement_source_recipient_uq")
+      .on(table.type, table.sourceAggregateId, table.recipientId)
+      .where(sql`${table.type} IN ('comment.created', 'comment.reply', 'comment.mention', 'reaction.created') AND ${table.sourceAggregateId} IS NOT NULL`),
     index("notifications_recipient_status_idx").on(table.recipientId, table.status, table.createdAt),
+    index("notifications_recipient_order_idx")
+      .on(table.recipientId, table.orderId, table.createdAt)
+      .where(sql`${table.orderId} IS NOT NULL`),
     check("notifications_type_ck", sql`char_length(btrim(${table.type})) BETWEEN 1 AND 80`),
     check("notifications_read_state_ck", sql`${table.status} <> 'read' OR ${table.readAt} IS NOT NULL`),
     check("notifications_payload_object_ck", sql`jsonb_typeof(${table.payload}) = 'object'`),
+    check("notifications_source_version_ck", sql`${table.sourceVersion} IS NULL OR ${table.sourceVersion} > 0`),
   ],
 );

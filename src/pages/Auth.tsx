@@ -1,12 +1,11 @@
 import { useMemo, useRef, useState } from "react";
-import { Link, Navigate, useNavigate, useSearchParams } from "@/lib/router";
-import { BookOpen, Check, Eye, EyeOff, Images, Users } from "lucide-react";
+import { Link, Navigate, useSearchParams } from "@/lib/router";
+import { BookOpen, Images, Users } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import {
   authClient,
   authErrorDetails,
   authErrorMessage,
-  authPagePath,
   safeNextPath,
 } from "@/lib/authClient";
 import { Button } from "@/components/ui/button";
@@ -33,231 +32,80 @@ const GoogleIcon = () => (
   </svg>
 );
 
-type EmailStatus = "registration" | "verification" | "magic-link" | null;
-
 const Auth = () => {
   usePageMeta({
     title: "Inloggen of registreren — Buildy",
-    description: "Log in op Buildy of maak een account om je verbouwing bij te houden en later een Bouwboek te maken.",
+    description: "Log veilig in met Google om je verbouwing en Bouwboek bij te houden.",
     path: "/auth",
     noIndex: true,
   });
 
-  const {
-    user,
-    loading: authLoading,
-    error: sessionError,
-    refetchSession,
-  } = useAuth();
+  const { user, loading: authLoading, error: sessionError } = useAuth();
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
   const nextPath = useMemo(() => safeNextPath(searchParams.get("next")), [searchParams]);
   const [isLogin, setIsLogin] = useState(searchParams.get("mode") !== "register");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [emailStatus, setEmailStatus] = useState<EmailStatus>(null);
-  const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [inviteCode, setInviteCode] = useState("");
   const reservationAttempt = useRef<{ key: string; signature: string } | null>(null);
   const betaStatusQuery = useBetaStatus();
   const appFeatures = useAppFeatures();
   const betaMode = betaStatusQuery.data?.betaMode ?? appFeatures.betaMode;
-  const emailAuthEnabled = appFeatures.emailAuthEnabled;
   const googleSignInEnabled = appFeatures.googleSignInEnabled;
-
-  const authReturnPath = useMemo(() => authPagePath(nextPath), [nextPath]);
-  const forgotPasswordPath = nextPath === "/"
-    ? "/wachtwoord-vergeten"
-    : `/wachtwoord-vergeten?next=${encodeURIComponent(nextPath)}`;
-  const verificationReturnPath = useMemo(
-    () => authPagePath(nextPath, "verified"),
-    [nextPath],
-  );
   const callbackError = searchParams.get("error");
   const feedback = callbackError
-    ? { tone: "error" as const, message: authErrorMessage({ code: callbackError }, "sign-in") }
+    ? authErrorMessage({ code: callbackError }, "google")
     : sessionError
-      ? { tone: "error" as const, message: authErrorMessage(sessionError, "session") }
-      : searchParams.get("verified") === "1"
-        ? { tone: "success" as const, message: "Je e-mailadres is bevestigd. Je kunt nu inloggen." }
-        : searchParams.get("reset") === "success"
-          ? { tone: "success" as const, message: "Je wachtwoord is gewijzigd. Log opnieuw in." }
-          : null;
+      ? authErrorMessage(sessionError, "session")
+      : null;
 
-  const prepareRegistration = async (provider: "email" | "google"): Promise<boolean> => {
-    recordSignupStarted(provider);
+  const prepareRegistration = async (): Promise<boolean> => {
+    recordSignupStarted("google");
     if (!betaMode) return true;
     const code = inviteCode.trim();
     if (!code) {
       toast.error("Vul je persoonlijke bèta-uitnodiging in.");
       return false;
     }
-    const normalizedEmail = provider === "email" ? email.trim().toLowerCase() : undefined;
-    const signature = JSON.stringify({ code, normalizedEmail, provider });
-    if (reservationAttempt.current?.signature !== signature) {
-      reservationAttempt.current = {
-        key: createBetaReservationKey(),
-        signature,
-      };
+    if (reservationAttempt.current?.signature !== code) {
+      reservationAttempt.current = { key: createBetaReservationKey(), signature: code };
     }
     try {
       await reserveBetaInvite({
         inviteCode: code,
-        provider,
-        ...(normalizedEmail ? { email: normalizedEmail } : {}),
+        provider: "google",
         idempotencyKey: reservationAttempt.current.key,
       });
       return true;
     } catch (error) {
-      if (error instanceof ApiClientError && error.status === 429) {
-        toast.error("Je hebt dit te vaak geprobeerd. Wacht even en probeer opnieuw.");
-      } else {
-        toast.error("Deze uitnodiging kan niet worden gebruikt. Vraag zo nodig een nieuwe aan.");
-      }
+      toast.error(
+        error instanceof ApiClientError && error.status === 429
+          ? "Je hebt dit te vaak geprobeerd. Wacht even en probeer opnieuw."
+          : "Deze uitnodiging kan niet worden gebruikt. Vraag zo nodig een nieuwe aan.",
+      );
       return false;
     }
   };
 
   const handleGoogle = async () => {
     if (!googleSignInEnabled) {
-      toast.error("Google inloggen is nu niet beschikbaar.");
+      toast.error("Google-login is nu niet beschikbaar.");
       return;
     }
     setGoogleLoading(true);
     try {
-      if (!isLogin && !await prepareRegistration("google")) return;
-      const { data, error } = await authClient.signIn.social({
-        callbackURL: nextPath,
-        errorCallbackURL: authReturnPath,
-        newUserCallbackURL: nextPath,
-        provider: "google",
-      });
-      if (error) {
-        console.error("Better Auth Google sign-in failed", authErrorDetails(error));
-        toast.error(authErrorMessage(error, "google"));
-        return;
-      }
-      if (data && !data.redirect) {
-        await refetchSession();
-        navigate(nextPath, { replace: true });
-      }
+      if (!isLogin && !await prepareRegistration()) return;
+      const authorizationUrl = await authClient.beginGoogleSignIn(nextPath);
+      window.location.assign(authorizationUrl);
     } catch (error) {
-      console.error("Better Auth Google sign-in failed", authErrorDetails(error));
+      console.error("Google sign-in failed", authErrorDetails(error));
       toast.error(authErrorMessage(error, "google"));
     } finally {
       setGoogleLoading(false);
     }
   };
 
-  const handleMagicLink = async () => {
-    if (!emailAuthEnabled) {
-      toast.error("Inloggen met e-mail is niet beschikbaar.");
-      return;
-    }
-    const normalizedEmail = email.trim();
-    if (!normalizedEmail) {
-      toast.error("Vul eerst je e-mailadres in.");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const { error } = await authClient.signIn.magicLink({
-        callbackURL: nextPath,
-        email: normalizedEmail,
-        errorCallbackURL: authReturnPath,
-        newUserCallbackURL: nextPath,
-      });
-      if (error) {
-        console.error("Better Auth magic-link request failed", authErrorDetails(error));
-        toast.error(authErrorMessage(error, "magic-link"));
-        return;
-      }
-      setEmailStatus("magic-link");
-    } catch (error) {
-      console.error("Better Auth magic-link request failed", authErrorDetails(error));
-      toast.error(authErrorMessage(error, "magic-link"));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!emailAuthEnabled) {
-      toast.error("Inloggen met e-mail is niet beschikbaar.");
-      return;
-    }
-    const normalizedEmail = email.trim();
-    const normalizedName = displayName.trim();
-
-    if (!isLogin && normalizedName.length < 2) {
-      toast.error("Vul een naam van minimaal 2 tekens in.");
-      return;
-    }
-    if (!isLogin && password.length < 12) {
-      toast.error("Gebruik een wachtwoord van minimaal 12 tekens.");
-      return;
-    }
-    setLoading(true);
-
-    try {
-      if (isLogin) {
-        const { error } = await authClient.signIn.email({
-          callbackURL: nextPath,
-          email: normalizedEmail,
-          password,
-        });
-        if (error) {
-          const details = authErrorDetails(error);
-          console.error("Better Auth email sign-in failed", details);
-          if (details.code === "EMAIL_NOT_VERIFIED") {
-            const verification = await authClient.sendVerificationEmail({
-              callbackURL: verificationReturnPath,
-              email: normalizedEmail,
-            });
-            if (!verification.error) {
-              setEmailStatus("verification");
-              return;
-            }
-          }
-          toast.error(authErrorMessage(error, "sign-in"));
-          return;
-        }
-        await refetchSession();
-        navigate(nextPath, { replace: true });
-        return;
-      }
-
-      if (!await prepareRegistration("email")) return;
-
-      const { error } = await authClient.signUp.email({
-        callbackURL: verificationReturnPath,
-        email: normalizedEmail,
-        name: normalizedName,
-        password,
-      });
-      if (error) {
-        console.error("Better Auth email sign-up failed", authErrorDetails(error));
-        toast.error(authErrorMessage(error, "sign-up"));
-        return;
-      }
-      setEmailStatus("registration");
-    } catch (error) {
-      console.error("Better Auth email flow failed", authErrorDetails(error));
-      toast.error(authErrorMessage(error, isLogin ? "sign-in" : "sign-up"));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const switchMode = () => {
     setIsLogin((current) => !current);
-    setEmailStatus(null);
-    setPassword("");
     setInviteCode("");
     reservationAttempt.current = null;
   };
@@ -271,19 +119,16 @@ const Auth = () => {
           <div className="absolute inset-0 opacity-[0.08] blueprint-grid" />
           <div className="relative">
             <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-background/65">Jouw verbouwingsverhaal</p>
-            <h2 className="mt-5 max-w-sm font-serif text-5xl italic leading-[0.98]">
-              Van eerste schets tot boek op tafel.
-            </h2>
+            <h2 className="mt-5 max-w-sm font-serif text-5xl italic leading-[0.98]">Van eerste schets tot boek op tafel.</h2>
             <p className="mt-5 max-w-sm text-sm font-light leading-relaxed text-background/70">
-              Eén rustige plek voor de keuzes, foto's en mijlpalen waar je later nog vaak doorheen wilt bladeren.
+              Eén rustige plek voor de keuzes, foto&apos;s en mijlpalen waar je later nog vaak doorheen wilt bladeren.
             </p>
           </div>
-
           <div className="relative space-y-3">
             {[
-              { icon: Images, title: "Leg iedere fase vast", text: "Updates, foto's, planning en budget bij elkaar." },
-              { icon: Users, title: "Deel op jouw manier", text: "Houd je project privé of laat anderen meekijken." },
-              { icon: BookOpen, title: "Maak een echt Bouwboek", text: "Bundel je tijdlijn later tot een gedrukt fotoboek." },
+              { icon: Images, title: "Leg iedere fase vast", text: "Bouwmomenten, foto's, planning en budget bij elkaar." },
+              { icon: Users, title: "Deel op jouw manier", text: "Houd je verbouwing privé of laat anderen meekijken." },
+              { icon: BookOpen, title: "Maak een echt Bouwboek", text: "Bundel je Verhaal later tot een gedrukt Bouwboek." },
             ].map(({ icon: Icon, title, text }) => (
               <div key={title} className="flex gap-4 rounded-xl border border-background/10 bg-background/[0.06] p-4 backdrop-blur-sm">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground">
@@ -300,201 +145,78 @@ const Auth = () => {
 
         <section className="flex items-center px-5 py-9 sm:px-10 lg:px-14" aria-labelledby="auth-title">
           <div className="mx-auto w-full max-w-md">
-            {feedback && !emailStatus && (
-              <div
-                className={`mb-6 rounded-xl border px-4 py-3 text-sm ${
-                  feedback.tone === "success"
-                    ? "border-accent/30 bg-accent/10 text-foreground"
-                    : "border-destructive/30 bg-destructive/10 text-foreground"
-                }`}
-                role={feedback.tone === "error" ? "alert" : "status"}
-                aria-live="polite"
+            {feedback ? (
+              <div className="mb-6 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-foreground" role="alert">
+                {feedback}
+              </div>
+            ) : null}
+            <div className="mb-8">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <p className="eyebrow">{isLogin ? "Inloggen" : betaMode ? "Registreren op uitnodiging" : "Gratis beginnen"}</p>
+                {!isLogin ? <BetaBadge /> : null}
+              </div>
+              <h1 id="auth-title" className="font-serif text-4xl italic leading-tight sm:text-5xl">
+                {isLogin ? "Welkom terug." : "Start je dagboek."}
+              </h1>
+              <p className="mt-3 text-sm font-light leading-relaxed text-muted-foreground">
+                {isLogin
+                  ? "Ga veilig verder met je verbouwing en Bouwboek."
+                  : betaMode
+                    ? "Gebruik je persoonlijke uitnodiging en kies daarna je Google-account."
+                    : "Kies je Google-account en maak je eerste verbouwing."}
+              </p>
+            </div>
+
+            {!isLogin && betaMode ? (
+              <div className="mb-5 space-y-2">
+                <Label htmlFor="beta-invite" className="text-xs font-semibold">Bèta-uitnodiging</Label>
+                <Input
+                  id="beta-invite"
+                  name="invite"
+                  autoComplete="one-time-code"
+                  placeholder="BLDY_…"
+                  value={inviteCode}
+                  onChange={(event) => {
+                    setInviteCode(event.target.value);
+                    reservationAttempt.current = null;
+                  }}
+                  required
+                  minLength={37}
+                  maxLength={37}
+                  spellCheck={false}
+                  className="h-12 rounded-lg bg-background font-mono"
+                />
+              </div>
+            ) : null}
+
+            {googleSignInEnabled ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={googleLoading || authLoading}
+                onClick={handleGoogle}
+                className="h-12 w-full rounded-full border-border text-xs font-semibold hover:border-foreground hover:bg-background hover:text-foreground"
               >
-                {feedback.message}
-              </div>
-            )}
-            {emailStatus ? (
-              <div className="text-center" role="status" aria-live="polite">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-accent/12 text-accent">
-                  <Check className="h-6 w-6" aria-hidden="true" />
-                </div>
-                <p className="eyebrow mt-7">Check je inbox</p>
-                <h1 id="auth-title" className="mt-3 font-serif text-4xl italic leading-tight sm:text-5xl">De link is onderweg.</h1>
-                <p className="mx-auto mt-4 max-w-sm text-sm font-light leading-relaxed text-muted-foreground">
-                  {emailStatus === "registration" || emailStatus === "verification"
-                    ? "Bevestig je e-mailadres om je account af te ronden. Daarna kun je meteen je eerste project starten."
-                    : "Open de magic link op dit apparaat om veilig in te loggen, zonder wachtwoord."}
-                </p>
-                <p className="mt-4 break-all text-sm font-semibold text-foreground">{email.trim()}</p>
-                <Button type="button" variant="pillOutline" size="pill" className="mt-8" onClick={() => setEmailStatus(null)}>
-                  Ander e-mailadres
-                </Button>
-              </div>
+                <GoogleIcon />
+                {googleLoading ? "Even wachten…" : isLogin ? "Inloggen met Google" : "Registreren met Google"}
+              </Button>
             ) : (
-              <>
-                <div className="mb-8">
-                  <div className="mb-3 flex flex-wrap items-center gap-2">
-                    <p className="eyebrow">{isLogin ? "Inloggen" : betaMode ? "Registreren op uitnodiging" : "Gratis beginnen"}</p>
-                    {!isLogin ? <BetaBadge /> : null}
-                  </div>
-                  <h1 id="auth-title" className="font-serif text-4xl italic leading-tight sm:text-5xl">
-                    {isLogin ? "Welkom terug." : "Start je dagboek."}
-                  </h1>
-                  <p className="mt-3 text-sm font-light leading-relaxed text-muted-foreground">
-                    {isLogin
-                      ? "Ga verder met je verbouwing en Bouwboek."
-                      : betaMode
-                        ? "Buildy is in private bèta. Met je persoonlijke uitnodiging maak je een account."
-                        : "Maak je eerste project. Je kiest zelf wat je deelt."}
-                  </p>
-                </div>
-
-                {googleSignInEnabled && (
-                  <>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={googleLoading || loading || authLoading}
-                      onClick={handleGoogle}
-                      className="h-12 w-full rounded-full border-border text-xs font-semibold hover:border-foreground hover:bg-background hover:text-foreground"
-                    >
-                      <GoogleIcon />
-                      {googleLoading ? "Even wachten…" : isLogin ? "Inloggen met Google" : "Registreren met Google"}
-                    </Button>
-
-                    {emailAuthEnabled ? (
-                      <div className="my-6 flex items-center gap-3 text-[10px] uppercase tracking-[0.2em] text-muted-foreground" aria-hidden="true">
-                        <span className="h-px flex-1 bg-border" />
-                        <span>of met e-mail</span>
-                        <span className="h-px flex-1 bg-border" />
-                      </div>
-                    ) : null}
-                  </>
-                )}
-
-                {emailAuthEnabled ? (
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  {!isLogin && betaMode && (
-                    <div className="space-y-2">
-                      <Label htmlFor="beta-invite" className="text-xs font-semibold">Bèta-uitnodiging</Label>
-                      <Input
-                        id="beta-invite"
-                        name="invite"
-                        autoComplete="one-time-code"
-                        placeholder="BLDY_…"
-                        value={inviteCode}
-                        onChange={(event) => {
-                          setInviteCode(event.target.value);
-                          reservationAttempt.current = null;
-                        }}
-                        required
-                        minLength={37}
-                        maxLength={37}
-                        spellCheck={false}
-                        className="h-12 rounded-lg bg-background font-mono"
-                      />
-                      <p className="text-[11px] leading-relaxed text-muted-foreground">
-                        Je code wordt alleen gebruikt om deze registratie te autoriseren en verschijnt nooit in je profiel.
-                      </p>
-                    </div>
-                  )}
-                  {!isLogin && (
-                    <div className="space-y-2">
-                      <Label htmlFor="display-name" className="text-xs font-semibold">Naam</Label>
-                      <Input
-                        id="display-name"
-                        name="name"
-                        autoComplete="name"
-                        placeholder="Bijv. Sol"
-                        value={displayName}
-                        onChange={(event) => setDisplayName(event.target.value)}
-                        required
-                        minLength={2}
-                        maxLength={60}
-                        className="h-12 rounded-lg bg-background"
-                      />
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    <Label htmlFor="auth-email" className="text-xs font-semibold">E-mailadres</Label>
-                    <Input
-                      id="auth-email"
-                      name="email"
-                      type="email"
-                      inputMode="email"
-                      autoComplete="email"
-                      placeholder="jij@voorbeeld.nl"
-                      value={email}
-                      onChange={(event) => setEmail(event.target.value)}
-                      required
-                      className="h-12 rounded-lg bg-background"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-4">
-                      <Label htmlFor="auth-password" className="text-xs font-semibold">Wachtwoord</Label>
-                      {isLogin && emailAuthEnabled && (
-                        <Link to={forgotPasswordPath} className="text-xs text-muted-foreground underline underline-offset-4 transition-colors hover:text-foreground">
-                          Wachtwoord vergeten?
-                        </Link>
-                      )}
-                    </div>
-                    <div className="relative">
-                      <Input
-                        id="auth-password"
-                        name="password"
-                        type={showPassword ? "text" : "password"}
-                        autoComplete={isLogin ? "current-password" : "new-password"}
-                        placeholder={isLogin ? "Je wachtwoord" : "Minimaal 12 tekens"}
-                        value={password}
-                        onChange={(event) => setPassword(event.target.value)}
-                        required
-                        minLength={isLogin ? 1 : 12}
-                        maxLength={128}
-                        className="h-12 rounded-lg bg-background pr-12"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword((visible) => !visible)}
-                        className="absolute right-1 top-1 flex h-10 w-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        aria-label={showPassword ? "Verberg wachtwoord" : "Toon wachtwoord"}
-                        aria-pressed={showPassword}
-                      >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <Button type="submit" variant="pill" disabled={loading || googleLoading || authLoading} className="h-12 w-full">
-                    {loading ? "Even wachten…" : isLogin ? "Inloggen" : "Account aanmaken"}
-                  </Button>
-                  {isLogin && emailAuthEnabled && (
-                    <Button type="button" variant="pillOutline" disabled={loading || googleLoading || authLoading} onClick={handleMagicLink} className="h-12 w-full">
-                      Stuur magic link
-                    </Button>
-                  )}
-                </form>
-                ) : (
-                  <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground" role="status">
-                    {googleSignInEnabled
-                      ? "Gebruik Google om in te loggen en je bouwmoment te bewaren."
-                      : "Inloggen is nog niet beschikbaar in deze omgeving."}
-                  </div>
-                )}
-
-                <p className="mt-7 text-center text-sm text-muted-foreground">
-                  {isLogin ? "Nog geen account? " : "Al een account? "}
-                  <button onClick={switchMode} className="rounded-sm font-semibold text-foreground underline underline-offset-4 transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    {isLogin ? "Registreer" : "Inloggen"}
-                  </button>
-                </p>
-                {!isLogin && emailAuthEnabled && (
-                  <p className="mt-5 text-center text-[11px] leading-relaxed text-muted-foreground">
-                    Door een account te maken ga je akkoord met onze <Link to="/voorwaarden" className="underline underline-offset-2 hover:text-foreground">voorwaarden</Link>. Lees in de <Link to="/privacy" className="underline underline-offset-2 hover:text-foreground">privacyverklaring</Link> hoe we je gegevens verwerken.
-                  </p>
-                )}
-              </>
+              <div className="rounded-xl border border-border bg-muted/20 p-4 text-sm text-muted-foreground" role="status">
+                Inloggen is nog niet beschikbaar in deze omgeving.
+              </div>
             )}
+
+            <p className="mt-7 text-center text-sm text-muted-foreground">
+              {isLogin ? "Nog geen account? " : "Al een account? "}
+              <button type="button" onClick={switchMode} className="rounded-sm font-semibold text-foreground underline underline-offset-4 transition-colors hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {isLogin ? "Registreer" : "Inloggen"}
+              </button>
+            </p>
+            {!isLogin ? (
+              <p className="mt-5 text-center text-[11px] leading-relaxed text-muted-foreground">
+                Door een account te maken ga je akkoord met onze <Link to="/voorwaarden" className="underline underline-offset-2 hover:text-foreground">voorwaarden</Link>. Lees in de <Link to="/privacy" className="underline underline-offset-2 hover:text-foreground">privacyverklaring</Link> hoe we je gegevens verwerken.
+              </p>
+            ) : null}
           </div>
         </section>
       </div>

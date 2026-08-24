@@ -54,7 +54,7 @@ const AppShell = ({
       tabIndex={-1}
       className={cn(
         "min-w-0 flex-1 scroll-mt-24 focus:outline-none",
-        mobileNavigation && "pb-[calc(4.75rem+env(safe-area-inset-bottom))] md:pb-0",
+        mobileNavigation && "pb-[calc(4.75rem+env(safe-area-inset-bottom))] lg:pb-0",
         mainClassName,
       )}
     >
@@ -62,7 +62,7 @@ const AppShell = ({
     </main>
 
     {footer ? (
-      <footer className={cn(mobileNavigation && "mb-[calc(4.25rem+env(safe-area-inset-bottom))] md:mb-0", footerClassName)}>
+      <footer className={cn(mobileNavigation && "mb-[calc(4.25rem+env(safe-area-inset-bottom))] lg:mb-0", footerClassName)}>
         {footer}
       </footer>
     ) : null}

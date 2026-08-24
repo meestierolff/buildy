@@ -115,15 +115,32 @@ vi.mock("sonner", () => ({
 }));
 
 describe("EditStepDialog typed update mutations", () => {
+  const originalCreateObjectUrl = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
+  const originalRevokeObjectUrl = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
+
   beforeAll(() => {
     vi.stubGlobal("ResizeObserver", class {
       observe() {}
       unobserve() {}
       disconnect() {}
     });
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:buildy-editor-preview"),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
   });
 
-  afterAll(() => vi.unstubAllGlobals());
+  afterAll(() => {
+    vi.unstubAllGlobals();
+    if (originalCreateObjectUrl) Object.defineProperty(URL, "createObjectURL", originalCreateObjectUrl);
+    else Reflect.deleteProperty(URL, "createObjectURL");
+    if (originalRevokeObjectUrl) Object.defineProperty(URL, "revokeObjectURL", originalRevokeObjectUrl);
+    else Reflect.deleteProperty(URL, "revokeObjectURL");
+  });
 
   beforeEach(() => {
     cleanup();
@@ -179,9 +196,9 @@ describe("EditStepDialog typed update mutations", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Update verwijderen" }));
+    fireEvent.click(screen.getByRole("button", { name: "Bouwmoment verwijderen" }));
     expect(mocks.deleteUpdate).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Ja, update verwijderen" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ja, Bouwmoment verwijderen" }));
 
     await waitFor(() => expect(mocks.deleteUpdate).toHaveBeenCalledOnce());
     expect(mocks.deleteUpdate.mock.calls[0]?.[0]).toMatchObject({
@@ -217,5 +234,64 @@ describe("EditStepDialog typed update mutations", () => {
     await waitFor(() => expect(mocks.editUpdate).toHaveBeenCalledTimes(2));
     expect(mocks.editUpdate.mock.calls[1]?.[0]).toBe(firstCommand);
     await waitFor(() => expect(mocks.onClose).toHaveBeenCalledOnce());
+  });
+
+  it("biedt dezelfde camera-, bibliotheek- en desktop-dropinvoer bij bewerken", async () => {
+    render(
+      <EditStepDialog
+        projectId={PROJECT_ID}
+        update={update}
+        onClose={mocks.onClose}
+        onUpdated={mocks.onUpdated}
+      />,
+    );
+
+    expect(screen.getByLabelText("Maak een foto")).toHaveAttribute("capture", "environment");
+    expect(screen.getByLabelText("Kies foto's uit je bibliotheek")).toHaveAttribute("multiple");
+
+    const droppedPhoto = new File(["photo"], "badkamer-drop.webp", { type: "image/webp" });
+    fireEvent.drop(screen.getByRole("group", { name: "Foto's toevoegen" }), {
+      dataTransfer: { files: [droppedPhoto] },
+    });
+
+    expect(await screen.findByAltText("Media 3")).toHaveAttribute("src", "blob:buildy-editor-preview");
+    expect(screen.getByText("3/50")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Wijzigingen opslaan" })).toBeEnabled();
+  });
+
+  it("hervat één mislukte nieuwe foto zonder de wijziging al op te slaan", async () => {
+    mocks.uploadMedia
+      .mockRejectedValueOnce(new TypeError("blob response lost"))
+      .mockResolvedValueOnce({
+        id: "77777777-7777-4777-8777-777777777777",
+        projectId: PROJECT_ID,
+        status: "ready",
+      });
+    render(
+      <EditStepDialog
+        projectId={PROJECT_ID}
+        update={update}
+        onClose={mocks.onClose}
+        onUpdated={mocks.onUpdated}
+      />,
+    );
+
+    const photo = new File(["photo"], "badkamer-retry.webp", {
+      type: "image/webp",
+      lastModified: 1_777_000_000_000,
+    });
+    fireEvent.drop(screen.getByRole("group", { name: "Foto's toevoegen" }), {
+      dataTransfer: { files: [photo] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Wijzigingen opslaan" }));
+
+    const retry = await screen.findByRole("button", { name: "badkamer-retry.webp opnieuw uploaden" });
+    expect(mocks.editUpdate).not.toHaveBeenCalled();
+    fireEvent.click(retry);
+
+    await waitFor(() => expect(mocks.uploadMedia).toHaveBeenCalledTimes(2));
+    expect(screen.getAllByText("Privé verwerkt")).toHaveLength(3);
+    expect(mocks.editUpdate).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Wijzigingen opslaan" })).toBeEnabled();
   });
 });

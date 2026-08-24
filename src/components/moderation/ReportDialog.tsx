@@ -122,7 +122,6 @@ export default function ReportDialog({
               <DialogTitle>Melding ontvangen</DialogTitle>
               <DialogDescription>
                 Bewaar ontvangstcode <strong className="text-foreground">{receipt.receiptCode}</strong> als je later contact opneemt.
-                {receipt.emailConfirmationQueued ? " Er staat ook een e-mailbevestiging klaar." : " Je hebt geen e-mailadres meegestuurd."}
               </DialogDescription>
             </DialogHeader>
             <Button type="button" className="mt-6 min-h-11" onClick={() => handleOpenChange(false)}>Sluiten</Button>
@@ -161,7 +160,7 @@ export default function ReportDialog({
                 <p className="text-right text-xs tabular-nums text-muted-foreground">{details.length}/5000</p>
               </div>
               <div className="grid gap-2">
-                <Label htmlFor={`report-email-${targetId}`}>E-mail voor bevestiging <span className="text-muted-foreground">(optioneel)</span></Label>
+                <Label htmlFor={`report-email-${targetId}`}>E-mail voor eventueel contact <span className="text-muted-foreground">(optioneel)</span></Label>
                 <Input
                   id={`report-email-${targetId}`}
                   type="email"

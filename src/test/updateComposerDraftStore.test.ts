@@ -38,6 +38,24 @@ describe("private update draft normalization", () => {
     expect(normalized?.updateIdempotencyKey).toBe(UPDATE_KEY);
   });
 
+  it("herstelt cross-browser ArrayBuffer-opslag als een getypeerde Blob", async () => {
+    const bytes = new TextEncoder().encode("exact-source").buffer;
+    const normalized = normalizeStoredUpdateDraft(draft({
+      files: [{
+        id: "media-upload:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        name: "keuken.jpg",
+        contentType: "image/jpeg",
+        lastModified: 1_786_000_000_000,
+        bytes,
+        compareRole: "before",
+      }],
+    }));
+
+    expect(normalized?.files[0]?.bytes).toBeInstanceOf(Blob);
+    expect(normalized?.files[0]?.bytes.type).toBe("image/jpeg");
+    await expect(normalized?.files[0]?.bytes.text()).resolves.toBe("exact-source");
+  });
+
   it("rejects corrupt dates, commands and injected asset identifiers", () => {
     expect(normalizeStoredUpdateDraft(draft({ updateDate: "morgen" }))).toBeNull();
     expect(normalizeStoredUpdateDraft(draft({ pendingCommand: { publish: true } }))).toBeNull();

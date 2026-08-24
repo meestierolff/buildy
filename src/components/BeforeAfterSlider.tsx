@@ -1,5 +1,7 @@
 import { useCallback, useRef, useState, type MouseEvent, type PointerEvent } from "react";
 
+import { ResilientImage } from "@/components/ResilientMedia";
+
 interface Props {
   beforeUrl: string;
   afterUrl: string;
@@ -70,14 +72,15 @@ const BeforeAfterSlider = ({ beforeUrl, afterUrl, className = "", onBeforeClick,
       className={`relative w-full aspect-[4/3] overflow-hidden rounded-lg bg-muted select-none cursor-zoom-in ${className}`}
       onClick={handleRootClick}
     >
-      <img src={afterUrl} alt="Na" className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
+      <ResilientImage src={afterUrl} alt="Na" fallbackLabel="Na-foto niet beschikbaar" className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
       <div
         className="absolute inset-y-0 left-0 overflow-hidden pointer-events-none"
         style={{ width: `${pos}%` }}
       >
-        <img
+        <ResilientImage
           src={beforeUrl}
           alt="Voor"
+          fallbackLabel="Voor-foto niet beschikbaar"
           className="absolute inset-0 h-full object-cover"
           style={{ width: ref.current?.offsetWidth || "100%" }}
         />

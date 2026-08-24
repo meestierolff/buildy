@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export const OBJECT_PURPOSES = [
   "originals",
   "display",
@@ -19,14 +21,16 @@ export interface StoredObjectMetadata {
   lastModified?: Date;
 }
 
-export interface UploadGrant {
-  method: "PUT";
-  url: string;
+export interface VercelBlobClientUploadGrant {
+  provider: "vercel_blob";
+  method: "POST";
+  pathname: string;
+  handleUploadPath: string;
   key: string;
-  expiresAt: string;
-  requiredHeaders: Readonly<Record<string, string>>;
   maximumBytes: number;
 }
+
+export type UploadGrant = VercelBlobClientUploadGrant;
 
 export interface DownloadGrant {
   method: "GET";
@@ -56,12 +60,29 @@ export interface WriteObjectInput {
   bytes: Uint8Array;
 }
 
+export type ObjectByteRange = {
+  start: number;
+  end: number;
+};
+
+export interface StreamObjectInput {
+  key: string;
+  maximumBytes: number;
+  range?: ObjectByteRange;
+}
+
+export interface StreamedObject {
+  metadata: StoredObjectMetadata;
+  stream: ReadableStream<Uint8Array>;
+  contentLength: number;
+  range?: ObjectByteRange;
+}
+
 export interface CreateDownloadGrantInput {
   key: string;
   filename?: string;
   disposition?: "inline" | "attachment";
   expiresInSeconds?: number;
-  grantPurpose?: "interactive_download" | "provider_fulfilment";
 }
 
 export interface ObjectPage {
@@ -73,6 +94,7 @@ export interface ObjectStorage {
   createUploadUrl(input: CreateUploadGrantInput): Promise<UploadGrant>;
   completeUpload(input: CompleteUploadInput): Promise<StoredObjectMetadata>;
   createDownloadUrl(input: CreateDownloadGrantInput): Promise<DownloadGrant>;
+  streamObject(input: StreamObjectInput): Promise<StreamedObject>;
   readObject(key: string, maximumBytes: number): Promise<Uint8Array>;
   writeObject(input: WriteObjectInput): Promise<StoredObjectMetadata>;
   headObject(key: string): Promise<StoredObjectMetadata | null>;
@@ -80,6 +102,92 @@ export interface ObjectStorage {
   deleteObject(key: string): Promise<void>;
   listObjects(prefix: ObjectPurpose, cursor?: string): Promise<ObjectPage>;
   getChecksum(key: string): Promise<string | undefined>;
+}
+
+export function guardObjectStream(input: {
+  stream: ReadableStream<Uint8Array>;
+  expectedBytes: number;
+  expectedSha256Hex?: string;
+}): ReadableStream<Uint8Array> {
+  if (!Number.isSafeInteger(input.expectedBytes) || input.expectedBytes < 1) {
+    throw new ObjectStorageError("INVALID_SIZE", "De verwachte streamgrootte is ongeldig.");
+  }
+  if (
+    input.expectedSha256Hex !== undefined
+    && !/^[0-9a-f]{64}$/.test(input.expectedSha256Hex)
+  ) {
+    throw new ObjectStorageError("INVALID_CHECKSUM", "De verwachte streamchecksum is ongeldig.");
+  }
+
+  const reader = input.stream.getReader();
+  const hash = input.expectedSha256Hex ? createHash("sha256") : undefined;
+  let receivedBytes = 0;
+  let finished = false;
+
+  const release = () => {
+    if (finished) return;
+    finished = true;
+    reader.releaseLock();
+  };
+
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const result = await reader.read();
+        if (result.done) {
+          if (receivedBytes !== input.expectedBytes) {
+            throw new ObjectStorageError("UPLOAD_MISMATCH", "Objectstream heeft een afwijkende grootte.");
+          }
+          if (hash && hash.digest("hex") !== input.expectedSha256Hex) {
+            throw new ObjectStorageError("UPLOAD_MISMATCH", "Objectstream heeft een afwijkende checksum.");
+          }
+          release();
+          controller.close();
+          return;
+        }
+        receivedBytes += result.value.byteLength;
+        if (receivedBytes > input.expectedBytes) {
+          throw new ObjectStorageError("UPLOAD_MISMATCH", "Objectstream overschrijdt de verwachte grootte.");
+        }
+        hash?.update(result.value);
+        controller.enqueue(result.value);
+      } catch (error) {
+        await reader.cancel(error).catch(() => undefined);
+        release();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason).catch(() => undefined);
+      release();
+    },
+  });
+}
+
+export type ClientUploadAuthorization = {
+  actorId: string;
+  assetId: string;
+  pathname: string;
+  contentType: string;
+  maximumBytes: number;
+  checksumSha256Base64: string;
+};
+
+export type CompletedClientUpload = ClientUploadAuthorization & {
+  etag: string;
+};
+
+export interface ClientUploadObjectStorage extends ObjectStorage {
+  handleClientUpload(input: {
+    request: Request;
+    body: unknown;
+    authorize(pathname: string): Promise<ClientUploadAuthorization>;
+    complete(upload: CompletedClientUpload): Promise<void>;
+  }): Promise<unknown>;
+}
+
+export function supportsClientUpload(storage: ObjectStorage): storage is ClientUploadObjectStorage {
+  return "handleClientUpload" in storage && typeof storage.handleClientUpload === "function";
 }
 
 export class ObjectStorageError extends Error {

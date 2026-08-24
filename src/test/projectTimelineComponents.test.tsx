@@ -7,13 +7,24 @@ import BlueprintTimeline from "@/components/BlueprintTimeline";
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("@/components/ReactionBar", () => ({
-  default: ({ projectId, updateId }: { projectId: string; updateId: string }) => (
-    <div data-testid="reaction-bar">{projectId}:{updateId}</div>
+  default: ({ projectId, updateId, canReact }: {
+    projectId: string;
+    updateId: string;
+    canReact?: boolean;
+  }) => (
+    <div data-testid="reaction-bar" data-can-react={String(canReact)}>{projectId}:{updateId}</div>
   ),
 }));
 vi.mock("@/components/CommentsSheet", () => ({
-  default: ({ projectId, updateId, open }: { projectId: string; updateId: string; open: boolean }) => (
-    <div data-testid="comments-sheet">{projectId}:{updateId}:{open ? "open" : "closed"}</div>
+  default: ({ projectId, updateId, open, canComment }: {
+    projectId: string;
+    updateId: string;
+    open: boolean;
+    canComment?: boolean;
+  }) => (
+    <div data-testid="comments-sheet" data-can-comment={String(canComment)}>
+      {projectId}:{updateId}:{open ? "open" : "closed"}
+    </div>
   ),
 }));
 vi.mock("@/components/MediaLightbox", () => ({
@@ -110,6 +121,22 @@ describe("BlueprintTimeline typed engagement boundary", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Keuken gestript bewerken" }));
     expect(onEdit).toHaveBeenCalledWith(update);
+  });
+
+  it("houdt een tijdelijke deellink echt alleen-lezen en kopieert geen kale UUID-link", () => {
+    render(
+      <BlueprintTimeline
+        updates={[update]}
+        projectId={PROJECT_ID}
+        canEngage={false}
+        canCopyUpdateLink={false}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Keuken gestript uitklappen" }));
+
+    expect(screen.queryByRole("button", { name: "Link naar Bouwmoment kopiëren" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("reaction-bar")).toHaveAttribute("data-can-react", "false");
+    expect(screen.getByTestId("comments-sheet")).toHaveAttribute("data-can-comment", "false");
   });
 });
 

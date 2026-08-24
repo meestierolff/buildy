@@ -2,12 +2,14 @@ import {
   createCommentInputSchema,
   deleteCommentInputSchema,
   engagementPageQuerySchema,
+  notificationMarkAllReadInputSchema,
   notificationMutationInputSchema,
   notificationPageQuerySchema,
   reactionQuerySchema,
   reactionTargetInputSchema,
   type CommentMutationResult,
   type CommentPage,
+  type NotificationMarkAllReadResult,
   type NotificationMutationResult,
   type NotificationPage,
   type ReactionMutationResult,
@@ -17,6 +19,7 @@ import {
   ANONYMOUS_PROJECT_ACTOR,
   type ProjectActor,
 } from "../projects/actor.js";
+import type { PrivacyBlindIndex } from "../security/dataProtection.js";
 import {
   decodeCommentCursor,
   decodeNotificationCursor,
@@ -66,6 +69,7 @@ function withoutIdempotencyKey<T extends { idempotencyKey: string }>(
 export class EngagementService {
   constructor(
     private readonly repository: EngagementRepository,
+    private readonly blindIndex: PrivacyBlindIndex,
     private readonly clock: EngagementClock = () => new Date(),
     private readonly createId: EngagementIdFactory = () => crypto.randomUUID(),
   ) {}
@@ -135,7 +139,7 @@ export class EngagementService {
         updateId,
         input.idempotencyKey,
       ),
-      requestHash: engagementRequestHash(operation, withoutIdempotencyKey(input)),
+      requestHash: engagementRequestHash(operation, withoutIdempotencyKey(input), this.blindIndex),
       now: this.clock(),
     });
   }
@@ -165,7 +169,7 @@ export class EngagementService {
         commentId,
         input.idempotencyKey,
       ),
-      requestHash: engagementRequestHash(operation, withoutIdempotencyKey(input)),
+      requestHash: engagementRequestHash(operation, withoutIdempotencyKey(input), this.blindIndex),
       now: this.clock(),
     });
   }
@@ -234,17 +238,17 @@ export class EngagementService {
     const recipientId = actorId(rawActorId);
     const query = notificationPageQuerySchema.parse(rawQuery);
     const cursor = decodeNotificationCursor(query.cursor, query.status);
-    const rows = await this.repository.listNotifications(
+    const result = await this.repository.listNotifications(
       recipientId,
       cursor,
       query.limit + 1,
       query.status,
     );
-    const items = rows.slice(0, query.limit);
+    const items = result.items.slice(0, query.limit);
     const last = items.at(-1);
     return {
       items,
-      nextCursor: rows.length > query.limit && last
+      nextCursor: result.items.length > query.limit && last
         ? encodeEngagementCursor({
             version: 1,
             kind: "notifications",
@@ -253,6 +257,7 @@ export class EngagementService {
             id: last.id,
           })
         : null,
+      unreadCount: result.unreadCount,
     };
   }
 
@@ -266,6 +271,17 @@ export class EngagementService {
       actorId(rawActorId),
       notificationId(rawNotificationId),
       input.action,
+      this.clock(),
+    );
+  }
+
+  async markAllNotificationsRead(
+    rawActorId: string,
+    rawInput: unknown,
+  ): Promise<NotificationMarkAllReadResult> {
+    notificationMarkAllReadInputSchema.parse(rawInput);
+    return this.repository.markAllNotificationsRead(
+      actorId(rawActorId),
       this.clock(),
     );
   }

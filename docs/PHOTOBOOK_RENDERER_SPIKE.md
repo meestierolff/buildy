@@ -1,13 +1,24 @@
 # Bouwboek renderer spike
 
-Datum: 4 augustus 2026  
-Status: technisch besluit genomen; echte Peecho-proefdruk blijft een launchgate
+> **HISTORISCHE TECHNISCHE SPIKE.** De PDFKit/canonical-documentkeuze blijft
+> relevante renderercontext. De onderstaande Peecho-submit-, worker- en
+> checkout-“vervolgstappen” zijn superseded: proof/checkout bestaat, fulfilment
+> is uitsluitend handmatig en heeft geen Peecho API/env/callback/worker. Zie
+> [`STRIPE_SETUP.md`](STRIPE_SETUP.md) en
+> [`MANUAL_PEECHO_FULFILMENT.md`](MANUAL_PEECHO_FULFILMENT.md).
+
+Datum van spike: 4 augustus 2026
+Status: historische renderer-evidence; een fysieke proefdruk bij de nog te
+selecteren handmatige drukker blijft een launchgate
 
 ## Besluit
 
 Buildy rendert printproofs server-side met PDFKit vanuit één versioned `PhotobookDocument`. De editor toont exact dit opgeslagen paginamodel; hij maakt geen zelfstandig PDF-layoutmodel meer. Het bestaande client-side jsPDF-pad en de Peecho Print Button zijn uitsluitend legacy en mogen niet in de nieuwe checkout worden gebruikt.
 
-De launch-SKU is hard begrensd tot `a4-landscape-hardcover-v1`: 297 × 210 mm, RGB, 12 mm safe area, 300-DPI-doel en minimaal 24 even pagina's. Een nog niet door Peecho bevestigde maximum-pagecount wordt server-side configuratie en geen clientaanname.
+De launch-SKU is hard begrensd tot `a4-landscape-hardcover-v1`: 297 × 210 mm,
+RGB, 12 mm safe area, 300-DPI-doel en minimaal 24 even pagina's. De actuele
+server-owned price matrix begrenst de toegestane maximum-pagecount per land/
+approval en accepteert nooit een clientaanname of Peecho `offeringId`.
 
 ## Beoordeelde opties
 
@@ -35,19 +46,29 @@ De keuze volgt de officiële PDFKit-mogelijkheden voor embedded TrueType/OpenTyp
 
 De provider-vrije test genereert een 24-pagina A4-landscape-PDF met zes embedded fontvarianten. De synthetische 1200 × 800-bronfoto wordt opnieuw gehasht, gecropt, naar RGB-JPEG gerenderd en ingebed. De tweede render levert dezelfde PDF-SHA-256 en exact dezelfde bytes. Checks voor gewijzigde documentbytes, gewijzigde assetbytes en blokkerende preflightwaarschuwingen falen gesloten.
 
-Dit is technisch rendererbewijs, geen bewijs van printkwaliteit. Een echte Peecho-sandboxorder en fysieke proefdruk moeten nog bevestigen:
+Dit is historisch technisch rendererbewijs, geen bewijs van printkwaliteit. Een
+fysieke proefdruk bij de vooraf goedgekeurde, handmatig gebruikte drukker moet
+nog bevestigen:
 
-- offering ID en daadwerkelijke min/max pagecount;
+- gekozen productreferentie en daadwerkelijke min/max pagecount;
 - cover-/rug-/bleedinterpretatie;
 - kleur- en fontresultaat op papier;
 - effectieve crops en leesbaarheid;
 - maximale bestandsgrootte en ophaalduur;
 - productie-, shipping- en herdrukflow.
 
-## Vervolg vóór checkout
+## Huidige productionboundary
 
-1. Bouw de durable proofworker en sla PDF plus paginathumbnails privé op.
-2. Laat preview en editor uitsluitend het opgeslagen canonical model en die proofthumbnails lezen.
-3. Implementeer revision approval/invalidation/locking transactioneel.
-4. Valideer de PDF nogmaals vlak vóór checkout en vlak vóór Peecho-submit.
-5. Zet live checkout pas aan na bevestigde Peecho-specificatie, commerciële prijsinput en een echte proefdruk.
+De actieve runtime maakt en lockt private proofs en bindt checkout aan de
+document-/PDF-hash, assetset, goedkeuring en serverquote. Een admin leest na
+geverifieerde betaling exact die private PDF opnieuw met size/SHA-controle en
+plaatst hem daarna handmatig bij de gekozen drukker.
+
+Een proofrequest verwerkt request-driven exact de aangevraagde revisie onder de
+geïsoleerde photobookworkerrol. Zolang de revisie `rendering` is, kan de
+owner-editorpoll dezelfde leased/idempotente verwerking begrensd hervatten. Er
+is geen photobookcron of `CRON_SECRET`-afhankelijkheid voor deze capability.
+
+Live checkout blijft uit totdat providerproduct, fysieke proefdruk, commerciële
+prijs/seller/tax/terms en handmatige operationele flow zijn goedgekeurd en op
+Preview bewezen. Er is geen Peecho-submit of andere automatische printcall.

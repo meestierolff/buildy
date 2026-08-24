@@ -34,6 +34,7 @@ type RawProfile = {
 
 type ProfileOutboxPayload = {
   schemaVersion: 1;
+  requestHashVersion: 2;
   requestHash: string;
   profileVersion: number;
 };
@@ -130,6 +131,7 @@ function isProfilePayload(value: unknown): value is ProfileOutboxPayload {
   if (!value || typeof value !== "object") return false;
   const payload = value as Partial<ProfileOutboxPayload>;
   return payload.schemaVersion === 1
+    && payload.requestHashVersion === 2
     && typeof payload.requestHash === "string"
     && /^[0-9a-f]{64}$/.test(payload.requestHash)
     && typeof payload.profileVersion === "number"
@@ -248,6 +250,7 @@ export function buildProfileOutboxRecord(
     idempotencyKey: command.idempotencyKey,
     payload: {
       schemaVersion: 1 as const,
+      requestHashVersion: 2 as const,
       requestHash: command.requestHash,
       profileVersion,
     },

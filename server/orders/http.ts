@@ -14,6 +14,7 @@ export interface OrderHttpService {
   quote: OrderService["quote"];
   checkout: OrderService["checkout"];
   order: OrderService["order"];
+  orders: OrderService["orders"];
 }
 
 export interface OrderHttpDependencies {
@@ -53,6 +54,10 @@ function rethrowOrderError(error: unknown): never {
   throw error;
 }
 
+function listQuery(request: Request): Record<string, string> {
+  return Object.fromEntries(new URL(request.url).searchParams.entries());
+}
+
 export function createOrderHttpHandler(dependencies: OrderHttpDependencies) {
   return async (
     request: Request,
@@ -66,6 +71,10 @@ export function createOrderHttpHandler(dependencies: OrderHttpDependencies) {
       const revisionId = parameters.revisionId ? validatedId(parameters.revisionId) : undefined;
       const orderId = parameters.orderId ? validatedId(parameters.orderId) : undefined;
       const pathname = new URL(request.url).pathname.replace(/\/$/, "") || "/";
+
+      if (!revisionId && !orderId && pathname === "/api/orders" && request.method === "GET") {
+        return jsonSuccess(await dependencies.service.orders(actorId, listQuery(request)), requestId);
+      }
 
       if (revisionId && pathname.endsWith("/quote") && request.method === "POST") {
         return jsonSuccess(

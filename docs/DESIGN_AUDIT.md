@@ -1,8 +1,15 @@
 # Buildy designaudit
 
+> **Historische nulmeting — geen actuele release- of providerwaarheid.** Dit
+> document blijft in-place bewaard omdat `DESIGN_SYSTEM.md` naar de onderbouwde
+> ontwerpbevindingen verwijst. De audit beschrijft de interface van vóór de
+> relaunch. Gebruik voor actuele scope, bewijs en blokkades
+> [`MVP_RELEASE_REPORT.md`](MVP_RELEASE_REPORT.md) en
+> [`PRODUCTION_RELEASE.md`](PRODUCTION_RELEASE.md).
+
 **Datum:** 4 augustus 2026
 
-**Status:** nulmeting; redesign en productieacceptatie zijn nog niet gestart
+**Status:** superseded historische nulmeting; niet gebruiken voor acceptatie
 
 **Scope:** bestaande React/Vite-interface, lokale en bereikbare oude prototypeprovider-liveomgeving, mobiel/tablet/desktop, publieke en voor zover zonder testaccount bereikbare afgeschermde flows
 
@@ -14,7 +21,10 @@ Het redesign moet niet cosmetisch over de bestaande schermen worden gelegd. Eers
 
 ## Baseline en bewijs
 
-De baseline staat buiten de productbundel in [`artifacts/baseline/`](../artifacts/baseline/). [`manifest.json`](../artifacts/baseline/manifest.json) is de bron voor route, uiteindelijke URL, HTTP-status, viewport, browserfouten en bestandsnaam.
+De 102 historische PNG's staan buiten de productbundel in
+[`artifacts/baseline/`](../artifacts/baseline/). Er staat in deze snapshot geen
+`manifest.json`; leid daarom geen actuele route-, HTTP- of browserstatus af uit
+alleen deze afbeeldingen.
 
 ### Omgevingen en viewports
 
@@ -77,7 +87,9 @@ De live screenshots bevatten op meerdere schermen een zwevende “Edit with oude
 - Pills, afgeronde containers en losse kaarten vormen vaak de primaire compositie. Dat levert “card soup” op in plaats van een rustig veldboek.
 - Blueprintpatronen keren terug op landing, project, placeholders en Bouwboek. Het technische motief is daardoor decoratie in plaats van betekenisvol detail.
 - Het logo is op klein formaat herkenbaar, maar woordmerk, app-icoon en project-/Bouwboekgebruik zijn nog niet als één getest systeem gedocumenteerd.
-- De huidige landing gebruikt niet de gekozen kernbelofte “Van eerste sleutel tot laatste plint.”
+- De toenmalige landing gebruikte de inmiddels vervangen copy “Van eerste
+  sleutel tot laatste plint.” De actuele founder-belofte staat in de canonieke
+  productdocumentatie.
 
 ### Landing en publieke ontdekking
 

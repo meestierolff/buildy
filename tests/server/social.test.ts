@@ -2,8 +2,6 @@
 
 import { describe, expect, it } from "vitest";
 import type {
-  ProjectAccessList,
-  ProjectSocialState,
   SocialMutationResult,
   SocialProfile,
 } from "../../shared/contracts/social";
@@ -17,6 +15,8 @@ import { SocialService } from "../../server/social/service";
 import type {
   ProfileListRecord,
   ProfileSearch,
+  ConnectionListRecord,
+  ConnectionListSearch,
   SocialRepository,
   SocialViewerId,
 } from "../../server/social/types";
@@ -26,22 +26,16 @@ const ids = {
   publicUser: "00000000-0000-4000-8000-000000000002",
   privateUser: "00000000-0000-4000-8000-000000000003",
   unrelated: "00000000-0000-4000-8000-000000000004",
-  project: "00000000-0000-4000-8000-000000000101",
   notification: "00000000-0000-4000-8000-000000000201",
 } as const;
 
 type FollowStatus = "active" | "pending" | "rejected" | "revoked";
-type AccessStatus = "accepted" | "cancelled" | "pending" | "rejected" | "revoked";
+type LegacyAccessStatus = "accepted" | "pending" | "revoked";
 
 interface ProfileSeed {
   createdAt: string;
   displayName: string;
   isPrivate: boolean;
-}
-
-interface ProjectSeed {
-  ownerId: string;
-  visibility: "private" | "public";
 }
 
 function pair(left: string, right: string): string {
@@ -52,18 +46,15 @@ function directed(left: string, right: string): string {
   return `${left}:${right}`;
 }
 
-function projectKey(projectId: string, userId: string): string {
-  return `${projectId}:${userId}`;
-}
-
 class MemorySocialRepository implements SocialRepository {
-  readonly accesses = new Map<string, AccessStatus>();
   readonly blocks = new Set<string>();
   readonly follows = new Map<string, FollowStatus>();
+  readonly legacyAccesses = new Map<string, LegacyAccessStatus>();
+  readonly legacyProjectFollowers = new Map<string, "active" | "revoked">();
   readonly notifications: string[] = [];
   readonly profiles = new Map<string, ProfileSeed>();
-  readonly projectFollowers = new Map<string, "active" | "revoked">();
-  readonly projects = new Map<string, ProjectSeed>();
+  connectionRows: ConnectionListRecord[] = [];
+  lastConnectionSearch: ConnectionListSearch | undefined;
 
   constructor() {
     this.profiles.set(ids.owner, {
@@ -86,7 +77,6 @@ class MemorySocialRepository implements SocialRepository {
       displayName: "Andere bouwer",
       isPrivate: false,
     });
-    this.projects.set(ids.project, { ownerId: ids.owner, visibility: "private" });
   }
 
   private blocked(left: string | null, right: string): boolean {
@@ -153,20 +143,12 @@ class MemorySocialRepository implements SocialRepository {
     if (this.blocked(left, right)) throw new SocialError("TARGET_NOT_FOUND");
   }
 
-  private requireProject(actorId: string, projectId: string): ProjectSeed {
-    const project = this.projects.get(projectId);
-    if (!project || project.ownerId === actorId) {
-      throw new SocialError(project?.ownerId === actorId ? "SELF_ACTION" : "TARGET_NOT_FOUND");
+  private revokeLegacyProjectRelationships(followerId: string, ownerId: string): void {
+    const key = directed(followerId, ownerId);
+    if (this.legacyAccesses.has(key)) this.legacyAccesses.set(key, "revoked");
+    if (this.legacyProjectFollowers.has(key)) {
+      this.legacyProjectFollowers.set(key, "revoked");
     }
-    this.assertNotBlocked(actorId, project.ownerId);
-    return project;
-  }
-
-  private canViewProject(actorId: string, projectId: string, project: ProjectSeed): boolean {
-    return (
-      project.visibility === "public" ||
-      this.accesses.get(projectKey(projectId, actorId)) === "accepted"
-    );
   }
 
   async findProfile(
@@ -179,41 +161,12 @@ class MemorySocialRepository implements SocialRepository {
     return result;
   }
 
-  async getProjectState(actorId: string, projectId: string): Promise<ProjectSocialState | null> {
-    const project = this.projects.get(projectId);
-    if (!project || this.blocked(actorId, project.ownerId)) return null;
-    if (project.ownerId === actorId) {
-      return { projectId, viewerRole: "owner", followStatus: "none", accessStatus: "owner" };
-    }
-    const access = this.accesses.get(projectKey(projectId, actorId));
-    return {
-      projectId,
-      viewerRole: "viewer",
-      followStatus: this.projectFollowers.get(projectKey(projectId, actorId)) === "active"
-        ? "following"
-        : "none",
-      accessStatus: project.visibility === "public"
-        ? "not_required"
-        : access === "pending" || access === "accepted" ? access : "none",
-    };
-  }
-
-  async listProjectAccess(actorId: string, projectId: string): Promise<ProjectAccessList | null> {
-    const project = this.projects.get(projectId);
-    if (!project || project.ownerId !== actorId) return null;
-    const items = [...this.accesses.entries()].flatMap(([key, status]) => {
-      const [candidateProjectId, requesterId] = key.split(":");
-      if (candidateProjectId !== projectId || (status !== "pending" && status !== "accepted")) return [];
-      return [{
-        requesterId,
-        displayName: this.profiles.get(requesterId)?.displayName ?? "Buildy-gebruiker",
-        avatar: null,
-        status,
-        requestedAt: "2026-08-04T10:00:00.000Z",
-        updatedAt: "2026-08-04T10:00:00.000Z",
-      }];
-    });
-    return { projectId, items };
+  async listConnections(
+    _actorId: string,
+    search: ConnectionListSearch,
+  ): Promise<ConnectionListRecord[]> {
+    this.lastConnectionSearch = search;
+    return this.connectionRows.slice(0, search.limit);
   }
 
   async searchProfiles(
@@ -221,7 +174,31 @@ class MemorySocialRepository implements SocialRepository {
     search: ProfileSearch,
   ): Promise<ProfileListRecord[]> {
     return [...this.profiles.keys()]
-      .map((profileId) => this.mappedProfile(viewerId, profileId))
+      .map((profileId): ProfileListRecord | null => {
+        const visible = this.mappedProfile(viewerId, profileId);
+        if (visible) return visible;
+        const seed = this.profiles.get(profileId);
+        if (!viewerId || !search.normalizedQuery || !seed || this.blocked(viewerId, profileId)) {
+          return null;
+        }
+        return {
+          avatar: null,
+          bio: null,
+          cursorTimestamp: seed.createdAt,
+          displayName: seed.displayName,
+          followerCount: 0,
+          followingCount: 0,
+          followsViewer: false,
+          id: profileId,
+          isPrivate: seed.isPrivate,
+          isPro: false,
+          location: null,
+          slug: `profiel-${profileId.slice(-3)}`,
+          viewerAccess: "requestable",
+          viewerFollowStatus:
+            this.follows.get(directed(viewerId, profileId)) === "pending" ? "pending" : "none",
+        };
+      })
       .filter((profile): profile is ProfileListRecord => Boolean(profile))
       .filter((profile) =>
         search.normalizedQuery
@@ -261,6 +238,7 @@ class MemorySocialRepository implements SocialRepository {
   async removeProfileFollow(actorId: string, profileId: string): Promise<SocialMutationResult> {
     const key = directed(actorId, profileId);
     const current = this.follows.get(key);
+    this.revokeLegacyProjectRelationships(actorId, profileId);
     if (!current || current === "rejected" || current === "revoked") {
       return { replayed: true, state: "none" };
     }
@@ -285,10 +263,16 @@ class MemorySocialRepository implements SocialRepository {
     const key = directed(requesterId, actorId);
     const current = this.follows.get(key);
     if (current === decision) {
+      if (decision === "rejected") {
+        this.revokeLegacyProjectRelationships(requesterId, actorId);
+      }
       return { replayed: true, state: decision === "active" ? "following" : "rejected" };
     }
     if (current !== "pending") throw new SocialError("TARGET_NOT_FOUND");
     this.follows.set(key, decision);
+    if (decision === "rejected") {
+      this.revokeLegacyProjectRelationships(requesterId, actorId);
+    }
     this.notifications.push(
       decision === "active" ? "profile.follow.accepted" : "profile.follow.rejected",
     );
@@ -298,9 +282,13 @@ class MemorySocialRepository implements SocialRepository {
   async revokeProfileFollower(actorId: string, followerId: string): Promise<SocialMutationResult> {
     const key = directed(followerId, actorId);
     const current = this.follows.get(key);
-    if (current === "revoked") return { replayed: true, state: "revoked" };
+    if (current === "revoked") {
+      this.revokeLegacyProjectRelationships(followerId, actorId);
+      return { replayed: true, state: "revoked" };
+    }
     if (current !== "active") throw new SocialError("TARGET_NOT_FOUND");
     this.follows.set(key, "revoked");
+    this.revokeLegacyProjectRelationships(followerId, actorId);
     return { replayed: false, state: "revoked" };
   }
 
@@ -310,16 +298,8 @@ class MemorySocialRepository implements SocialRepository {
     this.blocks.add(pair(actorId, profileId));
     this.follows.set(directed(actorId, profileId), "revoked");
     this.follows.set(directed(profileId, actorId), "revoked");
-    for (const [projectId, project] of this.projects) {
-      if (project.ownerId === actorId) {
-        this.accesses.set(projectKey(projectId, profileId), "revoked");
-        this.projectFollowers.set(projectKey(projectId, profileId), "revoked");
-      }
-      if (project.ownerId === profileId) {
-        this.accesses.set(projectKey(projectId, actorId), "revoked");
-        this.projectFollowers.set(projectKey(projectId, actorId), "revoked");
-      }
-    }
+    this.revokeLegacyProjectRelationships(actorId, profileId);
+    this.revokeLegacyProjectRelationships(profileId, actorId);
     return { replayed, state: "blocked" };
   }
 
@@ -330,106 +310,6 @@ class MemorySocialRepository implements SocialRepository {
     return { replayed, state: "unblocked" };
   }
 
-  async followProject(actorId: string, projectId: string): Promise<SocialMutationResult> {
-    const project = this.requireProject(actorId, projectId);
-    if (!this.canViewProject(actorId, projectId, project)) {
-      throw new SocialError("TARGET_NOT_FOUND");
-    }
-    const key = projectKey(projectId, actorId);
-    if (this.projectFollowers.get(key) === "active") {
-      return { replayed: true, state: "following" };
-    }
-    this.projectFollowers.set(key, "active");
-    this.notifications.push("project.followed");
-    return { replayed: false, state: "following" };
-  }
-
-  async unfollowProject(actorId: string, projectId: string): Promise<SocialMutationResult> {
-    this.requireProject(actorId, projectId);
-    const key = projectKey(projectId, actorId);
-    if (this.projectFollowers.get(key) !== "active") {
-      return { replayed: true, state: "none" };
-    }
-    this.projectFollowers.set(key, "revoked");
-    return { replayed: false, state: "none" };
-  }
-
-  async requestProjectAccess(actorId: string, projectId: string): Promise<SocialMutationResult> {
-    const project = this.requireProject(actorId, projectId);
-    if (project.visibility !== "private") throw new SocialError("TARGET_NOT_FOUND");
-    const key = projectKey(projectId, actorId);
-    const current = this.accesses.get(key);
-    if (current === "pending" || current === "accepted") {
-      return { replayed: true, state: current };
-    }
-    this.accesses.set(key, "pending");
-    this.notifications.push("project.access.requested");
-    return { replayed: false, state: "pending" };
-  }
-
-  async cancelProjectAccess(actorId: string, projectId: string): Promise<SocialMutationResult> {
-    this.requireProject(actorId, projectId);
-    const key = projectKey(projectId, actorId);
-    const current = this.accesses.get(key);
-    if (!current || current === "cancelled" || current === "rejected" || current === "revoked") {
-      return { replayed: true, state: "cancelled" };
-    }
-    this.accesses.set(key, "cancelled");
-    this.projectFollowers.set(key, "revoked");
-    return { replayed: false, state: "cancelled" };
-  }
-
-  async acceptProjectAccess(
-    actorId: string,
-    projectId: string,
-    requesterId: string,
-  ): Promise<SocialMutationResult> {
-    return this.decideAccess(actorId, projectId, requesterId, "accepted");
-  }
-
-  async rejectProjectAccess(
-    actorId: string,
-    projectId: string,
-    requesterId: string,
-  ): Promise<SocialMutationResult> {
-    return this.decideAccess(actorId, projectId, requesterId, "rejected");
-  }
-
-  private async decideAccess(
-    actorId: string,
-    projectId: string,
-    requesterId: string,
-    decision: "accepted" | "rejected",
-  ): Promise<SocialMutationResult> {
-    const project = this.projects.get(projectId);
-    if (!project || project.ownerId !== actorId || project.visibility !== "private") {
-      throw new SocialError("TARGET_NOT_FOUND");
-    }
-    this.assertNotBlocked(actorId, requesterId);
-    const key = projectKey(projectId, requesterId);
-    const current = this.accesses.get(key);
-    if (current === decision) return { replayed: true, state: decision };
-    if (current !== "pending") throw new SocialError("TARGET_NOT_FOUND");
-    this.accesses.set(key, decision);
-    this.notifications.push(`project.access.${decision}`);
-    return { replayed: false, state: decision };
-  }
-
-  async revokeProjectAccess(
-    actorId: string,
-    projectId: string,
-    requesterId: string,
-  ): Promise<SocialMutationResult> {
-    const project = this.projects.get(projectId);
-    if (!project || project.ownerId !== actorId) throw new SocialError("TARGET_NOT_FOUND");
-    const key = projectKey(projectId, requesterId);
-    const current = this.accesses.get(key);
-    if (current === "revoked") return { replayed: true, state: "revoked" };
-    if (current !== "accepted") throw new SocialError("TARGET_NOT_FOUND");
-    this.accesses.set(key, "revoked");
-    this.projectFollowers.set(key, "revoked");
-    return { replayed: false, state: "revoked" };
-  }
 }
 
 function serviceWith(repository = new MemorySocialRepository()) {
@@ -475,6 +355,31 @@ describe("social privacy service", () => {
       reason: "TARGET_NOT_FOUND",
       status: 404,
     });
+  });
+
+  it("lets authenticated users find a private identity without exposing private details", async () => {
+    const { repository, service } = serviceWith();
+
+    const anonymous = await service.search(null, { q: "privé", limit: "10" });
+    expect(anonymous.items).toEqual([]);
+
+    const result = await service.search(ids.unrelated, { q: "privé", limit: "10" });
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        avatar: null,
+        bio: null,
+        followerCount: 0,
+        followingCount: 0,
+        id: ids.privateUser,
+        location: null,
+        viewerAccess: "requestable",
+        viewerFollowStatus: "none",
+      }),
+    ]);
+
+    repository.blocks.add(pair(ids.unrelated, ids.privateUser));
+    await expect(service.search(ids.unrelated, { q: "privé", limit: "10" }))
+      .resolves.toMatchObject({ items: [] });
   });
 
   it("makes public follows and private requests idempotent under concurrent replay", async () => {
@@ -531,102 +436,42 @@ describe("social privacy service", () => {
     });
   });
 
-  it("keeps project followers separate and gates them on accepted private access", async () => {
+  it("revokes historical project rows when a profile-follow privacy boundary closes", async () => {
     const { repository, service } = serviceWith();
+    const legacyKey = directed(ids.unrelated, ids.owner);
 
-    await expect(service.followProject(ids.unrelated, ids.project)).rejects.toMatchObject({
-      reason: "TARGET_NOT_FOUND",
-    });
-    expect(await service.requestProjectAccess(ids.unrelated, ids.project)).toEqual({
-      replayed: false,
-      state: "pending",
-    });
-    await expect(service.followProject(ids.unrelated, ids.project)).rejects.toMatchObject({
-      reason: "TARGET_NOT_FOUND",
-    });
-    expect(
-      await service.acceptProjectAccess(ids.owner, ids.project, ids.unrelated),
-    ).toEqual({ replayed: false, state: "accepted" });
-    expect(await service.followProject(ids.unrelated, ids.project)).toEqual({
-      replayed: false,
-      state: "following",
-    });
-    expect(await service.followProject(ids.unrelated, ids.project)).toEqual({
+    repository.legacyAccesses.set(legacyKey, "accepted");
+    repository.legacyProjectFollowers.set(legacyKey, "active");
+    expect(await service.removeProfileFollow(ids.unrelated, ids.owner)).toEqual({
       replayed: true,
-      state: "following",
+      state: "none",
     });
-    expect(repository.projectFollowers.get(projectKey(ids.project, ids.unrelated))).toBe(
-      "active",
-    );
+    expect(repository.legacyAccesses.get(legacyKey)).toBe("revoked");
+    expect(repository.legacyProjectFollowers.get(legacyKey)).toBe("revoked");
 
-    expect(
-      await service.revokeProjectAccess(ids.owner, ids.project, ids.unrelated),
-    ).toEqual({ replayed: false, state: "revoked" });
-    expect(repository.projectFollowers.get(projectKey(ids.project, ids.unrelated))).toBe(
-      "revoked",
-    );
-    await expect(service.followProject(ids.unrelated, ids.project)).rejects.toMatchObject({
-      reason: "TARGET_NOT_FOUND",
-    });
-  });
+    repository.follows.set(legacyKey, "pending");
+    repository.legacyAccesses.set(legacyKey, "pending");
+    repository.legacyProjectFollowers.set(legacyKey, "active");
+    await service.rejectProfileFollow(ids.owner, ids.unrelated);
+    expect(repository.legacyAccesses.get(legacyKey)).toBe("revoked");
+    expect(repository.legacyProjectFollowers.get(legacyKey)).toBe("revoked");
 
-  it("exposes only the actor's project relationship state and owner-scoped access list", async () => {
-    const { repository, service } = serviceWith();
-
-    await expect(service.projectState(ids.unrelated, ids.project)).resolves.toMatchObject({
-      accessStatus: "none",
-      followStatus: "none",
-      viewerRole: "viewer",
-    });
-    await service.requestProjectAccess(ids.unrelated, ids.project);
-    await expect(service.projectState(ids.unrelated, ids.project)).resolves.toMatchObject({
-      accessStatus: "pending",
-    });
-    await expect(service.projectAccess(ids.owner, ids.project)).resolves.toMatchObject({
-      projectId: ids.project,
-      items: [{ requesterId: ids.unrelated, status: "pending" }],
-    });
-    await expect(service.projectAccess(ids.publicUser, ids.project)).rejects.toMatchObject({
-      reason: "TARGET_NOT_FOUND",
-      status: 404,
-    });
-
-    repository.blocks.add(pair(ids.owner, ids.unrelated));
-    await expect(service.projectState(ids.unrelated, ids.project)).rejects.toMatchObject({
-      reason: "TARGET_NOT_FOUND",
-      status: 404,
-    });
-  });
-
-  it("supports private-project request cancellation and owner rejection as distinct states", async () => {
-    const { service } = serviceWith();
-
-    await service.requestProjectAccess(ids.unrelated, ids.project);
-    expect(await service.cancelProjectAccess(ids.unrelated, ids.project)).toEqual({
-      replayed: false,
-      state: "cancelled",
-    });
-    expect(await service.cancelProjectAccess(ids.unrelated, ids.project)).toEqual({
-      replayed: true,
-      state: "cancelled",
-    });
-
-    await service.requestProjectAccess(ids.unrelated, ids.project);
-    expect(
-      await service.rejectProjectAccess(ids.owner, ids.project, ids.unrelated),
-    ).toEqual({ replayed: false, state: "rejected" });
-    expect(
-      await service.rejectProjectAccess(ids.owner, ids.project, ids.unrelated),
-    ).toEqual({ replayed: true, state: "rejected" });
+    repository.follows.set(legacyKey, "active");
+    repository.legacyAccesses.set(legacyKey, "accepted");
+    repository.legacyProjectFollowers.set(legacyKey, "active");
+    await service.revokeProfileFollower(ids.owner, ids.unrelated);
+    expect(repository.legacyAccesses.get(legacyKey)).toBe("revoked");
+    expect(repository.legacyProjectFollowers.get(legacyKey)).toBe("revoked");
   });
 
   it("enforces blocks in both directions and never restores prior rights on unblock", async () => {
     const { repository, service } = serviceWith();
-    repository.projects.set(ids.project, { ownerId: ids.owner, visibility: "private" });
     repository.follows.set(directed(ids.owner, ids.unrelated), "active");
     repository.follows.set(directed(ids.unrelated, ids.owner), "active");
-    repository.accesses.set(projectKey(ids.project, ids.unrelated), "accepted");
-    repository.projectFollowers.set(projectKey(ids.project, ids.unrelated), "active");
+    repository.legacyAccesses.set(directed(ids.owner, ids.unrelated), "pending");
+    repository.legacyAccesses.set(directed(ids.unrelated, ids.owner), "accepted");
+    repository.legacyProjectFollowers.set(directed(ids.owner, ids.unrelated), "active");
+    repository.legacyProjectFollowers.set(directed(ids.unrelated, ids.owner), "active");
 
     expect(await service.blockProfile(ids.owner, ids.unrelated)).toEqual({
       replayed: false,
@@ -642,19 +487,17 @@ describe("social privacy service", () => {
     await expect(service.profile(ids.unrelated, ids.owner)).rejects.toMatchObject({
       reason: "TARGET_NOT_FOUND",
     });
-    await expect(service.requestProjectAccess(ids.unrelated, ids.project)).rejects.toMatchObject({
-      reason: "TARGET_NOT_FOUND",
-    });
     expect(repository.follows.get(directed(ids.owner, ids.unrelated))).toBe("revoked");
     expect(repository.follows.get(directed(ids.unrelated, ids.owner))).toBe("revoked");
-    expect(repository.accesses.get(projectKey(ids.project, ids.unrelated))).toBe("revoked");
-    expect(repository.projectFollowers.get(projectKey(ids.project, ids.unrelated))).toBe(
+    expect([...repository.legacyAccesses.values()]).toEqual(["revoked", "revoked"]);
+    expect([...repository.legacyProjectFollowers.values()]).toEqual([
       "revoked",
-    );
+      "revoked",
+    ]);
 
     await service.unblockProfile(ids.owner, ids.unrelated);
     expect(repository.follows.get(directed(ids.unrelated, ids.owner))).toBe("revoked");
-    expect(repository.accesses.get(projectKey(ids.project, ids.unrelated))).toBe("revoked");
+    expect([...repository.legacyAccesses.values()]).toEqual(["revoked", "revoked"]);
   });
 
   it("forbids self-actions and binds profile cursors to the normalized search", async () => {
@@ -669,6 +512,44 @@ describe("social privacy service", () => {
     await expect(
       service.search(null, { cursor: first.nextCursor, limit: "2", q: "anders" }),
     ).rejects.toMatchObject({ reason: "INVALID_CURSOR" });
+  });
+
+  it("paginates canonical connection views and binds cursors to one view", async () => {
+    const { repository, service } = serviceWith();
+    repository.connectionRows = [ids.publicUser, ids.privateUser, ids.unrelated].map(
+      (id, index): ConnectionListRecord => ({
+        avatar: null,
+        cursorTimestamp: `2026-08-0${4 - index}T12:00:00.000Z`,
+        displayName: `Bouwer ${index + 1}`,
+        followsViewer: false,
+        id,
+        isPrivate: index === 1,
+        relationshipAt: `2026-08-0${4 - index}T12:00:00.000Z`,
+        slug: `bouwer-${index + 1}`,
+        totalCount: 3,
+        viewerFollowStatus: "following",
+      }),
+    );
+
+    const first = await service.connections(ids.owner, {
+      limit: "2",
+      view: "following",
+    });
+    expect(first).toMatchObject({
+      items: [{ id: ids.publicUser }, { id: ids.privateUser }],
+      total: 3,
+      view: "following",
+    });
+    expect(first.nextCursor).toEqual(expect.any(String));
+    expect(repository.lastConnectionSearch).toMatchObject({
+      limit: 3,
+      view: "following",
+    });
+
+    await expect(service.connections(ids.owner, {
+      cursor: first.nextCursor,
+      view: "blocked",
+    })).rejects.toMatchObject({ reason: "INVALID_CURSOR" });
   });
 
   it("puts no identity or profile data in the social notification outbox payload", () => {

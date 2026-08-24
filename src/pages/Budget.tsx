@@ -251,7 +251,7 @@ function BudgetItemRow({
                 {new Date(`${item.occurredOn}T00:00:00`).toLocaleDateString("nl-NL")}
               </time>
             )}
-            {item.updateId && <span>Gekoppeld aan update</span>}
+            {item.updateId && <span>Gekoppeld aan Bouwmoment</span>}
           </div>
         </div>
         <div className="shrink-0 text-right">
@@ -436,7 +436,7 @@ const Budget = () => {
   const [budgetValidationError, setBudgetValidationError] = useState<string | null>(null);
 
   usePageMeta({
-    title: "Projectbudget — Buildy",
+    title: "Budget van je verbouwing — Buildy",
     description: "Beheer je privébegroting en werkelijke verbouwingskosten in Buildy.",
     path: id ? `/project/${id}/budget` : undefined,
     noIndex: true,
@@ -469,7 +469,7 @@ const Budget = () => {
       }, {
         onSuccess: () => {
           setEditingBudget(false);
-          toast.success("Projectbudget bijgewerkt");
+          toast.success("Budget bijgewerkt");
         },
         onError: (error) => {
           console.error("Update project budget failed", error);
@@ -488,7 +488,7 @@ const Budget = () => {
     }, {
       onSuccess: () => {
         setEditingBudget(false);
-        toast.success("Projectbudget ingesteld");
+        toast.success("Budget ingesteld");
       },
       onError: (error) => {
         console.error("Create project budget failed", error);
@@ -506,7 +506,7 @@ const Budget = () => {
         expectedVersion: budget.version,
       },
     }, {
-      onSuccess: () => toast.success("Projectbudget verwijderd"),
+      onSuccess: () => toast.success("Budget verwijderd"),
       onError: (error) => {
         console.error("Delete project budget failed", error);
         toast.error(mutationMessage(error));
@@ -529,7 +529,7 @@ const Budget = () => {
         <EmptyState
           icon={LockKeyhole}
           title="Log in voor je budget"
-          description="Budgetinformatie is uitsluitend zichtbaar voor de projecteigenaar."
+          description="Budgetinformatie is uitsluitend zichtbaar voor de eigenaar van de verbouwing."
           action={<Button asChild><Link to={`/auth?next=${encodeURIComponent(`/project/${id}/budget`)}`}>Inloggen</Link></Button>}
         />
       </div>
@@ -567,15 +567,15 @@ const Budget = () => {
       <div className="min-h-screen bg-background">
         <main className="mx-auto max-w-2xl px-6 py-12 md:px-8 md:py-16">
           <Link to={`/project/${id}`} className="mb-10 inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground transition-colors hover:text-foreground">
-            <ArrowLeft className="h-3.5 w-3.5" /> Terug naar project
+            <ArrowLeft className="h-3.5 w-3.5" /> Terug naar verbouwing
           </Link>
           <p className="eyebrow mb-3">Privébudget</p>
           <h1 className="font-serif text-4xl italic leading-tight md:text-5xl">Begin met een helder bedrag.</h1>
           <p className="mt-4 max-w-xl text-sm leading-relaxed text-muted-foreground">
-            Er is geen budget beschikbaar of je hebt geen toegang. Alleen de projecteigenaar kan een budget aanmaken en bekijken.
+            Er is geen budget beschikbaar of je hebt geen toegang. Alleen de eigenaar van de verbouwing kan een budget aanmaken en bekijken.
           </p>
           <form onSubmit={submitBudget} className="mt-10 rounded-xl border border-border p-6">
-            <Label htmlFor="initial-budget">Totaal projectbudget in euro</Label>
+            <Label htmlFor="initial-budget">Totaal verbouwingsbudget in euro</Label>
             <div className="mt-2 flex flex-col gap-3 sm:flex-row">
               <Input
                 id="initial-budget"
@@ -607,7 +607,7 @@ const Budget = () => {
     <div className="min-h-screen bg-background">
       <main className="mx-auto max-w-4xl px-6 py-12 md:px-8 md:py-16">
         <Link to={`/project/${id}`} className="mb-10 inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground transition-colors hover:text-foreground">
-          <ArrowLeft className="h-3.5 w-3.5" /> Terug naar project
+          <ArrowLeft className="h-3.5 w-3.5" /> Terug naar verbouwing
         </Link>
 
         <header className="mb-12">
@@ -627,7 +627,7 @@ const Budget = () => {
 
         <section className="border-t border-border pt-10" aria-labelledby="budget-overview-title">
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-            <h2 id="budget-overview-title" className="text-[11px] font-bold uppercase tracking-[0.2em]">Projectbudget</h2>
+            <h2 id="budget-overview-title" className="text-[11px] font-bold uppercase tracking-[0.2em]">Verbouwingsbudget</h2>
             <div className="flex gap-1">
               {!editingBudget && (
                 <Button
@@ -652,7 +652,7 @@ const Budget = () => {
                   <AlertDialogHeader>
                     <AlertDialogTitle>Hele budget verwijderen?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      Het projectbudget en alle budgetposten worden definitief verwijderd.
+                      Het verbouwingsbudget en alle budgetposten worden definitief verwijderd.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -668,7 +668,7 @@ const Budget = () => {
 
           {editingBudget ? (
             <form onSubmit={submitBudget} className="max-w-lg">
-              <Label htmlFor="edit-budget">Totaal projectbudget in euro</Label>
+              <Label htmlFor="edit-budget">Totaal verbouwingsbudget in euro</Label>
               <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                 <Input
                   id="edit-budget"

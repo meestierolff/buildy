@@ -14,7 +14,7 @@ const ContentPolicy = () => (
 
     <h2>Wat past op Buildy?</h2>
     <ul>
-      <li>Eigen foto&apos;s, updates, tekeningen en ervaringen over een verbouwing.</li>
+      <li>Eigen foto&apos;s, Bouwmomenten, tekeningen en ervaringen over een verbouwing.</li>
       <li>Respectvolle vragen, reacties en praktische tips.</li>
       <li>Voor-en-na-beelden waarvoor je de benodigde rechten en toestemming hebt.</li>
       <li>Eerlijke informatie over voortgang, keuzes en ervaringen.</li>
@@ -35,12 +35,12 @@ const ContentPolicy = () => (
       Controleer vóór publicatie of bewoners, kinderen, buren, bezoekers en vakmensen
       herkenbaar in beeld zijn. Vraag waar nodig toestemming en maak namen, kentekens,
       huisnummers, documenten, toegangscodes en beveiligingsdetails onleesbaar. Een openbaar
-      project kan buiten Buildy worden gedeeld of gecachet. Kies bij twijfel voor privé.
+      openbare verbouwing kan buiten Buildy worden gedeeld of gecachet. Kies bij twijfel voor privé.
     </p>
 
     <h2>Melden en beoordelen</h2>
     <p>
-      Gebruik de knop <em>Melden</em> bij een profiel, project, update, foto of reactie.
+      Gebruik de knop <em>Melden</em> bij een profiel, verbouwing, Bouwmoment, foto of reactie.
       Alleen inhoud die je zelf mag bekijken kan via die knop worden gemeld; daardoor lekt
       het formulier geen bestaan van privé-inhoud. Een melding kan, afhankelijk van ernst
       en beschikbare context, leiden tot onderzoek, verbergen, herstel, waarschuwing,
@@ -70,4 +70,3 @@ const ContentPolicy = () => (
 );
 
 export default ContentPolicy;
-

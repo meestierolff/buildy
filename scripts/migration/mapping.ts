@@ -263,11 +263,13 @@ export interface BuildTargetImportInput {
   dataProtectionKeyVersion: number;
   storageCheckpoints: readonly StorageCopyCheckpoint[];
   storagePlan: StorageMigrationPlan;
-  targetBucket: string;
+  targetStorageNamespace: string;
 }
 
 export function buildTargetImportBundle(input: BuildTargetImportInput): TargetImportBundle {
-  if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(input.targetBucket)) throw new Error("Doelbucket is ongeldig.");
+  if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(input.targetStorageNamespace)) {
+    throw new Error("Doelopslagnamespace is ongeldig.");
+  }
   if (!Number.isSafeInteger(input.dataProtectionKeyVersion) || input.dataProtectionKeyVersion < 1) {
     throw new Error("PII-keyversie is ongeldig.");
   }
@@ -501,8 +503,8 @@ export function buildTargetImportBundle(input: BuildTargetImportInput): TargetIm
       project_id: purpose === "avatar" ? null : first.projectId,
       purpose,
       status: "uploaded",
-      storage_provider: "r2",
-      bucket: input.targetBucket,
+      storage_provider: "vercel_blob",
+      bucket: input.targetStorageNamespace,
       object_key: entry.destinationKey,
       upload_idempotency_key: `legacy-migration:v1:${entry.assetId}`,
       claimed_content_type: checkpoint.contentType ?? "application/octet-stream",

@@ -25,6 +25,7 @@ import {
   type ProjectPageQuery,
   type ProjectPhase,
   type ProjectUpdate,
+  type ProjectVisibility,
   type TimelinePage,
   type UpdateProjectInput,
 } from "../../shared/contracts/projects";
@@ -239,33 +240,35 @@ export class ProjectVisibilityContinuationError extends Error {
     public readonly projectId: string,
     options?: ErrorOptions,
   ) {
-    super("Het project is aangemaakt, maar openbaar delen kon nog niet veilig worden bevestigd.", options);
+    super("De verbouwing is aangemaakt, maar de gekozen zichtbaarheid kon nog niet veilig worden bevestigd.", options);
     this.name = "ProjectVisibilityContinuationError";
   }
 }
 
 /**
- * Project creation is private by default. Public visibility is a second,
+ * Project creation is private by default. A shared visibility is a second,
  * optimistic write. Retrying the same create command first replays the project
  * and therefore safely resumes or reconciles an uncertain visibility write.
  */
 export async function createProjectWithVisibility(input: {
   input: CreateProjectInput;
-  visibility: "private" | "public";
+  visibility: ProjectVisibility;
 }): Promise<ProjectMutationResult> {
   const created = await createProject(input.input);
-  if (input.visibility === "private" || created.project.visibility === "public") return created;
+  if (input.visibility === "private" || created.project.visibility === input.visibility) return created;
 
   try {
     const visible = await updateProject(created.project.id, {
       expectedVersion: created.project.version,
-      visibility: "public",
+      visibility: input.visibility,
     });
     return { ...visible, replayed: created.replayed };
   } catch (cause) {
     try {
       const current = await getProjectOverview(created.project.id);
-      if (current.visibility === "public") return { project: current, replayed: created.replayed };
+      if (current.visibility === input.visibility) {
+        return { project: current, replayed: created.replayed };
+      }
     } catch {
       // A retry with the same create idempotency key performs reconciliation again.
     }

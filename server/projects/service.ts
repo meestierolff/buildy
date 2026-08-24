@@ -25,6 +25,7 @@ import {
 } from "../../shared/contracts/projects.js";
 import { ProjectError } from "./errors.js";
 import type { ProjectActor } from "./actor.js";
+import type { PrivacyBlindIndex } from "../security/dataProtection.js";
 import { decodeProjectCursor, encodeProjectCursor } from "./cursor.js";
 import { projectRequestHash, scopedProjectIdempotencyKey } from "./idempotency.js";
 import type {
@@ -79,6 +80,7 @@ export class ProjectService {
   constructor(
     private readonly repository: ProjectRepository,
     private readonly protector: ProjectPrivateDetailsProtector,
+    private readonly blindIndex: PrivacyBlindIndex,
     private readonly clock: Clock = () => new Date(),
     private readonly createId: IdFactory = () => crypto.randomUUID(),
   ) {}
@@ -102,7 +104,7 @@ export class ProjectService {
         undefined,
         input.idempotencyKey,
       ),
-      requestHash: projectRequestHash(operation, withoutIdempotencyKey(input)),
+      requestHash: projectRequestHash(operation, withoutIdempotencyKey(input), this.blindIndex),
     };
     const result = await this.repository.createProject(command);
     const project = await this.repository.getOverview(
@@ -250,7 +252,7 @@ export class ProjectService {
         projectId,
         input.idempotencyKey,
       ),
-      requestHash: projectRequestHash(operation, withoutIdempotencyKey(input)),
+      requestHash: projectRequestHash(operation, withoutIdempotencyKey(input), this.blindIndex),
       now: this.clock(),
     });
     const update = await this.repository.getUpdate(
@@ -281,7 +283,7 @@ export class ProjectService {
         updateId,
         input.idempotencyKey,
       ),
-      requestHash: projectRequestHash(operation, withoutIdempotencyKey(input)),
+      requestHash: projectRequestHash(operation, withoutIdempotencyKey(input), this.blindIndex),
       now: this.clock(),
     });
     const update = await this.repository.getUpdate(
@@ -317,7 +319,7 @@ export class ProjectService {
         updateId,
         input.idempotencyKey,
       ),
-      requestHash: projectRequestHash(operation, withoutIdempotencyKey(input)),
+      requestHash: projectRequestHash(operation, withoutIdempotencyKey(input), this.blindIndex),
       now: this.clock(),
     });
     const project = await this.repository.getOverview(
@@ -346,7 +348,7 @@ export class ProjectService {
         projectId,
         input.idempotencyKey,
       ),
-      requestHash: projectRequestHash(operation, withoutIdempotencyKey(input)),
+      requestHash: projectRequestHash(operation, withoutIdempotencyKey(input), this.blindIndex),
       now: this.clock(),
     });
     const project = await this.repository.getOverview(

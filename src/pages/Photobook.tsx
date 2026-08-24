@@ -27,6 +27,7 @@ import type {
 import { PhotobookProofViewer } from "@/components/photobook/PhotobookProofViewer";
 import { PhotobookViewer } from "@/components/photobook/PhotobookViewer";
 import { PhotobookCheckoutDialog } from "@/components/photobook/PhotobookCheckoutDialog";
+import { ResilientImage } from "@/components/ResilientMedia";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -58,6 +59,7 @@ import {
   useUpdatePhotobookSettings,
 } from "@/hooks/usePhotobook";
 import { ApiClientError } from "@/lib/apiClient";
+import { useAppFeatures } from "@/lib/appFeatures";
 import {
   createPhotobookIdempotencyKey,
   type LoadedPhotobookProof,
@@ -66,6 +68,7 @@ import {
 import { hasExactPhotobookProof } from "@/lib/photobookPreview";
 import { recordProductEvent } from "@/lib/betaApi";
 import { Link, useNavigate, useParams } from "@/lib/router";
+import { PRODUCT_ROUTES } from "@/lib/productNavigation";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EXACT_PROOF_STATUSES = new Set(["ready", "approved", "locked"]);
@@ -81,7 +84,6 @@ type ApprovalTarget = {
   revisionId: string;
   documentSha256: string;
   pdfSha256: string;
-  viewReceipt: string;
 };
 
 function exclusionKey(exclusion: PhotobookExclusion): string {
@@ -91,7 +93,7 @@ function exclusionKey(exclusion: PhotobookExclusion): string {
 }
 
 function exclusionLabel(exclusion: PhotobookExclusion): string {
-  if (exclusion.targetType === "update") return `Update ${exclusion.updateId.slice(0, 8)}`;
+  if (exclusion.targetType === "update") return `Bouwmoment ${exclusion.updateId.slice(0, 8)}`;
   if (exclusion.targetType === "media") return `Foto ${exclusion.mediaAssetId.slice(0, 8)}`;
   return `Hoofdstuk ${exclusion.chapterKey.slice(0, 24)}`;
 }
@@ -126,6 +128,7 @@ function nextCommandKey(
 const Photobook = () => {
   const { id = "" } = useParams<{ id: string }>();
   const { loading: authLoading, user } = useAuth();
+  const { checkoutEnabled } = useAppFeatures();
   const navigate = useNavigate();
   const validProjectId = UUID.test(id);
   const draftQuery = usePhotobookDraft(id, Boolean(user) && validProjectId);
@@ -278,7 +281,7 @@ const Photobook = () => {
     const updateId = currentPage?.updateId;
     if (!updateId || orderedUpdatePhotoIds.length > 100) {
       if (orderedUpdatePhotoIds.length > 100) {
-        toast.error("Een update kan maximaal 100 handmatig geordende foto’s bevatten");
+        toast.error("Een Bouwmoment kan maximaal 100 handmatig geordende foto’s bevatten");
       }
       return;
     }
@@ -373,7 +376,7 @@ const Photobook = () => {
           idempotencyKey: nextCommandKey(approvalCommand, signature),
           documentSha256: approvalTarget.documentSha256,
           pdfSha256: approvalTarget.pdfSha256,
-          viewReceipt: approvalTarget.viewReceipt,
+          proofViewed: true,
         },
       });
       approvalCommand.current = null;
@@ -448,7 +451,7 @@ const Photobook = () => {
       <header className="border-b bg-card/95">
         <div className="mx-auto flex max-w-[1680px] flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
-            <Button asChild aria-label="Terug naar project" size="icon" variant="ghost">
+            <Button asChild aria-label="Terug naar verbouwing" size="icon" variant="ghost">
               <Link to={`/project/${id}`}><ArrowLeft aria-hidden="true" /></Link>
             </Button>
             <div className="min-w-0">
@@ -457,6 +460,9 @@ const Photobook = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button asChild size="sm" variant="ghost">
+              <Link to={PRODUCT_ROUTES.orders}><ShoppingBag aria-hidden="true" /> Mijn bestellingen</Link>
+            </Button>
             <Badge variant="outline">{document.pageCount} pagina’s</Badge>
             {settingsDirty && <Badge variant="secondary">Niet opgeslagen</Badge>}
           </div>
@@ -623,7 +629,12 @@ const Photobook = () => {
                       }))}
                       type="button"
                     >
-                      <img alt="" className="h-full w-full object-cover" loading="lazy" src={photobookMediaProxyPath(asset.id, "small")} />
+                      <ResilientImage
+                        alt=""
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                        src={photobookMediaProxyPath(asset.id, "small")}
+                      />
                     </button>
                   ))}
                   {coverAssetLimit < document.sourceAssets.length && (
@@ -685,7 +696,12 @@ const Photobook = () => {
                       onClick={() => setSelectedAssetId(block.assetId)}
                       type="button"
                     >
-                      <img alt="" className="h-full w-full object-cover" loading="lazy" src={photobookMediaProxyPath(block.assetId, "small")} />
+                      <ResilientImage
+                        alt=""
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                        src={photobookMediaProxyPath(block.assetId, "small")}
+                      />
                     </button>
                   ))}
                 </div>
@@ -695,14 +711,14 @@ const Photobook = () => {
             {currentPage.kind === "photos" && orderedUpdatePhotoIds.length > 1 && (
               <div className="mt-4">
                 <div className="flex items-baseline justify-between gap-2">
-                  <Label>Volgorde binnen deze update</Label>
+                  <Label>Volgorde binnen dit Bouwmoment</Label>
                   <span className="text-[10px] text-muted-foreground">Sla op om pagina’s opnieuw te verdelen</span>
                 </div>
                 <ol className="mt-2 max-h-52 space-y-1 overflow-y-auto pr-1">
                   {orderedUpdatePhotoIds.map((assetId, index) => (
                     <li className="flex items-center gap-2 rounded-md border bg-muted/20 p-1.5" key={assetId}>
                       <span className="w-5 text-center text-[10px] tabular-nums text-muted-foreground">{index + 1}</span>
-                      <img
+                      <ResilientImage
                         alt=""
                         className="h-10 w-12 rounded object-cover"
                         loading="lazy"
@@ -805,7 +821,7 @@ const Photobook = () => {
                   type="button"
                   variant="outline"
                 >
-                  <X aria-hidden="true" /> Deze update uitsluiten
+                  <X aria-hidden="true" /> Dit Bouwmoment uitsluiten
                 </Button>
               )}
               {chapter && (
@@ -917,7 +933,7 @@ const Photobook = () => {
             )}
             {proof?.status === "ready" && proofHasExactAssets && !exactViewedProof && (
               <p className="mt-4 text-xs text-muted-foreground" role="status">
-                Laad en controleer eerst de echte private PDF-proof hierboven. Goedkeuren blijft dicht totdat die view receipt aanwezig is.
+                Laad en controleer eerst de echte private PDF-proof hierboven. Goedkeuren blijft dicht tot de volledige PDF en checksum in deze browser zijn gecontroleerd.
               </p>
             )}
 
@@ -944,7 +960,6 @@ const Photobook = () => {
                     revisionId: proof.revisionId,
                     documentSha256: document.checksumSha256,
                     pdfSha256: proof.pdfSha256,
-                    viewReceipt: exactViewedProof.viewReceipt,
                   });
                 }}
                 type="button"
@@ -957,12 +972,20 @@ const Photobook = () => {
                 <p className="mt-4 flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300">
                   <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Deze exacte proof is goedgekeurd.
                 </p>
-                <Button className="mt-4 w-full" onClick={() => setCheckoutOpen(true)} type="button">
-                  <ShoppingBag aria-hidden="true" /> Bouwboek bestellen
-                </Button>
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  Een exacte prijs verschijnt pas nadat de server je afleveradres en aantal heeft gecontroleerd.
-                </p>
+                {checkoutEnabled ? (
+                  <>
+                    <Button className="mt-4 w-full" onClick={() => setCheckoutOpen(true)} type="button">
+                      <ShoppingBag aria-hidden="true" /> Bouwboek bestellen
+                    </Button>
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      Een exacte prijs verschijnt pas nadat de server je afleveradres en aantal heeft gecontroleerd.
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-4 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+                    Bestellen is nog niet beschikbaar. Je goedgekeurde proof blijft bewaard.
+                  </p>
+                )}
               </>
             )}
           </section>
@@ -1015,7 +1038,7 @@ const Photobook = () => {
         </DialogContent>
       </Dialog>
 
-      {proofFinal && proof?.pdfSha256 && (
+      {checkoutEnabled && proofFinal && proof?.pdfSha256 && (
         <PhotobookCheckoutDialog
           documentSha256={document.checksumSha256}
           onOpenChange={setCheckoutOpen}

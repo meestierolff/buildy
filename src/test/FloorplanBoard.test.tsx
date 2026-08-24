@@ -194,7 +194,7 @@ describe("FloorplanBoard", () => {
   it("plaatst een pin met exacte toetsenbordcoördinaten", () => {
     renderBoard();
 
-    fireEvent.change(screen.getByLabelText("Update"), { target: { value: NEW_UPDATE_ID } });
+    fireEvent.change(screen.getByLabelText("Bouwmoment"), { target: { value: NEW_UPDATE_ID } });
     fireEvent.change(screen.getByLabelText("Horizontale positie (0–1)"), {
       target: { value: "0,125" },
     });
@@ -217,7 +217,7 @@ describe("FloorplanBoard", () => {
 
   it("normaliseert een pointerpositie binnen de afbeelding naar coördinaten tussen nul en één", () => {
     renderBoard();
-    fireEvent.change(screen.getByLabelText("Update"), { target: { value: NEW_UPDATE_ID } });
+    fireEvent.change(screen.getByLabelText("Bouwmoment"), { target: { value: NEW_UPDATE_ID } });
     const image = screen.getByRole("img", { name: "Plattegrond Begane grond" });
     const container = image.parentElement;
     expect(container).not.toBeNull();
@@ -334,7 +334,7 @@ describe("FloorplanBoard", () => {
   it("verbergt alle editorcontrols voor een niet-bewerkende viewer", () => {
     renderBoard({ ...board, viewerAccess: "public", canEdit: false });
 
-    expect(screen.getByText(/bekijk waar de gepubliceerde updates/i)).toBeInTheDocument();
+    expect(screen.getByText(/bekijk waar de gepubliceerde Bouwmomenten/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Plattegrond toevoegen" })).not.toBeInTheDocument();
     expect(screen.queryByRole("form", { name: /pin plaatsen/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Bewerk" })).not.toBeInTheDocument();

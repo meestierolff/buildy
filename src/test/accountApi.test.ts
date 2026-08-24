@@ -88,7 +88,7 @@ describe("account API client", () => {
     );
   });
 
-  it("stuurt de expliciete deletebevestiging, optionele re-auth en idempotency", async () => {
+  it("stuurt de expliciete deletebevestiging en idempotency", async () => {
     const fetchMock = vi.fn().mockResolvedValue(success({
       deletion: { id: JOB_ID, status: "deletion_pending", activeOrderCount: 0 },
       replayed: false,
@@ -97,13 +97,11 @@ describe("account API client", () => {
 
     await requestAccountDeletion({
       confirmation: "VERWIJDEREN",
-      currentPassword: "correct horse battery staple",
       idempotencyKey: CLIENT_KEY,
     });
 
     expect(JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body))).toEqual({
       confirmation: "VERWIJDEREN",
-      currentPassword: "correct horse battery staple",
       idempotencyKey: CLIENT_KEY,
     });
   });

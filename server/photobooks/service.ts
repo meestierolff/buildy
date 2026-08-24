@@ -16,16 +16,18 @@ import {
   PdfKitPhotobookTypography,
   loadPhotobookFontBytes,
 } from "./typography.js";
+import type { PrivacyBlindIndex } from "../security/dataProtection.js";
 import type {
   PhotobookClock,
   PhotobookEditorState,
   PhotobookIdFactory,
   PhotobookProofMutation,
   PhotobookProofObject,
+  PhotobookProofProcessingResult,
+  PhotobookProofProcessor,
   PhotobookRepository,
   PhotobookSource,
 } from "./types.js";
-import type { PhotobookProofViewReceipts } from "./viewReceipt.js";
 
 let typographyPromise: Promise<PdfKitPhotobookTypography> | undefined;
 
@@ -50,21 +52,22 @@ function scopedIdempotencyKey(
 }
 
 function approvalRequestHash(input: {
+  blindIndex: PrivacyBlindIndex;
   revisionId: string;
   documentSha256: string;
   pdfSha256: string;
-  viewReceipt: string;
 }): string {
-  return createHash("sha256")
-    .update("buildy-photobook-proof-approval:v1\0")
+  const canonicalDigest = createHash("sha256")
+    .update("buildy-photobook-proof-approval-payload:v2\0")
     .update(input.revisionId)
     .update("\0")
     .update(input.documentSha256)
     .update("\0")
     .update(input.pdfSha256)
     .update("\0")
-    .update(input.viewReceipt)
+    .update("true")
     .digest("hex");
+  return input.blindIndex.create("photobook-proof-approval-v2", canonicalDigest);
 }
 
 function exclusionSets(source: PhotobookSource) {
@@ -85,10 +88,11 @@ export class PhotobookService {
   constructor(
     private readonly repository: PhotobookRepository,
     private readonly bucket: string,
+    private readonly blindIndex: PrivacyBlindIndex,
     private readonly clock: PhotobookClock = () => new Date(),
     private readonly createId: PhotobookIdFactory = () => crypto.randomUUID(),
     private readonly typography: () => Promise<PhotobookTextMeasurer> = resolveTypography,
-    private readonly viewReceipts?: PhotobookProofViewReceipts,
+    private readonly proofProcessor?: PhotobookProofProcessor,
   ) {}
 
   private async buildDocument(source: PhotobookSource): Promise<PhotobookDocument> {
@@ -110,7 +114,22 @@ export class PhotobookService {
     });
   }
 
-  async editor(actorId: string, projectId: string): Promise<PhotobookEditorState> {
+  private async processExactRevision(
+    revisionId: string,
+  ): Promise<PhotobookProofProcessingResult | null> {
+    if (!this.proofProcessor) return null;
+    const result = await this.proofProcessor.processRevision(revisionId);
+    if (result.status !== "idle" && result.revisionId !== revisionId) {
+      throw new PhotobookError("INVALID_STATE");
+    }
+    return result;
+  }
+
+  private async buildEditorState(
+    actorId: string,
+    projectId: string,
+    retryRenderingProof: boolean,
+  ): Promise<PhotobookEditorState> {
     const source = await this.repository.loadSource(actorId, projectId);
     if (!source) throw new PhotobookError("PHOTOBOOK_NOT_FOUND");
     const document = await this.buildDocument(source);
@@ -121,7 +140,11 @@ export class PhotobookService {
       projectRevision: source.projectRevision,
       document,
     });
-    const proof = await this.repository.latestProof(actorId, projectId);
+    let proof = await this.repository.latestProof(actorId, projectId);
+    if (retryRenderingProof && proof?.status === "rendering") {
+      await this.processExactRevision(proof.revisionId);
+      proof = await this.repository.latestProof(actorId, projectId);
+    }
     const exposesPdf = proof && ["ready", "approved", "locked"].includes(proof.status);
     return {
       draftId: saved.draftId,
@@ -139,6 +162,10 @@ export class PhotobookService {
         thumbnailPaths: [],
       } : null,
     };
+  }
+
+  async editor(actorId: string, projectId: string): Promise<PhotobookEditorState> {
+    return this.buildEditorState(actorId, projectId, true);
   }
 
   async updateSettings(
@@ -167,7 +194,7 @@ export class PhotobookService {
     rawInput: unknown,
   ): Promise<PhotobookProofMutation> {
     const input = requestPhotobookProofInputSchema.parse(rawInput);
-    const editor = await this.editor(actorId, projectId);
+    const editor = await this.buildEditorState(actorId, projectId, false);
     if (
       editor.version !== input.expectedDraftVersion
       || editor.document.checksumSha256 !== input.expectedDocumentSha256
@@ -177,7 +204,7 @@ export class PhotobookService {
     }
     const revisionId = this.createId();
     const pdfAssetId = this.createId();
-    return this.repository.requestProof({
+    const mutation = await this.repository.requestProof({
       actorId,
       projectId,
       draftId: editor.draftId,
@@ -188,8 +215,14 @@ export class PhotobookService {
       pdfObjectKey: expectedPhotobookPdfObjectKey(pdfAssetId),
       bucket: this.bucket,
       idempotencyKey: scopedIdempotencyKey("request", actorId, input.idempotencyKey),
-      requestHash: photobookProofRequestHash(editor.document),
+      requestHash: photobookProofRequestHash(this.blindIndex, editor.document),
+      requestHashVersion: 2,
     });
+    if (mutation.status !== "rendering") return mutation;
+    const processed = await this.processExactRevision(mutation.revisionId);
+    if (processed?.status === "rendered") return { ...mutation, status: "ready" };
+    if (processed?.status === "failed") return { ...mutation, status: "failed" };
+    return mutation;
   }
 
   async approveProof(
@@ -198,26 +231,20 @@ export class PhotobookService {
     rawInput: unknown,
   ): Promise<PhotobookProofMutation> {
     const input = approvePhotobookProofInputSchema.parse(rawInput);
-    if (!this.viewReceipts?.verify({
-      actorId,
-      revisionId,
-      documentSha256: input.documentSha256,
-      pdfSha256: input.pdfSha256,
-      token: input.viewReceipt,
-    })) throw new PhotobookError("PROOF_NOT_VIEWED");
     return this.repository.approveProof({
       actorId,
       revisionId,
       documentSha256: input.documentSha256,
       pdfSha256: input.pdfSha256,
-      viewReceipt: input.viewReceipt,
+      proofViewed: input.proofViewed,
       idempotencyKey: scopedIdempotencyKey("approve", actorId, input.idempotencyKey),
       requestHash: approvalRequestHash({
+        blindIndex: this.blindIndex,
         revisionId,
         documentSha256: input.documentSha256,
         pdfSha256: input.pdfSha256,
-        viewReceipt: input.viewReceipt,
       }),
+      requestHashVersion: 2,
       approvedAt: this.clock(),
     });
   }
@@ -228,18 +255,6 @@ export class PhotobookService {
     return object;
   }
 
-  issueProofViewReceipt(
-    actorId: string,
-    proof: PhotobookProofObject,
-  ): { token: string; expiresAt: string } {
-    if (!this.viewReceipts) throw new PhotobookError("INVALID_STATE");
-    return this.viewReceipts.issue({
-      actorId,
-      revisionId: proof.revisionId,
-      documentSha256: proof.documentSha256,
-      pdfSha256: proof.sha256,
-    });
-  }
 }
 
 export function resetPhotobookTypographyForTests(): void {

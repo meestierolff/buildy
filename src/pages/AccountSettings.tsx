@@ -2,12 +2,12 @@ import { useEffect, useState, type FormEvent } from "react";
 import {
   Download,
   FileArchive,
-  KeyRound,
   Loader2,
   Lock,
   Mail,
   MapPin,
   MonitorSmartphone,
+  PackageCheck,
   Save,
   ShieldAlert,
   Trash2,
@@ -43,9 +43,9 @@ import { useOwnProfile, useUpdateOwnProfileMutation } from "@/hooks/useProfiles"
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { useAppFeatures } from "@/lib/appFeatures";
 import { ApiClientError } from "@/lib/apiClient";
-import { authClient, authErrorMessage } from "@/lib/authClient";
 import { createClientIdempotencyKey } from "@/lib/clientIdempotency";
 import { Link, Navigate } from "@/lib/router";
+import { PRODUCT_ROUTES } from "@/lib/productNavigation";
 import type { UpdateOwnProfileInput } from "../../shared/contracts/profiles";
 import type { AccountExportStatus } from "../../shared/contracts/account";
 
@@ -100,10 +100,9 @@ function deviceLabel(userAgent: string | null): string {
 const AccountSettings = () => {
   const appFeatures = useAppFeatures();
   const accountLifecycleEnabled = appFeatures.accountLifecycleEnabled;
-  const emailAuthEnabled = appFeatures.emailAuthEnabled;
   usePageMeta({
     title: "Account & instellingen — Buildy",
-    description: "Beheer je profiel, privacy en wachtwoord.",
+    description: "Beheer je profiel, privacy en Google-login.",
     path: "/account",
     noIndex: true,
   });
@@ -112,13 +111,8 @@ const AccountSettings = () => {
   const profileMutation = useUpdateOwnProfileMutation();
   const [draft, setDraft] = useState<ProfileDraft>(EMPTY_PROFILE);
   const [draftVersion, setDraftVersion] = useState<number | null>(null);
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [savingPassword, setSavingPassword] = useState(false);
-  const [sendingReset, setSendingReset] = useState(false);
   const [includeMediaInExport, setIncludeMediaInExport] = useState(true);
   const [deletionConfirmation, setDeletionConfirmation] = useState("");
-  const [deletionPassword, setDeletionPassword] = useState("");
   const sessionsQuery = useAccountSessions(Boolean(user));
   const exportsQuery = useAccountExports(Boolean(user));
   const revokeSessionMutation = useRevokeAccountSessionMutation();
@@ -191,54 +185,6 @@ const AccountSettings = () => {
     }
   };
 
-  const sendPasswordReset = async () => {
-    if (!user.email) return;
-    setSendingReset(true);
-    try {
-      const { error } = await authClient.requestPasswordReset({
-        email: user.email,
-        redirectTo: `${window.location.origin}/wachtwoord-resetten`,
-      });
-      if (error) throw error;
-      toast.success("Als dit account een wachtwoord heeft, ontvang je zo een reset-link.");
-    } catch (error) {
-      console.error("Password reset request failed", error);
-      toast.error(authErrorMessage(error, "forgot-password"));
-    } finally {
-      setSendingReset(false);
-    }
-  };
-
-  const changePassword = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (newPassword.length < 12) {
-      toast.error("Gebruik een nieuw wachtwoord van minimaal 12 tekens.");
-      return;
-    }
-    if (!currentPassword) {
-      toast.error("Vul je huidige wachtwoord in.");
-      return;
-    }
-
-    setSavingPassword(true);
-    try {
-      const { error } = await authClient.changePassword({
-        currentPassword,
-        newPassword,
-        revokeOtherSessions: false,
-      });
-      if (error) throw error;
-      setCurrentPassword("");
-      setNewPassword("");
-      toast.success("Je wachtwoord is bijgewerkt.");
-    } catch (error) {
-      console.error("Password change failed", error);
-      toast.error(authErrorMessage(error, "reset-password"));
-    } finally {
-      setSavingPassword(false);
-    }
-  };
-
   const requestExport = async () => {
     try {
       await createExportMutation.mutateAsync({
@@ -280,7 +226,6 @@ const AccountSettings = () => {
     try {
       await deletionMutation.mutateAsync({
         confirmation: "VERWIJDEREN",
-        ...(deletionPassword ? { currentPassword: deletionPassword } : {}),
         idempotencyKey: createClientIdempotencyKey("account-deletion"),
       });
       toast.success("Je account is voor veilige verwijdering ingepland.");
@@ -303,6 +248,21 @@ const AccountSettings = () => {
           Beheer wat andere bouwers van je zien en houd je login veilig.
         </p>
       </header>
+
+      <section className="rounded-xl border border-border bg-card p-5 md:p-6" aria-labelledby="orders-link-title">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <PackageCheck className="mt-0.5 h-5 w-5 text-accent" aria-hidden="true" />
+            <div>
+              <h2 id="orders-link-title" className="text-base font-semibold">Bouwboekbestellingen</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Bekijk betalingen, productie en bezorging vanuit de vastgelegde bestelstatus.</p>
+            </div>
+          </div>
+          <Button asChild variant="outline" className="shrink-0">
+            <Link to={PRODUCT_ROUTES.orders}>Bekijk bestellingen</Link>
+          </Button>
+        </div>
+      </section>
 
       <section className="rounded-xl border border-border bg-card p-6 md:p-8" aria-labelledby="profile-settings-title">
         <div className="mb-6 flex items-start gap-4">
@@ -432,9 +392,7 @@ const AccountSettings = () => {
           <div>
             <h2 id="login-settings-title" className="text-base font-semibold">Login</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              {emailAuthEnabled
-                ? "Je login wordt beheerd door de beveiligde Buildy-authenticatie."
-                : "Je logt in met Google. Wachtwoord- en e-maillogin zijn in deze bèta niet actief."}
+              Je logt uitsluitend in met Google. Buildy bewaart geen wachtwoord of OAuth-token.
             </p>
           </div>
         </div>
@@ -447,51 +405,6 @@ const AccountSettings = () => {
           </div>
         </div>
 
-        {emailAuthEnabled ? (
-        <form onSubmit={changePassword} className="space-y-4">
-          <div className="flex items-start gap-3">
-            <KeyRound className="mt-0.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            <div>
-              <h3 className="text-sm font-semibold">Wachtwoord wijzigen</h3>
-              <p className="mt-1 text-xs text-muted-foreground">Gebruik minimaal 12 tekens. Andere sessies blijven ongewijzigd.</p>
-            </div>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="current-password">Huidig wachtwoord</Label>
-              <Input
-                id="current-password"
-                type="password"
-                autoComplete="current-password"
-                value={currentPassword}
-                onChange={(event) => setCurrentPassword(event.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="new-password">Nieuw wachtwoord</Label>
-              <Input
-                id="new-password"
-                type="password"
-                autoComplete="new-password"
-                minLength={12}
-                maxLength={128}
-                value={newPassword}
-                onChange={(event) => setNewPassword(event.target.value)}
-              />
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" size="sm" disabled={savingPassword || !currentPassword || !newPassword}>
-              {savingPassword ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Wachtwoord opslaan"}
-            </Button>
-            {emailAuthEnabled ? (
-              <Button type="button" variant="outline" size="sm" disabled={sendingReset} onClick={sendPasswordReset}>
-                {sendingReset ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Stuur reset-link"}
-              </Button>
-            ) : null}
-          </div>
-        </form>
-        ) : null}
       </section>
 
       <section className="rounded-xl border border-border bg-card p-6 md:p-8" aria-labelledby="sessions-title">
@@ -642,8 +555,8 @@ const AccountSettings = () => {
               <AlertDialogHeader>
                 <AlertDialogTitle>Weet je dit zeker?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Dit is niet ongedaan te maken. Typ VERWIJDEREN en bevestig zo nodig je wachtwoord.
-                  Bij een zeer recente login mag het wachtwoordveld leeg blijven.
+                  Dit is niet ongedaan te maken. Typ VERWIJDEREN om te bevestigen.
+                  Uit veiligheid moet je Google-login jonger dan tien minuten zijn.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <div className="my-5 space-y-4">
@@ -654,17 +567,6 @@ const AccountSettings = () => {
                     value={deletionConfirmation}
                     onChange={(event) => setDeletionConfirmation(event.target.value)}
                     autoComplete="off"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="delete-password">Huidig wachtwoord (indien van toepassing)</Label>
-                  <Input
-                    id="delete-password"
-                    type="password"
-                    value={deletionPassword}
-                    onChange={(event) => setDeletionPassword(event.target.value)}
-                    autoComplete="current-password"
-                    maxLength={128}
                   />
                 </div>
               </div>

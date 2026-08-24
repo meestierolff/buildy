@@ -94,6 +94,23 @@ describe("migration discovery", () => {
       "0030_product_event_and_reaction_visibility_fix.sql",
       "0031_project_deletion_asset_scope_fix.sql",
       "0032_audit_event_clock_timestamp.sql",
+      "0033_google_oidc_sessions.sql",
+      "0034_manual_print_fulfilment.sql",
+      "0035_canonical_social_connections.sql",
+      "0036_project_visibility_modes.sql",
+      "0037_vercel_blob_storage_default.sql",
+      "0038_retire_automated_email.sql",
+      "0039_profile_follow_event_status_fix.sql",
+      "0040_request_driven_media_processing.sql",
+      "0041_request_driven_photobook_processing.sql",
+      "0042_active_worker_retry_enum_casts.sql",
+      "0043_vercel_blob_account_exports.sql",
+      "0044_bounded_media_orphan_maintenance.sql",
+      "0045_request_hash_privacy.sql",
+      "0046_checkout_reservation_recovery.sql",
+      "0047_project_share_links.sql",
+      "0048_feedback_admin_review.sql",
+      "0049_product_notifications.sql",
     ]);
     expect(migrations.every((migration) => /^[0-9a-f]{64}$/.test(migration.sha256))).toBe(true);
   });
@@ -296,9 +313,9 @@ describe("migration URL and CLI boundaries", () => {
     expect(() => parseMigrationArguments(["--statement-timeout-ms", "0"])).toThrow(/tussen 1/);
   });
 
-  it("keeps the schema contract at 48 public and 43 RLS tables", () => {
-    expect(EXPECTED_PUBLIC_TABLES).toHaveLength(48);
-    expect(EXPECTED_RLS_TABLES).toHaveLength(43);
+  it("keeps the schema contract at 53 public and 45 RLS tables", () => {
+    expect(EXPECTED_PUBLIC_TABLES).toHaveLength(53);
+    expect(EXPECTED_RLS_TABLES).toHaveLength(45);
     expect(() => compareExpectedNames("test", ["one"], ["one"])).not.toThrow();
     expect(() => compareExpectedNames("test", ["one"], ["two"])).toThrow(/ontbreekt.*onverwacht/);
   });

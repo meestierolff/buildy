@@ -44,6 +44,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ResilientImage } from "@/components/ResilientMedia";
 import {
   useCreateFloorplan,
   useCreateFloorplanPin,
@@ -424,7 +425,7 @@ export function FloorplanBoard({
 
   const createPinAt = (x: number, y: number) => {
     if (!activeFloorplan || !UUID.test(placementUpdateId)) {
-      setValidationError("Kies een geldige update voordat je een pin plaatst.");
+      setValidationError("Kies een geldig Bouwmoment voordat je een pin plaatst.");
       return;
     }
     runMutation(createPinMutation, {
@@ -563,7 +564,7 @@ export function FloorplanBoard({
         <AlertCircle className="h-4 w-4" />
         <AlertTitle>Plattegronden niet beschikbaar</AlertTitle>
         <AlertDescription>
-          <p>{boardQuery.error?.message || "Dit project bestaat niet of is niet toegankelijk."}</p>
+          <p>{boardQuery.error?.message || "Deze verbouwing bestaat niet of is niet toegankelijk."}</p>
           <Button type="button" variant="outline" className="mt-4" onClick={() => boardQuery.refetch()}>
             <RefreshCw className="mr-2 h-4 w-4" /> Opnieuw proberen
           </Button>
@@ -577,11 +578,11 @@ export function FloorplanBoard({
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="eyebrow mb-2">Plattegronden</p>
-          <h2 id="floorplan-board-title" className="font-serif text-3xl italic">Updates op hun plek.</h2>
+          <h2 id="floorplan-board-title" className="font-serif text-3xl italic">Bouwmomenten op hun plek.</h2>
           <p className="mt-2 text-sm text-muted-foreground">
             {board.canEdit
               ? "Plaats pins met de muis, aanraking of exacte toetsenbordcoördinaten."
-              : "Bekijk waar de gepubliceerde updates in het project plaatsvinden."}
+              : "Bekijk waar de gepubliceerde Bouwmomenten in de verbouwing plaatsvinden."}
           </p>
         </div>
         {boardQuery.isFetching && (
@@ -813,9 +814,10 @@ export function FloorplanBoard({
             )}
             onPointerDown={placePinFromPointer}
           >
-            <img
+            <ResilientImage
               src={activeFloorplan.media.proxyPath}
               alt={`Plattegrond ${activeFloorplan.name}`}
+              fallbackLabel="Plattegrond niet beschikbaar"
               className="block h-auto w-full select-none"
               draggable={false}
             />
@@ -828,7 +830,7 @@ export function FloorplanBoard({
                 <button
                   key={pin.id}
                   type="button"
-                  aria-label={`${pin.label || pin.update.title || "Updatepin"} selecteren`}
+                  aria-label={`${pin.label || pin.update.title || "Bouwmomentpin"} selecteren`}
                   aria-pressed={selected}
                   onPointerDown={(event) => startDraggingPin(event, pin)}
                   onPointerMove={moveDraggingPin}
@@ -858,19 +860,19 @@ export function FloorplanBoard({
                 <div>
                   <h4 id="place-pin-title" className="font-medium">Pin plaatsen</h4>
                   <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                    Kies een update en klik op de afbeelding, of vul voor toetsenbordbediening exacte coördinaten tussen 0 en 1 in.
+                    Kies een Bouwmoment en klik op de afbeelding, of vul voor toetsenbordbediening exacte coördinaten tussen 0 en 1 in.
                   </p>
                 </div>
               </div>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="pin-update-id">Update</Label>
+                  <Label htmlFor="pin-update-id">Bouwmoment</Label>
                   <Input
                     id="pin-update-id"
                     list="floorplan-update-options"
                     value={placementUpdateId}
                     onChange={(event) => setPlacementUpdateId(event.target.value)}
-                    placeholder="Kies of plak een update-ID"
+                    placeholder="Kies of plak een Bouwmoment-ID"
                     autoComplete="off"
                   />
                   <datalist id="floorplan-update-options">
@@ -903,7 +905,7 @@ export function FloorplanBoard({
                 <div>
                   <h4 className="font-medium">{selectedPin.label || selectedPin.update.title || "Geselecteerde pin"}</h4>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {selectedPin.update.status === "published" ? "Gepubliceerde update" : "Conceptupdate"} · {selectedPin.x.toFixed(2)}, {selectedPin.y.toFixed(2)}
+                    {selectedPin.update.status === "published" ? "Gepubliceerd Bouwmoment" : "Concept-Bouwmoment"} · {selectedPin.x.toFixed(2)}, {selectedPin.y.toFixed(2)}
                   </p>
                 </div>
                 <Button type="button" size="icon" variant="ghost" aria-label="Pinselectie sluiten" onClick={() => setSelectedPinId(null)}>
@@ -952,7 +954,7 @@ export function FloorplanBoard({
                     <AlertDialogContent>
                       <AlertDialogHeader>
                         <AlertDialogTitle>Pin verwijderen?</AlertDialogTitle>
-                        <AlertDialogDescription>De gekoppelde update zelf blijft behouden.</AlertDialogDescription>
+                        <AlertDialogDescription>Het gekoppelde Bouwmoment zelf blijft behouden.</AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
                         <AlertDialogCancel>Annuleren</AlertDialogCancel>
@@ -973,7 +975,7 @@ export function FloorplanBoard({
           <p className="mt-3 font-medium">Nog geen plattegrond</p>
           <p className="mt-1 text-sm text-muted-foreground">
             {board.canEdit
-              ? "Voeg een afbeelding toe om updates op de juiste plek te zetten."
+              ? "Voeg een afbeelding toe om Bouwmomenten op de juiste plek te zetten."
               : "De eigenaar heeft nog geen zichtbare plattegrond toegevoegd."}
           </p>
         </div>

@@ -14,12 +14,14 @@ import {
 import type {
   EngagementComment,
   EngagementNotification,
+  NotificationMarkAllReadResult,
   ReactionCount,
   ReactionMutationResult,
   ReactionSummary,
 } from "../../shared/contracts/engagement.js";
 import type { BuildyDatabase } from "../db/client.js";
 import type { ProjectActor } from "../projects/actor.js";
+import type { ProjectVisibility } from "../../shared/contracts/projects.js";
 import type { CommentCursor, NotificationCursor } from "./cursor.js";
 import { EngagementError } from "./errors.js";
 import type {
@@ -34,16 +36,16 @@ type TransactionCallback = Parameters<BuildyDatabase["transaction"]>[0];
 type DatabaseTransaction = Parameters<TransactionCallback>[0];
 
 export type UpdateAccessFacts = {
-  acceptedAccess: boolean;
+  profileFollower: boolean;
   blocked: boolean;
   lifecycleStatus: "active" | "deletion_pending" | "deleted";
   ownerId: string;
   updateStatus: "draft" | "published" | "deletion_pending" | "deleted";
-  visibility: "private" | "public";
+  visibility: ProjectVisibility;
 };
 
 type RawUpdateAccessFacts = {
-  accepted_access: boolean;
+  profile_follower: boolean;
   blocked: boolean;
   lifecycle_status: UpdateAccessFacts["lifecycleStatus"];
   owner_id: string;
@@ -94,11 +96,16 @@ type RawNotification = {
   comment_id: string | null;
   created_at: Date | string;
   id: string;
+  order_id: string | null;
   project_id: string | null;
   read_at: Date | string | null;
   status: "unread" | "read";
-  type: string;
+  type: EngagementNotification["type"];
   update_id: string | null;
+};
+
+type RawNotificationCount = {
+  unread_count: number | string;
 };
 
 type MutationEvent = {
@@ -108,6 +115,22 @@ type MutationEvent = {
 };
 
 const REACTION_ORDER = ["👍", "❤️", "🔥", "👏", "🔨"] as const;
+
+const canonicalNotificationFilter = sql`
+  notification.type not in (
+    'project.followed',
+    'project.access.requested',
+    'project.access.accepted',
+    'project.access.rejected'
+  )
+  and app_can_view_notification_target(
+    notification.actor_id,
+    notification.project_id,
+    notification.update_id,
+    notification.comment_id,
+    notification.order_id
+  )
+`;
 
 export const ENGAGEMENT_NOTIFICATION_OUTBOX_PAYLOAD = Object.freeze({
   schemaVersion: 1 as const,
@@ -136,12 +159,19 @@ export function canViewerAccessUpdate(
     return false;
   }
   if (viewer.kind === "anonymous") {
-    return facts.visibility === "public" && facts.updateStatus === "published";
+    return (
+      (facts.visibility === "public" || (facts.visibility === "unlisted" && Boolean(viewer.shareLinkId)))
+      && facts.updateStatus === "published"
+    );
   }
   if (facts.ownerId === viewer.appUserId) return true;
   return (
     facts.updateStatus === "published" &&
-    (facts.visibility === "public" || facts.acceptedAccess)
+    (
+      facts.visibility === "public"
+      || (facts.visibility === "unlisted" && Boolean(viewer.shareLinkId))
+      || (facts.visibility === "followers" && facts.profileFollower)
+    )
   );
 }
 
@@ -171,7 +201,7 @@ function viewerId(viewer: ProjectActor): string | null {
 
 function accessFacts(row: RawUpdateAccessFacts): UpdateAccessFacts {
   return {
-    acceptedAccess: row.accepted_access,
+    profileFollower: row.profile_follower,
     blocked: row.blocked,
     lifecycleStatus: row.lifecycle_status,
     ownerId: row.owner_id,
@@ -237,6 +267,7 @@ function mapNotification(row: RawNotification): EngagementNotification {
     projectId: row.project_id,
     updateId: row.update_id,
     commentId: row.comment_id,
+    orderId: row.order_id,
     readAt: nullableIso(row.read_at),
     createdAt: iso(row.created_at),
   };
@@ -245,8 +276,12 @@ function mapNotification(row: RawNotification): EngagementNotification {
 async function setActor(
   transaction: DatabaseTransaction,
   actorId: string | null,
+  shareLinkId?: string,
 ): Promise<void> {
-  await transaction.execute(sql`select set_config('app.actor_id', ${actorId ?? ""}, true)`);
+  await transaction.execute(sql`select
+    set_config('app.actor_id', ${actorId ?? ""}, true),
+    set_config('app.share_link_id', ${shareLinkId ?? ""}, true)
+  `);
 }
 
 async function lockScopes(
@@ -280,11 +315,12 @@ async function loadUpdateAccessFacts(
       item.author_id as update_author_id,
       exists (
         select 1
-        from project_access_requests access_request
-        where access_request.project_id = project.id
-          and access_request.requester_id = ${actorId}::uuid
-          and access_request.status = 'accepted'
-      ) as accepted_access,
+        from user_relationships profile_follow
+        where profile_follow.source_user_id = ${actorId}::uuid
+          and profile_follow.target_user_id = project.owner_id
+          and profile_follow.kind = 'follow'
+          and profile_follow.status = 'active'
+      ) as profile_follower,
       exists (
         select 1
         from user_relationships relationship
@@ -420,6 +456,7 @@ async function replayedMutation(
   if (!existing) return null;
   if (
     existing.eventType !== eventType ||
+    existing.payload.requestHashVersion !== 2 ||
     existing.payload.requestHash !== requestHash
   ) {
     throw new EngagementError("IDEMPOTENCY_CONFLICT");
@@ -441,7 +478,7 @@ async function appendMutationEvent(
     aggregateId: input.aggregateId,
     eventType: input.eventType,
     idempotencyKey: input.idempotencyKey,
-    payload: { schemaVersion: 1, requestHash: input.requestHash },
+    payload: { schemaVersion: 1, requestHashVersion: 2, requestHash: input.requestHash },
   });
 }
 
@@ -504,7 +541,7 @@ export class PostgresEngagementRepository implements EngagementRepository {
   ): Promise<EngagementComment[] | null> {
     return this.database.transaction(async (transaction) => {
       const actorId = viewerId(viewer);
-      await setActor(transaction, actorId);
+      await setActor(transaction, actorId, viewer.shareLinkId);
       if (!await visibleUpdate(transaction, viewer, projectId, updateId)) return null;
       const cursorFilter = cursor
         ? sql`and (comment.created_at, comment.id) > (${cursor.timestamp}::timestamptz, ${cursor.id}::uuid)`
@@ -535,10 +572,6 @@ export class PostgresEngagementRepository implements EngagementRepository {
         join updates item
           on item.id = comment.update_id and item.project_id = comment.project_id
         join projects project on project.id = item.project_id
-        left join project_access_requests accepted_access
-          on accepted_access.project_id = project.id
-         and accepted_access.requester_id = ${actorId}::uuid
-         and accepted_access.status = 'accepted'
         left join profiles author_profile on author_profile.user_id = comment.author_id
         left join lateral (
           select asset.id, asset.detected_content_type, asset.width_pixels, asset.height_pixels
@@ -561,12 +594,7 @@ export class PostgresEngagementRepository implements EngagementRepository {
           and project.lifecycle_status = 'active'
           and item.status in ('draft', 'published')
           and (project.owner_id = ${actorId}::uuid or item.status = 'published')
-          and (
-            project.owner_id = ${actorId}::uuid
-            or project.visibility = 'public'
-            or accepted_access.id is not null
-          )
-          and not app_users_are_blocked(${actorId}::uuid, project.owner_id)
+          and app_can_view_project(project.id)
           and not app_users_are_blocked(${actorId}::uuid, comment.author_id)
           and comment.status = 'published'
           ${cursorFilter}
@@ -741,7 +769,7 @@ export class PostgresEngagementRepository implements EngagementRepository {
   ): Promise<ReactionSummary | null> {
     return this.database.transaction(async (transaction) => {
       const actorId = viewerId(viewer);
-      await setActor(transaction, actorId);
+      await setActor(transaction, actorId, viewer.shareLinkId);
       if (!await visibleUpdate(transaction, viewer, projectId, updateId)) return null;
       if (commentId && !await commentTarget(
         transaction,
@@ -917,7 +945,7 @@ export class PostgresEngagementRepository implements EngagementRepository {
     cursor: NotificationCursor | undefined,
     limit: number,
     status: NotificationListStatus,
-  ): Promise<EngagementNotification[]> {
+  ): Promise<{ items: EngagementNotification[]; unreadCount: number }> {
     return this.database.transaction(async (transaction) => {
       await setActor(transaction, recipientId);
       const cursorFilter = cursor
@@ -935,6 +963,7 @@ export class PostgresEngagementRepository implements EngagementRepository {
           notification.project_id,
           notification.update_id,
           notification.comment_id,
+          notification.order_id,
           notification.read_at,
           notification.created_at,
           coalesce(actor_profile.display_name, 'Buildy-bouwer') as actor_display_name,
@@ -958,42 +987,23 @@ export class PostgresEngagementRepository implements EngagementRepository {
         ) avatar on true
         where notification.recipient_id = ${recipientId}::uuid
           and notification.status in ('unread', 'read')
+          and ${canonicalNotificationFilter}
           ${statusFilter}
-          and (
-            notification.actor_id is null
-            or not app_users_are_blocked(${recipientId}::uuid, notification.actor_id)
-          )
-          and (
-            notification.project_id is null
-            or app_can_view_project(notification.project_id)
-          )
-          and (
-            notification.update_id is null
-            or exists (
-              select 1
-              from updates item
-              where item.id = notification.update_id
-                and item.project_id = notification.project_id
-                and item.status in ('draft', 'published')
-                and (item.project_owner_id = ${recipientId}::uuid or item.status = 'published')
-            )
-          )
-          and (
-            notification.comment_id is null
-            or exists (
-              select 1
-              from comments comment
-              where comment.id = notification.comment_id
-                and comment.update_id = notification.update_id
-                and comment.project_id = notification.project_id
-                and comment.status = 'published'
-            )
-          )
           ${cursorFilter}
         order by notification.created_at desc, notification.id desc
         limit ${limit}
       `);
-      return typedRows<RawNotification>(result.rows).map(mapNotification);
+      const countResult = await transaction.execute(sql<RawNotificationCount>`
+        select count(*)::integer as unread_count
+        from notifications notification
+        where notification.recipient_id = ${recipientId}::uuid
+          and notification.status = 'unread'
+          and ${canonicalNotificationFilter}
+      `);
+      return {
+        items: typedRows<RawNotification>(result.rows).map(mapNotification),
+        unreadCount: Number(typedRows<RawNotificationCount>(countResult.rows)[0]?.unread_count ?? 0),
+      };
     });
   }
 
@@ -1041,6 +1051,37 @@ export class PostgresEngagementRepository implements EngagementRepository {
         .returning({ id: notifications.id });
       if (!updated[0]) throw new EngagementError("NOTIFICATION_NOT_FOUND");
       return { notificationId, status: desired, replayed: false };
+    });
+  }
+
+  async markAllNotificationsRead(
+    recipientId: string,
+    now: Date,
+  ): Promise<NotificationMarkAllReadResult> {
+    return this.database.transaction(async (transaction) => {
+      await setActor(transaction, recipientId);
+      const updated = await transaction.execute(sql<{ id: string }>`
+        update notifications notification
+        set
+          status = 'read',
+          read_at = ${now},
+          updated_at = ${now}
+        where notification.recipient_id = ${recipientId}::uuid
+          and notification.status = 'unread'
+          and ${canonicalNotificationFilter}
+        returning notification.id
+      `);
+      const countResult = await transaction.execute(sql<RawNotificationCount>`
+        select count(*)::integer as unread_count
+        from notifications notification
+        where notification.recipient_id = ${recipientId}::uuid
+          and notification.status = 'unread'
+          and ${canonicalNotificationFilter}
+      `);
+      return {
+        updatedCount: updated.rows.length,
+        unreadCount: Number(typedRows<RawNotificationCount>(countResult.rows)[0]?.unread_count ?? 0),
+      };
     });
   }
 }

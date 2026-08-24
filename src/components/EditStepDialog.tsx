@@ -3,7 +3,6 @@ import {
   ArrowLeft,
   ArrowRight,
   FileText,
-  ImagePlus,
   Loader2,
   Star,
   Trash2,
@@ -12,7 +11,9 @@ import {
 import { toast } from "sonner";
 
 import PhaseSelect from "@/components/PhaseSelect";
+import { ResilientImage, ResilientVideo } from "@/components/ResilientMedia";
 import DiscardUpdateDraftDialog from "@/components/project/DiscardUpdateDraftDialog";
+import ProjectImagePicker from "@/components/project/ProjectImagePicker";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,6 +50,7 @@ import {
   buildDeleteUpdateCommand,
   buildEditUpdateCommand,
 } from "@/lib/projectWriteFlow";
+import { selectUniqueLocalFiles } from "@/lib/projectImageSelection";
 import { getUpdateComposerCloseIntent } from "@/lib/updateComposerState";
 import type {
   CreateProjectPhaseInput,
@@ -123,6 +125,9 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveStage, setSaveStage] = useState<"idle" | "uploading" | "processing" | "saving">("idle");
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
+  const [activeUploadKey, setActiveUploadKey] = useState<string | null>(null);
+  const [failedUploadKey, setFailedUploadKey] = useState<string | null>(null);
+  const [retryingUploadKey, setRetryingUploadKey] = useState<string | null>(null);
   const [showDiscardPrompt, setShowDiscardPrompt] = useState(false);
   const [showDeletePrompt, setShowDeletePrompt] = useState(false);
 
@@ -133,7 +138,8 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
   const pendingPhaseCommandRef = useRef<{ name: string; input: CreateProjectPhaseInput } | null>(null);
   const submitGuardRef = useRef(false);
 
-  const formLocked = loading || retryLocked || deleteRetryLocked || deleteMutation.isPending;
+  const formLocked = loading || retryLocked || deleteRetryLocked || deleteMutation.isPending
+    || retryingUploadKey !== null;
   const canEdit = projectQuery.data?.viewerAccess === "owner" && projectQuery.data.canEdit;
   const phaseOptions = useMemo(() => projectQuery.data?.phases.map((phase) => ({
     value: phase.id,
@@ -153,7 +159,8 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
   const requestClose = () => {
     const intent = getUpdateComposerCloseIntent({
       isDirty,
-      isSaving: loading || retryLocked || deleteMutation.isPending || deleteRetryLocked,
+      isSaving: loading || retryLocked || deleteMutation.isPending || deleteRetryLocked
+        || retryingUploadKey !== null,
     });
     if (intent === "ignore") return;
     if (intent === "confirm-discard") {
@@ -169,7 +176,7 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
     if (!pending || !samePhaseName(pending.name, normalizedName)) {
       const latest = await projectQuery.refetch({ throwOnError: true });
       if (latest.data?.viewerAccess !== "owner" || !latest.data.canEdit) {
-        throw new UpdateEditorError("Je hebt geen bewerkingsrechten voor dit project.");
+        throw new UpdateEditorError("Je hebt geen bewerkingsrechten voor deze verbouwing.");
       }
       pending = {
         name: normalizedName,
@@ -201,18 +208,26 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
     }
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!event.target.files || formLocked) return;
-    const selected = Array.from(event.target.files);
+  const addSelectedFiles = (selected: File[]) => {
+    if (formLocked) return;
     const supported = selected.filter((file) => isSupportedProjectImageType(file.type));
+    const uniqueSelection = selectUniqueLocalFiles(
+      media.flatMap((item) => item.file ? [item.file] : []),
+      supported,
+    );
     const available = Math.max(0, 50 - media.length);
-    const accepted = supported.slice(0, available);
+    const accepted = uniqueSelection.files.slice(0, available);
 
     if (supported.length !== selected.length) {
       toast.error("Gebruik alleen JPG-, PNG-, WebP-, AVIF-, HEIC- of HEIF-foto's.");
     }
-    if (supported.length > available) {
-      toast.error("Je kunt maximaal 50 media-items aan één update koppelen.");
+    if (uniqueSelection.duplicateCount > 0) {
+      toast.error(uniqueSelection.duplicateCount === 1
+        ? "Deze foto staat al in dit Bouwmoment."
+        : `${uniqueSelection.duplicateCount} foto's stonden al in dit Bouwmoment.`);
+    }
+    if (uniqueSelection.files.length > available) {
+      toast.error("Je kunt maximaal 50 media-items aan één Bouwmoment koppelen.");
     }
 
     try {
@@ -233,8 +248,66 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
     } catch (error) {
       console.error("Create secure upload identifier failed", error);
       toast.error("Deze browser kan geen veilige uploadopdracht maken.");
+    }
+  };
+
+  const readyEditorMedia = async (item: EditorMedia): Promise<string> => {
+    if (item.assetId) return item.assetId;
+    if (!item.file) throw new UpdateEditorError("Een nieuw media-item mist het lokale bestand.");
+    const cache = uploadCacheRef.current.get(item.key) ?? {};
+    if (cache.assetId) return cache.assetId;
+
+    setActiveUploadKey(item.key);
+    setFailedUploadKey((current) => current === item.key ? null : current);
+    try {
+      cache.prepared ??= await preparePrivateProjectImage(item.file);
+      uploadCacheRef.current.set(item.key, cache);
+      const asset = await mediaUpload.mutateAsync({
+        projectId,
+        idempotencyKey: item.key,
+        prepared: cache.prepared,
+        onStage: (stage) => {
+          if (stage === "processing") setSaveStage("processing");
+          if (stage === "uploading") setSaveStage("uploading");
+        },
+      });
+      if (asset.projectId !== projectId || asset.status !== "ready") {
+        throw new UpdateEditorError("De server bevestigde de foto niet voor deze verbouwing.");
+      }
+      cache.assetId = asset.id;
+      setMedia((current) => current.map((mediaItem) => (
+        mediaItem.key === item.key ? { ...mediaItem, assetId: asset.id } : mediaItem
+      )));
+      return asset.id;
+    } catch (error) {
+      setFailedUploadKey(item.key);
+      throw error;
     } finally {
-      event.target.value = "";
+      setActiveUploadKey((current) => current === item.key ? null : current);
+    }
+  };
+
+  const retryMediaUpload = async (mediaKey: string) => {
+    if (formLocked) return;
+    const item = media.find((candidate) => candidate.key === mediaKey);
+    if (!item || item.assetId) return;
+
+    setRetryingUploadKey(mediaKey);
+    setSaveError(null);
+    setSaveStage("uploading");
+    setUploadProgress({ current: 1, total: 1 });
+    try {
+      await readyEditorMedia(item);
+      toast.success("De foto is privé verwerkt. Sla je wijzigingen op wanneer je klaar bent.");
+    } catch (error) {
+      const message = error instanceof PrivateMediaUploadError || error instanceof UpdateEditorError
+        ? error.message
+        : "Deze foto kon niet veilig worden verwerkt. Probeer haar opnieuw.";
+      setSaveError(message);
+      toast.error("De foto kon niet worden verwerkt.");
+    } finally {
+      setRetryingUploadKey(null);
+      setSaveStage("idle");
     }
   };
 
@@ -246,6 +319,7 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
       previewUrlsRef.current = previewUrlsRef.current.filter((url) => url !== removed.previewUrl);
       uploadCacheRef.current.delete(key);
     }
+    setFailedUploadKey((current) => current === key ? null : current);
     setMedia((current) => current.filter((item) => item.key !== key));
     markDirty();
   };
@@ -289,30 +363,11 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
 
     let uploadIndex = 0;
     for (const item of media) {
-      let assetId = item.assetId;
+      let assetId = item.assetId ?? uploadCacheRef.current.get(item.key)?.assetId;
       if (!assetId) {
         uploadIndex += 1;
         setUploadProgress({ current: uploadIndex, total: pendingUploads.length });
-        if (!item.file) throw new UpdateEditorError("Een nieuw media-item mist het lokale bestand.");
-        const cache = uploadCacheRef.current.get(item.key) ?? {};
-        cache.prepared ??= await preparePrivateProjectImage(item.file);
-        uploadCacheRef.current.set(item.key, cache);
-        if (!cache.assetId) {
-          const asset = await mediaUpload.mutateAsync({
-            projectId,
-            idempotencyKey: item.key,
-            prepared: cache.prepared,
-            onStage: (stage) => {
-              if (stage === "processing") setSaveStage("processing");
-              if (stage === "uploading") setSaveStage("uploading");
-            },
-          });
-          if (asset.projectId !== projectId || asset.status !== "ready") {
-            throw new UpdateEditorError("De server bevestigde de foto niet voor dit project.");
-          }
-          cache.assetId = asset.id;
-        }
-        assetId = cache.assetId;
+        assetId = await readyEditorMedia(item);
       }
       manifest.push({ assetId, compareRole: item.compareRole, caption: item.caption });
     }
@@ -332,7 +387,7 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
       if (!pendingEditCommandRef.current) {
         const latest = await projectQuery.refetch({ throwOnError: true });
         if (latest.data?.viewerAccess !== "owner" || !latest.data.canEdit) {
-          throw new UpdateEditorError("Je hebt geen bewerkingsrechten voor dit project.");
+          throw new UpdateEditorError("Je hebt geen bewerkingsrechten voor deze verbouwing.");
         }
         const readyMedia = await readyMediaManifest();
         pendingEditCommandRef.current = buildEditUpdateCommand({
@@ -370,7 +425,7 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
           ? error.message
           : "Opslaan lukte niet. Je wijzigingen staan nog hier.";
         setSaveError(message);
-        toast.error("Kon update niet opslaan.");
+        toast.error("Kon het Bouwmoment niet opslaan.");
       }
     } finally {
       submitGuardRef.current = false;
@@ -382,7 +437,7 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
       setIsDirty(false);
       onUpdated?.(savedUpdate);
       onClose();
-      toast.success("Update opgeslagen");
+      toast.success("Bouwmoment opgeslagen");
     }
   };
 
@@ -392,7 +447,7 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
     try {
       const latest = await projectQuery.refetch({ throwOnError: true });
       if (latest.data?.viewerAccess !== "owner" || !latest.data.canEdit) {
-        throw new UpdateEditorError("Je hebt geen bewerkingsrechten voor dit project.");
+        throw new UpdateEditorError("Je hebt geen bewerkingsrechten voor deze verbouwing.");
       }
       pendingDeleteCommandRef.current ??= buildDeleteUpdateCommand(
         update.version,
@@ -404,7 +459,7 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
       setShowDeletePrompt(false);
       onDeleted?.(update.id);
       onClose();
-      toast.success("Update verwijderd");
+      toast.success("Bouwmoment verwijderd");
     } catch (error) {
       console.error("Delete update failed", error);
       const definitiveRejection = error instanceof ApiClientError &&
@@ -419,7 +474,7 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
         ? error.message
         : "De serverbevestiging ontbreekt. Probeer exact dezelfde verwijdering opnieuw.";
       setSaveError(message);
-      toast.error("Kon update niet verwijderen. Probeer opnieuw.");
+      toast.error("Kon het Bouwmoment niet verwijderen. Probeer opnieuw.");
     }
   };
 
@@ -439,8 +494,8 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
           aria-busy={loading || deleteMutation.isPending}
         >
           <DialogHeader className="pr-8 text-left">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Projectupdate</p>
-            <DialogTitle className="font-sans text-2xl">Update bewerken</DialogTitle>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Bouwmoment</p>
+            <DialogTitle className="font-sans text-2xl">Bouwmoment bewerken</DialogTitle>
             <DialogDescription>
               Wijzig verhaal, fase en media. Losgekoppelde foto&apos;s worden niet uit je opslag verwijderd.
             </DialogDescription>
@@ -457,18 +512,11 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
                 </div>
                 <span className="text-xs tabular-nums text-muted-foreground">{media.length}/50</span>
               </div>
-              <label className={`mt-3 flex min-h-24 items-center justify-center gap-3 border border-dashed border-border bg-secondary/25 px-4 py-5 text-center focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 ${formLocked ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-accent"}`}>
-                <ImagePlus className="h-5 w-5 text-accent" aria-hidden="true" />
-                <span className="text-sm"><strong>Foto&apos;s toevoegen</strong><span className="block text-xs text-muted-foreground">JPG, PNG, WebP, AVIF, HEIC of HEIF</span></span>
-                <input
-                  type="file"
-                  multiple
-                  accept=".jpg,.jpeg,.png,.webp,.avif,.heic,.heif,image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif"
-                  className="sr-only"
-                  onChange={handleFileChange}
-                  disabled={formLocked || media.length >= 50}
-                />
-              </label>
+              <ProjectImagePicker
+                currentCount={media.length}
+                disabled={formLocked}
+                onFiles={addSelectedFiles}
+              />
 
               {media.length > 0 && (
                 <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -483,9 +531,9 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
                               <span className="text-xs font-semibold">PDF-document</span>
                             </div>
                           ) : item.contentType?.startsWith("video/") ? (
-                            <video src={item.previewUrl} className="h-full w-full object-cover" aria-label={`Video ${index + 1}`} />
+                            <ResilientVideo src={item.previewUrl} className="h-full w-full object-cover" aria-label={`Video ${index + 1}`} />
                           ) : (
-                            <img src={item.previewUrl} alt={`Media ${index + 1}`} className="h-full w-full object-cover" />
+                            <ResilientImage src={item.previewUrl} alt={`Media ${index + 1}`} className="h-full w-full object-cover" />
                           )}
                           {item.compareRole && (
                             <span className="absolute left-2 top-2 bg-accent px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-accent-foreground">
@@ -502,6 +550,26 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
                             <X className="h-4 w-4" aria-hidden="true" />
                           </button>
                         </div>
+                        {item.assetId ? (
+                          <p className="mt-2 text-xs font-medium text-emerald-700" role="status">Privé verwerkt</p>
+                        ) : activeUploadKey === item.key ? (
+                          <p className="mt-2 text-xs text-muted-foreground" role="status">
+                            {saveStage === "processing" ? "Veilig verwerken…" : "Privé uploaden…"}
+                          </p>
+                        ) : failedUploadKey === item.key ? (
+                          <div className="mt-2 border-l-2 border-destructive pl-2">
+                            <p className="text-xs text-destructive" role="alert">Verwerken mislukt</p>
+                            <button
+                              type="button"
+                              className="mt-1 min-h-11 text-left text-xs font-semibold text-accent underline underline-offset-4"
+                              onClick={() => void retryMediaUpload(item.key)}
+                              disabled={formLocked}
+                              aria-label={`${item.file?.name ?? `Media ${index + 1}`} opnieuw uploaden`}
+                            >
+                              Deze foto opnieuw
+                            </button>
+                          </div>
+                        ) : null}
                         <div className="mt-2 grid grid-cols-2 gap-1">
                           <button type="button" onClick={() => moveMedia(item.key, -1)} disabled={index === 0 || formLocked} className="flex min-h-11 items-center justify-center border disabled:opacity-30" aria-label={`Media ${index + 1} naar voren`}><ArrowLeft className="h-4 w-4" /></button>
                           <button type="button" onClick={() => moveMedia(item.key, 1)} disabled={index === media.length - 1 || formLocked} className="flex min-h-11 items-center justify-center border disabled:opacity-30" aria-label={`Media ${index + 1} naar achteren`}><ArrowRight className="h-4 w-4" /></button>
@@ -566,7 +634,7 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
             </section>
 
             {projectQuery.isError && (
-              <p role="alert" className="text-sm text-destructive">Projectrechten konden niet veilig worden gecontroleerd.</p>
+              <p role="alert" className="text-sm text-destructive">Rechten voor deze verbouwing konden niet veilig worden gecontroleerd.</p>
             )}
             {saveStatus && (
               <p role={saveError ? "alert" : "status"} aria-live="polite" className={`text-sm ${saveError ? "text-destructive" : "text-muted-foreground"}`}>{saveStatus}</p>
@@ -574,7 +642,7 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
 
             <div className="flex flex-col-reverse gap-3 border-t border-border pt-4 sm:flex-row sm:items-center">
               <Button type="button" variant="outline" onClick={() => setShowDeletePrompt(true)} className="min-h-11 gap-2 text-destructive hover:text-destructive" disabled={formLocked || !canEdit}>
-                <Trash2 className="h-4 w-4" aria-hidden="true" /> Update verwijderen
+                <Trash2 className="h-4 w-4" aria-hidden="true" /> Bouwmoment verwijderen
               </Button>
               <div className="flex flex-1 gap-3 sm:justify-end">
                 <Button type="button" variant="ghost" onClick={requestClose} className="min-h-11 flex-1 sm:flex-none" disabled={loading}>Annuleren</Button>
@@ -605,9 +673,9 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
       <AlertDialog open={showDeletePrompt} onOpenChange={setShowDeletePrompt}>
         <AlertDialogContent className="z-[1200] w-[calc(100%-2rem)] max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle>Update definitief uit het project verwijderen?</AlertDialogTitle>
+            <AlertDialogTitle>Bouwmoment definitief uit de verbouwing verwijderen?</AlertDialogTitle>
             <AlertDialogDescription>
-              De update verdwijnt uit de tijdlijn. Gekoppelde mediabestanden worden niet hard verwijderd en blijven volgens het bewaarbeleid beschermd.
+              Het Bouwmoment verdwijnt uit het Verhaal. Gekoppelde mediabestanden worden niet hard verwijderd en blijven volgens het bewaarbeleid beschermd.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -618,7 +686,7 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
               className="min-h-11 bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
-              {deleteRetryLocked ? "Zelfde verwijdering opnieuw" : "Ja, update verwijderen"}
+              {deleteRetryLocked ? "Zelfde verwijdering opnieuw" : "Ja, Bouwmoment verwijderen"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,6 +1,12 @@
-import { sellerSnapshotSchema, type SellerSnapshot } from "../../shared/contracts/orders.js";
+import type { SellerSnapshot } from "../../shared/contracts/orders.js";
 import type { RuntimeConfig } from "../config/runtime.js";
-import { OrderError } from "./errors.js";
+import {
+  checkoutConfigurationReady,
+  parseApprovedSellerConfiguration,
+  parseApprovedSellerSnapshot,
+  type ApprovedSellerConfiguration,
+  type ActiveCheckoutMode,
+} from "./checkoutConfiguration.js";
 
 export type ConfiguredOrderRuntime = RuntimeConfig & Required<Pick<
   RuntimeConfig,
@@ -16,31 +22,27 @@ export type ConfiguredOrderRuntime = RuntimeConfig & Required<Pick<
   | "ORDER_PRICE_MATRIX_JSON"
   | "ORDER_SELLER_JSON"
   | "ORDER_TERMS_VERSION"
->>;
+>> & {
+  CHECKOUT_MODE: ActiveCheckoutMode;
+  STRIPE_ENVIRONMENT: ActiveCheckoutMode;
+};
 
 export function hasCompleteOrderRuntime(config: RuntimeConfig): config is ConfiguredOrderRuntime {
-  return Boolean(
-    config.DATABASE_URL
-    && config.DATABASE_PAYMENT_WORKER_URL
-    && config.PII_ENCRYPTION_KEYS
-    && config.PII_ENCRYPTION_CURRENT_VERSION
-    && config.PII_BLIND_INDEX_KEY
-    && config.STRIPE_SECRET_KEY
-    && config.STRIPE_WEBHOOK_SECRET
-    && config.STRIPE_EXPECTED_ACCOUNT_ID
-    && config.STRIPE_ENVIRONMENT
-    && config.ORDER_PRICE_MATRIX_JSON
-    && config.ORDER_SELLER_JSON
-    && config.ORDER_TERMS_VERSION
-  );
+  return checkoutConfigurationReady(config);
 }
 
-export function parseSellerSnapshot(rawValue: string): SellerSnapshot {
-  if (Buffer.byteLength(rawValue, "utf8") > 32 * 1024) throw new OrderError("PRICE_UNAVAILABLE");
-  try {
-    return sellerSnapshotSchema.parse(JSON.parse(rawValue) as unknown);
-  } catch (error) {
-    if (error instanceof OrderError) throw error;
-    throw new OrderError("PRICE_UNAVAILABLE", { cause: error });
-  }
+export function parseSellerSnapshot(
+  rawValue: string,
+  expectedEnvironment?: ActiveCheckoutMode,
+  now: Date = new Date(),
+): SellerSnapshot {
+  return parseApprovedSellerSnapshot(rawValue, expectedEnvironment, now);
+}
+
+export function parseSellerConfiguration(
+  rawValue: string,
+  expectedEnvironment?: ActiveCheckoutMode,
+  now: Date = new Date(),
+): ApprovedSellerConfiguration {
+  return parseApprovedSellerConfiguration(rawValue, expectedEnvironment, now);
 }

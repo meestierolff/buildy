@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it, vi } from "vitest";
-import { APIError } from "better-auth";
+import { AuthRegistrationRejectedError } from "../../server/auth/errors";
 import { PrivacyBlindIndex } from "../../server/security/dataProtection";
 import { BetaRegistrationGate, betaReservationCookie } from "../../server/beta/authGate";
 import { BetaError } from "../../server/beta/errors";
@@ -138,14 +138,14 @@ describe("private beta service", () => {
   it("does not gate existing-login requests and bypasses new-user gating only when beta mode is off", async () => {
     const enabled = testContext();
     const enabledGate = new BetaRegistrationGate(enabled.service);
-    await enabledGate.withRequest(new Request("https://buildy.test/api/auth/sign-in/email"), async () => {
-      // Better Auth does not call authorizeNewUser for an existing identity.
+    await enabledGate.withRequest(new Request("https://buildy.test/api/auth/sign-in/google"), async () => {
+      // Existing provider subjects do not run the new-user authorization hook.
     });
     expect(enabled.repository.completeSignup).not.toHaveBeenCalled();
 
     const disabled = testContext({ betaMode: false });
     const disabledGate = new BetaRegistrationGate(disabled.service);
-    await disabledGate.withRequest(new Request("https://buildy.test/api/auth/sign-up/email"), () => (
+    await disabledGate.withRequest(new Request("https://buildy.test/api/auth/callback/google"), () => (
       disabledGate.authorizeNewUser({} as never, {
         id: "new-auth-user",
         email: "new@example.test",
@@ -173,12 +173,12 @@ describe("private beta service", () => {
     );
 
     await expect(gate.withRequest(
-      new Request("https://buildy.test/api/auth/sign-up/email"),
+      new Request("https://buildy.test/api/auth/callback/google"),
       () => gate.authorizeNewUser({} as never, {
         id: "email-auth-user",
         email: "email@example.test",
         name: "E-mailtester",
       }),
-    )).rejects.toBeInstanceOf(APIError);
+    )).rejects.toBeInstanceOf(AuthRegistrationRejectedError);
   });
 });

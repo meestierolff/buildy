@@ -5,7 +5,7 @@ const Privacy = () => (
   <LegalLayout
     title="Privacyverklaring"
     description="Welke persoonsgegevens Buildy verwerkt, waarom, met wie, hoe lang en welke privacyrechten je hebt."
-    updated="4 augustus 2026"
+    updated="23 augustus 2026"
   >
     <LegalPendingNotice title="Deze verklaring is nog niet gereed voor livegang">
       <p>
@@ -37,17 +37,17 @@ const Privacy = () => (
     <h2>2. Welke gegevens verwerkt Buildy?</h2>
     <ul>
       <li><strong>Account en profiel:</strong> gebruikers-id, e-mailadres, gekozen inlogmethode, weergavenaam, profielfoto, bio, globale locatie, privacykeuze en accountmomenten.</li>
-      <li><strong>Projecten en updates:</strong> projecttitel en -omschrijving, type verbouwing, datums, voortgang, fases, ruimtes, update-tekst, foto's, video's, documenten, plattegronden, posities op een plattegrond en eventueel locatiegegevens.</li>
-      <li><strong>Privé-projectinformatie:</strong> het ingevoerde projectadres, budgetten, kosten, uren en informatie of notities over uitvoerders. Deze velden hebben afzonderlijke toegangsbeperkingen.</li>
-      <li><strong>Sociale gegevens:</strong> volgverzoeken en -relaties, favorieten, reacties, likes, emoji-reacties, vermeldingen en notificaties.</li>
+      <li><strong>Verbouwingen en Bouwmomenten:</strong> titel en omschrijving, type verbouwing, datums, voortgang, fases, ruimtes, Verhaaltekst, foto's, video's, documenten, plattegronden, posities op een plattegrond en eventueel locatiegegevens.</li>
+      <li><strong>Privé-informatie over je verbouwing:</strong> het ingevoerde adres, budgetten, kosten, uren en informatie of notities over uitvoerders. Deze velden hebben afzonderlijke toegangsbeperkingen.</li>
+      <li><strong>Sociale gegevens:</strong> volgverzoeken en -relaties, reacties, emoji-reacties, vermeldingen en notificaties.</li>
       <li><strong>Bouwboek:</strong> opmaak- en selectievoorkeuren, uitgesloten media, titel en ondertitel, formaat, pagina-aantal en de tijdelijk gemaakte print-PDF.</li>
-      <li><strong>Bestelling en betaling:</strong> order- en providerreferenties, e-mailadres, boekconfiguratie, bedragen, valuta, betaal- en fulfilmentstatus, trackinginformatie en klachtinformatie. Buildy verzamelt de noodzakelijke verzendgegevens in de beveiligde checkout; Stripe verwerkt de betaling en Peecho ontvangt de gegevens die nodig zijn voor productie en bezorging. Buildy ontvangt geen volledige kaartgegevens.</li>
+      <li><strong>Bestelling en betaling:</strong> order- en providerreferenties, e-mailadres, boekconfiguratie, bedragen, valuta, betaal- en fulfilmentstatus, trackinginformatie en klachtinformatie. Als checkout is geactiveerd, verzamelt Buildy de noodzakelijke verzendgegevens en verwerkt Stripe de betaling. Na geverifieerde betaling controleert Buildy de drukopdracht handmatig en deelt het alleen de noodzakelijke gegevens met de gekozen drukker en bezorger. Buildy ontvangt geen volledige kaartgegevens.</li>
       <li><strong>Techniek en beveiliging:</strong> IP-adres, tijdstippen, aangevraagde pagina's, browser- en apparaatgegevens, sessie- en foutinformatie en beveiligingssignalen die Buildy of zijn infrastructuurleveranciers nodig hebben.</li>
       <li><strong>Contact:</strong> de inhoud en metadata van vragen, privacyverzoeken, meldingen over inhoud en klachten.</li>
     </ul>
     <p>
       Vermeld geen bijzondere of zeer gevoelige persoonsgegevens in openbare tekst of
-      media als dat niet noodzakelijk is. Foto's en projectinformatie kunnen ook gegevens
+      media als dat niet noodzakelijk is. Foto's en informatie over een verbouwing kunnen ook gegevens
       bevatten van gezinsleden, bezoekers, buren of uitvoerders. De gebruiker die deze
       inhoud plaatst, moet die personen waar nodig informeren en een geldige reden hebben
       om hun gegevens te delen.
@@ -65,8 +65,8 @@ const Privacy = () => (
         </thead>
         <tbody>
           <tr>
-            <td>Account, projecten, editor en gekozen sociale functies leveren</td>
-            <td>Account-, profiel-, project-, media- en sociale gegevens</td>
+            <td>Account, verbouwingen, editor en gekozen sociale functies leveren</td>
+            <td>Account-, profiel-, verbouwings-, media- en sociale gegevens</td>
             <td>Uitvoering van de overeenkomst</td>
           </tr>
           <tr>
@@ -97,14 +97,14 @@ const Privacy = () => (
 
     <h2>4. Openbaar, privé en delen met andere gebruikers</h2>
     <p>
-      Jij kiest of een profiel of project openbaar of privé is. Een openbaar project en de
-      bijbehorende updates en media kunnen zonder login zichtbaar zijn, in zoekmachines
-      verschijnen en buiten Buildy worden gedeeld of gecachet. Bij een privéproject kunnen
-      alleen de eigenaar en geaccepteerde projectvolgers de projectinhoud bekijken. Het
-      volgen van een profiel geeft niet automatisch toegang tot een privéproject.
+      Jij kiest of een profiel of verbouwing openbaar of privé is. Een openbare verbouwing en de
+      bijbehorende Bouwmomenten en media kunnen zonder login zichtbaar zijn, in zoekmachines
+      verschijnen en buiten Buildy worden gedeeld of gecachet. Bij een privéverbouwing kunnen
+      alleen de eigenaar en geaccepteerde connecties de inhoud bekijken. Het volgen van een
+      profiel geeft niet automatisch toegang tot een privéverbouwing.
     </p>
     <p>
-      Een projectadres wordt afzonderlijk als privé-informatie opgeslagen. Let er wel op
+      Een verbouwingsadres wordt afzonderlijk als privé-informatie opgeslagen. Let er wel op
       dat foto's, plattegronden, omschrijvingen, locatienamen of oudere coördinaten alsnog
       een woning of persoon herkenbaar kunnen maken. Controleer daarom vóór publicatie wat
       er in je media en teksten staat.
@@ -117,13 +117,11 @@ const Privacy = () => (
       leverancier nog door de exploitant worden gecontroleerd:
     </p>
     <ul>
-      <li><strong><a href="https://vercel.com/legal/dpa" target="_blank" rel="noreferrer">Vercel</a>:</strong> hosting van de webapp en same-origin serverfuncties, met bijbehorende beveiligings- en requestlogs. De vereiste verwerkersvoorwaarden hangen mede van het gekozen abonnement af.</li>
-      <li><strong><a href="https://neon.com/security" target="_blank" rel="noreferrer">Neon</a>:</strong> de afgeschermde PostgreSQL-database voor accounts, projecten en domeingegevens.</li>
-      <li><strong><a href="https://www.cloudflare.com/cloudflare-customer-dpa/" target="_blank" rel="noreferrer">Cloudflare R2</a>:</strong> private objectopslag en levering via Buildy's autoriserende mediaproxy.</li>
-      <li><strong><a href="https://help.brevo.com/hc/en-us/articles/360001258744-How-does-Brevo-comply-with-the-GDPR" target="_blank" rel="noreferrer">Brevo</a>:</strong> noodzakelijke transactionele e-mails en geminimaliseerde deliverystatus.</li>
-      <li><strong>Google:</strong> alleen de directe OAuth-inlog wanneer jij die methode kiest en Buildy deze na configuratie activeert.</li>
-      <li><strong>Stripe:</strong> Checkout, betaling, betaalmethoden en fraudepreventie.</li>
-      <li><strong>Peecho en zijn productie- en bezorgpartners:</strong> ontvangst van de tijdelijke print-PDF, ordergegevens, naam, e-mailadres en verzendadres voor druk en levering.</li>
+      <li><strong><a href="https://vercel.com/legal/dpa" target="_blank" rel="noreferrer">Vercel</a>:</strong> hosting van de webapp en same-origin serverfuncties, private Vercel Blob-opslag en bijbehorende beveiligings- en requestlogs. Media en print-PDF's worden alleen via geautoriseerde Buildy-routes geleverd.</li>
+      <li><strong><a href="https://neon.com/security" target="_blank" rel="noreferrer">Neon</a>:</strong> de afgeschermde PostgreSQL-database voor accounts, verbouwingen en domeingegevens.</li>
+      <li><strong>Google:</strong> OpenID Connect voor de directe Google-inlog die jij zelf start.</li>
+      <li><strong>Stripe, alleen wanneer checkout is geactiveerd:</strong> gehoste Checkout, betaling, betaalmethoden en fraudepreventie.</li>
+      <li><strong>De handmatig gekozen drukker en bezorger:</strong> na geverifieerde betaling alleen de print-PDF, contact- en verzendgegevens die voor productie en levering nodig zijn. De concrete partijen worden vóór echte verkoop vastgelegd.</li>
       <li><strong>Professionele adviseurs, toezichthouders of autoriteiten:</strong> alleen als dat noodzakelijk of wettelijk verplicht is.</li>
     </ul>
     <p>
@@ -136,8 +134,8 @@ const Privacy = () => (
     <h2>6. Verwerking buiten de EER</h2>
     <p>
       Leveranciers of hun subverwerkers kunnen gegevens buiten de Europese Economische
-      Ruimte verwerken. Vóór livegang moet Buildy de gekozen Neon-regio, Vercel- en
-      Cloudflare-configuratie en de locaties en doorgiftegronden van alle leveranciers controleren.
+      Ruimte verwerken. Vóór livegang moet Buildy de gekozen Neon-regio, Vercel Blob-configuratie
+      en de locaties en doorgiftegronden van Google, Stripe en de gekozen productiepartners controleren.
       Als gegevens naar een land zonder passend EU-beschermingsniveau gaan, moet Buildy een
       geldige doorgiftegrond gebruiken, zoals door de Europese Commissie vastgestelde
       standaardcontractbepalingen, en waar nodig aanvullende maatregelen treffen. Via het
@@ -147,8 +145,8 @@ const Privacy = () => (
 
     <h2>7. Bewaartermijnen</h2>
     <ul>
-      <li><strong>Account, profiel, projecten en sociale inhoud:</strong> zolang je account of de betreffende inhoud bestaat. Na een geldig verwijderverzoek verwijdert Buildy deze uit de actieve omgeving, behalve wat nog nodig is voor een lopende bestelling, een geschil of een wettelijke verplichting.</li>
-      <li><strong>Tijdelijke Bouwboek-PDF:</strong> een geannuleerde of verlopen checkout wordt opgeruimd; na betaling wordt een verwijdermoment ingepland wanneer Peecho de bestelling als geleverd, geannuleerd of terugbetaald meldt. Vóór livegang moet de periodieke opruimtaak aantoonbaar zijn ingepland en daarnaast een maximale noodtermijn gelden als een providerstatus uitblijft.</li>
+      <li><strong>Account, profiel, verbouwingen en sociale inhoud:</strong> zolang je account of de betreffende inhoud bestaat. Na een geldig verwijderverzoek verwijdert Buildy deze uit de actieve omgeving, behalve wat nog nodig is voor een lopende bestelling, een geschil of een wettelijke verplichting.</li>
+      <li><strong>Tijdelijke Bouwboek-PDF:</strong> een geannuleerde of verlopen checkout wordt opgeruimd; na betaling werkt een bevoegde beheerder de handmatige productie- en leverstatus bij en wordt een verwijdermoment ingepland na levering, annulering of terugbetaling. Vóór echte verkoop moeten de periodieke opruimtaak en maximale noodtermijn aantoonbaar zijn vastgelegd.</li>
       <li><strong>Financiële basisgegevens:</strong> alleen de gegevens die aantoonbaar nodig zijn voor de toepasselijke fiscale administratie blijven gedurende de door eigenaar en boekhouder goedgekeurde wettelijke termijn bewaard. Een accountverwijdering wist deze verplichte administratie niet.</li>
       <li><strong>Beveiligings-, back-up-, support- en klachtengegevens:</strong> de concrete maximale termijnen zijn nog niet vastgesteld en moeten vóór livegang per systeem en doel worden gepubliceerd.</li>
     </ul>
@@ -172,8 +170,8 @@ const Privacy = () => (
     <h2>9. Beveiliging</h2>
     <p>
       Buildy gebruikt technische en organisatorische maatregelen die passen bij de risico's,
-      waaronder toegangsregels in de database, afgeschermde opslag voor nieuwe projectmedia
-      en tijdelijke ondertekende links voor print-PDF's. Alleen bevoegde dienstprocessen en
+      waaronder toegangsregels in de database, private Vercel Blob-opslag en geautoriseerde
+      same-origin levering van media en print-PDF's. Alleen bevoegde dienstprocessen en
       gebruikers met de juiste toegang mogen gegevens benaderen. Geen enkele online dienst
       kan absolute veiligheid garanderen; meld een vermoeden van misbruik of een datalek
       direct via het nog te publiceren beveiligingscontact.
@@ -189,7 +187,7 @@ const Privacy = () => (
       betalingen wel eigen geautomatiseerde fraudepreventie gebruiken.
     </p>
     <ul>
-      <li>Profiel- en projectgegevens kun je voor een groot deel zelf aanpassen.</li>
+      <li>Profiel- en verbouwingsgegevens kun je voor een groot deel zelf aanpassen.</li>
       <li>Je account kun je via <em>Account &rsaquo; Account verwijderen</em> verwijderen. Wettelijk te bewaren administratie en gegevens van een nog lopende bestelling kunnen daarvan zijn uitgezonderd.</li>
       <li>Andere verzoeken kun je indienen via het vóór livegang te publiceren privacycontact. Buildy reageert in beginsel binnen één maand en kan redelijke informatie vragen om je identiteit te controleren.</li>
       <li>Je kunt ook een klacht indienen bij de <a href="https://autoriteitpersoonsgegevens.nl/nl/over-privacy/wetten" target="_blank" rel="noreferrer">Autoriteit Persoonsgegevens</a> of naar de bevoegde rechter gaan.</li>

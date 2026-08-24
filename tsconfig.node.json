@@ -24,7 +24,6 @@
     "server/**/*.ts",
     "scripts/migration/**/*.ts",
     "scripts/moderation/**/*.ts",
-    "scripts/peecho/**/*.ts",
     "shared/**/*.ts",
     "tests/db/**/*.ts",
     "tests/migration/**/*.ts",

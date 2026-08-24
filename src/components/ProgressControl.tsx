@@ -39,7 +39,7 @@ const ProgressControl = ({
     } catch (error) {
       console.error("Project progress update failed", error);
       if (error instanceof ApiClientError && error.status === 409) {
-        toast.error("Het project is intussen gewijzigd. Probeer het opnieuw.");
+        toast.error("De verbouwing is intussen gewijzigd. Probeer het opnieuw.");
         return;
       }
       toast.error("Kon voortgang niet opslaan");

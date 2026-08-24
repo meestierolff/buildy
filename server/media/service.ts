@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import {
   completeMediaUploadInputSchema,
   createMediaUploadIntentInputSchema,
@@ -10,9 +9,13 @@ import {
   type OriginalMediaPurpose,
 } from "../../shared/contracts/media.js";
 import type { ProjectActor } from "../projects/actor.js";
+import type { PrivacyBlindIndex } from "../security/dataProtection.js";
 import {
   ObjectStorageError,
   createObjectKey,
+  guardObjectStream,
+  supportsClientUpload,
+  type ClientUploadAuthorization,
   type ObjectStorage,
 } from "../storage/objectStorage.js";
 import { MediaError } from "./errors.js";
@@ -25,7 +28,7 @@ const MAX_BINARY_BYTES = 50 * 1024 * 1024;
 
 export type MediaBinaryResponse = {
   status: 200 | 206 | 304 | 416;
-  body: Uint8Array | null;
+  body: ReadableStream<Uint8Array> | null;
   headers: Readonly<Record<string, string>>;
 };
 
@@ -114,27 +117,47 @@ function binaryHeaders(input: {
   };
 }
 
-async function verifiedObjectBytes(
+async function verifiedObjectStream(
   storage: ObjectStorage,
-  object: { objectKey: string; sizeBytes: number; sha256Hex: string },
-): Promise<Uint8Array> {
+  object: { objectKey: string; contentType: string; sizeBytes: number; sha256Hex: string },
+  range: ByteRange | null,
+): Promise<ReadableStream<Uint8Array>> {
   if (
     !Number.isSafeInteger(object.sizeBytes) ||
     object.sizeBytes < 1 ||
     object.sizeBytes > MAX_BINARY_BYTES ||
     !/^[0-9a-f]{64}$/.test(object.sha256Hex)
   ) throw new MediaError("MEDIA_NOT_FOUND");
-  let bytes: Uint8Array;
+  const expectedBytes = range ? range.end - range.start + 1 : object.sizeBytes;
   try {
-    bytes = await storage.readObject(object.objectKey, object.sizeBytes);
+    const stored = await storage.streamObject({
+      key: object.objectKey,
+      maximumBytes: object.sizeBytes,
+      range: range ?? undefined,
+    });
+    if (
+      stored.metadata.key !== object.objectKey
+      || stored.metadata.contentType !== object.contentType
+      || stored.metadata.sizeBytes !== object.sizeBytes
+      || stored.contentLength !== expectedBytes
+      || (range && (
+        !stored.range
+        || stored.range.start !== range.start
+        || stored.range.end !== range.end
+      ))
+    ) throw new MediaError("STORAGE_UNAVAILABLE");
+    return guardObjectStream({
+      stream: stored.stream,
+      expectedBytes,
+      expectedSha256Hex: range ? undefined : object.sha256Hex,
+    });
   } catch (error) {
-    throw storageError(error);
+    if (error instanceof MediaError) throw error;
+    if (error instanceof ObjectStorageError && error.code === "OBJECT_NOT_FOUND") {
+      throw new MediaError("MEDIA_NOT_FOUND", { cause: error });
+    }
+    throw new MediaError("STORAGE_UNAVAILABLE", { cause: error });
   }
-  const actual = createHash("sha256").update(bytes).digest("hex");
-  if (bytes.byteLength !== object.sizeBytes || actual !== object.sha256Hex) {
-    throw new MediaError("STORAGE_UNAVAILABLE");
-  }
-  return bytes;
 }
 
 export class MediaService {
@@ -144,11 +167,15 @@ export class MediaService {
     private readonly rateLimiter: MediaUploadRateLimiter,
     private readonly purposeGrants: OriginalMediaPurposeGrants,
     private readonly bucket: string,
+    private readonly blindIndex: PrivacyBlindIndex,
     private readonly clock: MediaClock = () => new Date(),
     private readonly createId: MediaIdFactory = () => crypto.randomUUID(),
   ) {}
 
   async createUploadIntent(actorId: string, rawInput: unknown): Promise<MediaUploadIntent> {
+    if (!supportsClientUpload(this.storage)) {
+      throw new MediaError("STORAGE_UNAVAILABLE");
+    }
     const input = createMediaUploadIntentInputSchema.parse(rawInput);
     const rateLimit = await this.rateLimiter.consume({
       actorId,
@@ -169,13 +196,14 @@ export class MediaService {
       projectId: input.projectId,
       purpose: input.purpose,
       temporaryObjectKey: createObjectKey("temporary", assetId),
+      storageProvider: "vercel_blob",
       bucket: this.bucket,
       contentType: input.contentType,
       sizeBytes: input.sizeBytes,
       checksumSha256Base64: input.checksumSha256Base64,
       checksumSha256Hex: checksumHexFromBase64(input.checksumSha256Base64),
       idempotencyKey,
-      requestHash: mediaRequestHash(withoutIdempotencyKey(input)),
+      requestHash: mediaRequestHash(withoutIdempotencyKey(input), this.blindIndex),
     });
 
     if (intent.asset.status !== "pending_upload") {
@@ -193,18 +221,61 @@ export class MediaService {
       if (grant.key !== intent.temporaryObjectKey || grant.maximumBytes !== intent.sizeBytes) {
         throw new ObjectStorageError("PROVIDER_ERROR", "Uploadgrant wijkt af van de intentie.");
       }
-      return {
-        asset: intent.asset,
-        upload: {
-          method: "PUT",
-          url: grant.url,
-          expiresAt: grant.expiresAt,
-          requiredHeaders: grant.requiredHeaders,
-          exactSizeBytes: intent.sizeBytes,
-        },
-        replayed: intent.replayed,
+      if (grant.method !== "POST") {
+        throw new ObjectStorageError("PROVIDER_ERROR", "Private media vereist Vercel Blob-clientupload.");
+      }
+      const upload = {
+        provider: "vercel_blob" as const,
+        method: "POST" as const,
+        pathname: grant.pathname,
+        handleUploadPath: grant.handleUploadPath,
+        exactSizeBytes: intent.sizeBytes,
       };
+      return { asset: intent.asset, upload, replayed: intent.replayed };
     } catch (error) {
+      throw storageError(error);
+    }
+  }
+
+  async handleClientUpload(
+    actorId: string | null,
+    assetId: string | null,
+    request: Request,
+    body: unknown,
+  ): Promise<unknown> {
+    if (!supportsClientUpload(this.storage)) {
+      throw new MediaError("STORAGE_UNAVAILABLE");
+    }
+    try {
+      return await this.storage.handleClientUpload({
+        request,
+        body,
+        authorize: async (pathname): Promise<ClientUploadAuthorization> => {
+          if (!actorId) throw new MediaError("ACTOR_REQUIRED");
+          if (!assetId) throw new MediaError("MEDIA_NOT_FOUND");
+          const upload = await this.repository.findUploadForCompletion(actorId, assetId);
+          if (
+            !upload ||
+            upload.asset.status !== "pending_upload" ||
+            upload.temporaryObjectKey !== pathname
+          ) {
+            throw new MediaError("MEDIA_NOT_FOUND");
+          }
+          return {
+            actorId,
+            assetId,
+            pathname: upload.temporaryObjectKey,
+            contentType: upload.contentType,
+            maximumBytes: upload.maximumBytes,
+            checksumSha256Base64: upload.checksumSha256Base64,
+          };
+        },
+        complete: async (upload) => {
+          await this.completeUpload(upload.actorId, upload.assetId, {});
+        },
+      });
+    } catch (error) {
+      if (error instanceof MediaError) throw error;
       throw storageError(error);
     }
   }
@@ -285,16 +356,15 @@ export class MediaService {
       };
     }
     if (headOnly) return { status: 200, body: null, headers };
-    const bytes = await verifiedObjectBytes(this.storage, object);
-    if (!range) return { status: 200, body: bytes, headers };
-    const body = bytes.slice(range.start, range.end + 1);
+    const body = await verifiedObjectStream(this.storage, object, range);
+    if (!range) return { status: 200, body, headers };
     return {
       status: 206,
       body,
       headers: {
         ...headers,
         "content-range": `bytes ${range.start}-${range.end}/${object.sizeBytes}`,
-        "content-length": String(body.byteLength),
+        "content-length": String(range.end - range.start + 1),
       },
     };
   }
@@ -349,16 +419,15 @@ export class MediaService {
       };
     }
     if (headOnly) return { status: 200, body: null, headers };
-    const bytes = await verifiedObjectBytes(this.storage, object);
-    if (!range) return { status: 200, body: bytes, headers };
-    const body = bytes.slice(range.start, range.end + 1);
+    const body = await verifiedObjectStream(this.storage, object, range);
+    if (!range) return { status: 200, body, headers };
     return {
       status: 206,
       body,
       headers: {
         ...headers,
         "content-range": `bytes ${range.start}-${range.end}/${object.sizeBytes}`,
-        "content-length": String(body.byteLength),
+        "content-length": String(range.end - range.start + 1),
       },
     };
   }

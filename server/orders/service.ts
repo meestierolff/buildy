@@ -1,11 +1,19 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   createPhotobookCheckoutInputSchema,
+  customerOrderListQuerySchema,
   requestPhotobookQuoteInputSchema,
+  type CreatePhotobookCheckoutInput,
 } from "../../shared/contracts/orders.js";
 import { canonicalJson } from "../security/canonicalJson.js";
+import type { PrivacyBlindIndex } from "../security/dataProtection.js";
 import { PaymentProviderError, type PaymentProvider } from "../payments/paymentProvider.js";
 import { OrderError } from "./errors.js";
+import { decodeCustomerOrderCursor, encodeCustomerOrderCursor } from "./cursor.js";
+import {
+  approvedSellerConfigurationIsCurrent,
+  type ApprovedSellerConfiguration,
+} from "./checkoutConfiguration.js";
 import type {
   OrderClock,
   OrderIdFactory,
@@ -18,7 +26,8 @@ import type {
 
 const SHA256 = /^[0-9a-f]{64}$/;
 const COUNTRY = /^[A-Z]{2}$/;
-const OFFERING_ID = /^[A-Za-z0-9._:-]{1,120}$/;
+const PRODUCT_REFERENCE = /^[A-Za-z0-9._:-]{1,120}$/;
+const MAX_QUOTE_TTL_MILLISECONDS = 30 * 60_000;
 
 function scopedIdempotencyKey(actorId: string, clientKey: string): string {
   return createHash("sha256")
@@ -29,11 +38,46 @@ function scopedIdempotencyKey(actorId: string, clientKey: string): string {
     .digest("hex");
 }
 
-function requestHash(actorId: string, revisionId: string, input: unknown): string {
+function legacyRequestHash(
+  actorId: string,
+  revisionId: string,
+  input: CreatePhotobookCheckoutInput,
+  scheme: "legacy-v1" | "legacy-v2",
+): string {
+  const legacyInput = (() => {
+    if (scheme === "legacy-v2") return input;
+    const {
+      expectedQuoteExpiresAt: _quoteExpiry,
+      expectedAmounts,
+      termsAccepted: _termsAccepted,
+      ...v1Input
+    } = input;
+    return { ...v1Input, expectedTotalMinor: expectedAmounts.totalMinor };
+  })();
   return createHash("sha256")
     .update("buildy-photobook-checkout-request:v1\0")
-    .update(canonicalJson({ actorId, revisionId, input }))
+    .update(canonicalJson({ actorId, revisionId, input: legacyInput }))
     .digest("hex");
+}
+
+function semanticRequestHash(
+  blindIndex: PrivacyBlindIndex,
+  actorId: string,
+  revisionId: string,
+  input: CreatePhotobookCheckoutInput,
+): string {
+  const {
+    idempotencyKey: _transportKey,
+    expectedQuoteReference: _quoteReference,
+    expectedQuoteExpiresAt: _quoteExpiry,
+    ...purchaseRequest
+  } = input;
+  // Quote reference/expiry are freshness proofs, not purchase semantics. The
+  // immutable reservation's original expiry remains authoritative on replay.
+  return blindIndex.create(
+    "orders.photobook-checkout-request-v2",
+    canonicalJson({ actorId, revisionId, input: purchaseRequest }),
+  );
 }
 
 function orderNumber(now: Date): string {
@@ -51,7 +95,7 @@ function assertQuote(quote: OrderQuote, now: Date): void {
     || quote.quantity < 1
     || quote.quantity > 5
     || !COUNTRY.test(quote.destinationCountry)
-    || !OFFERING_ID.test(quote.offeringId)
+    || !PRODUCT_REFERENCE.test(quote.productReference)
     || !quote.quoteReference.trim()
     || !quote.commercialApprovalId.trim()
     || !quote.deliveryEstimate.trim()
@@ -62,6 +106,13 @@ function assertQuote(quote: OrderQuote, now: Date): void {
     || amounts.totalMinor !== amounts.subtotalMinor + amounts.shippingMinor + amounts.taxMinor
   ) throw new OrderError("PRICE_UNAVAILABLE");
   if (quote.expiresAt.getTime() <= now.getTime()) throw new OrderError("QUOTE_EXPIRED");
+  if (quote.expiresAt.getTime() > now.getTime() + MAX_QUOTE_TTL_MILLISECONDS) {
+    throw new OrderError("PRICE_UNAVAILABLE");
+  }
+}
+
+function amountsMatch(left: OrderQuote["amounts"], right: OrderQuote["amounts"]): boolean {
+  return canonicalJson(left) === canonicalJson(right);
 }
 
 export interface PhotobookCheckoutResult {
@@ -106,13 +157,21 @@ export class OrderService {
     private readonly quotes: OrderQuoteProvider,
     private readonly payments: PaymentProvider,
     private readonly pii: OrderPiiProtector,
-    private readonly seller: SellerSnapshot,
+    private readonly blindIndex: PrivacyBlindIndex,
+    private readonly sellerConfiguration: ApprovedSellerConfiguration,
     private readonly appOrigin: string,
     private readonly termsVersion: string,
     private readonly checkoutEnabled: boolean,
     private readonly clock: OrderClock = () => new Date(),
     private readonly createId: OrderIdFactory = randomUUID,
   ) {}
+
+  private currentSeller(): SellerSnapshot {
+    if (!approvedSellerConfigurationIsCurrent(this.sellerConfiguration, this.clock())) {
+      throw new OrderError("PRICE_UNAVAILABLE");
+    }
+    return this.sellerConfiguration.seller;
+  }
 
   private async approvedProof(actorId: string, revisionId: string, input: {
     documentSha256: string;
@@ -137,6 +196,7 @@ export class OrderService {
   private async currentQuote(proof: Awaited<ReturnType<OrderService["approvedProof"]>>, input: {
     quantity: number;
     shippingAddress: Parameters<OrderQuoteProvider["quote"]>[0]["shippingAddress"];
+    quoteExpiresAt?: Date;
   }): Promise<OrderQuote> {
     const now = this.clock();
     const quote = await this.quotes.quote({
@@ -144,6 +204,7 @@ export class OrderService {
       pageCount: proof.pageCount,
       quantity: input.quantity,
       shippingAddress: input.shippingAddress,
+      ...(input.quoteExpiresAt ? { quoteExpiresAt: input.quoteExpiresAt } : {}),
     });
     if (!quote) throw new OrderError("PRICE_UNAVAILABLE");
     assertQuote(quote, now);
@@ -158,6 +219,7 @@ export class OrderService {
 
   async quote(actorId: string, revisionId: string, rawInput: unknown): Promise<PhotobookQuoteResult> {
     if (!this.checkoutEnabled) throw new OrderError("CHECKOUT_UNAVAILABLE");
+    const seller = this.currentSeller();
     const input = requestPhotobookQuoteInputSchema.parse(rawInput);
     const proof = await this.approvedProof(actorId, revisionId, input);
     const quote = await this.currentQuote(proof, input);
@@ -174,7 +236,7 @@ export class OrderService {
       taxTreatment: quote.taxTreatment,
       expiresAt: quote.expiresAt.toISOString(),
       termsVersion: this.termsVersion,
-      seller: this.seller,
+      seller,
       personalisedProduct: true,
     };
   }
@@ -185,20 +247,56 @@ export class OrderService {
     rawInput: unknown,
   ): Promise<PhotobookCheckoutResult> {
     if (!this.checkoutEnabled) throw new OrderError("CHECKOUT_UNAVAILABLE");
+    const seller = this.currentSeller();
     const input = createPhotobookCheckoutInputSchema.parse(rawInput);
     if (input.termsVersion !== this.termsVersion) throw new OrderError("TERMS_MISMATCH");
 
     const idempotencyKey = scopedIdempotencyKey(actorId, input.idempotencyKey);
-    const hash = requestHash(actorId, revisionId, input);
-    let reservation = await this.repository.findCheckoutReservation(actorId, idempotencyKey, hash);
+    const hash = semanticRequestHash(this.blindIndex, actorId, revisionId, input);
+    let reservation = await this.repository.findCheckoutReservation(
+      actorId,
+      revisionId,
+      idempotencyKey,
+    );
+    if (reservation && !["awaiting_payment", "checkout_open"].includes(reservation.status)) {
+      throw new OrderError("ORDER_STATE_CONFLICT");
+    }
+    if (reservation && reservation.quoteExpiresAt.getTime() <= this.clock().getTime()) {
+      const cancelled = await this.repository.cancelExpiredCheckoutReservation({
+        actorId,
+        orderId: reservation.orderId,
+        now: this.clock(),
+      });
+      if (!cancelled || reservation.idempotencyKey === idempotencyKey) {
+        throw new OrderError("QUOTE_EXPIRED");
+      }
+      reservation = null;
+    }
+    if (reservation) {
+      if (reservation.requestHashScheme === "redacted" || reservation.requestHash === null) {
+        throw new OrderError("ORDER_STATE_CONFLICT");
+      }
+      const matchingRequest = reservation.requestHashScheme === "blind-v2"
+        ? reservation.requestHash === hash
+        : reservation.requestHash === legacyRequestHash(
+            actorId,
+            revisionId,
+            input,
+            reservation.requestHashScheme,
+          );
+      if (!matchingRequest) throw new OrderError("IDEMPOTENCY_CONFLICT");
+    }
 
     if (!reservation) {
       const proof = await this.approvedProof(actorId, revisionId, input);
       const now = this.clock();
-      const quote = await this.currentQuote(proof, input);
+      const expectedQuoteExpiresAt = new Date(input.expectedQuoteExpiresAt);
+      if (expectedQuoteExpiresAt.getTime() <= now.getTime()) throw new OrderError("QUOTE_EXPIRED");
+      const quote = await this.currentQuote(proof, { ...input, quoteExpiresAt: expectedQuoteExpiresAt });
       if (
         quote.quoteReference !== input.expectedQuoteReference
-        || quote.amounts.totalMinor !== input.expectedTotalMinor
+        || !amountsMatch(quote.amounts, input.expectedAmounts)
+        || expectedQuoteExpiresAt.getTime() !== quote.expiresAt.getTime()
       ) throw new OrderError("QUOTE_EXPIRED");
 
       const orderId = this.createId();
@@ -221,14 +319,16 @@ export class OrderService {
         amounts: quote.amounts,
         deliveryEstimate: quote.deliveryEstimate,
         termsVersion: this.termsVersion,
+        termsAccepted: input.termsAccepted,
         customerEmail: proof.customerEmail,
         requestHash: hash,
         idempotencyKey,
         quoteReference: quote.quoteReference,
-        offeringId: quote.offeringId,
+        productReference: quote.productReference,
+        priceVersion: quote.commercialApprovalId,
         commercialApprovalId: quote.commercialApprovalId,
         taxTreatment: quote.taxTreatment,
-        sellerSnapshot: this.seller,
+        sellerSnapshot: seller,
         shippingAddress: input.shippingAddress,
         pii: this.pii.protect({
           orderId,
@@ -236,37 +336,45 @@ export class OrderService {
           shippingAddress: input.shippingAddress,
         }),
         reservedAt: now,
-        quoteExpiresAt: quote.expiresAt,
+        quoteExpiresAt: expectedQuoteExpiresAt,
       });
     }
 
     let session;
     try {
+      const inclusiveVat = reservation.taxTreatment === "vat_included";
+      const lines = [
+        {
+          label: inclusiveVat ? "Persoonlijk Bouwboek (excl. btw)" : "Persoonlijk Bouwboek",
+          description: `A4 liggend hardcover, ${reservation.pageCount} pagina's; na betaling handmatig gecontroleerd en besteld`,
+          unitAmountMinor: reservation.unitAmountMinor,
+          quantity: reservation.quantity,
+        },
+        {
+          label: inclusiveVat ? "Verzending (excl. btw)" : "Verzending",
+          unitAmountMinor: reservation.amounts.shippingMinor,
+          quantity: 1,
+        },
+        {
+          label: inclusiveVat ? "Btw (in totaal inbegrepen)" : "Belasting",
+          unitAmountMinor: reservation.amounts.taxMinor,
+          quantity: 1,
+        },
+      ];
+      const stripeTotalMinor = lines.reduce(
+        (total, line) => total + line.unitAmountMinor * line.quantity,
+        0,
+      );
+      if (!Number.isSafeInteger(stripeTotalMinor) || stripeTotalMinor !== reservation.amounts.totalMinor) {
+        throw new OrderError("PRICE_UNAVAILABLE");
+      }
       session = await this.payments.createCheckout({
         orderId: reservation.orderId,
         orderNumber: reservation.orderNumber,
         merchantReference: reservation.merchantReference,
         currency: "EUR",
-        lines: [
-          {
-            label: `Bouwboek — ${reservation.projectTitle}`,
-            description: `A4 liggend hardcover, ${reservation.pageCount} pagina's`,
-            unitAmountMinor: reservation.unitAmountMinor,
-            quantity: reservation.quantity,
-          },
-          {
-            label: "Verzending",
-            unitAmountMinor: reservation.amounts.shippingMinor,
-            quantity: 1,
-          },
-          {
-            label: reservation.taxTreatment === "vat_included" ? "Btw" : "Belasting",
-            unitAmountMinor: reservation.amounts.taxMinor,
-            quantity: 1,
-          },
-        ],
+        lines,
         customerEmail: reservation.customerEmail,
-        allowedShippingCountries: [reservation.destinationCountry],
         successUrl: new URL(`/bestellingen/${reservation.orderId}?checkout=success`, this.appOrigin).toString(),
         cancelUrl: new URL(`/project/${reservation.projectId}/bouwboek?checkout=cancelled`, this.appOrigin).toString(),
         idempotencyKey: `buildy:checkout:${reservation.orderId}:v1`,
@@ -310,5 +418,26 @@ export class OrderService {
     const order = await this.repository.getOrder(actorId, orderId);
     if (!order) throw new OrderError("ORDER_NOT_FOUND");
     return order;
+  }
+
+  async orders(actorId: string, rawQuery: unknown) {
+    const query = customerOrderListQuerySchema.parse(rawQuery);
+    const result = await this.repository.listOrders(
+      actorId,
+      decodeCustomerOrderCursor(query.cursor),
+      query.limit,
+    );
+    const last = result.items.at(-1);
+    return {
+      items: result.items,
+      nextCursor: result.hasMore && last
+        ? encodeCustomerOrderCursor({
+            kind: "customer-orders",
+            version: 1,
+            createdAt: last.createdAt,
+            orderId: last.orderId,
+          })
+        : null,
+    };
   }
 }

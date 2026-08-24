@@ -1,88 +1,90 @@
 # Order support runbook
 
-**Status:** procesontwerp gereed; definitieve supportcontacten, Peecho-afspraken,
-herdrukvoorwaarden en bevoegdheden zijn externe launchgates.
+Status: actieve Stripe + handmatige fulfilmentprocedure; externe support-,
+drukker- en refundafspraken zijn nog launchgates.
 
 ## Veilige identificatie
 
-Laat een ingelogde klant de orderpagina openen. Gebruik intern het Buildy-
-ordernummer en de interne order-ID. Vraag nooit om wachtwoord, magic link,
-volledig betaalmiddel, webhookpayload, signed PDF-URL of een foto van een
-identiteitsbewijs. Deel adres- of trackinggegevens alleen via de authenticated
-orderflow.
+Laat een ingelogde klant `/bestellingen/:orderId` openen. Gebruik intern het
+Buildy-ordernummer en de interne order-ID. Vraag nooit om loginsecret, volledig
+betaalmiddel, webhookpayload, Blob/Checkout-URL, identiteitsbewijs of een kopie
+van het volledige adres in chat/ticket. Een `HELP-…`-ontvangstcode geeft geen
+orderdetails vrij.
 
-Een anonieme vraag kan met ontvangstcode worden geregistreerd, maar geeft geen
-orderdetails vrij. Verifieer eigendom opnieuw na iedere sessiewissel.
+## Statusbronnen
 
-## Status en toegestane actie
+- order: `draft`, `awaiting_payment`, `checkout_open`, `paid`,
+  `payment_failed`, `expired`, `cancelled`, `manual_review`;
+- payment: `unpaid`, `processing`, `paid`, `partially_refunded`, `refunded`,
+  `failed`;
+- fulfilment: `awaiting_review`, `reviewed`, `ordered_manually`,
+  `in_production`, `shipped`, `completed`, `manual_review`, `cancelled`,
+  `refund_review`.
 
-| Interne toestand | Betekenis | Supportactie |
-|---|---|---|
-| `checkout_open` | betaling nog niet bevestigd | Laat klant niet dubbel betalen; controleer Stripe-event |
-| `payment_failed` / `expired` | geen geldige succesvolle betaling | Nieuwe checkout alleen via normale productflow |
-| `paid` + `unclaimed` | betaling staat vast, productie niet begonnen | Escaleer na operationele drempel; geen handmatige tweede order |
-| `claimed` / `peecho_order_created` / `peecho_payment_pending` | worker bezit of bouwt providerorder | Wacht op lease/reconciliatie; providerreference controleren |
-| `submitted_to_production` / `in_production` | print is aangeboden/in productie | Wijziging/annulering alleen na expliciete Peecho-bevestiging |
-| `shipped` | verzonden | Toon alleen gevalideerde tracking uit canonical providerstatus |
-| `delivered` | provider meldt levering | Schade/vermissing als afzonderlijke case behandelen |
-| `manual_review` / `failed` | automatische voortgang bewust gestopt | Technisch operator + Peecho; geen directe DB-statuswrite |
-| `refunded` | Stripe-refund geregistreerd | Niet aannemen dat print is geannuleerd of terugbetaalbaar bij Peecho |
+Stripe signature/account/environment/event plus de interne ledger bepalen
+payment. De Buildy-adminaudit plus handmatig gecontroleerde externe referentie
+bepalen fulfilment. Een browserredirect, klantbericht of drukker-e-mail is geen
+statuswaarheid.
 
 ## Veelvoorkomende cases
 
-### Betaling gelukt, pagina toont dit niet
+### Betaling lijkt gelukt, Buildy toont dit niet
 
-1. Controleer intern ordernummer en Stripe-eventstatus op dezelfde environment
-   en het verwachte account-ID.
-2. Laat de idempotente webhookinbox het originele event verwerken of replay via
-   de goedgekeurde providerfunctie; muteer de order niet handmatig.
-3. Maak geen tweede Checkout Session als het betaalresultaat nog onzeker is.
+1. Controleer intern ordernummer, juiste Stripe environment/account,
+   Checkout/Payment Intent en geverifieerd event.
+2. Controleer metadata, bedrag en valuta tegen de locked order.
+3. Laat het originele event idempotent verwerken/replayen via de goedgekeurde
+   webhookboundary. Geen directe DB-update.
+4. Maak geen tweede Checkout zolang de eerste status onzeker is.
 
-### Peecho-timeout of onzekere create
+### Checkout mislukt of verloopt
 
-1. Pauzeer automatische retry voor deze order indien nodig.
-2. Zoek bij Peecho op vaste merchantreference en haal canonical orderdetails op.
-3. Bestaat de order, dan persist de bestaande provider-ID via de begrensde
-   fulfilmentflow. Bestaat hij aantoonbaar niet, dan mag de idempotente worker
-   opnieuw proberen.
+Controleer eerst dat geen late async payment/webhook bestaat. Alleen de normale
+productflow mag daarna met een actuele proof/quote/terms een nieuwe checkout
+maken. Support maakt geen URL of prijs handmatig.
 
-### Adreswijziging of annulering
+### Adres, aantal of annulering
 
-Voor productie: controleer eerst Stripe/Peecho-status en de overeengekomen
-wijzigingsmogelijkheid. Na `submitted_to_production` wordt niets beloofd zonder
-Peecho-bevestiging. Leg besluit en tijdstip vast zonder het volledige adres in
-het ticket te kopiëren.
+Vóór externe bestelling: zet zo nodig `manual_review`, controleer payment en
+approved quote/terms, en gebruik alleen de typed beheeractie. Na
+`ordered_manually` wordt wijziging/annulering pas beloofd wanneer de drukker dit
+handmatig bevestigt. Kopieer geen adres naar tickets.
 
 ### Beschadigd, fout of vermist boek
 
-1. Registreer type probleem, ordernummer, leverdatum en alleen noodzakelijke
-   bewijsstukken via een afgeschermd kanaal.
-2. Controleer print-PDF checksum/revision en canonical Peecho-orderstatus.
-3. Vraag Peecho om herdruk/onderzoek volgens de nog contractueel te bevestigen
-   procedure. Maak niet zelf een tweede betaalde order.
-4. Informeer klant pas over herdruk, refund of termijn nadat provider en
-   bevoegde Buildy-eigenaar dit hebben bevestigd.
+1. Registreer ordernummer, probleemtype, leverdatum en minimaal noodzakelijk
+   bewijs via het goedgekeurde afgeschermde kanaal.
+2. Controleer locked document-/PDF-hash, quantity, externe referentie en
+   trackingstatus.
+3. Vraag de drukker handmatig om onderzoek/herdruk volgens contract; plaats geen
+   tweede betaalde order op aanname.
+4. Beloof herdruk/refund/tijd pas na bevoegd intern en providerbesluit.
 
 ### Refund of chargeback
 
-Controleer bedrag, valuta, reeds terugbetaald bedrag en productiestatus. Een
-Stripe-refund en Peecho-annulering zijn twee afzonderlijke feiten. Bij productie
-of een gedeeltelijke refund blijft de order in manual review tot beide kanten
-zijn gereconcilieerd. Gebruik geen negatieve of boven-totaal refund.
+Controleer totaal, currency, eerder refunded bedrag en externe productiestatus.
+Zet `refund_review`; voer een refund uitsluitend in het juiste Stripe-account
+uit en laat `charge.refunded` de Buildy-paymentstatus synchroniseren. Een refund
+annuleert geen drukkerorder. Een drukkercredit is geen Stripe-refund.
 
-## Handmatige retry
+## Handmatige fulfilmentacties
 
-Alleen een geautoriseerde operator mag via de idempotente fulfilmentboundary een
-`manual_review`-order opnieuw laten claimen, nadat provideraccount, bestaande
-Peecho-order, PDF-beschikbaarheid en signed-URL-TTL zijn gecontroleerd. Directe
-updates aan order-, lease- of provider-ID-kolommen zijn verboden. Als er nog geen
-geaudite admincommand beschikbaar is, blijft de case geblokkeerd en is dit een
-NO-GO voor live orders.
+Alleen server-side admin kan de queue/detail/PDF/routes gebruiken. Normaal pad:
+
+`awaiting_review → reviewed → ordered_manually → in_production → shipped → completed`
+
+Acties vereisen verwachte versie, idempotencykey en audit. Externe referentie is
+verplicht bij `ordered_manually`; tracking moet HTTPS; notes zijn versleuteld.
+Directe updates aan order-, payment-, fulfilment-, lease- of providerkolommen
+zijn verboden.
+
+Volg voor elke order [MANUAL_PEECHO_FULFILMENT.md](MANUAL_PEECHO_FULFILMENT.md).
+De naam Peecho geeft alleen een mogelijke handmatig gekozen drukker aan; er is
+geen API/worker/callback/env.
 
 ## Afsluitbewijs
 
-Noteer interne IDs, actor, reden, timestamps, providerreferenties en uitkomst.
-Bewaar geen PII of volledige providerpayload. Sluit pas als klantstatus,
-paymentledger, fulfilmentstatus, e-mailbewijs en providerstatus onderling
-consistent zijn.
-
+Leg interne IDs, actor, begrensde reasoncode, timestamps, externe referentie en
+uitkomst vast. Geen PII/providerpayload. Sluit pas wanneer customerreadmodel,
+paymentledger, fulfilmentaudit en handmatig gecontroleerde providerstatus
+consistent zijn. Er wordt geen automatische e-mailbevestiging beloofd.

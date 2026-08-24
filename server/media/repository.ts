@@ -16,6 +16,8 @@ import type {
   DisplayObject,
   FinalizeMediaProcessingCommand,
   InternalUploadIntent,
+  MediaCleanupCheckpoint,
+  MediaCleanupPurpose,
   MediaProcessingJob,
   MediaRepository,
   OriginalObject,
@@ -41,8 +43,15 @@ function actorIdFor(viewer: ProjectActor): string | null {
   return viewer.kind === "authenticated" ? viewer.appUserId : null;
 }
 
-async function setActor(transaction: DatabaseTransaction, actorId: string | null): Promise<void> {
-  await transaction.execute(sql`select set_config('app.actor_id', ${actorId ?? ""}, true)`);
+async function setActor(
+  transaction: DatabaseTransaction,
+  actorId: string | null,
+  shareLinkId?: string,
+): Promise<void> {
+  await transaction.execute(sql`select
+    set_config('app.actor_id', ${actorId ?? ""}, true),
+    set_config('app.share_link_id', ${shareLinkId ?? ""}, true)
+  `);
 }
 
 async function lockKey(transaction: DatabaseTransaction, value: string): Promise<void> {
@@ -92,6 +101,55 @@ function assertFailureCode(value: string): string {
 export class PostgresMediaRepository implements MediaRepository {
   constructor(private readonly database: BuildyDatabase) {}
 
+  private async beginClaimedProcessingJob(
+    transaction: DatabaseTransaction,
+    workerId: string,
+    eventId: string,
+  ): Promise<MediaProcessingJob | null> {
+    const begun = await transaction.execute<{
+      event_id: string;
+      asset_id: string;
+      owner_id: string;
+      project_id: string;
+      purpose: MediaUploadPurpose;
+      temporary_object_key: string;
+      bucket_name: string;
+      claimed_content_type: ProjectImageContentType;
+      expected_size_bytes: number | string;
+      expected_sha256_hex: string;
+      privacy_version: number;
+      attempt_count: number;
+    }>(sql`select * from app_begin_media_processing_job(${workerId}, ${eventId}::uuid)`);
+    const row = begun.rows[0];
+    if (!row) {
+      await transaction.execute(sql`
+        select app_retry_outbox_event(
+          ${workerId},
+          ${eventId}::uuid,
+          'INVALID_MEDIA_JOB',
+          1,
+          true
+        )
+      `);
+      return null;
+    }
+    return {
+      workerId,
+      eventId: row.event_id,
+      assetId: row.asset_id,
+      ownerId: row.owner_id,
+      projectId: row.project_id,
+      purpose: row.purpose,
+      temporaryObjectKey: row.temporary_object_key,
+      bucket: row.bucket_name,
+      claimedContentType: row.claimed_content_type,
+      expectedSizeBytes: Number(row.expected_size_bytes),
+      expectedSha256Hex: row.expected_sha256_hex,
+      privacyVersion: Number(row.privacy_version),
+      attemptCount: Number(row.attempt_count),
+    };
+  }
+
   async createUploadIntent(command: CreateUploadIntentCommand): Promise<InternalUploadIntent> {
     try {
       return await this.database.transaction(async (transaction) => {
@@ -111,6 +169,7 @@ export class PostgresMediaRepository implements MediaRepository {
         if (priorEvent) {
           if (
             priorEvent.eventType !== "media.upload.intent.created.v1" ||
+            priorEvent.payload.requestHashVersion !== 2 ||
             priorEvent.payload.requestHash !== command.requestHash
           ) throw new MediaError("UPLOAD_CONFLICT");
 
@@ -167,7 +226,7 @@ export class PostgresMediaRepository implements MediaRepository {
           projectId: command.projectId,
           purpose: command.purpose,
           status: "pending_upload",
-          storageProvider: "r2",
+          storageProvider: command.storageProvider,
           bucket: command.bucket,
           objectKey: command.temporaryObjectKey,
           uploadIdempotencyKey: command.idempotencyKey,
@@ -182,7 +241,7 @@ export class PostgresMediaRepository implements MediaRepository {
           aggregateId: command.assetId,
           eventType: "media.upload.intent.created.v1",
           idempotencyKey: command.idempotencyKey,
-          payload: { schemaVersion: 1, requestHash: command.requestHash },
+          payload: { schemaVersion: 1, requestHashVersion: 2, requestHash: command.requestHash },
         });
 
         return {
@@ -337,7 +396,7 @@ export class PostgresMediaRepository implements MediaRepository {
   ): Promise<DisplayObject | null> {
     return this.database.transaction(async (transaction) => {
       const actorId = actorIdFor(viewer);
-      await setActor(transaction, actorId);
+      await setActor(transaction, actorId, viewer.shareLinkId);
       const result = await transaction.execute<{
         object_key: string;
         content_type: string;
@@ -361,10 +420,6 @@ export class PostgresMediaRepository implements MediaRepository {
            and derivative.owner_id = parent.owner_id
            and derivative.project_id = parent.project_id
            and derivative.storage_version = ${`display-${size}-v1`}
-          left join project_access_requests accepted_access
-            on accepted_access.project_id = project.id
-           and accepted_access.requester_id = ${actorId}::uuid
-           and accepted_access.status = 'accepted'
           where parent.id = ${assetId}::uuid
             and parent.original_asset_id is null
             and parent.purpose in ('project_media', 'project_cover', 'floorplan')
@@ -376,20 +431,7 @@ export class PostgresMediaRepository implements MediaRepository {
             and derivative.size_bytes is not null
             and derivative.sha256 is not null
             and project.lifecycle_status = 'active'
-            and not exists (
-              select 1 from user_relationships relationship
-              where relationship.kind = 'block'
-                and relationship.status = 'active'
-                and (
-                  (relationship.source_user_id = ${actorId}::uuid and relationship.target_user_id = project.owner_id)
-                  or (relationship.target_user_id = ${actorId}::uuid and relationship.source_user_id = project.owner_id)
-                )
-            )
-            and (
-              project.owner_id = ${actorId}::uuid
-              or project.visibility = 'public'
-              or accepted_access.id is not null
-            )
+            and app_can_view_project(project.id)
             and (
               project.owner_id = ${actorId}::uuid
               or parent.purpose <> 'project_media'
@@ -506,49 +548,27 @@ export class PostgresMediaRepository implements MediaRepository {
       `);
       const eventId = claimed.rows[0]?.event_id;
       if (!eventId) return null;
+      return this.beginClaimedProcessingJob(transaction, workerId, eventId);
+    });
+  }
 
-      const begun = await transaction.execute<{
-        event_id: string;
-        asset_id: string;
-        owner_id: string;
-        project_id: string;
-        purpose: MediaUploadPurpose;
-        temporary_object_key: string;
-        bucket_name: string;
-        claimed_content_type: ProjectImageContentType;
-        expected_size_bytes: number | string;
-        expected_sha256_hex: string;
-        privacy_version: number;
-        attempt_count: number;
-      }>(sql`select * from app_begin_media_processing_job(${workerId}, ${eventId}::uuid)`);
-      const row = begun.rows[0];
-      if (!row) {
-        await transaction.execute(sql`
-          select app_retry_outbox_event(
-            ${workerId},
-            ${eventId}::uuid,
-            'INVALID_MEDIA_JOB',
-            1,
-            true
-          )
-        `);
-        return null;
-      }
-      return {
-        workerId,
-        eventId: row.event_id,
-        assetId: row.asset_id,
-        ownerId: row.owner_id,
-        projectId: row.project_id,
-        purpose: row.purpose,
-        temporaryObjectKey: row.temporary_object_key,
-        bucket: row.bucket_name,
-        claimedContentType: row.claimed_content_type,
-        expectedSizeBytes: Number(row.expected_size_bytes),
-        expectedSha256Hex: row.expected_sha256_hex,
-        privacyVersion: Number(row.privacy_version),
-        attemptCount: Number(row.attempt_count),
-      };
+  async claimProcessingJobForAsset(
+    workerId: string,
+    assetId: string,
+    leaseSeconds: number,
+  ): Promise<MediaProcessingJob | null> {
+    return this.database.transaction(async (transaction) => {
+      const claimed = await transaction.execute<{ event_id: string }>(sql`
+        select event_id
+        from app_claim_media_processing_asset(
+          ${workerId},
+          ${assetId}::uuid,
+          ${leaseSeconds}
+        )
+      `);
+      const eventId = claimed.rows[0]?.event_id;
+      if (!eventId) return null;
+      return this.beginClaimedProcessingJob(transaction, workerId, eventId);
     });
   }
 
@@ -592,6 +612,67 @@ export class PostgresMediaRepository implements MediaRepository {
         ${job.workerId},
         ${job.eventId}::uuid,
         ${job.assetId}::uuid,
+        ${code},
+        ${retry?.delaySeconds ?? 1},
+        ${retry === null}
+      ) as failed
+    `);
+    if (!result.rows[0]?.failed) throw new MediaError("WORKER_LEASE_LOST");
+  }
+
+  async claimOrphanCleanup(
+    workerId: string,
+    purpose: MediaCleanupPurpose,
+    leaseSeconds: number,
+  ): Promise<MediaCleanupCheckpoint | null> {
+    const result = await this.database.execute<{
+      event_id: string;
+      cleanup_purpose: MediaCleanupPurpose;
+      provider_cursor: string | null;
+      attempt_count: number;
+    }>(sql`
+      select event_id, cleanup_purpose, provider_cursor, attempt_count
+      from app_media_worker_claim_orphan_cleanup(${workerId}, ${purpose}, ${leaseSeconds})
+    `);
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      workerId,
+      eventId: row.event_id,
+      purpose: row.cleanup_purpose,
+      ...(row.provider_cursor ? { cursor: row.provider_cursor } : {}),
+      attemptCount: Number(row.attempt_count),
+    };
+  }
+
+  async finalizeOrphanCleanup(
+    checkpoint: MediaCleanupCheckpoint,
+    nextCursor: string | undefined,
+    scanComplete: boolean,
+  ): Promise<void> {
+    const result = await this.database.execute<{ finalized: boolean }>(sql`
+      select app_media_worker_finalize_orphan_cleanup(
+        ${checkpoint.workerId},
+        ${checkpoint.eventId}::uuid,
+        ${checkpoint.purpose},
+        ${nextCursor ?? null},
+        ${scanComplete}
+      ) as finalized
+    `);
+    if (!result.rows[0]?.finalized) throw new MediaError("WORKER_LEASE_LOST");
+  }
+
+  async failOrphanCleanup(
+    checkpoint: MediaCleanupCheckpoint,
+    failureCode: string,
+    retry: { delaySeconds: number } | null,
+  ): Promise<void> {
+    const code = assertFailureCode(failureCode);
+    const result = await this.database.execute<{ failed: boolean }>(sql`
+      select app_media_worker_fail_orphan_cleanup(
+        ${checkpoint.workerId},
+        ${checkpoint.eventId}::uuid,
+        ${checkpoint.purpose},
         ${code},
         ${retry?.delaySeconds ?? 1},
         ${retry === null}

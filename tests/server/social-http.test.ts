@@ -16,18 +16,14 @@ const requestId = "00000000-0000-4000-8000-000000000901";
 function serviceMocks(): SocialHttpService {
   return {
     acceptProfileFollow: vi.fn().mockResolvedValue({ replayed: false, state: "following" }),
-    acceptProjectAccess: vi.fn().mockResolvedValue({ replayed: false, state: "accepted" }),
     blockProfile: vi.fn().mockResolvedValue({ replayed: false, state: "blocked" }),
-    cancelProjectAccess: vi.fn().mockResolvedValue({ replayed: false, state: "cancelled" }),
-    followProfile: vi.fn().mockResolvedValue({ replayed: false, state: "following" }),
-    followProject: vi.fn().mockResolvedValue({ replayed: false, state: "following" }),
-    projectState: vi.fn().mockResolvedValue({
-      projectId,
-      viewerRole: "viewer",
-      followStatus: "none",
-      accessStatus: "none",
+    connections: vi.fn().mockResolvedValue({
+      items: [],
+      nextCursor: null,
+      total: 0,
+      view: "following",
     }),
-    projectAccess: vi.fn().mockResolvedValue({ projectId, items: [] }),
+    followProfile: vi.fn().mockResolvedValue({ replayed: false, state: "following" }),
     profile: vi.fn().mockResolvedValue({
       avatar: null,
       bio: null,
@@ -44,14 +40,10 @@ function serviceMocks(): SocialHttpService {
       viewerFollowStatus: "none",
     }),
     rejectProfileFollow: vi.fn().mockResolvedValue({ replayed: false, state: "rejected" }),
-    rejectProjectAccess: vi.fn().mockResolvedValue({ replayed: false, state: "rejected" }),
     removeProfileFollow: vi.fn().mockResolvedValue({ replayed: false, state: "none" }),
-    requestProjectAccess: vi.fn().mockResolvedValue({ replayed: false, state: "pending" }),
     revokeProfileFollower: vi.fn().mockResolvedValue({ replayed: false, state: "revoked" }),
-    revokeProjectAccess: vi.fn().mockResolvedValue({ replayed: false, state: "revoked" }),
     search: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
     unblockProfile: vi.fn().mockResolvedValue({ replayed: false, state: "unblocked" }),
-    unfollowProject: vi.fn().mockResolvedValue({ replayed: false, state: "none" }),
   };
 }
 
@@ -75,6 +67,26 @@ describe("social HTTP handler", () => {
 
     expect(response.status).toBe(200);
     expect(service.search).toHaveBeenCalledWith(null, { limit: "10", q: "bouw" });
+  });
+
+  it("serves canonical connection views only to the resolved actor", async () => {
+    const handler = createSocialHttpHandler({ actors, service });
+    const response = await handler(
+      new Request("https://app.buildy.test/api/social/connections?view=incoming&limit=10"),
+      requestId,
+    );
+
+    expect(response.status).toBe(200);
+    expect(service.connections).toHaveBeenCalledWith(actorId, {
+      limit: "10",
+      view: "incoming",
+    });
+
+    vi.mocked(actors.resolveAppUserId).mockResolvedValue(null);
+    await expect(handler(
+      new Request("https://app.buildy.test/api/social/connections?view=blocked"),
+      requestId,
+    )).rejects.toMatchObject({ code: "UNAUTHENTICATED", status: 401 });
   });
 
   it("ignores spoofed actor, owner and status fields in mutation bodies", async () => {
@@ -112,41 +124,30 @@ describe("social HTTP handler", () => {
     expect(service.followProfile).not.toHaveBeenCalled();
   });
 
-  it("routes project access decisions with the server actor as owner", async () => {
+  it.each([
+    ["GET", `/api/social/projects/${projectId}/state`],
+    ["PUT", `/api/social/projects/${projectId}/follow`],
+    ["DELETE", `/api/social/projects/${projectId}/follow`],
+    ["PUT", `/api/social/projects/${projectId}/access`],
+    ["DELETE", `/api/social/projects/${projectId}/access`],
+    ["GET", `/api/social/projects/${projectId}/access-requests`],
+    ["POST", `/api/social/projects/${projectId}/access-requests/${targetId}/accept`],
+    ["POST", `/api/social/projects/${projectId}/access-requests/${targetId}/reject`],
+    ["DELETE", `/api/social/projects/${projectId}/access-requests/${targetId}`],
+  ])("returns 404 for retired project-social route %s %s", async (method, pathname) => {
     const handler = createSocialHttpHandler({ actors, service });
     const response = await handler(
-      new Request(
-        `https://app.buildy.test/api/social/projects/${projectId}/access-requests/${targetId}/accept`,
-        { method: "POST" },
-      ),
+      new Request(`https://app.buildy.test${pathname}`, { method }),
       requestId,
     );
 
-    expect(response.status).toBe(200);
-    expect(service.acceptProjectAccess).toHaveBeenCalledWith(actorId, projectId, targetId);
-  });
-
-  it("serves project state and owner access requests only with a server-resolved actor", async () => {
-    const handler = createSocialHttpHandler({ actors, service });
-    const stateResponse = await handler(
-      new Request(`https://app.buildy.test/api/social/projects/${projectId}/state`),
-      requestId,
-    );
-    const accessResponse = await handler(
-      new Request(`https://app.buildy.test/api/social/projects/${projectId}/access-requests`),
-      requestId,
-    );
-
-    expect(stateResponse.status).toBe(200);
-    expect(accessResponse.status).toBe(200);
-    expect(service.projectState).toHaveBeenCalledWith(actorId, projectId);
-    expect(service.projectAccess).toHaveBeenCalledWith(actorId, projectId);
-
-    vi.mocked(actors.resolveAppUserId).mockResolvedValue(null);
-    await expect(handler(
-      new Request(`https://app.buildy.test/api/social/projects/${projectId}/state`),
-      requestId,
-    )).rejects.toMatchObject({ status: 401 });
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "NOT_FOUND", requestId },
+    });
+    for (const operation of Object.values(service)) {
+      expect(operation).not.toHaveBeenCalled();
+    }
   });
 
   it("maps inaccessible and unknown profiles to the same non-enumerating HTTP error", async () => {
@@ -160,7 +161,7 @@ describe("social HTTP handler", () => {
       ),
     ).rejects.toMatchObject({
       code: "NOT_FOUND",
-      message: "Dit profiel of project bestaat niet of is niet toegankelijk.",
+      message: "Dit profiel bestaat niet of is niet toegankelijk.",
       status: 404,
     });
   });

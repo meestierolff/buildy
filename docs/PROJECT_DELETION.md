@@ -1,40 +1,59 @@
-# Projectverwijdering
+# Verbouwing verwijderen
 
-## Gedrag
+Status: actieve Neon + private Vercel Blob lifecycle.
 
-Een eigenaar vraagt verwijdering aan via `DELETE /api/projects/:projectId` met de actuele projectversie, een client-idempotency-key en de exacte bevestiging `VERWIJDER PROJECT`. De server leidt daarvan een actor- en projectgebonden key af. Een client kan na een onzekere netwerkresponse exact dezelfde aanvraag veilig herhalen.
+## Aanvraag
 
-De databasefunctie `app_request_project_deletion` neemt een advisory transaction lock, controleert ownership en optimistic concurrency en zet het project in één transactie op `deletion_pending` en `private`. Vanaf dat moment geven project-, timeline-, media-, social- en Bouwboek-readmodels geen projectinhoud meer terug.
+Een eigenaar vraagt verwijdering aan via `DELETE /api/projects/:projectId` met
+actuele projectversie, client-idempotencykey en exact `VERWIJDER PROJECT`.
+Historische route/databasenaam `project` blijft intern; zichtbare copy gebruikt
+Verbouwing.
 
-## Ordergate en archief
+De server leidt actor/project/key zelf af. De database lockt, controleert owner
+en optimistic concurrency en zet de Verbouwing atomair op `deletion_pending` en
+`private`. Vanaf dat moment lekken project-, Bouwmoment-, media-, social- en
+Bouwboekreadmodels geen inhoud.
 
-`app_account_order_is_active` wordt zowel bij de aanvraag als vlak voor de finale redactie gebruikt. Een checkout, betaling of fysiek order dat nog niet aantoonbaar terminaal is blokkeert fail-closed met HTTP 409. Het project blijft dan actief en kan opnieuw worden aangevraagd nadat support of fulfilment het order terminaal heeft gemaakt.
+## Order- en retentiegate
 
-Bij een afgeleverd of anders veilig terminaal order blijven uitsluitend de bestelde order, orderevents, de exact gebruikte locked proof, de benodigde draftketen en het PDF-object behouden. Dit is een technisch archiefmechanisme; de definitieve juridische bewaartermijn blijft een launchinput en staat niet hardcoded als wettelijke claim in de productcopy.
+Een checkout, betaling of fysieke order die niet aantoonbaar terminaal is
+blokkeert fail-closed met conflict. De check gebeurt bij aanvraag en vóór finale
+redactie. Support/admin moet de echte order eerst veilig afronden; een klant-
+of providerbericht volstaat niet.
 
-## Durable cleanup
+Voor veilig terminale, bestelde orders blijven alleen de technisch/juridisch
+noodzakelijke order/payment/fulfilmentledger, gebruikte locked proofketen en
+private PDF behouden volgens het goedgekeurde retentiebeleid. De code claimt
+geen universele wettelijke termijn.
 
-De aanvraag bevriest lopende niet-bestelde proofjobs en schrijft voor alle verwijderbare R2-objecten een deterministisch manifest naar `deletion_assets`, inclusief objectlocatie en bekende checksum. De account-lifecycleworker:
+## Private Blob-cleanup
 
-1. claimt één job met `SKIP LOCKED` en een begrensde lease;
-2. verwijdert maximaal één object per invocation;
-3. voert een `HEAD`-readback uit en accepteert alleen afwezigheid;
-4. markeert het manifestitem pas daarna als `verified`;
-5. plant transient storagefalen met begrensde backoff opnieuw;
-6. zet permanent of herhaald falen in `dead_letter` voor handmatige beoordeling;
-7. start databaseredactie pas als ieder manifestitem `verified` is.
+De aanvraag bevriest niet-bestelde proofjobs en schrijft een deterministisch
+manifest voor verwijderbare private Vercel Blob-objecten. De accountworker:
 
-De finalizer verwijdert toegang, followers, budget- en floorplandata, mediakoppelingen, niet-bestelde Bouwboekrevisies en private projectdetails. Updates en reacties worden inhoudelijk geredigeerd; project en media-assets blijven als niet-zichtbare tombstones bestaan zodat audit- en orderreferenties niet worden verbroken. Aanvraag, blokkade en voltooiing krijgen afzonderlijke audit-events.
+1. claimt één job met begrensde lease;
+2. verwijdert maximaal één geïnventariseerd object per invocation;
+3. accepteert alleen de exacte geconfigureerde private Blob provider/store;
+4. controleert na delete dat het object afwezig is;
+5. markeert het manifestitem pas daarna verified;
+6. plant transient fouten begrensd opnieuw en zet uitgeput/permanent falen in
+   dead letter/manual review;
+7. start databaseredactie pas wanneer alle vereiste assets verified zijn.
 
-## Privilegegrens
+Finalisatie trekt actieve visibility/social/mediarelaties in, verwijdert of
+redigeert niet-bewaarde inhoud en houdt noodzakelijke interne tombstones zodat
+audit/orderreferenties niet breken. Historische project-follow/accessrecords
+mogen als revoked historie blijven; zij geven nooit toegang.
 
-De webrol kan alleen de owner-bound aanvraagfunctie uitvoeren. De accountworker heeft geen tabel-DML en kan alleen de lease-, verify-, retry- en dispatchfuncties uitvoeren. De dispatcher bepaalt het jobtype vanuit `deletion_jobs`; een client of workerpayload kan niet kiezen welke account- of projectfinalizer wordt aangeroepen.
+## Privilege- en releasegrens
 
-## Verificatie
+De webrol kan alleen de owner-bound requestfunctie uitvoeren. De accountworker
+heeft geen table-DML en alleen execute op lease/verify/retry/finalizefuncties.
+Browser- of workerpayload kiest nooit de finalizer.
 
-- Unit- en HTTP-tests dekken exacte bevestiging, actorbinding, idempotency, versieconflicten en de actieve-orderfout.
-- Worker-tests dekken delete/readback, retries, dead-letter en hervatten na een crash.
-- Migratietests bewaken locking, manifestvorming, ordered-proof-retentie, redactie en privilegevorm.
-- `tests/db/project-deletion.integration.test.ts` draait in CI op een lokale wegwerp-PostgreSQL-database en controleert IDOR, actieve versus afgeleverde orders, een R2-manifestitem en finale tombstones.
-
-Een echte R2-fault-injectionrun op staging en bewijs van de goedgekeurde bewaartermijn blijven externe launchchecks.
+Vóór productie moeten IDOR, confirmation, idempotency, version conflict,
+active-order block, visibilityrevocation, Blob delete-readback, retry/dead-letter
+en finale redactie op clean room én Preview worden bewezen. Een echte Preview-
+Blob fault/recovery en interactieve journey zijn nog niet bewezen; Browser MCP
+was door de huidige Codex-gebruikslimiet geblokkeerd. Production blijft
+**NO-GO**.

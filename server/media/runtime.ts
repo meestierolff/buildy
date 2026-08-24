@@ -4,7 +4,6 @@ import {
   type MediaHttpDependencies,
   type MediaRouteParameters,
 } from "./http.js";
-import type { MediaProcessingWorker } from "./worker.js";
 
 type MediaHandler = (
   request: Request,
@@ -13,17 +12,12 @@ type MediaHandler = (
 ) => Promise<Response>;
 
 let defaultHandler: MediaHandler | undefined;
-let defaultWorker: { cronSecret: string; worker: MediaProcessingWorker } | undefined;
 
 export function configureDefaultMediaRuntime(
-  dependencies: MediaHttpDependencies & { cronSecret: string; worker: MediaProcessingWorker },
+  dependencies: MediaHttpDependencies,
 ): void {
-  if (defaultHandler || defaultWorker) throw new Error("De standaard mediaruntime is al geconfigureerd.");
-  if (Buffer.byteLength(dependencies.cronSecret, "utf8") < 32) {
-    throw new Error("De mediaworker-cronsecret is ongeldig.");
-  }
+  if (defaultHandler) throw new Error("De standaard mediaruntime is al geconfigureerd.");
   defaultHandler = createMediaHttpHandler(dependencies);
-  defaultWorker = { cronSecret: dependencies.cronSecret, worker: dependencies.worker };
 }
 
 export function handleDefaultMediaRequest(
@@ -42,12 +36,6 @@ export function handleDefaultMediaRequest(
   return defaultHandler(request, requestId, parameters);
 }
 
-export function resolveDefaultMediaWorker(): { cronSecret: string; worker: MediaProcessingWorker } {
-  if (!defaultWorker) throw new Error("De mediaworker is niet geconfigureerd.");
-  return defaultWorker;
-}
-
 export function resetDefaultMediaRuntimeForTests(): void {
   defaultHandler = undefined;
-  defaultWorker = undefined;
 }

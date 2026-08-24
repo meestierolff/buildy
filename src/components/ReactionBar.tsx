@@ -10,9 +10,10 @@ const EMOJIS: readonly SupportedReactionEmoji[] = ["👍", "❤️", "🔥", "�
 interface ReactionBarProps {
   projectId?: string;
   updateId: string;
+  canReact?: boolean;
 }
 
-const ReactionBar = ({ projectId, updateId }: ReactionBarProps) => {
+const ReactionBar = ({ projectId, updateId, canReact = true }: ReactionBarProps) => {
   const { user } = useAuth();
   const available = Boolean(projectId && updateId);
   const reactions = useReactionSummary(projectId ?? "", updateId, available);
@@ -64,7 +65,7 @@ const ReactionBar = ({ projectId, updateId }: ReactionBarProps) => {
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
-      {items.map((item) => (
+      {items.map((item) => canReact ? (
         <button
           key={item.emoji}
           type="button"
@@ -81,8 +82,17 @@ const ReactionBar = ({ projectId, updateId }: ReactionBarProps) => {
           <span aria-hidden="true">{item.emoji}</span>
           <span className="font-medium">{item.count}</span>
         </button>
+      ) : (
+        <span
+          key={item.emoji}
+          className="flex items-center gap-1 rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs"
+          aria-label={`Reactie ${item.emoji}, ${item.count}`}
+        >
+          <span aria-hidden="true">{item.emoji}</span>
+          <span className="font-medium">{item.count}</span>
+        </span>
       ))}
-      <Popover>
+      {canReact ? <Popover>
         <PopoverTrigger asChild>
           <button
             type="button"
@@ -109,7 +119,7 @@ const ReactionBar = ({ projectId, updateId }: ReactionBarProps) => {
             ))}
           </div>
         </PopoverContent>
-      </Popover>
+      </Popover> : null}
     </div>
   );
 };

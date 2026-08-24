@@ -29,7 +29,7 @@ const matrix = {
     taxRateBasisPoints: 2_100,
     taxTreatment: "vat_exclusive",
     deliveryEstimate: "5–8 werkdagen na productie",
-    offeringId: "test-offering-a4-landscape-hardcover",
+    productReference: "buildy-a4-landscape-hardcover",
   }],
 } as const;
 
@@ -71,12 +71,96 @@ describe("ApprovedPriceMatrixQuoteProvider", () => {
       commercialApprovalId: matrix.commercialApprovalId,
     });
     expect(quote?.quoteReference).toMatch(/^matrix:approval-test-2026-08:[0-9a-f]{32}$/);
+    expect(quote?.expiresAt.toISOString()).toBe("2026-08-04T12:15:00.000Z");
     expect(await provider.quote({
       sku: "a4-landscape-hardcover-v1",
       pageCount: 28,
       quantity: 2,
       shippingAddress,
     })).toEqual(quote);
+    expect(await provider.quote({
+      sku: "a4-landscape-hardcover-v1",
+      pageCount: 28,
+      quantity: 2,
+      shippingAddress,
+      quoteExpiresAt: quote!.expiresAt,
+    })).toEqual(quote);
+    const shorterQuote = await provider.quote({
+      sku: "a4-landscape-hardcover-v1",
+      pageCount: 28,
+      quantity: 2,
+      shippingAddress,
+      quoteExpiresAt: new Date("2026-08-04T12:14:00.000Z"),
+    });
+    expect(shorterQuote?.quoteReference).not.toBe(quote?.quoteReference);
+  });
+
+  it.each([
+    {
+      treatment: "vat_included" as const,
+      rate: 2_100,
+      unitAmountMinor: 3_388,
+      subtotalMinor: 6_776,
+      shippingMinor: 826,
+      taxMinor: 1_598,
+      totalMinor: 9_200,
+    },
+    {
+      treatment: "vat_exclusive" as const,
+      rate: 2_100,
+      unitAmountMinor: 4_100,
+      subtotalMinor: 8_200,
+      shippingMinor: 1_000,
+      taxMinor: 1_932,
+      totalMinor: 11_132,
+    },
+    {
+      treatment: "vat_exempt" as const,
+      rate: 0,
+      unitAmountMinor: 4_100,
+      subtotalMinor: 8_200,
+      shippingMinor: 1_000,
+      taxMinor: 0,
+      totalMinor: 9_200,
+    },
+  ])("reconciles $treatment cents without changing its price semantics", async ({
+    treatment,
+    rate,
+    unitAmountMinor,
+    subtotalMinor,
+    shippingMinor,
+    taxMinor,
+    totalMinor,
+  }) => {
+    const provider = new ApprovedPriceMatrixQuoteProvider({
+      ...matrix,
+      entries: [{
+        ...matrix.entries[0],
+        taxTreatment: treatment,
+        taxRateBasisPoints: rate,
+      }],
+    }, "test", () => new Date("2026-08-04T12:00:00.000Z"));
+
+    const quote = await provider.quote({
+      sku: "a4-landscape-hardcover-v1",
+      pageCount: 28,
+      quantity: 2,
+      shippingAddress,
+    });
+
+    expect(quote).toMatchObject({
+      taxTreatment: treatment,
+      unitAmountMinor,
+      amounts: { subtotalMinor, shippingMinor, taxMinor, totalMinor },
+    });
+    expect(
+      quote!.unitAmountMinor * quote!.quantity
+      + quote!.amounts.shippingMinor
+      + quote!.amounts.taxMinor,
+    ).toBe(quote!.amounts.totalMinor);
+    if (treatment === "vat_included") {
+      expect(quote!.amounts.totalMinor).toBe(4_100 * 2 + 1_000);
+    }
   });
 
   it("fails closed for an unapproved country, odd pages, expired or cross-environment matrix", async () => {
@@ -125,6 +209,11 @@ describe("ApprovedPriceMatrixQuoteProvider", () => {
         taxTreatment: "vat_exempt",
         taxRateBasisPoints: 2_100,
       }],
+    }))).toThrow();
+    const { productReference: _productReference, ...legacyEntry } = matrix.entries[0];
+    expect(() => parseApprovedPriceMatrix(JSON.stringify({
+      ...matrix,
+      entries: [{ ...legacyEntry, offeringId: "233309" }],
     }))).toThrow();
   });
 });

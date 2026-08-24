@@ -1,12 +1,11 @@
 import { useRef, useState } from "react";
-import { Navigate, useNavigate, Link } from "@/lib/router";
-import { ArrowLeft, BookOpen, CalendarDays, Check, ImagePlus, LockKeyhole, Users } from "lucide-react";
+import { Navigate, useNavigate, Link, useSearchParams } from "@/lib/router";
+import { ArrowLeft, BookOpen, CalendarDays, Check, ImagePlus, LockKeyhole } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useCreateProjectMutation } from "@/hooks/useProjectApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
@@ -15,11 +14,16 @@ import { ApiClientError } from "@/lib/apiClient";
 import { createClientIdempotencyKey } from "@/lib/clientIdempotency";
 import { ProjectVisibilityContinuationError } from "@/lib/projectApi";
 import { authPagePath } from "@/lib/authClient";
+import {
+  deleteLandingPhotoHandoff,
+  LANDING_PHOTO_INTENT,
+} from "@/lib/landingPhotoHandoffStore";
 import { PRODUCT_ROUTES } from "@/lib/productNavigation";
 import {
   buildCreateProjectCommand,
   type CreateProjectFlowCommand,
 } from "@/lib/projectWriteFlow";
+import type { ProjectVisibility } from "../../shared/contracts/projects";
 
 const PROJECT_TYPES = [
   "Volledige renovatie",
@@ -34,15 +38,44 @@ const PROJECT_TYPES = [
   "Anders",
 ];
 
+const VISIBILITY_OPTIONS: ReadonlyArray<{
+  value: ProjectVisibility;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "private",
+    label: "Alleen ik",
+    description: "Alleen jij kunt de verbouwing en Bouwmomenten bekijken.",
+  },
+  {
+    value: "followers",
+    label: "Mijn volgers",
+    description: "Alleen actieve volgers van je Buildy-profiel kunnen gepubliceerde Bouwmomenten bekijken.",
+  },
+  {
+    value: "unlisted",
+    label: "Alleen via deellink",
+    description: "Na het aanmaken kies je een tijdelijke deellink. Zonder die sleutel kan niemand kijken.",
+  },
+  {
+    value: "public",
+    label: "Openbaar",
+    description: "Iedereen kan kijken en de verbouwing kan verschijnen in Ontdekken en de volgfeed.",
+  },
+];
+
 const NewTrip = () => {
   const { user, loading: authLoading } = useAuth();
   usePageMeta({
-    title: "Nieuw project starten — Buildy",
+    title: "Nieuwe verbouwing starten — Buildy",
     description: "Start een nieuw verbouwingsdagboek en leg de basis van je renovatie vast.",
     path: PRODUCT_ROUTES.newProject,
     noIndex: true,
   });
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const importsLandingPhoto = searchParams.get("intent") === LANDING_PHOTO_INTENT;
   const [loading, setLoading] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -50,8 +83,10 @@ const NewTrip = () => {
   const [address, setAddress] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [isPublic, setIsPublic] = useState(false);
+  const [visibility, setVisibility] = useState<ProjectVisibility>("private");
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
   const [retryLocked, setRetryLocked] = useState(false);
   const submitGuardRef = useRef(false);
   const pendingCommandRef = useRef<CreateProjectFlowCommand | null>(null);
@@ -63,7 +98,7 @@ const NewTrip = () => {
 
     const normalizedTitle = title.trim();
     if (normalizedTitle.length < 2) {
-      toast.error("Geef je project een herkenbare naam.");
+      toast.error("Geef je verbouwing een herkenbare naam.");
       return;
     }
     if (startDate && endDate && endDate < startDate) {
@@ -84,7 +119,7 @@ const NewTrip = () => {
         address,
         startDate,
         expectedEndDate: endDate,
-        visibility: isPublic ? "public" : "private",
+        visibility,
       }, createClientIdempotencyKey("project-create"));
       requestStarted = true;
       const result = await createProject.mutateAsync(pendingCommandRef.current);
@@ -104,14 +139,14 @@ const NewTrip = () => {
       if (outcomeUncertain) {
         setRetryLocked(true);
         setSaveError("De serverbevestiging ontbreekt nog. Probeer dezelfde opdracht opnieuw; je veilige opdracht-ID blijft behouden.");
-        toast.error("We konden de projectstatus nog niet bevestigen. Probeer opnieuw.");
+        toast.error("We konden de verbouwing nog niet bevestigen. Probeer opnieuw.");
       } else {
         pendingCommandRef.current = null;
         setRetryLocked(false);
         setSaveError(error instanceof ApiClientError
           ? error.message
           : "Je invoer staat nog klaar. Controleer je gegevens en probeer opnieuw.");
-        toast.error("Kon je project niet aanmaken. Controleer je invoer en probeer opnieuw.");
+        toast.error("Kon je verbouwing niet aanmaken. Controleer je invoer en probeer opnieuw.");
       }
     } finally {
       submitGuardRef.current = false;
@@ -119,8 +154,25 @@ const NewTrip = () => {
     }
 
     if (createdProjectId) {
-      navigate(PRODUCT_ROUTES.project(createdProjectId), { replace: true });
-      toast.success("Je project staat klaar. Tijd voor de eerste update!");
+      const next = new URLSearchParams({ update: "nieuw" });
+      if (importsLandingPhoto) next.set("intent", LANDING_PHOTO_INTENT);
+      navigate(`${PRODUCT_ROUTES.project(createdProjectId)}?${next.toString()}`, { replace: true });
+      toast.success("Je verbouwing staat klaar. Tijd voor het eerste Bouwmoment!");
+    }
+  };
+
+  const handleCancel = async () => {
+    if (cancelling) return;
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      if (importsLandingPhoto) await deleteLandingPhotoHandoff();
+      navigate("/");
+    } catch (error) {
+      console.error("Clear landing photo after project cancellation failed", error);
+      setCancelError("De lokale foto kon niet worden verwijderd. Probeer Annuleren opnieuw voordat je deze verbouwing verlaat.");
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -133,7 +185,12 @@ const NewTrip = () => {
     );
   }
 
-  if (!user) return <Navigate to={`${authPagePath(PRODUCT_ROUTES.newProject)}&mode=register`} replace />;
+  if (!user) {
+    const next = importsLandingPhoto
+      ? `${PRODUCT_ROUTES.newProject}?intent=${LANDING_PHOTO_INTENT}`
+      : PRODUCT_ROUTES.newProject;
+    return <Navigate to={`${authPagePath(next)}&mode=register`} replace />;
+  }
 
   const formLocked = loading || retryLocked;
 
@@ -141,11 +198,11 @@ const NewTrip = () => {
     <div className="bg-background">
       <div className="mx-auto max-w-5xl px-5 py-8 sm:px-6 md:px-8 md:py-14">
         <Link to={PRODUCT_ROUTES.projects} className="mb-8 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4">
-          <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" /> Terug naar mijn projecten
+          <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" /> Terug naar mijn verbouwingen
         </Link>
 
         <div className="mb-10 max-w-2xl md:mb-12">
-          <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Nieuw project</p>
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Nieuwe verbouwing</p>
           <h1 className="font-sans text-4xl font-semibold leading-[1.04] tracking-tight sm:text-5xl">
             Leg de basis van je verbouwing vast.
           </h1>
@@ -164,7 +221,7 @@ const NewTrip = () => {
 
               <div className="space-y-5">
                 <div className="space-y-2">
-                  <Label htmlFor="title" className="text-xs font-semibold">Projectnaam <span className="text-accent" aria-hidden="true">*</span></Label>
+                  <Label htmlFor="title" className="text-xs font-semibold">Naam van je verbouwing <span className="text-accent" aria-hidden="true">*</span></Label>
                   <Input
                     id="title"
                     name="title"
@@ -186,7 +243,7 @@ const NewTrip = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="type" className="text-xs font-semibold">Type project</Label>
+                  <Label htmlFor="type" className="text-xs font-semibold">Type verbouwing</Label>
                   <Select value={projectType} onValueChange={setProjectType} disabled={formLocked}>
                   <SelectTrigger id="type" className="h-12 bg-background"><SelectValue placeholder="Kies wat het beste past" /></SelectTrigger>
                     <SelectContent>
@@ -254,50 +311,67 @@ const NewTrip = () => {
                     aria-describedby="address-help"
                     disabled={formLocked}
                   />
-                  <p id="address-help" className="text-[11px] leading-relaxed text-muted-foreground">Je adres wordt apart en privé opgeslagen. Ook bij een openbaar project ziet niemand anders het.</p>
+                  <p id="address-help" className="text-[11px] leading-relaxed text-muted-foreground">Je adres wordt apart en privé opgeslagen. Ook bij een openbare verbouwing ziet niemand anders het.</p>
                 </div>
               </div>
             </section>
 
             <section className="border-y border-border py-6" aria-labelledby="visibility-title">
-              <div className="flex items-start justify-between gap-5">
-                <div className="flex gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-border text-foreground">
-                    {isPublic ? <Users className="h-4 w-4" aria-hidden="true" /> : <LockKeyhole className="h-4 w-4" aria-hidden="true" />}
-                  </div>
-                  <div>
-                    <Label id="visibility-title" htmlFor="public" className="font-semibold">{isPublic ? "Openbaar project" : "Privé beginnen"}</Label>
-                    <p id="visibility-help" className="mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
-                      {isPublic
-                        ? "Andere Buildy-gebruikers kunnen je tijdlijn bekijken en je project volgen. Je adres en budget blijven privé."
-                        : "Alleen jij ziet het project. Je kunt delen later altijd aanzetten bij de projectinstellingen."}
-                    </p>
-                  </div>
+              <div className="flex gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-border text-foreground">
+                  <LockKeyhole className="h-4 w-4" aria-hidden="true" />
                 </div>
-                <Switch id="public" checked={isPublic} onCheckedChange={setIsPublic} aria-describedby="visibility-help" className="mt-1 shrink-0" disabled={formLocked} />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Label id="visibility-title" htmlFor="visibility" className="font-semibold">Wie kan je verbouwing zien?</Label>
+                  <Select
+                    value={visibility}
+                    onValueChange={(value) => setVisibility(value as ProjectVisibility)}
+                    disabled={formLocked}
+                  >
+                    <SelectTrigger id="visibility" aria-describedby="visibility-help" className="h-12 bg-background">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {VISIBILITY_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p id="visibility-help" className="max-w-md text-xs leading-relaxed text-muted-foreground">
+                    {VISIBILITY_OPTIONS.find((option) => option.value === visibility)?.description}
+                    {" "}Je adres en budget blijven altijd privé.
+                  </p>
+                </div>
               </div>
             </section>
 
             {saveError && <p role="status" aria-live="polite" className="text-sm text-destructive">{saveError}</p>}
 
+            {cancelError ? <p role="alert" className="text-sm text-destructive">{cancelError}</p> : null}
             <div className="flex flex-col-reverse items-center gap-3 pt-1 sm:flex-row sm:justify-end">
-              <Button asChild type="button" variant="ghost" className="min-h-11 w-full sm:w-auto">
-                <Link to="/">Annuleren</Link>
+              <Button
+                type="button"
+                variant="ghost"
+                className="min-h-11 w-full sm:w-auto"
+                disabled={loading || cancelling}
+                onClick={() => void handleCancel()}
+              >
+                {cancelling ? "Lokale foto verwijderen…" : "Annuleren"}
               </Button>
               <Button type="submit" disabled={loading || title.trim().length < 2} className="min-h-11 w-full bg-accent px-8 text-accent-foreground hover:bg-accent/90 sm:w-auto">
-                {loading ? "Project wordt klaargezet…" : saveError ? "Opnieuw proberen" : "Project starten"}
+                {loading ? "Verbouwing wordt klaargezet…" : saveError ? "Opnieuw proberen" : "Verbouwing starten"}
               </Button>
             </div>
           </form>
 
           <aside className="border-l-2 border-accent bg-foreground p-6 text-background lg:sticky lg:top-24" aria-labelledby="next-title">
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-background/55">Hierna</p>
-            <h2 id="next-title" className="mt-2 font-sans text-2xl font-semibold leading-tight">Je projectverhaal komt tot leven.</h2>
-            <p className="mt-3 text-xs font-light leading-relaxed text-background/65">Na het starten begeleiden we je langs je eerste update. Alles blijft tussentijds aanpasbaar.</p>
+            <h2 id="next-title" className="mt-2 font-sans text-2xl font-semibold leading-tight">Je Verhaal komt tot leven.</h2>
+            <p className="mt-3 text-xs font-light leading-relaxed text-background/65">Na het starten begeleiden we je langs je eerste Bouwmoment. Alles blijft tussentijds aanpasbaar.</p>
             <ol className="mt-6 space-y-4">
               {[
-                { icon: Check, text: "Projectbasis opslaan" },
-                { icon: ImagePlus, text: "Eerste foto's en update toevoegen" },
+                { icon: Check, text: "Basis van je verbouwing opslaan" },
+                { icon: ImagePlus, text: "Eerste foto's en Bouwmoment toevoegen" },
                 { icon: BookOpen, text: "Automatisch bouwen aan je Bouwboek" },
               ].map(({ icon: Icon, text }, index) => (
                 <li key={text} className="flex items-center gap-3 text-xs">

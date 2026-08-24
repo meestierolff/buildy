@@ -16,7 +16,6 @@ const reportReceipt = {
   status: "received" as const,
   submittedAt: "2026-08-04T12:00:00.000Z",
   replayed: false,
-  emailConfirmationQueued: false,
 };
 
 function dependencies(serviceOverrides: Partial<ModerationHttpService> = {}) {
@@ -34,7 +33,6 @@ function dependencies(serviceOverrides: Partial<ModerationHttpService> = {}) {
       ...reportReceipt,
       receiptCode: "HELP-22222222",
       kind: "support",
-      emailConfirmationQueued: true,
     }),
     ...serviceOverrides,
   };

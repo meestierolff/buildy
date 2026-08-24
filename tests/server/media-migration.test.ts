@@ -4,6 +4,10 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 const migrationUrl = new URL("../../db/migrations/0004_media_processing_boundary.sql", import.meta.url);
+const requestDrivenMigrationUrl = new URL(
+  "../../db/migrations/0040_request_driven_media_processing.sql",
+  import.meta.url,
+);
 
 describe("least-privilege media processing database boundary", () => {
   it("keeps every worker helper SECURITY DEFINER, fixed-search-path and non-public", async () => {
@@ -57,5 +61,27 @@ describe("least-privilege media processing database boundary", () => {
     expect(migration).toContain(
       "attachment.media_asset_id = coalesce(media_assets.original_asset_id, media_assets.id)",
     );
+  });
+
+  it("adds a non-public exact-asset claim without granting table access", async () => {
+    const migration = await readFile(requestDrivenMigrationUrl, "utf8");
+
+    expect(migration).toContain("app_claim_media_processing_asset(");
+    expect(migration).toContain("SECURITY DEFINER");
+    expect(migration).toContain("SET search_path = pg_catalog, public");
+    expect(migration).toContain("event.aggregate_id = target_asset_id");
+    expect(migration).toContain("event.event_type = 'media.processing.requested.v1'");
+    expect(migration).toContain("asset.status = 'uploaded'");
+    expect(migration).toContain("asset.status = 'processing'");
+    expect(migration).toContain("event.available_at <= clock_timestamp()");
+    expect(migration).toContain("event.lease_expires_at <= clock_timestamp()");
+    expect(migration).toContain("'failed'::public.media_status");
+    expect(migration).toContain("'uploaded'::public.media_status");
+    expect(migration).toContain("'dead_letter'::public.outbox_status");
+    expect(migration).toContain("'retry'::public.outbox_status");
+    expect(migration).toContain(
+      "REVOKE ALL ON FUNCTION public.app_claim_media_processing_asset(text, uuid, integer) FROM PUBLIC;",
+    );
+    expect(migration).not.toMatch(/GRANT\s+[^;]*\s+ON\s+(?:ALL\s+)?TABLES?/i);
   });
 });

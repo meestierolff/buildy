@@ -37,7 +37,8 @@ import {
 } from "@/hooks/useOrders";
 import { ApiClientError } from "@/lib/apiClient";
 import {
-  createOrderIdempotencyKey,
+  clearCheckoutIdempotencyKey,
+  getOrCreateCheckoutIdempotencyKey,
   stripeCheckoutUrl,
 } from "@/lib/orderApi";
 import { Link } from "@/lib/router";
@@ -230,34 +231,49 @@ export const PhotobookCheckoutDialog = ({
       revisionId,
       selection,
       quoteReference: quote.quoteReference,
-      total: quote.amounts.totalMinor,
+      quoteExpiresAt: quote.expiresAt,
+      amounts: quote.amounts,
       termsVersion: quote.termsVersion,
     });
     setActionError(null);
     try {
       if (checkoutCommand.current?.signature !== signature) {
-        checkoutCommand.current = { signature, key: createOrderIdempotencyKey() };
+        checkoutCommand.current = {
+          signature,
+          key: getOrCreateCheckoutIdempotencyKey(revisionId),
+        };
       }
       const checkout = await checkoutMutation.mutateAsync({
         ...selection,
         idempotencyKey: checkoutCommand.current!.key,
         expectedQuoteReference: quote.quoteReference,
-        expectedTotalMinor: quote.amounts.totalMinor,
+        expectedQuoteExpiresAt: quote.expiresAt,
+        expectedAmounts: quote.amounts,
         termsVersion: quote.termsVersion,
+        termsAccepted: true,
         personalisedProductAccepted: true,
       });
       if (
         checkout.proofRevisionId !== revisionId
         || checkout.quantity !== quantity
-        || checkout.amounts.totalMinor !== quote.amounts.totalMinor
+        || JSON.stringify(checkout.amounts) !== JSON.stringify(quote.amounts)
       ) {
         throw new Error("De checkout kwam niet exact overeen met de bevestigde quote.");
       }
       const checkoutUrl = stripeCheckoutUrl(checkout.checkoutUrl);
+      clearCheckoutIdempotencyKey(revisionId);
+      checkoutCommand.current = null;
       setRedirecting(true);
       onCheckoutRedirect(checkoutUrl);
     } catch (error) {
       console.error("Photobook checkout creation failed", error);
+      if (error instanceof ApiClientError && error.status === 409) {
+        clearCheckoutIdempotencyKey(revisionId);
+        checkoutCommand.current = null;
+        quoteMutation.reset();
+        setTermsAccepted(false);
+        setPersonalisedAccepted(false);
+      }
       setRedirecting(false);
       setActionError(quoteError(error, "De beveiligde betaling kon niet worden gestart."));
     }
@@ -407,7 +423,10 @@ export const PhotobookCheckoutDialog = ({
               <dl className="mt-3 space-y-2 text-sm">
                 <PriceRow label={`Bouwboek × ${quote.quantity}`} value={quote.amounts.subtotalMinor} />
                 <PriceRow label="Verzending" value={quote.amounts.shippingMinor} />
-                <PriceRow label="BTW" value={quote.amounts.taxMinor} />
+                <PriceRow
+                  label={quote.taxTreatment === "vat_included" ? "Waarvan btw (inbegrepen)" : "BTW"}
+                  value={quote.amounts.taxMinor}
+                />
                 <div className="flex justify-between gap-4 border-t pt-3 text-base font-bold">
                   <dt>Totaal</dt><dd>{money(quote.amounts.totalMinor)}</dd>
                 </div>
@@ -439,6 +458,12 @@ export const PhotobookCheckoutDialog = ({
                 </address>
               </section>
             </div>
+
+            <p className="rounded-lg border border-amber-700/20 bg-amber-50 p-4 text-sm leading-relaxed text-amber-950">
+              Na de geverifieerde betaling controleert Buildy je Bouwboek en plaatst de
+              drukopdracht handmatig. Je volgt de actuele status in Buildy. Vragen kun je
+              mailen naar <a className="font-medium underline underline-offset-2" href={`mailto:${quote.seller.supportEmail}`}>{quote.seller.supportEmail}</a>.
+            </p>
 
             <div className="space-y-3 rounded-lg border p-4 text-sm">
               <div className="flex items-start gap-2">

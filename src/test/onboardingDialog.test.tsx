@@ -69,7 +69,7 @@ describe("privacy-first onboarding", () => {
     render(<OnboardingDialog enabled />);
     fireEvent.change(screen.getByLabelText("Naam op je profiel"), { target: { value: "  Ada Renovatie  " } });
     fireEvent.click(screen.getByRole("switch", { name: "Privéprofiel" }));
-    fireEvent.click(screen.getByRole("button", { name: "Later een project maken" }));
+    fireEvent.click(screen.getByRole("button", { name: "Later een verbouwing maken" }));
 
     await waitFor(() => expect(mocks.mutateAsync).toHaveBeenCalledOnce());
     expect(mocks.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
@@ -87,7 +87,7 @@ describe("privacy-first onboarding", () => {
 
   it("navigeert pas na een bevestigde mutation naar het nieuwe project", async () => {
     render(<OnboardingDialog enabled />);
-    fireEvent.click(screen.getByRole("button", { name: "Start mijn eerste project" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start mijn eerste verbouwing" }));
 
     await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith("/project/nieuw"));
     expect(mocks.mutateAsync).toHaveBeenCalledOnce();

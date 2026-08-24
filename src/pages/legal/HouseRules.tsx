@@ -9,7 +9,7 @@ const HouseRules = () => (
     <p>Buildy werkt het prettigst als iedereen dezelfde eenvoudige afspraken volgt.</p>
     <ol>
       <li><strong>Deel bewust.</strong> Controleer wat een bezoeker in tekst, foto&apos;s en plattegronden kan herkennen.</li>
-      <li><strong>Respecteer mensen.</strong> Reageer op het project, niet op de persoon, en accepteer een grens of verwijderverzoek.</li>
+      <li><strong>Respecteer mensen.</strong> Reageer op de verbouwing, niet op de persoon, en accepteer een grens of verwijderverzoek.</li>
       <li><strong>Houd privé echt privé.</strong> Deel geen adressen, codes, financiële details of contactgegevens in openbare inhoud.</li>
       <li><strong>Gebruik eigen materiaal.</strong> Plaats alleen media en tekst die je mag gebruiken.</li>
       <li><strong>Wees eerlijk.</strong> Geen nepaccounts, misleiding, verborgen reclame of spam.</li>
@@ -31,4 +31,3 @@ const HouseRules = () => (
 );
 
 export default HouseRules;
-

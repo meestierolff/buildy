@@ -26,6 +26,7 @@ vi.mock("@/lib/appFeatures", () => ({
 vi.mock("@/hooks/useProjectApi", () => ({
   useProject: vi.fn(),
   useDeleteProjectMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useUpdateProjectMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
 }));
 vi.mock("@/hooks/usePageMeta", () => ({ usePageMeta: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
@@ -44,17 +45,23 @@ vi.mock("@/lib/router", () => ({
     [key: string]: unknown;
   }) => <a href={to} {...props}>{children}</a>,
 }));
-vi.mock("@/components/FollowButton", () => ({
-  default: ({ projectId }: { projectId: string }) => <button type="button">Volg {projectId}</button>,
-}));
 vi.mock("@/components/ProgressControl", () => ({
   default: ({ expectedVersion }: { expectedVersion: number }) => (
     <div data-testid="progress-control">versie {expectedVersion}</div>
   ),
 }));
 vi.mock("@/components/BlueprintTimeline", () => ({
-  default: ({ updates, projectId }: { updates: ProjectUpdate[]; projectId: string }) => (
-    <div data-testid="typed-timeline">
+  default: ({ updates, projectId, canEngage, canCopyUpdateLink }: {
+    updates: ProjectUpdate[];
+    projectId: string;
+    canEngage?: boolean;
+    canCopyUpdateLink?: boolean;
+  }) => (
+    <div
+      data-testid="typed-timeline"
+      data-can-engage={String(canEngage)}
+      data-can-copy-update-link={String(canCopyUpdateLink)}
+    >
       {projectId}:{updates.map((update) => update.media.map((media) => media.proxyPath).join(",")).join(";")}
     </div>
   ),
@@ -73,8 +80,13 @@ vi.mock("@/components/project/FloorplanBoard", () => ({
     </div>
   ),
 }));
-vi.mock("@/components/RequestAccessCard", () => ({
-  default: ({ projectId }: { projectId: string }) => <div data-testid="private-access">privé {projectId}</div>,
+vi.mock("@/components/project/ShareLinkDialog", () => ({
+  ShareLinkDialog: ({ projectTitle }: { projectTitle: string }) => (
+    <div role="dialog">Deellink voor {projectTitle}</div>
+  ),
+}));
+vi.mock("@/components/moderation/ReportDialog", () => ({
+  default: () => <button type="button">Melden</button>,
 }));
 vi.mock("@/components/AddStepDialog", () => ({
   default: () => <div role="dialog">Nieuwe update</div>,
@@ -176,6 +188,7 @@ function mockReadflow(input: {
 describe("TripDetail typed project-readflow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
     window.history.replaceState(null, "", `/project/${PROJECT_ID}`);
     mockReadflow();
   });
@@ -191,10 +204,35 @@ describe("TripDetail typed project-readflow", () => {
       "href",
       `/project/${PROJECT_ID}/bouwboek`,
     );
-    expect(screen.getByRole("button", { name: "Update toevoegen" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Bouwmoment toevoegen" })).toBeInTheDocument();
     expect(screen.getByTestId("typed-timeline")).toHaveTextContent(`/api/media/${MEDIA_ID}`);
     expect(screen.queryByRole("button", { name: /update bewerken|update verwijderen/i })).not.toBeInTheDocument();
     expect(screen.getByTestId("progress-control")).toHaveTextContent("versie 7");
+    expect(screen.queryByRole("button", { name: /delen|deellink/i })).not.toBeInTheDocument();
+  });
+
+  it("opent alleen voor de eigenaar van een unlisted project de veilige deellinkflow", () => {
+    mockReadflow({ overview: { ...project, visibility: "unlisted" } });
+    render(<TripDetail />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Deellink" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("Deellink voor Ons huis");
+
+    cleanup();
+    mockReadflow({
+      overview: {
+        ...project,
+        visibility: "unlisted",
+        viewerAccess: "link",
+        canEdit: false,
+      },
+    });
+    render(<TripDetail />);
+    expect(screen.queryByRole("button", { name: /delen|deellink/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Bouwmoment toevoegen" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Bouwboek|Budget/i })).not.toBeInTheDocument();
+    expect(screen.getByTestId("typed-timeline")).toHaveAttribute("data-can-engage", "false");
+    expect(screen.getByTestId("typed-timeline")).toHaveAttribute("data-can-copy-update-link", "false");
   });
 
   it("voedt de typed planning- en galerijweergaven met canonieke IDs", async () => {
@@ -211,7 +249,7 @@ describe("TripDetail typed project-readflow", () => {
     mockReadflow({ overviewPending: true });
     render(<TripDetail />);
 
-    expect(screen.getByRole("status")).toHaveTextContent("Project laden");
+    expect(screen.getByRole("status")).toHaveTextContent("Verbouwing laden");
     expect(screen.queryByText("Ons huis")).not.toBeInTheDocument();
   });
 
@@ -225,7 +263,8 @@ describe("TripDetail typed project-readflow", () => {
     });
     render(<TripDetail />);
 
-    expect(screen.getByTestId("private-access")).toHaveTextContent(`privé ${PROJECT_ID}`);
+    expect(screen.getByRole("heading", { name: "Verbouwing niet gevonden" })).toBeInTheDocument();
+    expect(screen.getByText("Deze link naar de verbouwing is niet beschikbaar.")).toBeInTheDocument();
     expect(screen.queryByText("Ons huis")).not.toBeInTheDocument();
   });
 
@@ -239,8 +278,29 @@ describe("TripDetail typed project-readflow", () => {
     });
     render(<TripDetail />);
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Project kon niet worden geladen");
+    expect(screen.getByRole("alert")).toHaveTextContent("Verbouwing kon niet worden geladen");
     expect(screen.getByRole("button", { name: /Opnieuw proberen/i })).toBeInTheDocument();
+  });
+
+  it("onderscheidt een offline overview- en tijdlijnfout van een toegangsweigering", () => {
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: false });
+    mockReadflow({
+      overviewError: new TypeError("Failed to fetch"),
+    });
+    render(<TripDetail />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Je bent offline. Maak opnieuw verbinding en probeer het daarna nog een keer.",
+    );
+
+    cleanup();
+    mockReadflow({ timelineError: new TypeError("Failed to fetch") });
+    render(<TripDetail />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Je bent offline. Maak opnieuw verbinding om de Bouwmomenten te laden.",
+    );
+    expect(screen.getByRole("heading", { name: "Ons huis" })).toBeInTheDocument();
   });
 
   it("normaliseert historische step-deeplinks naar de update-query", () => {

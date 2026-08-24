@@ -10,11 +10,11 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { AppShell, LegacyRedirect, MobileNav } from "@/components/app";
-import OnboardingDialog from "@/components/app/OnboardingDialog";
 import { PRODUCT_ROUTES, type ProductNavigationItem } from "@/lib/productNavigation";
-import FeedbackLauncher from "@/components/moderation/FeedbackLauncher";
-import Index from "./pages/Index";
 
+const Index = lazy(() => import("./pages/Index"));
+const OnboardingDialog = lazy(() => import("@/components/app/OnboardingDialog"));
+const FeedbackLauncher = lazy(() => import("@/components/moderation/FeedbackLauncher"));
 const Terms = lazy(() => import("./pages/legal/Terms"));
 const Privacy = lazy(() => import("./pages/legal/Privacy"));
 const Withdrawal = lazy(() => import("./pages/legal/Withdrawal"));
@@ -23,8 +23,6 @@ const HouseRules = lazy(() => import("./pages/legal/HouseRules"));
 
 // Heavier / less-frequently visited routes are code-split so the initial bundle stays small.
 const Auth = lazy(() => import("./pages/Auth"));
-const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
-const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const AccountSettings = lazy(() => import("./pages/AccountSettings"));
 const NewTrip = lazy(() => import("./pages/NewTrip"));
 const TripDetail = lazy(() => import("./pages/TripDetail"));
@@ -34,12 +32,16 @@ const Budget = lazy(() => import("./pages/Budget"));
 const Favorites = lazy(() => import("./pages/Favorites"));
 const Friends = lazy(() => import("./pages/Friends"));
 const OrderConfirmation = lazy(() => import("./pages/OrderConfirmation"));
+const Orders = lazy(() => import("./pages/Orders"));
 const Support = lazy(() => import("./pages/Support"));
 const Feedback = lazy(() => import("./pages/Feedback"));
 const Report = lazy(() => import("./pages/Report"));
 const ModerationAdmin = lazy(() => import("./pages/ModerationAdmin"));
+const OrderAdmin = lazy(() => import("./pages/OrderAdmin"));
+const FeedbackAdmin = lazy(() => import("./pages/FeedbackAdmin"));
 const NewUpdate = lazy(() => import("./pages/NewUpdate"));
 const Notifications = lazy(() => import("./pages/Notifications"));
+const ShareLinkRedeem = lazy(() => import("./pages/ShareLinkRedeem"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const RouteFallback = () => (
@@ -61,11 +63,11 @@ const PUBLIC_MOBILE_NAVIGATION: readonly ProductNavigationItem[] = [
 ];
 
 const getAuthenticatedMobileNavigation = (profileSlug?: string): readonly ProductNavigationItem[] => [
-  { id: "projects", label: "Projecten", href: PRODUCT_ROUTES.projects, icon: "projects", exact: true, requiresAuth: true },
+  { id: "projects", label: "Verbouwingen", href: PRODUCT_ROUTES.projects, icon: "projects", exact: true, requiresAuth: true },
   { id: "following", label: "Volgend", href: PRODUCT_ROUTES.following, icon: "following", requiresAuth: true },
   {
     id: "update",
-    label: "Update",
+    label: "Bouwmoment",
     href: PRODUCT_ROUTES.createUpdate,
     icon: "add",
     primaryAction: true,
@@ -85,7 +87,7 @@ const ApplicationFrame = () => {
   const { user } = useAuth();
   const profileQuery = useOwnProfile(Boolean(user));
   const { pathname } = useLocation();
-  const hidesMobileNavigation = ["/auth", "/wachtwoord-vergeten", "/wachtwoord-resetten"].includes(pathname);
+  const hidesMobileNavigation = pathname === "/auth";
   const navigationItems = user
     ? getAuthenticatedMobileNavigation(profileQuery.data?.slug)
     : PUBLIC_MOBILE_NAVIGATION;
@@ -107,8 +109,6 @@ const ApplicationFrame = () => {
               <Route path="/ontdekken" element={<Index />} />
               <Route path="/projecten" element={<Index />} />
               <Route path="/auth" element={<Auth />} />
-              <Route path="/wachtwoord-vergeten" element={<ForgotPassword />} />
-              <Route path="/wachtwoord-resetten" element={<ResetPassword />} />
               <Route path="/account" element={<AccountSettings />} />
               <Route path="/project/nieuw" element={<NewTrip />} />
               <Route path="/update/nieuw" element={<NewUpdate />} />
@@ -119,6 +119,7 @@ const ApplicationFrame = () => {
               <Route path="/connecties" element={<Friends />} />
               <Route path="/profiel/:profileKey" element={<Profile />} />
               <Route path="/notificaties" element={<Notifications />} />
+              <Route path="/delen" element={<ShareLinkRedeem />} />
               <Route path="/trips/new" element={<LegacyRedirect resolve={() => PRODUCT_ROUTES.newProject} />} />
               <Route path="/trip/:id/photobook" element={<LegacyRedirect resolve={(params) => {
                 const id = routeParam(params, "id");
@@ -143,6 +144,7 @@ const ApplicationFrame = () => {
                 return profileKey ? PRODUCT_ROUTES.profile(profileKey) : null;
               }} />} />
               <Route path="/bestelling/:orderId" element={<OrderConfirmation />} />
+              <Route path="/bestellingen" element={<Orders />} />
               <Route path="/bestellingen/:orderId" element={<OrderConfirmation />} />
               <Route path="/voorwaarden" element={<Terms />} />
               <Route path="/privacy" element={<Privacy />} />
@@ -154,13 +156,25 @@ const ApplicationFrame = () => {
               <Route path="/melden" element={<Report />} />
               <Route path="/beheer/moderatie" element={<ModerationAdmin />} />
               <Route path="/beheer/moderatie/:reportId" element={<ModerationAdmin />} />
+              <Route path="/beheer/bestellingen" element={<OrderAdmin />} />
+              <Route path="/beheer/bestellingen/:orderId" element={<OrderAdmin />} />
+              <Route path="/beheer/feedback" element={<FeedbackAdmin />} />
+              <Route path="/beheer/feedback/:submissionId" element={<FeedbackAdmin />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
         </ErrorBoundary>
       </AppShell>
-      <OnboardingDialog enabled={Boolean(user)} />
-      {showFeedbackLauncher ? <FeedbackLauncher /> : null}
+      {user ? (
+        <Suspense fallback={null}>
+          <OnboardingDialog enabled />
+        </Suspense>
+      ) : null}
+      {showFeedbackLauncher ? (
+        <Suspense fallback={null}>
+          <FeedbackLauncher />
+        </Suspense>
+      ) : null}
     </>
   );
 };

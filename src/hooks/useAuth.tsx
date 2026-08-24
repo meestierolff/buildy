@@ -1,10 +1,11 @@
 import {
   createContext,
-  useEffect,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 import {
@@ -13,6 +14,7 @@ import {
   authErrorMessage,
   type AuthClientSession,
   type AuthClientUser,
+  type AuthSessionData,
 } from "@/lib/authClient";
 import { queryClient } from "@/lib/queryClient";
 import { toast } from "sonner";
@@ -23,15 +25,12 @@ export interface AuthUserMetadata {
   full_name: string;
 }
 
-/**
- * Compatibility shape for the remaining legacy UI. It intentionally contains
- * no provider-specific auth fields and no bearer/session token.
- */
+/** Compatibility shape for UI that still reads Supabase-style metadata. */
 export type AuthUser = AuthClientUser & {
   user_metadata: AuthUserMetadata;
 };
 
-export type AuthSession = Omit<AuthClientSession, "token">;
+export type AuthSession = AuthClientSession;
 
 export interface AuthContextValue {
   error: Error | null;
@@ -46,7 +45,7 @@ export interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function mapAuthUser(user: AuthClientUser): AuthUser {
-  const displayName = user.name?.trim() || "";
+  const displayName = user.name.trim();
   return {
     ...user,
     user_metadata: {
@@ -58,62 +57,89 @@ export function mapAuthUser(user: AuthClientUser): AuthUser {
 }
 
 export function mapAuthSession(session: AuthClientSession): AuthSession {
-  const { token: _token, ...safeSession } = session;
-  return safeSession;
+  return { ...session };
 }
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const { data, error, isPending, isRefetching, refetch } = authClient.useSession();
+  const [data, setData] = useState<AuthSessionData>({ session: null, user: null });
+  const [error, setError] = useState<Error | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const requestSequence = useRef(0);
   const previousIdentity = useRef<string | null | undefined>(undefined);
 
-  useEffect(() => {
-    if (isPending) return;
-    const currentIdentity = data?.user.id ?? null;
-    if (
-      previousIdentity.current !== undefined &&
-      previousIdentity.current !== currentIdentity
-    ) {
-      // Query keys are not a security boundary, but cached private DTOs may
-      // never survive a sign-out or account switch in the same browser tab.
-      queryClient.clear();
-    }
-    previousIdentity.current = currentIdentity;
-  }, [data?.user.id, isPending]);
-
-  const user = useMemo(() => data?.user ? mapAuthUser(data.user) : null, [data?.user]);
-  const session = useMemo(
-    () => data?.session ? mapAuthSession(data.session) : null,
-    [data?.session],
-  );
   const refetchSession = useCallback(async () => {
-    await refetch();
-  }, [refetch]);
+    const sequence = ++requestSequence.current;
+    setRefreshing(true);
+    try {
+      const next = await authClient.getSession();
+      if (requestSequence.current !== sequence) return;
+      setData(next);
+      setError(null);
+    } catch (cause) {
+      if (requestSequence.current !== sequence) return;
+      setData({ session: null, user: null });
+      setError(cause instanceof Error ? cause : new Error("Sessiecontrole mislukt."));
+    } finally {
+      if (requestSequence.current === sequence) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    void refetchSession();
+    const interval = window.setInterval(() => void refetchSession(), 5 * 60 * 1_000);
+    const onFocus = () => void refetchSession();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      requestSequence.current += 1;
+    };
+  }, [refetchSession]);
+
+  useEffect(() => {
+    if (loading) return;
+    const currentIdentity = data.user?.id ?? null;
+    if (
+      previousIdentity.current !== undefined
+      && previousIdentity.current !== currentIdentity
+    ) queryClient.clear();
+    previousIdentity.current = currentIdentity;
+  }, [data.user?.id, loading]);
+
+  const user = useMemo(() => data.user ? mapAuthUser(data.user) : null, [data.user]);
+  const session = useMemo(
+    () => data.session ? mapAuthSession(data.session) : null,
+    [data.session],
+  );
   const signOut = useCallback(async () => {
     try {
-      const result = await authClient.signOut();
-      if (result.error) {
-        console.error("Better Auth sign-out failed", authErrorDetails(result.error));
-        toast.error(authErrorMessage(result.error, "sign-out"));
-      }
-    } catch (error) {
-      console.error("Better Auth sign-out failed", authErrorDetails(error));
-      toast.error(authErrorMessage(error, "sign-out"));
+      await authClient.signOut();
+      setData({ session: null, user: null });
+      setError(null);
+      queryClient.clear();
+    } catch (cause) {
+      console.error("Sign-out failed", authErrorDetails(cause));
+      toast.error(authErrorMessage(cause, "sign-out"));
     } finally {
-      await refetch();
+      await refetchSession();
     }
-  }, [refetch]);
+  }, [refetchSession]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       error,
-      loading: isPending,
-      refreshing: isRefetching,
+      loading,
+      refreshing,
       refetchSession,
       session,
       signOut,
       user,
     }),
-    [error, isPending, isRefetching, refetchSession, session, signOut, user],
+    [error, loading, refreshing, refetchSession, session, signOut, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

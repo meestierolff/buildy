@@ -45,7 +45,11 @@ function serviceMocks(): EngagementHttpService {
       state: "removed",
       replayed: true,
     }),
-    notifications: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
+    notifications: vi.fn().mockResolvedValue({ items: [], nextCursor: null, unreadCount: 0 }),
+    markAllNotificationsRead: vi.fn().mockResolvedValue({
+      updatedCount: 2,
+      unreadCount: 0,
+    }),
     updateNotification: vi.fn().mockResolvedValue({
       notificationId: NOTIFICATION_ID,
       status: "read",
@@ -121,7 +125,16 @@ describe("engagement HTTP handler", () => {
       ),
       REQUEST_ID,
     )).rejects.toMatchObject({ code: "UNAUTHENTICATED", status: 401 });
+    await expect(handler(
+      new Request("https://app.buildy.test/api/notifications", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "read_all" }),
+      }),
+      REQUEST_ID,
+    )).rejects.toMatchObject({ code: "UNAUTHENTICATED", status: 401 });
     expect(service.createComment).not.toHaveBeenCalled();
+    expect(service.markAllNotificationsRead).not.toHaveBeenCalled();
   });
 
   it("uses only the server-resolved actor for comment and reaction writes", async () => {
@@ -190,6 +203,14 @@ describe("engagement HTTP handler", () => {
       REQUEST_ID,
     );
     await handler(
+      new Request("https://app.buildy.test/api/notifications", {
+        method: "PATCH",
+        headers: { "content-type": "application/json", "x-recipient-id": FORGED_ID },
+        body: JSON.stringify({ action: "read_all" }),
+      }),
+      REQUEST_ID,
+    );
+    await handler(
       new Request(`https://app.buildy.test/api/notifications/${NOTIFICATION_ID}`, {
         method: "PATCH",
         headers: { "content-type": "application/json", "x-recipient-id": FORGED_ID },
@@ -202,6 +223,10 @@ describe("engagement HTTP handler", () => {
       status: "unread",
       limit: "5",
     });
+    expect(service.markAllNotificationsRead).toHaveBeenCalledWith(
+      ACTOR_ID,
+      { action: "read_all" },
+    );
     expect(service.updateNotification).toHaveBeenCalledWith(
       ACTOR_ID,
       NOTIFICATION_ID,

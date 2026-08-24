@@ -10,11 +10,11 @@ on:
       run_staging_e2e:
         description: Voer de volledige, beschermde staging/auth E2E-suite uit
         required: true
-        default: false
+        default: true
         type: boolean
       staging_base_url:
         description: HTTPS-basis-URL van de expliciet gekozen stagingomgeving
-        required: false
+        required: true
         type: string
 
 permissions:
@@ -91,24 +91,7 @@ jobs:
         uses: ./.github/actions/setup-buildy
 
       - name: Run unit and server tests
-        run: bun run test -- --reporter=verbose
-
-      - name: Generate synthetic transactional e-mail previews
-        run: |
-          bun run email:previews
-          grep -q "SYNTHETIC TEST ARTIFACT" artifacts/email/order-confirmation.synthetic.html
-          grep -q "GEEN ECHTE BESTELLING" artifacts/email/order-confirmation.synthetic.txt
-          grep -q "Welkom" artifacts/email/lifecycle-welcome.synthetic.html
-          grep -q "GEEN ECHT ACCOUNT" artifacts/email/migration-account.synthetic.txt
-          grep -q "Verwijderverzoek" artifacts/email/security-account-alert.synthetic.html
-
-      - name: Upload synthetic e-mail preview artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: transactional-email-previews-${{ github.run_id }}-${{ github.run_attempt }}
-          path: artifacts/email
-          if-no-files-found: error
-          retention-days: 14
+        run: bun run test -- --exclude 'tests/db/*.integration.test.ts' --reporter=verbose
 
   build:
     name: Production build
@@ -130,6 +113,9 @@ jobs:
 
       - name: Enforce raw and gzip bundle budgets
         run: bun run check:bundle
+
+      - name: Verify static launch contract
+        run: bun run check:launch -- --static
 
       - name: Verify expected build outputs
         run: |
@@ -195,7 +181,7 @@ jobs:
         uses: ./.github/actions/setup-buildy
 
       - name: Unit-test migration discovery and validation
-        run: bunx vitest run tests/db --reporter=verbose
+        run: bunx vitest run tests/db --exclude 'tests/db/*.integration.test.ts' --reporter=verbose
 
       - name: Validate SQL migration source without a database
         run: bunx tsx db/migrate.ts --check
@@ -218,10 +204,8 @@ jobs:
             for (const [role, password] of [
               ["buildy_web", "buildy_ci_web"],
               ["buildy_account_worker", "buildy_ci_account_worker"],
-              ["buildy_email_worker", "buildy_ci_email_worker"],
               ["buildy_media_worker", "buildy_ci_media_worker"],
               ["buildy_payment_worker", "buildy_ci_payment_worker"],
-              ["buildy_fulfilment_worker", "buildy_ci_fulfilment_worker"],
               ["buildy_photobook_worker", "buildy_ci_photobook_worker"],
             ]) {
               await client.query(`
@@ -247,10 +231,8 @@ jobs:
           psql "$CI_DATABASE_ADMIN_URL" \
             -v buildy_web_role=buildy_web \
             -v buildy_account_worker_role=buildy_account_worker \
-            -v buildy_email_worker_role=buildy_email_worker \
             -v buildy_media_worker_role=buildy_media_worker \
             -v buildy_payment_worker_role=buildy_payment_worker \
-            -v buildy_fulfilment_worker_role=buildy_fulfilment_worker \
             -v buildy_photobook_worker_role=buildy_photobook_worker \
             -f scripts/setup/configure-database-roles.sql
 
@@ -259,41 +241,10 @@ jobs:
           psql "$CI_DATABASE_ADMIN_URL" \
             -v buildy_web_role=buildy_web \
             -v buildy_account_worker_role=buildy_account_worker \
-            -v buildy_email_worker_role=buildy_email_worker \
             -v buildy_media_worker_role=buildy_media_worker \
             -v buildy_payment_worker_role=buildy_payment_worker \
-            -v buildy_fulfilment_worker_role=buildy_fulfilment_worker \
             -v buildy_photobook_worker_role=buildy_photobook_worker \
             -f scripts/setup/verify-database-roles.sql
-
-      - name: Exercise real PostgreSQL RLS and worker boundaries
-        env:
-          DATABASE_SECURITY_TEST_URL: ${{ env.CI_DATABASE_ADMIN_URL }}
-          DATABASE_SECURITY_WEB_ROLE: buildy_web
-          DATABASE_SECURITY_WEB_URL: postgresql://buildy_web:buildy_ci_web@127.0.0.1:5432/buildy_ci?sslmode=disable
-          DATABASE_SECURITY_ACCOUNT_WORKER_URL: postgresql://buildy_account_worker:buildy_ci_account_worker@127.0.0.1:5432/buildy_ci?sslmode=disable
-          DATABASE_SECURITY_EMAIL_WORKER_URL: postgresql://buildy_email_worker:buildy_ci_email_worker@127.0.0.1:5432/buildy_ci?sslmode=disable
-          DATABASE_SECURITY_PAYMENT_WORKER_URL: postgresql://buildy_payment_worker:buildy_ci_payment_worker@127.0.0.1:5432/buildy_ci?sslmode=disable
-          DATABASE_SECURITY_FULFILMENT_WORKER_URL: postgresql://buildy_fulfilment_worker:buildy_ci_fulfilment_worker@127.0.0.1:5432/buildy_ci?sslmode=disable
-          DATABASE_SECURITY_PHOTOBOOK_WORKER_URL: postgresql://buildy_photobook_worker:buildy_ci_photobook_worker@127.0.0.1:5432/buildy_ci?sslmode=disable
-        run: |
-          bunx vitest run \
-            tests/db/private-beta.integration.test.ts \
-            tests/db/engagement-rls.integration.test.ts \
-            tests/db/profile-rls.integration.test.ts \
-            tests/db/account-lifecycle.integration.test.ts \
-            tests/db/photobook-worker.integration.test.ts \
-            tests/db/order-checkout.integration.test.ts \
-            tests/db/stripe-payment.integration.test.ts \
-            tests/db/order-email.integration.test.ts \
-            tests/db/community-email.integration.test.ts \
-            tests/db/account-social-email.integration.test.ts \
-            tests/db/project-deletion.integration.test.ts \
-            tests/db/moderation.integration.test.ts \
-            tests/db/moderation-admin.integration.test.ts \
-            tests/db/peecho-fulfilment.integration.test.ts \
-            --no-file-parallelism \
-            --reporter=verbose
 
       - name: Verify ledger, schema and RLS contract
         run: bunx tsx db/verify.ts
@@ -304,14 +255,131 @@ jobs:
       - name: Verify schema after the no-op replay
         run: bunx tsx db/verify.ts
 
-  public-e2e:
-    name: Public Playwright E2E
+  database-integration:
+    name: PostgreSQL functional integration
     needs:
-      - quality
-      - unit-tests
-      - build
-      - dependency-audit
       - migration-sql
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_MIGRATION_URL: postgresql://buildy_migrator:buildy_ci_migrator@127.0.0.1:5432/buildy_ci?sslmode=disable
+      CI_DATABASE_ADMIN_URL: postgresql://postgres:buildy_ci_admin@127.0.0.1:5432/buildy_ci?sslmode=disable
+    services:
+      postgres:
+        image: postgres:16.4-alpine
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: buildy_ci_admin
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Buildy
+        uses: ./.github/actions/setup-buildy
+
+      - name: Bootstrap isolated integration roles
+        env:
+          CI_POSTGRES_ADMIN_URL: postgresql://postgres:buildy_ci_admin@127.0.0.1:5432/postgres?sslmode=disable
+        run: |
+          node --input-type=module <<'NODE'
+          import { Client } from "pg";
+
+          const client = new Client({ connectionString: process.env.CI_POSTGRES_ADMIN_URL });
+          await client.connect();
+          try {
+            await client.query(`
+              CREATE ROLE buildy_migrator
+              LOGIN PASSWORD 'buildy_ci_migrator'
+              NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS
+            `);
+            for (const [role, password] of [
+              ["buildy_web", "buildy_ci_web"],
+              ["buildy_account_worker", "buildy_ci_account_worker"],
+              ["buildy_media_worker", "buildy_ci_media_worker"],
+              ["buildy_payment_worker", "buildy_ci_payment_worker"],
+              ["buildy_photobook_worker", "buildy_ci_photobook_worker"],
+            ]) {
+              await client.query(`
+                CREATE ROLE ${role}
+                LOGIN PASSWORD '${password}'
+                NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS
+              `);
+            }
+            await client.query("CREATE DATABASE buildy_ci OWNER buildy_migrator");
+          } finally {
+            await client.end();
+          }
+          NODE
+
+      - name: Apply the structurally verified migrations
+        run: bunx tsx db/migrate.ts
+
+      - name: Configure isolated runtime roles and function grants
+        run: |
+          psql "$CI_DATABASE_ADMIN_URL" \
+            -v buildy_web_role=buildy_web \
+            -v buildy_account_worker_role=buildy_account_worker \
+            -v buildy_media_worker_role=buildy_media_worker \
+            -v buildy_payment_worker_role=buildy_payment_worker \
+            -v buildy_photobook_worker_role=buildy_photobook_worker \
+            -f scripts/setup/configure-database-roles.sql
+
+      - name: Verify runtime role isolation
+        run: |
+          psql "$CI_DATABASE_ADMIN_URL" \
+            -v buildy_web_role=buildy_web \
+            -v buildy_account_worker_role=buildy_account_worker \
+            -v buildy_media_worker_role=buildy_media_worker \
+            -v buildy_payment_worker_role=buildy_payment_worker \
+            -v buildy_photobook_worker_role=buildy_photobook_worker \
+            -f scripts/setup/verify-database-roles.sql
+
+      - name: Exercise real PostgreSQL RLS and active worker boundaries
+        env:
+          DATABASE_SECURITY_TEST_URL: ${{ env.CI_DATABASE_ADMIN_URL }}
+          DATABASE_SECURITY_WEB_ROLE: buildy_web
+          DATABASE_SECURITY_MEDIA_WORKER_ROLE: buildy_media_worker
+          DATABASE_SECURITY_WEB_URL: postgresql://buildy_web:buildy_ci_web@127.0.0.1:5432/buildy_ci?sslmode=disable
+          DATABASE_SECURITY_ACCOUNT_WORKER_URL: postgresql://buildy_account_worker:buildy_ci_account_worker@127.0.0.1:5432/buildy_ci?sslmode=disable
+          DATABASE_SECURITY_PAYMENT_WORKER_URL: postgresql://buildy_payment_worker:buildy_ci_payment_worker@127.0.0.1:5432/buildy_ci?sslmode=disable
+          DATABASE_SECURITY_PHOTOBOOK_WORKER_URL: postgresql://buildy_photobook_worker:buildy_ci_photobook_worker@127.0.0.1:5432/buildy_ci?sslmode=disable
+        run: |
+          bunx vitest run \
+            tests/db/private-beta.integration.test.ts \
+            tests/db/engagement-rls.integration.test.ts \
+            tests/db/social-connections.integration.test.ts \
+            tests/db/project-visibility.integration.test.ts \
+            tests/db/profile-rls.integration.test.ts \
+            tests/db/account-lifecycle.integration.test.ts \
+            tests/db/request-driven-media.integration.test.ts \
+            tests/db/photobook-worker.integration.test.ts \
+            tests/db/order-checkout.integration.test.ts \
+            tests/db/stripe-payment.integration.test.ts \
+            tests/db/manual-fulfilment.integration.test.ts \
+            tests/db/project-deletion.integration.test.ts \
+            tests/db/moderation.integration.test.ts \
+            tests/db/moderation-admin.integration.test.ts \
+            tests/db/request-hash-replay.integration.test.ts \
+            tests/db/project-share-links.integration.test.ts \
+            tests/db/feedback-admin.integration.test.ts \
+            tests/db/product-notifications.integration.test.ts \
+            --no-file-parallelism \
+            --reporter=verbose
+
+  public-e2e:
+    name: Full public Playwright E2E
+    needs:
+      - build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -332,7 +400,7 @@ jobs:
       - name: Install Chromium and operating-system dependencies
         run: bunx playwright install --with-deps chromium
 
-      - name: Run provider-free public scenarios
+      - name: Run the exhaustive deterministic Chromium suite
         env:
           PLAYWRIGHT_MODE: preview
           PLAYWRIGHT_HTML_OPEN: never
@@ -340,44 +408,20 @@ jobs:
           PLAYWRIGHT_JUNIT_OUTPUT_NAME: test-results/public-junit.xml
         run: |
           bunx playwright test \
-            tests/e2e/discovery.e2e.ts \
-            tests/e2e/auth.e2e.ts \
-            tests/e2e/canonical-routes.e2e.ts \
-            --project=chromium \
-            --reporter=list,html,junit \
-            --grep 'first-time visitor|mobile navigation|header nav links|404 route|login form|switch to registration|start-project CTA|order confirmation preserves|forgot-password|oude projectlink'
+            --project=chromium-desktop \
+            --reporter=list,html,junit
 
-      - name: Require selected public scenarios without skips
+      - name: Require the complete public suite without skips
         run: |
           node --input-type=module -e '
             import { readFileSync } from "node:fs";
             const xml = readFileSync("test-results/public-junit.xml", "utf8");
             const tests = (xml.match(/<testcase\b/g) ?? []).length;
             const skipped = (xml.match(/<skipped\b/g) ?? []).length;
-            if (tests === 0) throw new Error("De publieke E2E-selectie bevatte geen tests.");
-            if (skipped > 0) throw new Error(`De publieke E2E-selectie sloeg ${skipped} test(s) over.`);
+            if (tests === 0) throw new Error("De volledige publieke E2E-suite bevatte geen tests.");
+            if (skipped > 0) throw new Error(`De volledige publieke E2E-suite sloeg ${skipped} test(s) over.`);
             console.log(`${tests} publieke E2E-tests uitgevoerd zonder skips.`);
           '
-
-      - name: Reject serious or critical public accessibility violations
-        env:
-          PLAYWRIGHT_MODE: preview
-        run: >-
-          bunx playwright test
-          tests/e2e/public-accessibility.e2e.ts
-          --project=chromium
-          --output=test-results/accessibility-runtime
-          --reporter=list
-
-      - name: Capture deterministic synthetic core flows
-        env:
-          PLAYWRIGHT_MODE: preview
-        run: >-
-          bunx playwright test
-          tests/e2e/quality-visual.e2e.ts
-          --project=chromium
-          --output=test-results/quality-runtime
-          --reporter=list
 
       - name: Upload deterministic quality screenshots
         if: always()
@@ -399,6 +443,79 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  cross-browser-core:
+    name: Core Playwright (${{ matrix.project }})
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: firefox-core
+            browser: firefox
+          - project: webkit-core
+            browser: webkit
+          - project: mobile-chromium
+            browser: chromium
+          - project: tablet-chromium
+            browser: chromium
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Buildy
+        uses: ./.github/actions/setup-buildy
+
+      - name: Download tested browser artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-dist-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist
+
+      - name: Install ${{ matrix.browser }} and operating-system dependencies
+        run: bunx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Run explicit provider-free core suite
+        env:
+          PLAYWRIGHT_MODE: preview
+          PLAYWRIGHT_HTML_OPEN: never
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/${{ matrix.project }}
+          PLAYWRIGHT_JUNIT_OUTPUT_NAME: test-results/${{ matrix.project }}-junit.xml
+        run: >-
+          bunx playwright test
+          --project=${{ matrix.project }}
+          --output=test-results/${{ matrix.project }}-runtime
+          --reporter=list,html,junit
+
+      - name: Require core suite without skips
+        env:
+          JUNIT_PATH: test-results/${{ matrix.project }}-junit.xml
+        run: |
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const xml = readFileSync(process.env.JUNIT_PATH, "utf8");
+            const tests = (xml.match(/<testcase\b/g) ?? []).length;
+            const skipped = (xml.match(/<skipped\b/g) ?? []).length;
+            if (tests === 0) throw new Error("De expliciete core-suite bevatte geen tests.");
+            if (skipped > 0) throw new Error(`De expliciete core-suite sloeg ${skipped} test(s) over.`);
+            console.log(`${tests} core E2E-tests uitgevoerd zonder skips.`);
+          '
+
+      - name: Upload cross-browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-${{ matrix.project }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            playwright-report/${{ matrix.project }}
+            test-results
+          if-no-files-found: ignore
+          retention-days: 14
+
   ci-gate:
     name: CI gate
     if: always()
@@ -408,7 +525,9 @@ jobs:
       - build
       - dependency-audit
       - migration-sql
+      - database-integration
       - public-e2e
+      - cross-browser-core
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -419,7 +538,9 @@ jobs:
           BUILD_RESULT: ${{ needs.build.result }}
           AUDIT_RESULT: ${{ needs.dependency-audit.result }}
           MIGRATION_RESULT: ${{ needs.migration-sql.result }}
-          E2E_RESULT: ${{ needs.public-e2e.result }}
+          DATABASE_INTEGRATION_RESULT: ${{ needs.database-integration.result }}
+          PUBLIC_E2E_RESULT: ${{ needs.public-e2e.result }}
+          CROSS_BROWSER_RESULT: ${{ needs.cross-browser-core.result }}
         run: |
           set -euo pipefail
           for result in \
@@ -428,7 +549,9 @@ jobs:
             "$BUILD_RESULT" \
             "$AUDIT_RESULT" \
             "$MIGRATION_RESULT" \
-            "$E2E_RESULT"; do
+            "$DATABASE_INTEGRATION_RESULT" \
+            "$PUBLIC_E2E_RESULT" \
+            "$CROSS_BROWSER_RESULT"; do
             if [[ "$result" != "success" ]]; then
               echo "Automatische CI-gate is niet groen: $result" >&2
               exit 1
@@ -455,16 +578,35 @@ jobs:
       - name: Validate explicit staging target
         env:
           STAGING_BASE_URL: ${{ inputs.staging_base_url }}
+          EXPECTED_STAGING_ORIGIN: ${{ vars.PLAYWRIGHT_STAGING_ORIGIN }}
         run: |
-          node --input-type=module -e '
-            const raw = process.env.STAGING_BASE_URL?.trim();
-            if (!raw) throw new Error("staging_base_url is verplicht wanneer staging E2E is aangezet.");
-            const url = new URL(raw);
-            if (url.protocol !== "https:") throw new Error("Staging E2E accepteert uitsluitend HTTPS.");
-            if (url.username || url.password) throw new Error("Credentials horen niet in staging_base_url.");
-            if (url.pathname !== "/" || url.search || url.hash) throw new Error("Gebruik uitsluitend de staging-origin als basis-URL.");
-          '
-          echo "PLAYWRIGHT_BASE_URL=$STAGING_BASE_URL" >> "$GITHUB_ENV"
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from "node:fs";
+
+          function exactHttpsOrigin(rawValue, name) {
+            if (!rawValue || rawValue.trim() !== rawValue) {
+              throw new Error(`${name} ontbreekt of bevat omliggende witruimte.`);
+            }
+            const url = new URL(rawValue);
+            if (
+              url.protocol !== "https:"
+              || url.username
+              || url.password
+              || (rawValue !== url.origin && rawValue !== `${url.origin}/`)
+            ) throw new Error(`${name} moet exact één HTTPS-origin zonder credentials zijn.`);
+            return url.origin;
+          }
+
+          const requested = exactHttpsOrigin(process.env.STAGING_BASE_URL, "staging_base_url");
+          const expected = exactHttpsOrigin(
+            process.env.EXPECTED_STAGING_ORIGIN,
+            "staging-e2e environmentvariabele PLAYWRIGHT_STAGING_ORIGIN",
+          );
+          if (requested !== expected) {
+            throw new Error("De gekozen origin is niet de beschermde stagingorigin.");
+          }
+          appendFileSync(process.env.GITHUB_ENV, `PLAYWRIGHT_BASE_URL=${requested}\n`, "utf8");
+          NODE
 
       - name: Materialize protected synthetic session
         env:
@@ -482,24 +624,78 @@ jobs:
           node --input-type=module -e '
             import { readFileSync } from "node:fs";
             const state = JSON.parse(readFileSync(process.argv[1], "utf8"));
-            if (!Array.isArray(state.cookies) || state.cookies.length === 0) {
-              throw new Error("De beschermde storage state bevat geen sessiecookies.");
+            const target = new URL(process.env.PLAYWRIGHT_BASE_URL);
+            if (!Array.isArray(state.cookies) || !Array.isArray(state.origins)) {
+              throw new Error("De beschermde storage state heeft niet het Playwright-formaat.");
             }
-            if (!Array.isArray(state.origins)) {
-              throw new Error("De beschermde storage state heeft geen geldige origins-array.");
+            const cookieAppliesToTarget = (cookie) => {
+              if (!cookie || typeof cookie.domain !== "string") return false;
+              const domain = cookie.domain.replace(/^\./, "").toLowerCase();
+              const hostname = target.hostname.toLowerCase();
+              return hostname === domain || hostname.endsWith(`.${domain}`);
+            };
+            if (state.cookies.some((cookie) => !cookieAppliesToTarget(cookie))) {
+              throw new Error("De beschermde storage state bevat cookies voor een andere origin.");
+            }
+            const sessions = state.cookies.filter((cookie) => cookie.name === "buildy_session");
+            if (sessions.length !== 1) {
+              throw new Error("De beschermde storage state moet exact één Buildy-sessiecookie bevatten.");
+            }
+            const session = sessions[0];
+            if (
+              !/^[A-Za-z0-9_-]{32,512}$/.test(session.value ?? "")
+              || session.path !== "/"
+              || session.httpOnly !== true
+              || session.secure !== true
+              || session.sameSite !== "Lax"
+              || !Number.isFinite(session.expires)
+              || session.expires <= Date.now() / 1000 + 600
+            ) throw new Error("De Buildy-sessiecookie is ongeldig of verloopt binnen tien minuten.");
+            if (state.origins.some((entry) => {
+              try {
+                return new URL(entry.origin).origin !== target.origin || !Array.isArray(entry.localStorage);
+              } catch {
+                return true;
+              }
+            })) {
+              throw new Error("De beschermde storage state bevat browseropslag voor een andere origin.");
             }
           ' "$state_file"
           echo "PLAYWRIGHT_STORAGE_STATE=$state_file" >> "$GITHUB_ENV"
 
+      - name: Prove staging journey contains no mock or skip primitives
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+
+          const source = readFileSync("tests/e2e/staging-real.e2e.ts", "utf8");
+          const forbidden = [
+            [/\.(?:route|routeFromHAR)\s*\(/, "request interception"],
+            [/\.fulfill\s*\(/, "synthetic response fulfilment"],
+            [/\.(?:setContent|addInitScript)\s*\(/, "browser-side response substitution"],
+            [/\btest\.(?:skip|fixme)\s*\(/, "conditional test skipping"],
+            [/from\s+["']\.\/(?:helpers|photobookFixture|syntheticApi)["']/, "synthetic E2E fixture import"],
+          ];
+          for (const [pattern, description] of forbidden) {
+            if (pattern.test(source)) throw new Error(`staging-real bevat verboden ${description}.`);
+          }
+          NODE
+
       - name: Install Chromium and operating-system dependencies
         run: bunx playwright install --with-deps chromium
 
-      - name: Run complete staging suite
+      - name: Run unmocked staging provider journey
         env:
+          PLAYWRIGHT_MODE: staging-real
+          PLAYWRIGHT_STAGING_PROJECT_ID: ${{ secrets.PLAYWRIGHT_STAGING_PROJECT_ID }}
           PLAYWRIGHT_HTML_OPEN: never
           PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report
           PLAYWRIGHT_JUNIT_OUTPUT_NAME: test-results/staging-junit.xml
-        run: bunx playwright test --project=chromium --reporter=list,html,junit
+        run: >-
+          bunx playwright test
+          tests/e2e/staging-real.e2e.ts
+          --project=staging-real
+          --reporter=list,html,junit
 
       - name: Fail when authenticated scenarios were silently skipped
         run: |
@@ -508,9 +704,11 @@ jobs:
             const xml = readFileSync("test-results/staging-junit.xml", "utf8");
             const tests = (xml.match(/<testcase\b/g) ?? []).length;
             const skipped = (xml.match(/<skipped\b/g) ?? []).length;
-            if (tests === 0) throw new Error("De staging E2E-suite bevatte geen tests.");
+            const failed = (xml.match(/<(?:failure|error)\b/g) ?? []).length;
+            if (tests !== 1) throw new Error(`De staging E2E-suite moet exact één providerreis bevatten; gevonden: ${tests}.`);
             if (skipped > 0) throw new Error(`Staging E2E sloeg ${skipped} test(s) over; fixtures of auth zijn onvolledig.`);
-            console.log(`${tests} staging E2E-tests uitgevoerd zonder skips.`);
+            if (failed > 0) throw new Error(`Staging E2E bevatte ${failed} mislukte testcase(s).`);
+            console.log("Exact één ongemockte stagingproviderreis uitgevoerd zonder skips.");
           '
 
       - name: Upload protected staging diagnostics
@@ -523,3 +721,28 @@ jobs:
             test-results
           if-no-files-found: ignore
           retention-days: 14
+
+  staging-release-gate:
+    name: Staging release gate
+    if: ${{ always() && github.event_name == 'workflow_dispatch' }}
+    needs:
+      - ci-gate
+      - staging-auth-e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require automatic CI and the unmocked provider journey
+        env:
+          STAGING_REQUESTED: ${{ inputs.run_staging_e2e }}
+          CI_GATE_RESULT: ${{ needs.ci-gate.result }}
+          STAGING_RESULT: ${{ needs.staging-auth-e2e.result }}
+        run: |
+          set -euo pipefail
+          if [[ "$STAGING_REQUESTED" != "true" ]]; then
+            echo "Handmatige releasecontrole weigerde: run_staging_e2e moet expliciet aanstaan." >&2
+            exit 1
+          fi
+          if [[ "$CI_GATE_RESULT" != "success" || "$STAGING_RESULT" != "success" ]]; then
+            echo "Staging-releasegate is niet groen: ci=$CI_GATE_RESULT staging=$STAGING_RESULT" >&2
+            exit 1
+          fi

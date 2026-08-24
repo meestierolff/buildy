@@ -28,14 +28,6 @@ const photobookPurchaseSelectionSchema = z.object({
 
 export const requestPhotobookQuoteInputSchema = photobookPurchaseSelectionSchema;
 
-export const createPhotobookCheckoutInputSchema = photobookPurchaseSelectionSchema.extend({
-  idempotencyKey: uuidSchema,
-  expectedQuoteReference: z.string().trim().min(1).max(200),
-  expectedTotalMinor: z.number().int().nonnegative(),
-  termsVersion: z.string().trim().min(1).max(80),
-  personalisedProductAccepted: z.literal(true),
-}).strict();
-
 export const photobookOrderStatusSchema = z.enum([
   "draft",
   "awaiting_payment",
@@ -57,18 +49,27 @@ export const paymentStatusSchema = z.enum([
 ]);
 
 export const fulfilmentStatusSchema = z.enum([
-  "unclaimed",
-  "claimed",
-  "peecho_order_created",
-  "peecho_payment_pending",
-  "submitted_to_production",
+  "awaiting_review",
+  "reviewed",
+  "ordered_manually",
   "in_production",
   "shipped",
-  "delivered",
-  "failed",
-  "retry_scheduled",
+  "completed",
   "manual_review",
   "cancelled",
+  "refund_review",
+]);
+
+export const manualFulfilmentActionSchema = z.enum([
+  "review",
+  "ordered_manually",
+  "mark_in_production",
+  "mark_shipped",
+  "mark_completed",
+  "manual_review",
+  "cancel",
+  "refund_review",
+  "update_details",
 ]);
 
 export const photobookOrderAmountSchema = z.object({
@@ -81,6 +82,16 @@ export const photobookOrderAmountSchema = z.object({
   (amount) => amount.totalMinor === amount.subtotalMinor + amount.shippingMinor + amount.taxMinor,
   { message: "Het ordertotaal moet exact uit product, verzending en belasting bestaan." },
 );
+
+export const createPhotobookCheckoutInputSchema = photobookPurchaseSelectionSchema.extend({
+  idempotencyKey: uuidSchema,
+  expectedQuoteReference: z.string().trim().min(1).max(200),
+  expectedQuoteExpiresAt: z.string().datetime(),
+  expectedAmounts: photobookOrderAmountSchema,
+  termsVersion: z.string().trim().min(1).max(80),
+  termsAccepted: z.literal(true),
+  personalisedProductAccepted: z.literal(true),
+}).strict();
 
 export const sellerSnapshotSchema = z.object({
   legalName: z.string().trim().min(1).max(200),
@@ -128,10 +139,19 @@ export const photobookCheckoutResponseSchema = apiSuccessSchema(z.object({
   replayed: z.boolean(),
 }));
 
+export const photobookOrderHistoryEntrySchema = z.object({
+  id: uuidSchema,
+  eventType: z.string().trim().min(1).max(100),
+  fromStatus: z.string().trim().min(1).max(80).nullable(),
+  toStatus: z.string().trim().min(1).max(80).nullable(),
+  occurredAt: z.string().datetime(),
+}).strict();
+
 export const photobookOrderDetailSchema = z.object({
   orderId: uuidSchema,
   orderNumber: z.string().regex(/^BLD-[A-Z0-9-]{8,40}$/),
   projectId: uuidSchema,
+  projectTitle: z.string().trim().min(1).max(120),
   proofRevisionId: uuidSchema,
   sku: launchPhotobookSkuSchema,
   format: z.literal(LAUNCH_PHOTOBOOK_FORMAT),
@@ -148,13 +168,141 @@ export const photobookOrderDetailSchema = z.object({
   trackingUrl: z.string().url().nullable(),
   createdAt: z.string().datetime(),
   paidAt: z.string().datetime().nullable(),
+  statusHistory: z.array(photobookOrderHistoryEntrySchema),
 }).strict();
 
 export const photobookOrderResponseSchema = apiSuccessSchema(photobookOrderDetailSchema);
+
+export const customerOrderListQuerySchema = z.object({
+  cursor: z.string().trim().min(1).max(1000).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+}).strict();
+
+export const customerOrderListItemSchema = photobookOrderDetailSchema.omit({
+  proofRevisionId: true,
+  sku: true,
+  format: true,
+  destinationCountry: true,
+  deliveryEstimate: true,
+  termsVersion: true,
+  refundedMinor: true,
+  trackingUrl: true,
+  statusHistory: true,
+});
+
+export const customerOrderListPageSchema = z.object({
+  items: z.array(customerOrderListItemSchema),
+  nextCursor: z.string().nullable(),
+}).strict();
+
+export const customerOrderListResponseSchema = apiSuccessSchema(customerOrderListPageSchema);
+
+export const adminOrderQueueQuerySchema = z.object({
+  status: z.union([z.literal("all"), fulfilmentStatusSchema]).default("all"),
+  cursor: z.string().trim().min(1).max(1000).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+}).strict();
+
+export const adminOrderQueueItemSchema = z.object({
+  orderId: uuidSchema,
+  orderNumber: z.string().regex(/^BLD-[A-Z0-9-]{8,40}$/),
+  customerName: z.string().trim().min(1).max(80),
+  projectId: uuidSchema,
+  projectTitle: z.string().trim().min(1).max(160),
+  paidAt: z.string().datetime(),
+  quantity: z.number().int().positive(),
+  pageCount: z.number().int().min(24).max(400),
+  currency: z.literal("EUR"),
+  totalMinor: z.number().int().nonnegative(),
+  paymentStatus: paymentStatusSchema,
+  fulfilmentStatus: fulfilmentStatusSchema,
+  needsAttention: z.boolean(),
+  version: z.number().int().positive(),
+}).strict();
+
+export const adminOrderQueuePageSchema = z.object({
+  items: z.array(adminOrderQueueItemSchema),
+  nextCursor: z.string().nullable(),
+}).strict();
+
+export const adminOrderEventSchema = z.object({
+  id: uuidSchema,
+  eventType: z.string().trim().min(1).max(100),
+  actorUserId: uuidSchema.nullable(),
+  fromStatus: z.string().trim().min(1).max(80).nullable(),
+  toStatus: z.string().trim().min(1).max(80).nullable(),
+  occurredAt: z.string().datetime(),
+}).strict();
+
+export const adminOrderDetailSchema = adminOrderQueueItemSchema.extend({
+  ownerId: uuidSchema,
+  customerEmail: z.string().email(),
+  shippingAddress: shippingAddressSchema,
+  proofRevisionId: uuidSchema,
+  documentSha256: sha256Schema,
+  pdfSha256: sha256Schema,
+  amounts: photobookOrderAmountSchema,
+  refundedMinor: z.number().int().nonnegative(),
+  manualProviderReference: z.string().trim().min(1).max(200).nullable(),
+  fulfilmentNotes: z.string().max(4000).nullable(),
+  trackingUrl: z.string().url().nullable(),
+  seller: sellerSnapshotSchema,
+  stripeReferences: z.object({
+    checkoutSessionId: z.string().nullable(),
+    paymentIntentId: z.string().nullable(),
+    chargeId: z.string().nullable(),
+  }).strict(),
+  milestones: z.object({
+    reviewedAt: z.string().datetime().nullable(),
+    orderedManuallyAt: z.string().datetime().nullable(),
+    inProductionAt: z.string().datetime().nullable(),
+    shippedAt: z.string().datetime().nullable(),
+    completedAt: z.string().datetime().nullable(),
+    refundReviewAt: z.string().datetime().nullable(),
+  }).strict(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  pdfPath: z.string().min(1),
+  events: z.array(adminOrderEventSchema),
+}).strict();
+
+export const adminOrderActionInputSchema = z.object({
+  action: manualFulfilmentActionSchema,
+  expectedVersion: z.number().int().positive(),
+  externalReference: z.string().trim().min(1).max(200).nullable().optional(),
+  trackingUrl: z.string().url().refine((url) => url.startsWith("https://"), {
+    message: "De trackinglink moet HTTPS gebruiken.",
+  }).nullable().optional(),
+  notes: z.string().trim().max(4000).nullable().optional(),
+  idempotencyKey: uuidSchema,
+}).strict();
+
+export const adminOrderActionResultSchema = z.object({
+  orderId: uuidSchema,
+  fulfilmentStatus: fulfilmentStatusSchema,
+  version: z.number().int().positive(),
+  replayed: z.boolean(),
+}).strict();
+
+export const adminOrderQueueResponseSchema = apiSuccessSchema(adminOrderQueuePageSchema);
+export const adminOrderDetailResponseSchema = apiSuccessSchema(adminOrderDetailSchema);
+export const adminOrderActionResponseSchema = apiSuccessSchema(adminOrderActionResultSchema);
 
 export type CreatePhotobookCheckoutInput = z.infer<typeof createPhotobookCheckoutInputSchema>;
 export type RequestPhotobookQuoteInput = z.infer<typeof requestPhotobookQuoteInputSchema>;
 export type ShippingAddress = z.infer<typeof shippingAddressSchema>;
 export type PhotobookOrderAmount = z.infer<typeof photobookOrderAmountSchema>;
+export type PhotobookOrderHistoryEntry = z.infer<typeof photobookOrderHistoryEntrySchema>;
 export type PhotobookOrderDetail = z.infer<typeof photobookOrderDetailSchema>;
+export type CustomerOrderListQuery = z.infer<typeof customerOrderListQuerySchema>;
+export type CustomerOrderListItem = z.infer<typeof customerOrderListItemSchema>;
+export type CustomerOrderListPage = z.infer<typeof customerOrderListPageSchema>;
 export type SellerSnapshot = z.infer<typeof sellerSnapshotSchema>;
+export type ManualFulfilmentStatus = z.infer<typeof fulfilmentStatusSchema>;
+export type ManualFulfilmentAction = z.infer<typeof manualFulfilmentActionSchema>;
+export type AdminOrderQueueQuery = z.infer<typeof adminOrderQueueQuerySchema>;
+export type AdminOrderQueueItem = z.infer<typeof adminOrderQueueItemSchema>;
+export type AdminOrderQueuePage = z.infer<typeof adminOrderQueuePageSchema>;
+export type AdminOrderDetail = z.infer<typeof adminOrderDetailSchema>;
+export type AdminOrderActionInput = z.infer<typeof adminOrderActionInputSchema>;
+export type AdminOrderActionResult = z.infer<typeof adminOrderActionResultSchema>;

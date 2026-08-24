@@ -55,7 +55,6 @@ describe("community safety forms", () => {
       status: "received",
       submittedAt: "2026-08-04T12:00:00.000Z",
       replayed: false,
-      emailConfirmationQueued: true,
     });
     vi.mocked(useSubmitModerationReportMutation).mockReturnValue(
       mutationResult(mutateAsync) as unknown as ReturnType<typeof useSubmitModerationReportMutation>,
@@ -78,7 +77,7 @@ describe("community safety forms", () => {
     fireEvent.change(screen.getByLabelText(/Toelichting/), {
       target: { value: "Deze reactie bevat privégegevens." },
     });
-    fireEvent.change(screen.getByLabelText(/E-mail voor bevestiging/), {
+    fireEvent.change(screen.getByLabelText(/E-mail voor eventueel contact/), {
       target: { value: "melder@example.test" },
     });
     fireEvent.click(screen.getByRole("checkbox", { name: "Ik heb het contentbeleid gelezen" }));
@@ -106,7 +105,6 @@ describe("community safety forms", () => {
       status: "received",
       submittedAt: "2026-08-04T12:00:00.000Z",
       replayed: false,
-      emailConfirmationQueued: true,
     });
     vi.mocked(useSubmitSupportMutation).mockReturnValue(
       mutationResult(mutateAsync) as unknown as ReturnType<typeof useSubmitSupportMutation>,

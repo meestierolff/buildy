@@ -10,6 +10,7 @@ import type { ProjectActor, ProjectActorResolver } from "../projects/actor.js";
 import { ProjectError } from "../projects/errors.js";
 import { MediaError } from "./errors.js";
 import type { MediaBinaryResponse } from "./service.js";
+import type { MediaWorkerResult } from "./worker.js";
 
 const MAX_JSON_BODY_BYTES = 64 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -18,6 +19,12 @@ export type MediaRouteParameters = Readonly<Record<string, string>>;
 
 export interface MediaHttpService {
   createUploadIntent(actorId: string, input: unknown): Promise<MediaUploadIntent>;
+  handleClientUpload(
+    actorId: string | null,
+    assetId: string | null,
+    request: Request,
+    body: unknown,
+  ): Promise<unknown>;
   completeUpload(actorId: string, assetId: string, input: unknown): Promise<MediaUploadCompletion>;
   readDisplay(
     viewer: ProjectActor,
@@ -37,8 +44,13 @@ export interface MediaHttpService {
   ): Promise<MediaBinaryResponse>;
 }
 
+export interface MediaRequestProcessor {
+  processAsset(assetId: string): Promise<MediaWorkerResult>;
+}
+
 export type MediaHttpDependencies = {
   actors: ProjectActorResolver;
+  processor: MediaRequestProcessor;
   service: MediaHttpService;
 };
 
@@ -83,8 +95,22 @@ function authenticatedActorId(actor: ProjectActor): string {
   return actorId;
 }
 
+function optionalActorId(actor: ProjectActor): string | null {
+  return actor.kind === "anonymous" ? null : authenticatedActorId(actor);
+}
+
+function clientUploadResponse(result: unknown): Response {
+  return Response.json(result, {
+    headers: {
+      "cache-control": "private, no-store",
+      "content-security-policy": "default-src 'none'",
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
+
 function binaryResponse(result: MediaBinaryResponse): Response {
-  return new Response(result.body ? Buffer.from(result.body) : null, {
+  return new Response(result.body, {
     status: result.status,
     headers: result.headers,
   });
@@ -117,14 +143,41 @@ export function createMediaHttpHandler(dependencies: MediaHttpDependencies) {
         return jsonSuccess(result, requestId, { status: result.replayed ? 200 : 201 });
       }
 
+      if (
+        request.method === "POST" &&
+        (pathname.endsWith("/blob-upload") || pathname === "/api/media/blob-upload-completed")
+      ) {
+        const callback = pathname === "/api/media/blob-upload-completed";
+        return clientUploadResponse(await dependencies.service.handleClientUpload(
+          callback ? null : optionalActorId(actor),
+          callback ? null : validatedAssetId(parameters.assetId),
+          request,
+          await jsonInput(request),
+        ));
+      }
+
       const assetId = validatedAssetId(parameters.assetId);
       if (request.method === "POST" && pathname.endsWith("/complete")) {
+        const completion = await dependencies.service.completeUpload(
+          authenticatedActorId(actor),
+          assetId,
+          await jsonInput(request),
+        );
+        if (completion.asset.status === "uploaded" || completion.asset.status === "processing") {
+          const processing = await dependencies.processor.processAsset(assetId);
+          if (processing.status !== "idle" && processing.assetId !== assetId) {
+            throw new Error("De gerichte mediaworker verwerkte een ander asset.");
+          }
+          if (processing.status === "processed") {
+            completion.asset = { ...completion.asset, status: "ready" };
+          } else if (processing.status === "failed") {
+            completion.asset = { ...completion.asset, status: "failed" };
+          } else if (processing.status === "retry_scheduled") {
+            completion.asset = { ...completion.asset, status: "uploaded" };
+          }
+        }
         return jsonSuccess(
-          await dependencies.service.completeUpload(
-            authenticatedActorId(actor),
-            assetId,
-            await jsonInput(request),
-          ),
+          completion,
           requestId,
         );
       }

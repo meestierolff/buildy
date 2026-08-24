@@ -5,7 +5,7 @@ type PlanningHandler = (request: Request, requestId: string) => Promise<Response
 
 let defaultHandler: PlanningHandler | undefined;
 
-/** Compose only after a trusted Better Auth session-to-app-user mapper exists. */
+/** Compose only after a trusted session-to-app-user mapper exists. */
 export function configureDefaultPlanningRuntime(dependencies: PlanningHttpDependencies): void {
   if (defaultHandler) throw new Error("De standaard planningruntime is al geconfigureerd.");
   defaultHandler = createPlanningHttpHandler(dependencies);

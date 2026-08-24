@@ -12,7 +12,7 @@ interface DatabaseResources {
 }
 
 let cachedResources: DatabaseResources | undefined;
-type WorkerKind = "account" | "email" | "fulfilment" | "media" | "payment" | "photobook";
+type WorkerKind = "account" | "media" | "payment" | "photobook";
 
 const cachedWorkerResources = new Map<WorkerKind, DatabaseResources>();
 

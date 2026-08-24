@@ -43,8 +43,8 @@ const URGENCY_LABELS: Record<ModerationUrgency, string> = {
 
 const TARGET_LABELS: Record<ModerationTargetType, string> = {
   profile: "Profiel",
-  project: "Project",
-  update: "Update",
+  project: "Verbouwing",
+  update: "Bouwmoment",
   media: "Media",
   comment: "Reactie",
 };

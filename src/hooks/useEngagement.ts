@@ -7,6 +7,7 @@ import {
 import type {
   CreateCommentInput,
   DeleteCommentInput,
+  NotificationMarkAllReadResult,
   NotificationMutationResult,
   ReactionTargetInput,
 } from "../../shared/contracts/engagement";
@@ -17,6 +18,7 @@ import {
   getEngagementComments,
   getEngagementNotifications,
   getEngagementReactions,
+  markAllEngagementNotificationsRead,
   removeEngagementReaction,
   updateEngagementNotification,
 } from "@/lib/engagementApi";
@@ -119,6 +121,16 @@ export function useNotificationMutation() {
   >({
     mutationFn: ({ action, notificationId }) =>
       updateEngagementNotification(notificationId, action),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: engagementQueryKeys.notifications });
+    },
+  });
+}
+
+export function useMarkAllNotificationsReadMutation() {
+  const queryClient = useQueryClient();
+  return useMutation<NotificationMarkAllReadResult, Error, void>({
+    mutationFn: markAllEngagementNotificationsRead,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: engagementQueryKeys.notifications });
     },

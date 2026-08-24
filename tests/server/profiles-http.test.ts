@@ -173,7 +173,6 @@ describe("profile routes in the central API router", () => {
     vi.stubEnv("APP_ENV", "test");
     vi.stubEnv("APP_ORIGIN", "https://app.buildy.test");
     vi.stubEnv("DATABASE_URL", "");
-    vi.stubEnv("BETTER_AUTH_SECRET", "");
     resetRuntimeConfigForTests();
     resetDefaultProfileRuntimeForTests();
   });

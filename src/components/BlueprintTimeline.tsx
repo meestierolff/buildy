@@ -8,6 +8,7 @@ import type { ProjectUpdate } from "../../shared/contracts/projects";
 import BeforeAfterSlider from "@/components/BeforeAfterSlider";
 import CommentsSheet from "@/components/CommentsSheet";
 import MediaLightbox, { type LightboxItem } from "@/components/MediaLightbox";
+import { ResilientImage, ResilientVideo } from "@/components/ResilientMedia";
 import ReportDialog from "@/components/moderation/ReportDialog";
 import { phaseColor } from "@/components/PhaseSelect";
 import ReactionBar from "@/components/ReactionBar";
@@ -17,11 +18,13 @@ interface Props {
   updates: readonly ProjectUpdate[];
   projectId: string;
   canEdit?: boolean;
+  canEngage?: boolean;
+  canCopyUpdateLink?: boolean;
   onEdit?: (update: ProjectUpdate) => void;
 }
 
 function updateLabel(update: ProjectUpdate): string {
-  return update.title?.trim() || update.room?.trim() || "Projectupdate";
+  return update.title?.trim() || update.room?.trim() || "Bouwmoment";
 }
 
 function isPdf(contentType: string | null): boolean {
@@ -32,7 +35,14 @@ function isVideo(contentType: string | null): boolean {
   return contentType?.startsWith("video/") ?? false;
 }
 
-const BlueprintTimeline = ({ updates, projectId, canEdit = false, onEdit }: Props) => {
+const BlueprintTimeline = ({
+  updates,
+  projectId,
+  canEdit = false,
+  canEngage = true,
+  canCopyUpdateLink = true,
+  onEdit,
+}: Props) => {
   const [openComments, setOpenComments] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<{ items: LightboxItem[]; index: number } | null>(null);
   const [activeUpdateId, setActiveUpdateId] = useState<string | null>(null);
@@ -268,9 +278,9 @@ const BlueprintTimeline = ({ updates, projectId, canEdit = false, onEdit }: Prop
                   >
                     {previewMedia ? (
                       isVideo(previewMedia.contentType) ? (
-                        <video src={previewMedia.proxyPath} className="h-full w-full object-cover" />
+                        <ResilientVideo src={previewMedia.proxyPath} className="h-full w-full object-cover" />
                       ) : (
-                        <img
+                        <ResilientImage
                           src={previewMedia.proxyPath}
                           alt={`Foto bij ${label}`}
                           className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.02]"
@@ -302,17 +312,19 @@ const BlueprintTimeline = ({ updates, projectId, canEdit = false, onEdit }: Prop
                 {isExpanded && (
                   <>
                     <div className="flex items-center justify-end border-b border-border/60 px-3 py-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-11 w-11"
-                        onClick={() => void copyUpdateLink(update.id)}
-                        title="Kopieer link naar deze update"
-                        aria-label="Link naar update kopiëren"
-                      >
-                        <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
-                      </Button>
+                      {canCopyUpdateLink ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-11 w-11"
+                          onClick={() => void copyUpdateLink(update.id)}
+                          title="Kopieer link naar dit Bouwmoment"
+                          aria-label="Link naar Bouwmoment kopiëren"
+                        >
+                          <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        </Button>
+                      ) : null}
                       {canEdit && onEdit && (
                         <Button
                           type="button"
@@ -330,7 +342,7 @@ const BlueprintTimeline = ({ updates, projectId, canEdit = false, onEdit }: Prop
                           compact
                           targetType="update"
                           targetId={update.id}
-                          targetLabel={`Update ${label}`}
+                          targetLabel={`Bouwmoment ${label}`}
                         />
                       ) : null}
                     </div>
@@ -368,9 +380,9 @@ const BlueprintTimeline = ({ updates, projectId, canEdit = false, onEdit }: Prop
                               style={{ aspectRatio: "1" }}
                             >
                               {isVideo(media.contentType) ? (
-                                <video src={media.proxyPath} className="absolute inset-0 h-full w-full object-cover" />
+                                <ResilientVideo src={media.proxyPath} className="absolute inset-0 h-full w-full object-cover" />
                               ) : (
-                                <img
+                                <ResilientImage
                                   src={media.proxyPath}
                                   alt=""
                                   className="absolute inset-0 h-full w-full object-cover transition-opacity hover:opacity-90"
@@ -414,7 +426,11 @@ const BlueprintTimeline = ({ updates, projectId, canEdit = false, onEdit }: Prop
 
                       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/50 pt-2">
                         <div className="[&_button]:min-h-11 [&_button]:min-w-11">
-                          <ReactionBar projectId={projectId} updateId={update.id} />
+                          <ReactionBar
+                            projectId={projectId}
+                            updateId={update.id}
+                            canReact={canEngage}
+                          />
                         </div>
                         <button
                           type="button"
@@ -431,6 +447,7 @@ const BlueprintTimeline = ({ updates, projectId, canEdit = false, onEdit }: Prop
                     <CommentsSheet
                       projectId={projectId}
                       updateId={update.id}
+                      canComment={canEngage}
                       open={openComments === update.id}
                       onOpenChange={(open) => setOpenComments(open ? update.id : null)}
                     />

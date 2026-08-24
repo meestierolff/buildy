@@ -79,6 +79,7 @@ export type RequestPhotobookProofCommand = {
   bucket: string;
   idempotencyKey: string;
   requestHash: string;
+  requestHashVersion: 2;
 };
 
 export type ApprovePhotobookProofCommand = {
@@ -86,15 +87,16 @@ export type ApprovePhotobookProofCommand = {
   revisionId: string;
   documentSha256: string;
   pdfSha256: string;
-  viewReceipt: string;
+  proofViewed: true;
   idempotencyKey: string;
   requestHash: string;
+  requestHashVersion: 2;
   approvedAt: Date;
 };
 
 export type PhotobookProofMutation = {
   revisionId: string;
-  status: "rendering" | "approved";
+  status: "rendering" | "ready" | "approved" | "locked" | "invalidated" | "failed";
   replayed: boolean;
 };
 
@@ -129,6 +131,16 @@ export type PhotobookRenderJob = {
   attemptCount: number;
 };
 
+export type PhotobookProofProcessingResult =
+  | { status: "idle" }
+  | { status: "rendered"; revisionId: string; pageCount: number; pdfSha256: string }
+  | { status: "retry_scheduled"; revisionId: string }
+  | { status: "failed"; revisionId: string };
+
+export interface PhotobookProofProcessor {
+  processRevision(revisionId: string): Promise<PhotobookProofProcessingResult>;
+}
+
 export type FinalizePhotobookProofCommand = {
   job: PhotobookRenderJob;
   pdfSha256: string;
@@ -154,6 +166,11 @@ export interface PhotobookRepository {
   approveProof(command: ApprovePhotobookProofCommand): Promise<PhotobookProofMutation>;
   resolveProofObject(actorId: string, revisionId: string): Promise<PhotobookProofObject | null>;
   claimRenderJob(workerId: string, leaseSeconds: number): Promise<PhotobookRenderJob | null>;
+  claimRenderJobForRevision(
+    revisionId: string,
+    workerId: string,
+    leaseSeconds: number,
+  ): Promise<PhotobookRenderJob | null>;
   finalizeProof(command: FinalizePhotobookProofCommand): Promise<void>;
   failProof(
     job: PhotobookRenderJob,
@@ -164,7 +181,7 @@ export interface PhotobookRepository {
 
 export type PhotobookWorkerRepository = Pick<
   PhotobookRepository,
-  "claimRenderJob" | "finalizeProof" | "failProof"
+  "claimRenderJob" | "claimRenderJobForRevision" | "finalizeProof" | "failProof"
 >;
 
 export type PhotobookIdFactory = () => string;

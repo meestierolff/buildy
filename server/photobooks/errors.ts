@@ -9,7 +9,6 @@ export type PhotobookErrorReason =
   | "PROOF_BLOCKED"
   | "PROOF_NOT_READY"
   | "PROOF_NOT_APPROVABLE"
-  | "PROOF_NOT_VIEWED"
   | "INVALID_STATE"
   | "WORKER_LEASE_LOST";
 
@@ -57,11 +56,6 @@ const ERROR_DETAILS: Record<PhotobookErrorReason, {
     status: 409,
     apiCode: "CONFLICT",
     message: "Deze printproof kan niet meer worden goedgekeurd.",
-  },
-  PROOF_NOT_VIEWED: {
-    status: 409,
-    apiCode: "CONFLICT",
-    message: "Bekijk eerst de actuele printproof volledig voordat je deze goedkeurt.",
   },
   INVALID_STATE: {
     status: 409,

@@ -33,7 +33,6 @@ function reportReceipt(command: CreateModerationReportCommand): ModerationReport
     status: "received",
     submittedAt: NOW.toISOString(),
     replayed: false,
-    emailConfirmationQueued: Boolean(command.contactCiphertext),
   };
 }
 
@@ -45,7 +44,6 @@ function feedbackReceipt(command: CreateFeedbackSubmissionCommand): FeedbackSubm
     status: "received",
     submittedAt: NOW.toISOString(),
     replayed: false,
-    emailConfirmationQueued: command.kind !== "feedback",
   };
 }
 
@@ -123,7 +121,7 @@ describe("ModerationService reports", () => {
       requestContext,
     );
 
-    expect(result).toMatchObject({ status: "received", emailConfirmationQueued: true });
+    expect(result).toMatchObject({ status: "received" });
     expect(captured).toBeDefined();
     const command = captured!;
     expect(command.idempotencyKey).toMatch(/^community-command:v1:moderation[.]report:[0-9a-f]{64}$/);
@@ -180,7 +178,6 @@ describe("ModerationService reports", () => {
       status: "received",
       submittedAt: NOW.toISOString(),
       replayed: true,
-      emailConfirmationQueued: false,
     };
     const repo = repository({ findModerationReportReplay: vi.fn().mockResolvedValue(replay) });
     const consume = vi.fn().mockResolvedValue({ allowed: true, retryAfter: null });
@@ -266,7 +263,7 @@ describe("ModerationService feedback and support", () => {
       requestContext,
     );
 
-    expect(result).toMatchObject({ kind: "third_party_request", emailConfirmationQueued: true });
+    expect(result).toMatchObject({ kind: "third_party_request" });
     expect(captured).toBeDefined();
     const command = captured!;
     expect(context.keyring.decrypt(

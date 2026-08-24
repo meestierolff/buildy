@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { PrivacyBlindIndex } from "../security/dataProtection.js";
 
 function stableValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableValue);
@@ -12,11 +13,12 @@ function stableValue(value: unknown): unknown {
   return value;
 }
 
-export function mediaRequestHash(value: unknown): string {
-  return createHash("sha256")
-    .update("buildy-media-upload-intent:v1\0")
+export function mediaRequestHash(value: unknown, blindIndex: PrivacyBlindIndex): string {
+  const canonicalDigest = createHash("sha256")
+    .update("buildy-media-upload-intent-payload:v2\0")
     .update(JSON.stringify(stableValue(value)))
     .digest("hex");
+  return blindIndex.create("media-upload-intent-request-v2", canonicalDigest);
 }
 
 export function scopedMediaUploadKey(

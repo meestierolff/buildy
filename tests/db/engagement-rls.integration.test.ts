@@ -98,7 +98,7 @@ describeWithDatabase("engagement PostgreSQL RLS boundary", () => {
           id, owner_id, slug, title, visibility, lifecycle_status, published_at
         ) VALUES
           ($1, $2, 'rls-openbaar', 'Openbaar project', 'public', 'active', now()),
-          ($3, $2, 'rls-prive', 'Privéproject', 'private', 'active', NULL)
+          ($3, $2, 'rls-volgers', 'Project voor volgers', 'followers', 'active', now())
       `, [ids.publicProject, ids.owner, ids.privateProject]);
       await client.query(`
         INSERT INTO updates (
@@ -118,15 +118,12 @@ describeWithDatabase("engagement PostgreSQL RLS boundary", () => {
         ids.privateDraft,
       ]);
       await client.query(`
-        INSERT INTO project_access_requests (
-          project_id, project_owner_id, requester_id, status, decided_by_id, decided_at
-        ) VALUES ($1, $2, $3, 'accepted', $2, now())
-      `, [ids.privateProject, ids.owner, ids.viewer]);
-      await client.query(`
         INSERT INTO user_relationships (
           source_user_id, target_user_id, kind, status, decided_at
-        ) VALUES ($1, $2, 'block', 'active', now())
-      `, [ids.viewer, ids.blockedActor]);
+        ) VALUES
+          ($1, $2, 'follow', 'active', now()),
+          ($1, $3, 'block', 'active', now())
+      `, [ids.viewer, ids.owner, ids.blockedActor]);
       await client.query(`
         INSERT INTO comments (id, project_id, update_id, author_id, body, status) VALUES
           ($1, $2, $3, $4, 'Bronreactie', 'published'),
@@ -204,6 +201,13 @@ describeWithDatabase("engagement PostgreSQL RLS boundary", () => {
         "SELECT id FROM notifications ORDER BY id",
       );
       expect(notifications.rows.map((row) => row.id)).toEqual([ids.visibleNotification]);
+      const unread = await client.query<{ unread_count: number }>(`
+        SELECT count(*)::integer AS unread_count
+        FROM notifications
+        WHERE recipient_id = $1
+          AND status = 'unread'
+      `, [ids.viewer]);
+      expect(unread.rows[0]?.unread_count).toBe(1);
 
       await expectDatabaseError(
         client,
@@ -224,6 +228,12 @@ describeWithDatabase("engagement PostgreSQL RLS boundary", () => {
         { id: ids.deleteComment, status: "deleted" },
       ]);
 
+      expect((await client.query(`
+        UPDATE notifications
+        SET status = 'read', read_at = now(), updated_at = now()
+        WHERE recipient_id = $1
+          AND status = 'unread'
+      `, [ids.viewer])).rowCount).toBe(1);
       expect((await client.query(`
         UPDATE notifications
         SET status = 'read', read_at = now()
@@ -276,16 +286,41 @@ describeWithDatabase("engagement PostgreSQL RLS boundary", () => {
       const generatedId = generated.rows[0]?.notification_id;
       expect(generatedId).toMatch(/^[0-9a-f-]{36}$/);
 
+      const generatedReplay = await client.query<{ notification_id: string }>(`
+        SELECT app_enqueue_engagement_notification(
+          $1, 'comment.created', $2
+        ) AS notification_id
+      `, [ids.owner, ids.sourceComment]);
+      expect(generatedReplay.rows[0]?.notification_id).toBe(generatedId);
+
+      const socialGenerated = await client.query<{ notification_id: string }>(`
+        SELECT app_enqueue_social_notification(
+          $1, 'profile.followed', NULL
+        ) AS notification_id
+      `, [ids.owner]);
+      const socialGeneratedId = socialGenerated.rows[0]?.notification_id;
+      expect(socialGeneratedId).toMatch(/^[0-9a-f-]{36}$/);
+      const socialReplay = await client.query<{ notification_id: string }>(`
+        SELECT app_enqueue_social_notification(
+          $1, 'profile.followed', NULL
+        ) AS notification_id
+      `, [ids.owner]);
+      expect(socialReplay.rows[0]?.notification_id).toBe(socialGeneratedId);
+
       await client.query("RESET ROLE");
       const stored = await client.query<{
         actor_id: string;
+        dedupe_key: string;
         outbox_payload: Record<string, unknown>;
         recipient_id: string;
         notification_payload: Record<string, unknown>;
+        source_aggregate_id: string;
       }>(`
         SELECT
           notification.actor_id,
           notification.recipient_id,
+          notification.dedupe_key,
+          notification.source_aggregate_id,
           notification.payload AS notification_payload,
           event.payload AS outbox_payload
         FROM notifications notification
@@ -296,10 +331,51 @@ describeWithDatabase("engagement PostgreSQL RLS boundary", () => {
       `, [generatedId]);
       expect(stored.rows[0]).toEqual({
         actor_id: ids.viewer,
+        dedupe_key: expect.stringMatching(
+          /^engagement-notification:v2:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        ),
         recipient_id: ids.owner,
         notification_payload: { schemaVersion: 1 },
         outbox_payload: { schemaVersion: 1 },
+        source_aggregate_id: ids.sourceComment,
       });
+
+      const socialStored = await client.query<{
+        dedupe_key: string;
+        relationship_id: string;
+        relationship_version: number;
+        source_aggregate_id: string;
+        source_version: number;
+      }>(`
+        SELECT
+          notification.dedupe_key,
+          notification.source_aggregate_id,
+          notification.source_version,
+          relationship.id AS relationship_id,
+          relationship.version AS relationship_version
+        FROM notifications notification
+        JOIN user_relationships relationship
+          ON relationship.source_user_id = notification.actor_id
+         AND relationship.target_user_id = notification.recipient_id
+         AND relationship.kind = 'follow'
+        WHERE notification.id = $1
+      `, [socialGeneratedId]);
+      const socialRow = socialStored.rows[0];
+      expect(socialRow).toMatchObject({
+        dedupe_key: expect.stringMatching(
+          /^social-notification:v2:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        ),
+      });
+      expect(socialRow?.source_aggregate_id).toBe(socialRow?.relationship_id);
+      expect(socialRow?.source_version).toBe(socialRow?.relationship_version);
+
+      await setActor(client, webRole!, ids.owner);
+      await expectDatabaseError(
+        client,
+        "UPDATE notifications SET source_aggregate_id = $1 WHERE id = $2",
+        [ids.deleteComment, generatedId],
+        "42501",
+      );
 
       await client.query("ROLLBACK");
     } catch (error) {

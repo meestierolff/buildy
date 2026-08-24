@@ -4,7 +4,6 @@ import {
   type PhotobookHttpDependencies,
   type PhotobookRouteParameters,
 } from "./http.js";
-import type { PhotobookProofWorker } from "./worker.js";
 
 type PhotobookHandler = (
   request: Request,
@@ -13,17 +12,12 @@ type PhotobookHandler = (
 ) => Promise<Response>;
 
 let defaultHandler: PhotobookHandler | undefined;
-let defaultWorker: { cronSecret: string; worker: PhotobookProofWorker } | undefined;
 
 export function configureDefaultPhotobookRuntime(
-  dependencies: PhotobookHttpDependencies & { cronSecret: string; worker: PhotobookProofWorker },
+  dependencies: PhotobookHttpDependencies,
 ): void {
-  if (defaultHandler || defaultWorker) throw new Error("De standaard Bouwboekruntime is al geconfigureerd.");
-  if (Buffer.byteLength(dependencies.cronSecret, "utf8") < 32) {
-    throw new Error("De Bouwboekworker-cronsecret is ongeldig.");
-  }
+  if (defaultHandler) throw new Error("De standaard Bouwboekruntime is al geconfigureerd.");
   defaultHandler = createPhotobookHttpHandler(dependencies);
-  defaultWorker = { cronSecret: dependencies.cronSecret, worker: dependencies.worker };
 }
 
 export function handleDefaultPhotobookRequest(
@@ -42,12 +36,6 @@ export function handleDefaultPhotobookRequest(
   return defaultHandler(request, requestId, parameters);
 }
 
-export function resolveDefaultPhotobookWorker(): { cronSecret: string; worker: PhotobookProofWorker } {
-  if (!defaultWorker) throw new Error("De Bouwboekworker is niet geconfigureerd.");
-  return defaultWorker;
-}
-
 export function resetDefaultPhotobookRuntimeForTests(): void {
   defaultHandler = undefined;
-  defaultWorker = undefined;
 }

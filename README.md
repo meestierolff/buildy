@@ -1,39 +1,67 @@
 # Buildy
 
-Buildy is het dagboek voor je verbouwing.
+Buildy is een privacy-first, foto-first verbouwingsdagboek voor mensen die hun
+eigen huis verbouwen en voor de vrienden en familie die willen meeleven.
 
-De publieke feedbackbèta heeft precies één belofte:
+> Maak van je verbouwing een verhaal om te bewaren.
 
-`Maak van je verbouwing een verhaal om te bewaren.`
+De kernflow is:
 
-De kleinste production-MVP richt zich alleen op deze flow:
+`foto → Bouwmoment → Verhaal → reacties → Bouwboek → Stripe → handmatige fulfilment`
 
-landing → lokale fotodemo → Google sign-in → eerste bouwmoment opslaan →
-Verhaal → Bouwboek-preview → deel-link → feedback → accountverwijdering.
+## Product
 
-## Canonieke stack
+Buildy brengt verspreide voortgangsfoto's, keuzes en updates samen in één rustig
+chronologisch Verhaal. Een eigenaar legt Bouwmomenten vast, volgers beleven de
+verbouwing mee en hetzelfde bronmateriaal groeit automatisch uit tot een
+persoonlijk Bouwboek.
 
-- React + Vite + TypeScript
-- Vercel Functions
-- Neon PostgreSQL + Drizzle
-- Google OpenID Connect
-- server-owned sessies op Neon
-- private Vercel Blob voor media
-- `PRODUCT_PROFILE=feedback_beta`
-- `CHECKOUT_MODE=off`
+De zichtbare producttaal is:
 
-Niet onderdeel van de actieve MVP-runtime:
+- Verbouwing, niet Project;
+- Bouwmoment, niet Update of Step;
+- Verhaal, niet Timeline;
+- Bouwboek, niet Photobook;
+- Connecties, niet Friends;
+- Volgend, niet Favorites.
 
-- Better Auth
-- wachtwoorden, magic links of e-maillogin
-- Brevo
-- Cloudflare R2 of AWS S3
-- Stripe-checkout
-- Peecho-API
-- frequente cronjobs of kritieke workers
-- publieke discovery/social-feed als primaire productrichting
+Historische `trip`, `step`, project-follow- en project-access-namen mogen in
+append-only databasegeschiedenis blijven. Ze zijn geen tweede zichtbaar
+productmodel.
+
+## Actieve architectuur
+
+- React 18, TypeScript en Vite;
+- typed same-origin Vercel Functions API;
+- Neon PostgreSQL, Drizzle, RLS en append-only migrations;
+- Google OpenID Connect als enige loginmethode;
+- opaque server-owned sessies waarvan alleen hashes in Neon staan;
+- private Vercel Blob met autorisatie op iedere customer-mediaread;
+- request-driven verwerking van exact het completed media-asset en exact de
+  aangevraagde Bouwboekrevisie onder geïsoleerde workerrollen; begrensde
+  owner-polling, geen media-/photobookcron;
+- TanStack Query v5 en een Wouter-compatibiliteitsrouter;
+- Stripe-hosted Checkout met een geverifieerde, idempotente webhook;
+- een server-owned, goedgekeurde prijs- en sellerconfiguratie;
+- een beheerdergestuurde orderqueue voor handmatige printfulfilment.
+
+Niet actief in de MVP-runtime:
+
+- Better Auth, wachtwoorden, magic links, reset- of e-maillogin;
+- Brevo of een andere e-mailprovider;
+- Cloudflare R2, AWS S3 of publieke customer-mediaobjecten;
+- de Peecho-API, Peecho-webhooks, een Peecho-worker of Peecho-secrets;
+- client-owned featureflags, prijzen, sellergegevens of autorisatie.
+
+Stripe is dus niet verwijderd. Preview en geautomatiseerde betaaltests horen
+`CHECKOUT_MODE=test` te gebruiken. `CHECKOUT_MODE=live` blijft gesloten totdat
+alle commerciële, juridische, prijs-, provider-, hosting- en releasegates groen
+zijn. Peecho is alleen een mogelijke handmatige operatorstap buiten de runtime.
 
 ## Lokale ontwikkeling
+
+Vereisten: Bun `1.3.3`, Node.js 22 of nieuwer en voor databasevalidatie een
+lokale tijdelijke PostgreSQL 16-database.
 
 ```sh
 cp .env.example .env
@@ -41,10 +69,11 @@ bun install --frozen-lockfile
 bun run dev
 ```
 
-De webapp draait lokaal op `http://127.0.0.1:8080` en de API op poort 8787.
-Gebruik alleen lokale of tijdelijke testdatabases voor integratie- en RLS-tests.
+De webapp draait standaard op `http://127.0.0.1:8080` en de lokale API op
+`http://127.0.0.1:8787`. Gebruik nooit een productie-URL voor lokale migrations
+of integratietests.
 
-## Belangrijkste commands
+## Verificatie
 
 ```sh
 bun run typecheck
@@ -56,48 +85,69 @@ bun run test:e2e
 bun run check:launch -- --static
 ```
 
-Database-validatie:
+Voor een tijdelijke database:
 
 ```sh
-bunx tsx db/migrate.ts --check
-bunx tsx db/verify.ts
+DATABASE_MIGRATION_URL='<directe tijdelijke migrator-url>' bun run db:migrate:check
+DATABASE_MIGRATION_URL='<directe tijdelijke migrator-url>' bun run db:migrate
+DATABASE_MIGRATION_URL='<directe tijdelijke migrator-url>' bun run db:verify
 ```
+
+Configureer en verifieer daarna de afzonderlijke web-, account-, media-,
+payment- en photobookrollen met de SQL-scripts in `scripts/setup/`. E-mail- en
+Peecho-fulfilmentrollen zijn geen actieve runtimevereisten. Alleen account
+lifecycle heeft een dagelijkse Vercel-cron/`CRON_SECRET`; media en Bouwboek
+vereisen hun worker-DB-URL plus private Blob en verwerken gerichte requests.
 
 ## Release-status
 
-De codebasis heeft nu een groene lokale kern voor:
+De geïntegreerde werkbranch is `sol/buildy-production-mvp`. Er is op deze
+documentatiesnapshot geen nieuwe Preview of productiedeployment als geverifieerd
+verklaard en productie is niet gemuteerd.
 
-- typecheck
-- lint
-- unit/servertests
-- productiebuild
-- bundelbudget
-- lokale public Playwright-suite
-- volledige lokale PostgreSQL migration/RLS-verificatie op een tijdelijke database
+Productie is expliciet **NO-GO** zolang onder meer het volgende openstaat:
 
-De feedbackbèta is nog geen productie-`GO`. Preview- en productie-release
-blijven geblokkeerd totdat echte operatorstappen, Google OIDC, Vercel Blob,
-Vercel environmentconfiguratie en deploymentbewijs zijn vastgelegd. Zie
-[docs/MVP_RELEASE_REPORT.md](docs/MVP_RELEASE_REPORT.md) en
-[docs/PRODUCTION_RELEASE.md](docs/PRODUCTION_RELEASE.md).
+- de verplichte interactieve Playwright MCP-browseraudit; de laatste runtime-
+  aanvraag werd door de huidige Codex-gebruikslimiet geblokkeerd;
+- een volledig geconfigureerde en geverifieerde Previewomgeving;
+- echte Google OIDC- en private Blob-rondreizen op Preview;
+- Stripe test Checkout en webhookbewijs op Preview;
+- een hosted CI-run en echte provider-/multi-role Previewjourneys;
+- goedgekeurde juridische identiteit, voorwaarden, supportcontact,
+  prijs-/sellergegevens en printproviderproces;
+- commercieel toegestane hosting; het gekoppelde Vercel-account is in de
+  huidige controle een Hobby-plan.
 
-## Richting
+Een groene build of het bestaande publieke adres is geen productie-`GO`. Zie
+[het release-rapport](docs/MVP_RELEASE_REPORT.md),
+[de productieprocedure](docs/PRODUCTION_RELEASE.md) en
+[de vereiste operatoracties](docs/OPERATOR_ACTIONS_REQUIRED.md).
 
-De repository bevat nog historische code en documentatie uit een bredere
-sociale/checkout-richting. De canonical productrichting staat in:
+## Canonieke documentatie
 
-- [docs/MVP_SCOPE.md](docs/MVP_SCOPE.md)
-- [docs/CORE_FLOW_AND_SCOPE.md](docs/CORE_FLOW_AND_SCOPE.md)
-- [docs/PRODUCT_PROFILE.md](docs/PRODUCT_PROFILE.md)
-- [docs/ARCHITECTURE_DECISION.md](docs/ARCHITECTURE_DECISION.md)
-- [docs/LAUNCH_READINESS.md](docs/LAUNCH_READINESS.md)
-- [docs/PROVIDER_SETUP.md](docs/PROVIDER_SETUP.md)
+- [MVP-scope](docs/MVP_SCOPE.md)
+- [Productmodel](docs/PRODUCT_MODEL.md)
+- [Sociaal state machine](docs/SOCIAL_STATE_MACHINE.md)
+- [Stripe-setup](docs/STRIPE_SETUP.md)
+- [Handmatige Peecho-fulfilment](docs/MANUAL_PEECHO_FULFILMENT.md)
+- [QA-functiematrix](docs/QA_FUNCTION_MATRIX.md)
+- [Playwright MCP-audit](docs/PLAYWRIGHT_MCP_AUDIT.md)
+- [Productierelease](docs/PRODUCTION_RELEASE.md)
+
+Andere documenten kunnen historische ontwerp-, migratie- of
+provideronderzoeken beschrijven. Bij tegenspraak zijn de documenten hierboven,
+de actuele typed contracts en de runtimeconfiguratie leidend.
 
 ## Veiligheidsgrenzen
 
-- De browser praat alleen met de Buildy API.
-- Autorisatie is altijd server-side.
-- Media blijft privé en wordt nooit via permanente publieke URL gedeeld.
-- Checkout blijft uit in de feedbackbèta.
-- Geen kernactie mag afhankelijk zijn van frequente cronjobs of langlopende workers.
+- Browsercode gebruikt alleen de typed Buildy-API.
+- Identiteit en autorisatie worden server-side afgeleid.
+- Media en print-PDF's blijven privé; Buildy geeft geen permanente publieke of
+  signed customer-media-URL uit.
+- Een profiel-follow of tijdelijke owner-issued `unlisted` share capability
+  geeft nooit schrijfrechten.
+- Een Stripe-successredirect is nooit betaalbewijs; alleen de geverifieerde
+  webhook kan betaalstatus veranderen.
+- Prijs, btw, verzending, seller en actuele voorwaarden komen van de server.
+- PII hoort niet in logs, eventmetadata, idempotencykeys of URL's.
 - SQL-migrations zijn append-only.

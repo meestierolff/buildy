@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, X, ExternalLink, Flag } from "lucide-react";
 import { format } from "date-fns";
 import { nl } from "date-fns/locale";
 import ReportDialog from "@/components/moderation/ReportDialog";
+import { ResilientImage, ResilientVideo } from "@/components/ResilientMedia";
 import { PRODUCT_ROUTES } from "@/lib/productNavigation";
 
 export interface LightboxItem {
@@ -112,12 +113,12 @@ const MediaLightbox = ({ items, index, onClose, onIndex, projectId }: Props) => 
         <div
           className="w-full h-full flex items-center justify-center transition-transform"
           style={{ transform: `translateX(${dragX}px)` }}
-          onClick={closeFromBackdrop}
+          onClick={(event) => event.stopPropagation()}
         >
           {item.type === "video" ? (
-            <video src={item.url} controls className="max-h-full max-w-full" onClick={(e) => e.stopPropagation()} />
+            <ResilientVideo src={item.url} controls className="max-h-full max-w-full" onClick={(e) => e.stopPropagation()} />
           ) : (
-            <img
+            <ResilientImage
               src={item.url}
               alt={item.updateTitle}
               draggable={false}

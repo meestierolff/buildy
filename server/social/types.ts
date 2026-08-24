@@ -1,10 +1,10 @@
 import type {
-  ProjectAccessList,
-  ProjectSocialState,
+  SocialConnection,
+  SocialConnectionView,
   SocialMutationResult,
   SocialProfile,
 } from "../../shared/contracts/social.js";
-import type { ProfileCursor } from "./cursor.js";
+import type { ConnectionCursor, ProfileCursor } from "./cursor.js";
 
 export type SocialActorId = string;
 export type SocialViewerId = SocialActorId | null;
@@ -19,12 +19,24 @@ export type ProfileSearch = {
   normalizedQuery: string;
 };
 
+export type ConnectionListRecord = SocialConnection & {
+  cursorTimestamp: string;
+  totalCount: number;
+};
+
+export type ConnectionListSearch = {
+  cursor: ConnectionCursor | undefined;
+  limit: number;
+  view: SocialConnectionView;
+};
+
 export interface SocialRepository {
   findProfile(viewerId: SocialViewerId, profileId: string): Promise<SocialProfile | null>;
   searchProfiles(viewerId: SocialViewerId, search: ProfileSearch): Promise<ProfileListRecord[]>;
-
-  getProjectState(actorId: SocialActorId, projectId: string): Promise<ProjectSocialState | null>;
-  listProjectAccess(actorId: SocialActorId, projectId: string): Promise<ProjectAccessList | null>;
+  listConnections(
+    actorId: SocialActorId,
+    search: ConnectionListSearch,
+  ): Promise<ConnectionListRecord[]>;
 
   followProfile(actorId: SocialActorId, profileId: string, now: Date): Promise<SocialMutationResult>;
   removeProfileFollow(actorId: SocialActorId, profileId: string, now: Date): Promise<SocialMutationResult>;
@@ -35,13 +47,6 @@ export interface SocialRepository {
   blockProfile(actorId: SocialActorId, profileId: string, now: Date): Promise<SocialMutationResult>;
   unblockProfile(actorId: SocialActorId, profileId: string, now: Date): Promise<SocialMutationResult>;
 
-  followProject(actorId: SocialActorId, projectId: string, now: Date): Promise<SocialMutationResult>;
-  unfollowProject(actorId: SocialActorId, projectId: string, now: Date): Promise<SocialMutationResult>;
-  requestProjectAccess(actorId: SocialActorId, projectId: string, now: Date): Promise<SocialMutationResult>;
-  cancelProjectAccess(actorId: SocialActorId, projectId: string, now: Date): Promise<SocialMutationResult>;
-  acceptProjectAccess(actorId: SocialActorId, projectId: string, requesterId: string, now: Date): Promise<SocialMutationResult>;
-  rejectProjectAccess(actorId: SocialActorId, projectId: string, requesterId: string, now: Date): Promise<SocialMutationResult>;
-  revokeProjectAccess(actorId: SocialActorId, projectId: string, requesterId: string, now: Date): Promise<SocialMutationResult>;
 }
 
 export type SocialClock = () => Date;

@@ -5,7 +5,6 @@ import type {
 } from "../../shared/contracts/account.js";
 
 export interface AccountAuthSession extends AccountSession {
-  token: string;
   authUserId: string;
 }
 
@@ -13,7 +12,6 @@ export interface AccountAuthGateway {
   currentSession(request: Request): Promise<AccountAuthSession | null>;
   listSessions(request: Request): Promise<AccountAuthSession[]>;
   revokeSession(request: Request, sessionId: string): Promise<{ revoked: boolean; wasCurrent: boolean }>;
-  verifyPassword(request: Request, password: string): Promise<boolean>;
 }
 
 export interface ExportMutation {

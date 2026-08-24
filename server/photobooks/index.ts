@@ -7,5 +7,4 @@ export * from "./runtime.js";
 export * from "./service.js";
 export * from "./typography.js";
 export * from "./types.js";
-export * from "./viewReceipt.js";
 export * from "./worker.js";

@@ -3,10 +3,12 @@ import { ProjectError } from "./errors.js";
 export type AuthenticatedProjectActor = {
   kind: "authenticated";
   appUserId: string;
+  shareLinkId?: string;
 };
 
 export type AnonymousProjectActor = {
   kind: "anonymous";
+  shareLinkId?: string;
 };
 
 export type ProjectActor = AuthenticatedProjectActor | AnonymousProjectActor;
@@ -27,23 +29,29 @@ export interface ProjectActorResolver {
   resolve(request: Request): Promise<ProjectActor>;
 }
 
+export interface ProjectShareContextResolver {
+  resolveShareLinkId(request: Request): string | null;
+}
+
 export class StrictMappedProjectActorResolver implements ProjectActorResolver {
   constructor(
     private readonly subjects: AuthenticatedSubjectResolver,
     private readonly appUsers: ActiveAppUserLookup,
+    private readonly shares?: ProjectShareContextResolver,
   ) {}
 
   async resolve(request: Request): Promise<ProjectActor> {
+    const shareLinkId = this.shares?.resolveShareLinkId(request) ?? undefined;
     const authUserId = await this.subjects.resolveAuthUserId(request);
-    if (!authUserId) return ANONYMOUS_PROJECT_ACTOR;
+    if (!authUserId) return shareLinkId ? { kind: "anonymous", shareLinkId } : ANONYMOUS_PROJECT_ACTOR;
 
     const appUserId = await this.appUsers.findActiveAppUserId(authUserId);
     if (!appUserId) throw new ProjectError("ACTOR_MAPPING_UNAVAILABLE");
-    return { kind: "authenticated", appUserId };
+    return { kind: "authenticated", appUserId, ...(shareLinkId ? { shareLinkId } : {}) };
   }
 }
 
-/** Safe default until Better Auth session resolution is composed at runtime. */
+/** Safe default until server-owned session resolution is composed at runtime. */
 export class FailClosedProjectActorResolver implements ProjectActorResolver {
   async resolve(): Promise<AnonymousProjectActor> {
     return ANONYMOUS_PROJECT_ACTOR;

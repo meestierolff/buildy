@@ -5,7 +5,11 @@ import {
   type AccountExport,
   type AccountSession,
 } from "../../shared/contracts/account.js";
-import type { ObjectStorage } from "../storage/objectStorage.js";
+import {
+  guardObjectStream,
+  type ObjectByteRange,
+  type ObjectStorage,
+} from "../storage/objectStorage.js";
 import { AccountError } from "./errors.js";
 import type {
   AccountAuthGateway,
@@ -26,10 +30,6 @@ function scopedKey(operation: string, actorId: string, clientKey: string): strin
     .digest("hex");
 }
 
-function sha256(bytes: Uint8Array): string {
-  return createHash("sha256").update(bytes).digest("hex");
-}
-
 function publicSession(session: Awaited<ReturnType<AccountAuthGateway["listSessions"]>>[number]): AccountSession {
   return {
     id: session.id,
@@ -43,9 +43,33 @@ function publicSession(session: Awaited<ReturnType<AccountAuthGateway["listSessi
 }
 
 export interface AccountExportDownload {
-  bytes: Uint8Array;
+  body: ReadableStream<Uint8Array> | null;
+  status: 200 | 206;
+  contentLength: number;
+  range?: ObjectByteRange;
   filename: string;
   object: ExportDownloadObject;
+}
+
+function exportRange(value: string | null, sizeBytes: number): ObjectByteRange | null {
+  if (!value) return null;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(value.trim());
+  if (!match || (!match[1] && !match[2])) throw new AccountError("INVALID_RANGE");
+  if (!match[1]) {
+    const suffix = Number(match[2]);
+    if (!Number.isSafeInteger(suffix) || suffix < 1) throw new AccountError("INVALID_RANGE");
+    return { start: Math.max(0, sizeBytes - suffix), end: sizeBytes - 1 };
+  }
+  const start = Number(match[1]);
+  const requestedEnd = match[2] ? Number(match[2]) : sizeBytes - 1;
+  if (
+    !Number.isSafeInteger(start)
+    || !Number.isSafeInteger(requestedEnd)
+    || start < 0
+    || requestedEnd < start
+    || start >= sizeBytes
+  ) throw new AccountError("INVALID_RANGE");
+  return { start, end: Math.min(requestedEnd, sizeBytes - 1) };
 }
 
 export class AccountService {
@@ -109,7 +133,12 @@ export class AccountService {
     return { export: item, replayed: mutation.replayed };
   }
 
-  async downloadExport(actorId: string, jobId: string): Promise<AccountExportDownload> {
+  async downloadExport(
+    actorId: string,
+    jobId: string,
+    rangeHeader: string | null = null,
+    headOnly = false,
+  ): Promise<AccountExportDownload> {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(jobId)) {
       throw new AccountError("EXPORT_NOT_FOUND");
     }
@@ -118,12 +147,48 @@ export class AccountService {
     if (object.sizeBytes < 1 || object.sizeBytes > MAX_EXPORT_BYTES) {
       throw new AccountError("INVALID_STATE");
     }
-    const bytes = await this.storage.readObject(object.objectKey, object.sizeBytes);
-    if (bytes.byteLength !== object.sizeBytes || sha256(bytes) !== object.sha256) {
+    if (!/^[0-9a-f]{64}$/.test(object.sha256) || !/^[0-9a-f]{64}$/.test(object.manifestSha256)) {
       throw new AccountError("INVALID_STATE");
     }
+    const range = headOnly ? null : exportRange(rangeHeader, object.sizeBytes);
+    const contentLength = range ? range.end - range.start + 1 : object.sizeBytes;
+    let body: ReadableStream<Uint8Array> | null = null;
+    if (headOnly) {
+      const metadata = await this.storage.headObject(object.objectKey);
+      if (
+        !metadata
+        || metadata.key !== object.objectKey
+        || metadata.sizeBytes !== object.sizeBytes
+        || metadata.contentType !== "application/zip"
+      ) throw new AccountError("INVALID_STATE");
+    } else {
+      const stored = await this.storage.streamObject({
+        key: object.objectKey,
+        maximumBytes: object.sizeBytes,
+        range: range ?? undefined,
+      });
+      if (
+        stored.metadata.key !== object.objectKey
+        || stored.metadata.sizeBytes !== object.sizeBytes
+        || stored.metadata.contentType !== "application/zip"
+        || stored.contentLength !== contentLength
+        || (range && (
+          !stored.range
+          || stored.range.start !== range.start
+          || stored.range.end !== range.end
+        ))
+      ) throw new AccountError("INVALID_STATE");
+      body = guardObjectStream({
+        stream: stored.stream,
+        expectedBytes: contentLength,
+        expectedSha256Hex: range ? undefined : object.sha256,
+      });
+    }
     return {
-      bytes,
+      body,
+      status: range ? 206 : 200,
+      contentLength,
+      range: range ?? undefined,
       filename: `buildy-data-export-${jobId.slice(0, 8)}.zip`,
       object,
     };
@@ -146,15 +211,7 @@ export class AccountService {
     const sessionCreatedAt = new Date(session.createdAt).getTime();
     const recentlyAuthenticated = Number.isFinite(sessionCreatedAt)
       && this.clock().getTime() - sessionCreatedAt <= RECENT_SESSION_MILLISECONDS;
-    let passwordVerified = false;
-    if (input.currentPassword) {
-      try {
-        passwordVerified = await this.auth.verifyPassword(request, input.currentPassword);
-      } catch (error) {
-        throw new AccountError("AUTH_UNAVAILABLE", { cause: error });
-      }
-    }
-    if (!recentlyAuthenticated && !passwordVerified) throw new AccountError("REAUTH_REQUIRED");
+    if (!recentlyAuthenticated) throw new AccountError("REAUTH_REQUIRED");
 
     return this.repository.requestDeletion(
       actorId,

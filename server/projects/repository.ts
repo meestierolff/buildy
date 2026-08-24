@@ -14,6 +14,7 @@ import type {
   ProjectOverview,
   ProjectPhase,
   ProjectUpdate,
+  ProjectVisibility,
 } from "../../shared/contracts/projects.js";
 import type { BuildyDatabase } from "../db/client.js";
 import type { ProjectActor } from "./actor.js";
@@ -39,16 +40,21 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 
 type ProjectAccessFacts = {
   ownerId: string;
-  visibility: "private" | "public";
+  visibility: ProjectVisibility;
   lifecycleStatus: "active" | "deletion_pending" | "deleted";
-  acceptedAccess: boolean;
+  profileFollower: boolean;
   blocked: boolean;
 };
 
 export function canActorViewProject(viewer: ProjectActor, facts: ProjectAccessFacts): boolean {
   if (facts.lifecycleStatus !== "active" || facts.blocked) return false;
-  if (viewer.kind === "anonymous") return facts.visibility === "public";
-  return facts.ownerId === viewer.appUserId || facts.visibility === "public" || facts.acceptedAccess;
+  if (viewer.kind === "anonymous") {
+    return facts.visibility === "public" || (facts.visibility === "unlisted" && Boolean(viewer.shareLinkId));
+  }
+  if (facts.ownerId === viewer.appUserId) return true;
+  return facts.visibility === "public"
+    || (facts.visibility === "unlisted" && Boolean(viewer.shareLinkId))
+    || (facts.visibility === "followers" && facts.profileFollower);
 }
 
 type RawProjectCard = {
@@ -57,7 +63,7 @@ type RawProjectCard = {
   title: string;
   description: string | null;
   project_type: string | null;
-  visibility: "private" | "public";
+  visibility: ProjectVisibility;
   progress_percentage: number;
   version: number;
   updated_at: Date | string;
@@ -78,7 +84,7 @@ type RawProjectOverview = RawProjectCard & {
   expected_end_date: string | null;
   content_revision: number | string;
   follower_count: number | string;
-  viewer_access: "owner" | "granted" | "public";
+  viewer_access: "owner" | "follower" | "link" | "public";
   phases: ProjectPhase[];
 };
 
@@ -197,10 +203,15 @@ function actorIdFor(viewer: ProjectActor): string | null {
   return viewer.kind === "authenticated" ? viewer.appUserId : null;
 }
 
-async function setActor(transaction: DatabaseTransaction, actorId: string | null): Promise<void> {
-  await transaction.execute(
-    sql`select set_config('app.actor_id', ${actorId ?? ""}, true)`,
-  );
+async function setActor(
+  transaction: DatabaseTransaction,
+  actorId: string | null,
+  shareLinkId?: string,
+): Promise<void> {
+  await transaction.execute(sql`select
+    set_config('app.actor_id', ${actorId ?? ""}, true),
+    set_config('app.share_link_id', ${shareLinkId ?? ""}, true)
+  `);
 }
 
 async function lockIdempotencyKey(
@@ -229,7 +240,11 @@ async function replayedMutation(
     .limit(1);
   const existing = records[0];
   if (!existing) return null;
-  if (existing.eventType !== eventType || existing.payload.requestHash !== requestHash) {
+  if (
+    existing.eventType !== eventType
+    || existing.payload.requestHashVersion !== 2
+    || existing.payload.requestHash !== requestHash
+  ) {
     throw new ProjectError("IDEMPOTENCY_CONFLICT");
   }
   const resultId = existing.payload.resultId;
@@ -257,6 +272,7 @@ async function appendMutationEvent(
     idempotencyKey: input.idempotencyKey,
     payload: {
       schemaVersion: 1,
+      requestHashVersion: 2,
       requestHash: input.requestHash,
       ...(input.resultId ? { resultId: input.resultId } : {}),
     },
@@ -426,7 +442,7 @@ export class PostgresProjectRepository implements ProjectRepository {
           ...(input.progressPercentage !== undefined
             ? { progressPercentage: input.progressPercentage }
             : {}),
-          ...(input.visibility === "public"
+          ...(input.visibility !== undefined && input.visibility !== "private"
             ? { publishedAt: sql`coalesce(${projects.publishedAt}, ${command.now})` }
             : {}),
           contentRevision: sql`${projects.contentRevision} + 1`,
@@ -679,35 +695,14 @@ export class PostgresProjectRepository implements ProjectRepository {
           limit 1
         ) cover on true
         where project.lifecycle_status = 'active'
-          and (
-            exists (
-              select 1
-              from project_followers project_follow
-              where project_follow.project_id = project.id
-                and project_follow.follower_id = ${actorId}::uuid
-                and project_follow.status = 'active'
-            )
-            or (
-              project.visibility = 'public'
-              and exists (
-                select 1
-                from user_relationships builder_follow
-                where builder_follow.source_user_id = ${actorId}::uuid
-                  and builder_follow.target_user_id = project.owner_id
-                  and builder_follow.kind = 'follow'
-                  and builder_follow.status = 'active'
-              )
-            )
-          )
-          and (
-            project.visibility = 'public'
-            or exists (
-              select 1
-              from project_access_requests accepted_access
-              where accepted_access.project_id = project.id
-                and accepted_access.requester_id = ${actorId}::uuid
-                and accepted_access.status = 'accepted'
-            )
+          and project.visibility in ('followers', 'public')
+          and exists (
+            select 1
+            from user_relationships builder_follow
+            where builder_follow.source_user_id = ${actorId}::uuid
+              and builder_follow.target_user_id = project.owner_id
+              and builder_follow.kind = 'follow'
+              and builder_follow.status = 'active'
           )
           and not exists (
             select 1
@@ -779,35 +774,14 @@ export class PostgresProjectRepository implements ProjectRepository {
         ) item_media on true
         where item.status = 'published'
           and project.lifecycle_status = 'active'
-          and (
-            exists (
-              select 1
-              from project_followers project_follow
-              where project_follow.project_id = project.id
-                and project_follow.follower_id = ${actorId}::uuid
-                and project_follow.status = 'active'
-            )
-            or (
-              project.visibility = 'public'
-              and exists (
-                select 1
-                from user_relationships builder_follow
-                where builder_follow.source_user_id = ${actorId}::uuid
-                  and builder_follow.target_user_id = project.owner_id
-                  and builder_follow.kind = 'follow'
-                  and builder_follow.status = 'active'
-              )
-            )
-          )
-          and (
-            project.visibility = 'public'
-            or exists (
-              select 1
-              from project_access_requests accepted_access
-              where accepted_access.project_id = project.id
-                and accepted_access.requester_id = ${actorId}::uuid
-                and accepted_access.status = 'accepted'
-            )
+          and project.visibility in ('followers', 'public')
+          and exists (
+            select 1
+            from user_relationships builder_follow
+            where builder_follow.source_user_id = ${actorId}::uuid
+              and builder_follow.target_user_id = project.owner_id
+              and builder_follow.kind = 'follow'
+              and builder_follow.status = 'active'
           )
           and not exists (
             select 1
@@ -832,7 +806,7 @@ export class PostgresProjectRepository implements ProjectRepository {
   async getOverview(viewer: ProjectActor, projectId: string): Promise<ProjectOverview | null> {
     return this.database.transaction(async (transaction) => {
       const actorId = actorIdFor(viewer);
-      await setActor(transaction, actorId);
+      await setActor(transaction, actorId, viewer.shareLinkId);
       const result = await transaction.execute(sql<RawProjectOverview>`
         select
           project.id,
@@ -856,7 +830,8 @@ export class PostgresProjectRepository implements ProjectRepository {
           coalesce(follower_stats.follower_count, 0) as follower_count,
           case
             when project.owner_id = ${actorId}::uuid then 'owner'
-            when accepted_access.id is not null then 'granted'
+            when project.visibility = 'followers' then 'follower'
+            when project.visibility = 'unlisted' then 'link'
             else 'public'
           end as viewer_access,
           coalesce(phases.items, '[]'::jsonb) as phases,
@@ -866,10 +841,6 @@ export class PostgresProjectRepository implements ProjectRepository {
           cover.height_pixels as cover_height
         from projects project
         left join profiles owner_profile on owner_profile.user_id = project.owner_id
-        left join project_access_requests accepted_access
-          on accepted_access.project_id = project.id
-         and accepted_access.requester_id = ${actorId}::uuid
-         and accepted_access.status = 'accepted'
         left join lateral (
           select
             count(*) filter (
@@ -884,8 +855,10 @@ export class PostgresProjectRepository implements ProjectRepository {
         ) update_stats on true
         left join lateral (
           select count(*)::integer as follower_count
-          from project_followers follower
-          where follower.project_id = project.id and follower.status = 'active'
+          from user_relationships follower
+          where follower.target_user_id = project.owner_id
+            and follower.kind = 'follow'
+            and follower.status = 'active'
         ) follower_stats on true
         left join lateral (
           select jsonb_agg(jsonb_build_object(
@@ -910,20 +883,7 @@ export class PostgresProjectRepository implements ProjectRepository {
         ) cover on true
         where project.id = ${projectId}::uuid
           and project.lifecycle_status = 'active'
-          and not exists (
-            select 1 from user_relationships relationship
-            where relationship.kind = 'block'
-              and relationship.status = 'active'
-              and (
-                (relationship.source_user_id = ${actorId}::uuid and relationship.target_user_id = project.owner_id)
-                or (relationship.target_user_id = ${actorId}::uuid and relationship.source_user_id = project.owner_id)
-              )
-          )
-          and (
-            project.owner_id = ${actorId}::uuid
-            or project.visibility = 'public'
-            or accepted_access.id is not null
-          )
+          and app_can_view_project(project.id)
         limit 1
       `);
       const row = typedRows<RawProjectOverview>(result.rows)[0];
@@ -939,17 +899,13 @@ export class PostgresProjectRepository implements ProjectRepository {
   ): Promise<ProjectUpdate[] | null> {
     return this.database.transaction(async (transaction) => {
       const actorId = actorIdFor(viewer);
-      await setActor(transaction, actorId);
+      await setActor(transaction, actorId, viewer.shareLinkId);
       const cursorFilter = cursor
         ? sql`and (item.update_date, item.sort_order, item.id) < (${cursor.updateDate}::date, ${cursor.sortOrder}, ${cursor.id}::uuid)`
         : sql``;
       const result = await transaction.execute(sql<{ project_id: string; items: RawProjectUpdate[] }>`
         select project.id as project_id, coalesce(timeline.items, '[]'::jsonb) as items
         from projects project
-        left join project_access_requests accepted_access
-          on accepted_access.project_id = project.id
-         and accepted_access.requester_id = ${actorId}::uuid
-         and accepted_access.status = 'accepted'
         left join lateral (
           select jsonb_agg(entry.document order by entry.update_date desc, entry.sort_order desc, entry.id desc) as items
           from (
@@ -1010,20 +966,7 @@ export class PostgresProjectRepository implements ProjectRepository {
         ) timeline on true
         where project.id = ${projectId}::uuid
           and project.lifecycle_status = 'active'
-          and not exists (
-            select 1 from user_relationships relationship
-            where relationship.kind = 'block'
-              and relationship.status = 'active'
-              and (
-                (relationship.source_user_id = ${actorId}::uuid and relationship.target_user_id = project.owner_id)
-                or (relationship.target_user_id = ${actorId}::uuid and relationship.source_user_id = project.owner_id)
-              )
-          )
-          and (
-            project.owner_id = ${actorId}::uuid
-            or project.visibility = 'public'
-            or accepted_access.id is not null
-          )
+          and app_can_view_project(project.id)
         limit 1
       `);
       const row = typedRows<{ project_id: string; items: RawProjectUpdate[] }>(result.rows)[0];
@@ -1038,7 +981,7 @@ export class PostgresProjectRepository implements ProjectRepository {
   ): Promise<ProjectUpdate | null> {
     return this.database.transaction(async (transaction) => {
       const actorId = actorIdFor(viewer);
-      await setActor(transaction, actorId);
+      await setActor(transaction, actorId, viewer.shareLinkId);
       const result = await transaction.execute(sql<{ document: RawProjectUpdate }>`
         select jsonb_build_object(
           'id', item.id,
@@ -1064,10 +1007,6 @@ export class PostgresProjectRepository implements ProjectRepository {
         ) as document
         from projects project
         join updates item on item.project_id = project.id
-        left join project_access_requests accepted_access
-          on accepted_access.project_id = project.id
-         and accepted_access.requester_id = ${actorId}::uuid
-         and accepted_access.status = 'accepted'
         left join project_phases phase
           on phase.id = item.phase_id and phase.project_id = item.project_id
         left join lateral (
@@ -1093,20 +1032,7 @@ export class PostgresProjectRepository implements ProjectRepository {
           and project.lifecycle_status = 'active'
           and item.status in ('draft', 'published')
           and (project.owner_id = ${actorId}::uuid or item.status = 'published')
-          and not exists (
-            select 1 from user_relationships relationship
-            where relationship.kind = 'block'
-              and relationship.status = 'active'
-              and (
-                (relationship.source_user_id = ${actorId}::uuid and relationship.target_user_id = project.owner_id)
-                or (relationship.target_user_id = ${actorId}::uuid and relationship.source_user_id = project.owner_id)
-              )
-          )
-          and (
-            project.owner_id = ${actorId}::uuid
-            or project.visibility = 'public'
-            or accepted_access.id is not null
-          )
+          and app_can_view_project(project.id)
         limit 1
       `);
       const row = typedRows<{ document: RawProjectUpdate }>(result.rows)[0];

@@ -16,15 +16,12 @@ const legacyAuthUserSchema = z.object({
 export type LegacyAuthUser = z.infer<typeof legacyAuthUserSchema>;
 
 export type AuthMigrationStrategy =
-  | "password_set_required"
-  | "magic_link_first_login"
-  | "oauth_relink_required"
+  | "google_oidc_reauthentication_required"
   | "manual_review";
 
 export interface AuthMigrationRecord {
   appUserId: string;
   createdAt: string;
-  email: string;
   emailFingerprint: string;
   emailVerifiedAtSource: boolean;
   identityMappingId: string;
@@ -40,12 +37,10 @@ export interface AuthMigrationPlan {
   schemaVersion: 1;
   records: AuthMigrationRecord[];
   summary: {
-    disabled: number;
+    googleOidcReauthentication: number;
     manualReview: number;
-    oauthRelink: number;
-    passwordSet: number;
-    passwordless: number;
     total: number;
+    unsupportedProvider: number;
   };
   passwordHashesExported: false;
   sessionImportAllowed: false;
@@ -56,20 +51,15 @@ function normalizeProviders(providers: readonly string[]): string[] {
 }
 
 function migrationStrategies(user: LegacyAuthUser, providers: readonly string[]): AuthMigrationStrategy[] {
-  if (user.disabled) return ["manual_review"];
-  const strategies = new Set<AuthMigrationStrategy>();
-  if (user.hasPassword) strategies.add("password_set_required");
-  else strategies.add("magic_link_first_login");
-  if (providers.some((provider) => !["email", "password"].includes(provider))) {
-    strategies.add("oauth_relink_required");
-  }
-  return [...strategies].sort();
+  if (user.disabled || !providers.includes("google")) return ["manual_review"];
+  return ["google_oidc_reauthentication_required"];
 }
 
 /**
- * Produces the only supported auth bridge. Password hashes and source sessions
- * are deliberately absent: accounts are linked after a verified magic-link or
- * password-set flow, while the stable application UUID keeps ownership intact.
+ * Produces a Google-only auth migration plan. Password hashes, raw e-mail
+ * addresses and source sessions are deliberately absent. Ownership stays on
+ * the stable application UUID; identity linking requires a fresh, verified
+ * Google provider-subject and never relies on an e-mail match.
  */
 export function buildAuthMigrationPlan(
   input: readonly LegacyAuthUser[],
@@ -86,9 +76,8 @@ export function buildAuthMigrationPlan(
     const previousSubject = seenEmails.get(normalizedEmail);
     const providers = normalizeProviders(user.providers);
     const strategies = migrationStrategies(user, providers);
-    if (previousSubject && previousSubject !== user.id && !strategies.includes("manual_review")) {
-      strategies.push("manual_review");
-      strategies.sort();
+    if (previousSubject && previousSubject !== user.id) {
+      strategies.splice(0, strategies.length, "manual_review");
     }
     seenEmails.set(normalizedEmail, user.id);
 
@@ -96,7 +85,6 @@ export function buildAuthMigrationPlan(
     return {
       appUserId,
       createdAt: user.createdAt,
-      email: normalizedEmail,
       emailFingerprint: keyedFingerprint(fingerprintKey, "auth.email", normalizedEmail),
       emailVerifiedAtSource: user.emailVerified,
       identityMappingId: stableUuid(BUILDY_MIGRATION_NAMESPACE, `identity:legacy_auth:${user.id}`),
@@ -114,12 +102,11 @@ export function buildAuthMigrationPlan(
     schemaVersion: 1,
     records,
     summary: {
-      disabled: records.filter((record) => record.status === "manual_review").length,
+      googleOidcReauthentication: records.filter((record) =>
+        record.strategies.includes("google_oidc_reauthentication_required")).length,
       manualReview: records.filter((record) => record.strategies.includes("manual_review")).length,
-      oauthRelink: records.filter((record) => record.strategies.includes("oauth_relink_required")).length,
-      passwordSet: records.filter((record) => record.strategies.includes("password_set_required")).length,
-      passwordless: records.filter((record) => record.strategies.includes("magic_link_first_login")).length,
       total: records.length,
+      unsupportedProvider: records.filter((record) => !record.sourceProviders.includes("google")).length,
     },
     passwordHashesExported: false,
     sessionImportAllowed: false,
@@ -127,7 +114,7 @@ export function buildAuthMigrationPlan(
 }
 
 export interface SessionInvalidationEvidence {
-  betterAuthCookieNamespaceVerified: boolean;
+  sessionCookieBoundaryVerified: boolean;
   legacyAnonKeyRotatedAt?: string;
   legacyRefreshTokensRevokedAt?: string;
   legacyTokenRejectedAt?: string;
@@ -142,7 +129,7 @@ export interface SessionInvalidationGate {
 
 export function evaluateOldSessionInvalidation(evidence: SessionInvalidationEvidence): SessionInvalidationGate {
   const missing: string[] = [];
-  if (!evidence.betterAuthCookieNamespaceVerified) missing.push("better_auth_cookie_namespace");
+  if (!evidence.sessionCookieBoundaryVerified) missing.push("session_cookie_boundary");
   if (!evidence.legacyRefreshTokensRevokedAt) missing.push("legacy_refresh_tokens_revoked");
   if (!evidence.sourceJwtSecretRotatedAt) missing.push("source_jwt_secret_rotated");
   if (!evidence.legacyAnonKeyRotatedAt) missing.push("legacy_anon_key_rotated");
@@ -153,7 +140,7 @@ export function evaluateOldSessionInvalidation(evidence: SessionInvalidationEvid
     requiredActions: [
       "Zet de legacy app in onderhoudsmodus en beëindig alle refresh-sessies via afgeschermde beheercredentials.",
       "Roteer de legacy JWT-secret en de als gecompromitteerd behandelde anon key via het providerdashboard.",
-      "Controleer dat de Better Auth-cookie een eigen naam, origin en signing secret gebruikt.",
+      "Controleer dat de nieuwe OIDC-sessiecookie een eigen naam, origin en signing secret gebruikt.",
       "Bewijs met een oude synthetische token dat zowel legacy als nieuwe runtime toegang weigeren.",
       "Bewaar alleen tijdstempels en artifactchecksums als bewijs; leg nooit tokens of secrets vast.",
     ],
