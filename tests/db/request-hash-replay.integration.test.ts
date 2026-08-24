@@ -47,7 +47,7 @@ describeWithDatabase("request-hash replay PostgreSQL boundary", () => {
           'profile', $1, 'profile.updated.v1', $2,
           jsonb_build_object(
             'schemaVersion', 1,
-            'requestHash', $3,
+            'requestHash', $3::text,
             'profileVersion', 1
           )
         )

@@ -161,7 +161,7 @@ describeWithDatabase("project deletion PostgreSQL saga", () => {
         projectId,
         ownerId,
         revisionId,
-        "6".repeat(64),
+        `project-delete-order:${orderId}`,
         JSON.stringify({ schemaVersion: 1, documentSha256: documentHash }),
         JSON.stringify({ legalName: "Buildy Test" }),
         `pi_${orderId.replaceAll("-", "")}`,

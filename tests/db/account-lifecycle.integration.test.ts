@@ -341,18 +341,18 @@ describeWithDatabase("account lifecycle PostgreSQL boundaries", () => {
           aggregate_type, aggregate_id, event_type, idempotency_key, payload
         ) VALUES
           ('project', $1, 'project.created.v1', $5,
-            jsonb_build_object('schemaVersion', 1, 'requestHashVersion', 2, 'requestHash', $9)),
+            jsonb_build_object('schemaVersion', 1, 'requestHashVersion', 2, 'requestHash', $9::text)),
           ('profile', $2, 'profile.updated.v1', $6,
             jsonb_build_object(
               'schemaVersion', 1,
               'requestHashVersion', 2,
-              'requestHash', $10,
+              'requestHash', $10::text,
               'profileVersion', 1
             )),
           ('media', $3, 'media.upload.intent.created.v1', $7,
-            jsonb_build_object('schemaVersion', 1, 'requestHashVersion', 2, 'requestHash', $11)),
+            jsonb_build_object('schemaVersion', 1, 'requestHashVersion', 2, 'requestHash', $11::text)),
           ('photobook_proof', $4, 'photobook.proof.requested.v1', $8,
-            jsonb_build_object('schemaVersion', 1, 'requestHashVersion', 2, 'requestHash', $12))
+            jsonb_build_object('schemaVersion', 1, 'requestHashVersion', 2, 'requestHash', $12::text))
       `, [
         projectId,
         ownerId,

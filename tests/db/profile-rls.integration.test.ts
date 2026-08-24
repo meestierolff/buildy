@@ -200,7 +200,9 @@ describeWithDatabase("profile PostgreSQL RLS boundary", () => {
       const onboardingEvents = await client.query<{ event_name: string; properties: unknown }>(`
         SELECT event_name, properties
         FROM product_events
-        WHERE event_key = 'product-event:onboarding-completed:' || $1::text
+        WHERE event_name = 'onboarding_completed'
+          AND source_kind = 'app_user'
+          AND source_id = $1::uuid
       `, [ids.viewer]);
       expect(onboardingEvents.rows).toEqual([{
         event_name: "onboarding_completed",

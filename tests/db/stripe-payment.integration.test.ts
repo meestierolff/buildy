@@ -286,6 +286,7 @@ describeWithDatabase("Stripe payment PostgreSQL boundary", () => {
         orderStatus: "awaiting_payment" | "checkout_open";
         persistSession: boolean;
       }) => {
+        const seededProjectId = randomUUID();
         const seededPdfAssetId = randomUUID();
         const seededDraftId = randomUUID();
         const seededRevisionId = randomUUID();
@@ -295,6 +296,11 @@ describeWithDatabase("Stripe payment PostgreSQL boundary", () => {
         const seededSessionId = `cs_test_${seededOrderId.replaceAll("-", "")}`;
         const seededDocumentHash = "b".repeat(64);
         const seededPdfHash = "c".repeat(64);
+        await admin.query(`
+          INSERT INTO projects (
+            id, owner_id, slug, title, visibility, lifecycle_status, content_revision, published_at
+          ) VALUES ($1, $2, $3, 'Stripeproject', 'private', 'active', 1, now())
+        `, [seededProjectId, ownerId, `stripe-seeded-${seededProjectId}`]);
         await admin.query(`
           INSERT INTO media_assets (
             id, owner_id, project_id, purpose, status, bucket, object_key,
@@ -307,7 +313,7 @@ describeWithDatabase("Stripe payment PostgreSQL boundary", () => {
         `, [
           seededPdfAssetId,
           ownerId,
-          projectId,
+          seededProjectId,
           `photobook-pdfs/${seededPdfAssetId.slice(0, 2)}/${seededPdfAssetId}`,
           `stripe-seeded-pdf-${seededPdfAssetId}`,
           seededPdfHash,
@@ -317,7 +323,7 @@ describeWithDatabase("Stripe payment PostgreSQL boundary", () => {
             id, project_id, owner_id, status, schema_version, project_revision,
             document, document_sha256, page_count, selected_format
           ) VALUES ($1, $2, $3, 'ready', 1, 1, $4::jsonb, $5, 24, 'a4-landscape-hardcover-v1')
-        `, [seededDraftId, projectId, ownerId, JSON.stringify(document), seededDocumentHash]);
+        `, [seededDraftId, seededProjectId, ownerId, JSON.stringify(document), seededDocumentHash]);
         await admin.query(`
           INSERT INTO photobook_revisions (
             id, draft_id, project_id, owner_id, revision_number, status,
@@ -333,7 +339,7 @@ describeWithDatabase("Stripe payment PostgreSQL boundary", () => {
         `, [
           seededRevisionId,
           seededDraftId,
-          projectId,
+          seededProjectId,
           ownerId,
           input.proofStatus,
           JSON.stringify(document),
@@ -364,7 +370,7 @@ describeWithDatabase("Stripe payment PostgreSQL boundary", () => {
           seededOrderId,
           seededOrderNumber,
           seededMerchantReference,
-          projectId,
+          seededProjectId,
           ownerId,
           seededRevisionId,
           `stripe-seeded-${seededOrderId}`,

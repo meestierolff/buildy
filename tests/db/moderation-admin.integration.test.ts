@@ -145,7 +145,7 @@ describeWithDatabase("moderation admin PostgreSQL boundary", () => {
       `, [randomUUID(), adminId]);
       await client.query(`
         INSERT INTO projects (id, owner_id, slug, title, visibility, published_at)
-        VALUES ($1, $2, $3, 'Afgeschermd testproject', 'unlisted', statement_timestamp())
+        VALUES ($1, $2, $3, 'Afgeschermd testproject', 'public', statement_timestamp())
       `, [projectId, ownerId, `moderation-${projectId.replaceAll("-", "")}`]);
       await client.query(`
         INSERT INTO project_private_details (

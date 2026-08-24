@@ -52,6 +52,8 @@ describeWithDatabase("manual fulfilment PostgreSQL boundary", () => {
       format: "a4-landscape-hardcover-v1",
       projectTitle: "Handmatige printtest",
       pageCount: 24,
+      documentSha256: documentSha,
+      pdfSha256: pdfSha,
       personalisedProduct: true,
     };
     const sellerSnapshot = {

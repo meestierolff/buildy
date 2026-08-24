@@ -111,6 +111,7 @@ describe("migration discovery", () => {
       "0047_project_share_links.sql",
       "0048_feedback_admin_review.sql",
       "0049_product_notifications.sql",
+      "0050_product_event_key_privacy.sql",
     ]);
     expect(migrations.every((migration) => /^[0-9a-f]{64}$/.test(migration.sha256))).toBe(true);
   });

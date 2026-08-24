@@ -285,6 +285,7 @@ describeWithDatabase("photobook PostgreSQL worker boundary", () => {
       await admin.query("DELETE FROM photobook_drafts WHERE id = $1", [draftId]);
       await admin.query("DELETE FROM media_assets WHERE id = ANY($1::uuid[])", [[sourceAssetId, pdfAssetId]]);
       await admin.query("DELETE FROM projects WHERE id = $1", [projectId]);
+      await admin.query("UPDATE app_users SET status = 'deleted', deleted_at = now() WHERE id = $1", [ownerId]);
       await admin.query("DELETE FROM app_users WHERE id = $1", [ownerId]);
       await worker.end();
       await admin.end();

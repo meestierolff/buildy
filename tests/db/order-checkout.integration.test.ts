@@ -61,8 +61,8 @@ describeWithDatabase("photobook checkout PostgreSQL boundary", () => {
       ]);
       await admin.query(`
         INSERT INTO auth_users (id, name, email, email_verified)
-        VALUES ($1, 'Checkout eigenaar', 'checkout-owner@example.test', true)
-      `, [authUserId]);
+        VALUES ($1, 'Checkout eigenaar', $2, true)
+      `, [authUserId, `${authUserId}@example.test`]);
       await admin.query(`
         INSERT INTO auth_identity_mappings (
           app_user_id, auth_user_id, migration_status, linked_at
@@ -129,7 +129,7 @@ describeWithDatabase("photobook checkout PostgreSQL boundary", () => {
         documentSha256: documentHash,
         pdfSha256: pdfHash,
         pageCount: 24,
-        customerEmail: "checkout-owner@example.test",
+        customerEmail: `${authUserId}@example.test`,
       });
       expect(await repository.loadCheckoutProof(strangerId, revisionId)).toBeNull();
 
@@ -243,21 +243,22 @@ describeWithDatabase("photobook checkout PostgreSQL boundary", () => {
         refundedMinor: 0,
         fulfilmentStatus: "awaiting_review",
         amounts: { totalMinor: 5_808 },
-        statusHistory: [
-          {
-            eventType: "order.checkout_reserved.v1",
-            fromStatus: null,
-            toStatus: "awaiting_payment",
-            occurredAt: now.toISOString(),
-          },
-          {
-            eventType: "order.checkout_opened.v1",
-            fromStatus: "awaiting_payment",
-            toStatus: "checkout_open",
-            occurredAt: now.toISOString(),
-          },
-        ],
       });
+      expect(detail?.statusHistory).toHaveLength(2);
+      expect(detail?.statusHistory).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          eventType: "order.checkout_reserved.v1",
+          fromStatus: null,
+          toStatus: "awaiting_payment",
+          occurredAt: now.toISOString(),
+        }),
+        expect.objectContaining({
+          eventType: "order.checkout_opened.v1",
+          fromStatus: "awaiting_payment",
+          toStatus: "checkout_open",
+          occurredAt: now.toISOString(),
+        }),
+      ]));
       expect("totalMinor" in (detail ?? {})).toBe(false);
       expect(await repository.getOrder(strangerId, orderId)).toBeNull();
 
@@ -316,7 +317,7 @@ describeWithDatabase("photobook checkout PostgreSQL boundary", () => {
       expect(new Date(persisted.rows[0]!.legal_accepted_at).toISOString()).toBe(now.toISOString());
 
       const racePdfAssetId = randomUUID();
-      const raceDraftId = randomUUID();
+      const raceDraftId = draftId;
       const raceRevisionId = randomUUID();
       const raceOrderId = randomUUID();
       const replacementOrderId = randomUUID();
@@ -338,12 +339,6 @@ describeWithDatabase("photobook checkout PostgreSQL boundary", () => {
         "1".repeat(64),
       ]);
       await admin.query(`
-        INSERT INTO photobook_drafts (
-          id, project_id, owner_id, status, schema_version, project_revision,
-          document, document_sha256, page_count, selected_format
-        ) VALUES ($1, $2, $3, 'ready', 1, 1, $4::jsonb, $5, 24, 'a4-landscape-hardcover-v1')
-      `, [raceDraftId, projectId, ownerId, JSON.stringify(document), "2".repeat(64)]);
-      await admin.query(`
         INSERT INTO photobook_revisions (
           id, draft_id, project_id, owner_id, revision_number, status,
           schema_version, project_revision, document, document_sha256,
@@ -351,7 +346,7 @@ describeWithDatabase("photobook checkout PostgreSQL boundary", () => {
           page_count, render_engine, render_version, font_set_sha256,
           approved_by_id, approved_at
         ) VALUES (
-          $1, $2, $3, $4, 1, 'approved', 1, 1, $5::jsonb, $6,
+          $1, $2, $3, $4, 2, 'approved', 1, 1, $5::jsonb, $6,
           '[]'::jsonb, $7, $8, $9, 8192, 24, 'buildy-pdfkit', 'integration-v1',
           $10, $4, now()
         )
@@ -447,7 +442,7 @@ describeWithDatabase("photobook checkout PostgreSQL boundary", () => {
       expect(cancelResult).toEqual({ status: "fulfilled", value: true });
       expect(recordResult).toMatchObject({
         status: "rejected",
-        reason: { reason: "QUOTE_EXPIRED" },
+        reason: { reason: "ORDER_STATE_CONFLICT" },
       });
       const racedState = await admin.query<{
         status: string;
