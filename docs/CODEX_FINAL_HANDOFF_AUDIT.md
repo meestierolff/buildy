@@ -1,8 +1,19 @@
 # Codex Final Handoff Audit
 
-Status: initial baseline captured from the preserved Sol handoff on the exact tree now committed to `codex/buildy-production-finish`.
+Status: preserved handoff plus verified local regression fixes on `codex/buildy-production-finish`.
 
 This document records what was actually present before any consolidation work beyond preservation, plus the first validated checks run on the preserved branch. It is intentionally conservative: anything not rerun on this exact SHA remains blocked.
+
+## Current candidate
+
+| Item | Value |
+| --- | --- |
+| Current branch | `codex/buildy-production-finish` |
+| Current HEAD | `a0f6bdc65f04e2a62c7c878f73199d313dd71d2c` |
+| Pull request | `https://github.com/meestierolff/buildy/pull/2` |
+| Latest Preview | `https://buildy-6ounglig3-clarios-projects-05f6a57e.vercel.app` |
+| Latest Preview deployment | `dpl_HnLepxw9TujtBYbHf9frN6iJa99x` |
+| Hosted CI | latest `Buildy CI` run no longer shows failing checks; 11 successful and 2 pending at last check |
 
 ## Preservation snapshot
 
@@ -316,7 +327,8 @@ Release-blocking work not yet re-proven on this exact SHA:
 Operational blockers already visible from repository truth:
 
 - Production remains fail-closed until external commercial/legal/provider approvals are real and recorded.
-- Existing repo docs still describe Browser MCP availability as blocked in the previous session; this session has not yet re-established that interactive browser proof.
+- The integrated browser is available again, but the fresh Preview currently redirects to Vercel deployment protection and then to a GitHub sign-in form. That blocks the required interactive Preview audit unless an already-authenticated browser session is available or the founder changes preview protection.
+- The local production-preview browser context was attempted, but without a fully working same-origin runtime in that context it remained on a loading state with `500`/`503` responses, so it does not count as an interactive-green local MCP pass.
 - `openid-client` registry-latest verification has not yet been rerun in this session, even though the current manifest and Bun lock are internally consistent.
 
 ## Immediate next validation slices

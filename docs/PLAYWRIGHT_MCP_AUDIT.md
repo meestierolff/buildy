@@ -1,26 +1,26 @@
 # Buildy Playwright MCP interactive audit
 
-Snapshot: 2026-08-23. **Interactive result: BLOCKED.**
+Snapshot: 2026-08-24. **Interactive result: BLOCKED by protected Preview access.**
 
 This document records the required in-app-browser audit separately from automated Playwright. It does not upgrade a listed, synthetic, headless, local, CI, or unit test into interactive verification.
 
 ## Runtime evidence
 
-The mandatory in-app-browser skill was selected and its runtime/tool request
-was attempted. The request was rejected by the current Codex usage limit, which
-reported that capacity becomes available on **2026-08-29 at 02:26**. A prior
-enumeration in the same workstream had returned an empty tool list; the latest
-attempt did not produce a browser session. The blocked action was not retried
-or bypassed with another browser because that would not satisfy the required
-runtime gate.
+The integrated browser runtime is available in this session and was used.
 
-Consequences for this snapshot:
+Observed state:
 
-- no page was opened in the required browser runtime;
-- no accessibility snapshot was captured;
-- no button, link, menu, dialog, tab or form was exercised interactively;
-- no back/forward/reload/deep-link, keyboard, responsive, console or network observation was made;
-- no current, local, Preview or production screenshot/trace exists;
+- the fresh Preview `https://buildy-6ounglig3-clarios-projects-05f6a57e.vercel.app`
+  redirects to `vercel.com/login`, then to a GitHub sign-in form in order to
+  pass Vercel deployment protection;
+- that GitHub page requires credentials that cannot be supplied or requested
+  through the model, so the actual Preview route audit stopped before reaching
+  Buildy itself;
+- a local production-preview bundle was also opened in the integrated browser,
+  but it remained on a loading state with `500`/`503` same-origin API failures,
+  so it does not count as an interactive-green local context;
+- no actual Buildy Preview page, route, control, dialog or flow was reached in
+  the integrated browser;
 - no automated browser evidence was promoted to interactive verification,
   because headless Playwright is not a substitute for the mandatory in-app-
   browser audit.
@@ -43,8 +43,8 @@ There are no `interactively verified+regression` rows in this snapshot.
 | Context | Intended target | Required scope | Status | Actual evidence |
 |---|---|---|---|---|
 | 1. Current deployment | Deployment that existed before the final cutover | Full anonymous/authenticated/admin role and route audit | BLOCKED | The required browser request was quota-rejected; target was not opened. |
-| 2. Local production build | Locally built app served in production-preview mode | Repeat the complete audit against the exact production bundle | BLOCKED | The required browser request was quota-rejected; no local page was opened in that runtime. |
-| 3. New Vercel Preview | Fresh Preview containing the integrated changes | Repeat every role/view/action and capture genuine defects/artifacts | BLOCKED | No Preview was opened in the required runtime. |
+| 2. Local production build | Locally built app served in production-preview mode | Repeat the complete audit against the exact production bundle | BLOCKED | The browser opened `http://127.0.0.1:8090/`, but the page remained on a loading state with `500`/`503` same-origin API failures and therefore did not provide a usable interactive product surface. |
+| 3. New Vercel Preview | Fresh Preview containing the integrated changes | Repeat every role/view/action and capture genuine defects/artifacts | BLOCKED | The browser reached the protected Preview origin, but Vercel deployment protection redirected to `vercel.com/login` and then to a GitHub sign-in form before Buildy itself could load. |
 | 4. Final production deployment | Final production origin after release | Non-destructive smoke of critical public, auth, owner, follower, admin and order-read paths | BLOCKED | No production page was opened in the required runtime. |
 
 The four contexts are independent gates. A later success in one context does not retroactively verify the other three.
