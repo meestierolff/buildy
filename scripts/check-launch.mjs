@@ -260,8 +260,20 @@ await runCheck("static", "Vercelconfig is fail-closed", async () => {
   assert(!/supabase|lovable/i.test(serialized), "Vercelconfig verwijst naar legacyprovider");
   assert(!/cloudflarestorage|peecho|brevo/i.test(serialized), "Vercelconfig verwijst naar uitgefaseerde provider");
   assert(serialized.includes("blob.vercel-storage.com"), "Vercel Blob upload-CSP ontbreekt");
-  assert(serialized.includes("Content-Security-Policy"), "CSP-header ontbreekt");
-  assert(serialized.includes("Strict-Transport-Security"), "HSTS-header ontbreekt");
+  const globalHeaders = config.headers?.find((rule) => rule.source === "/(.*)")?.headers ?? [];
+  const globalHeaderNames = new Set(globalHeaders.map((header) => header.key));
+  for (const name of [
+    "Content-Security-Policy",
+    "Cross-Origin-Opener-Policy",
+    "Cross-Origin-Resource-Policy",
+    "Permissions-Policy",
+    "Referrer-Policy",
+    "Strict-Transport-Security",
+    "X-Content-Type-Options",
+    "X-Frame-Options",
+  ]) {
+    assert(globalHeaderNames.has(name), `${name} ontbreekt op de globale /(.*)-route`);
+  }
   return `${cronPaths.size} dagelijkse onderhoudscrons; ${redirects.size} redirects en securityheaders aanwezig`;
 });
 
