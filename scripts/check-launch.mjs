@@ -3,10 +3,12 @@ import { dirname, extname, join, normalize, relative, resolve } from "node:path"
 import { spawnSync } from "node:child_process";
 
 import {
+  freeMvpReadinessFailures,
   parseLaunchCliArguments,
   requireExpectedGitSha,
-  verifyCheckoutCapability,
   verifyDeployedGitSha,
+  verifyFreeMvpCapabilities,
+  verifyFreeMvpProductProfile,
 } from "./release-gates.mjs";
 
 const root = process.cwd();
@@ -75,25 +77,12 @@ function filesBelow(entry, extensions = new Set([".ts", ".tsx", ".js", ".mjs", "
 }
 
 const requiredDocs = [
-  "docs/ARCHITECTURE_DECISION.md",
-  "docs/BACKUP_AND_RESTORE.md",
-  "docs/DESIGN_SYSTEM.md",
-  "docs/GOOGLE_AUTH_SETUP.md",
-  "docs/INCIDENT_RUNBOOK.md",
-  "docs/LAUNCH_READINESS.md",
-  "docs/MVP_RELEASE_REPORT.md",
+  ".env.example",
+  "README.md",
+  "docs/MVP_SCOPE.md",
+  "docs/MVP_SHIP_REPORT.md",
   "docs/OPERATOR_ACTIONS_REQUIRED.md",
-  "docs/OPERATIONS_RUNBOOK.md",
-  "docs/ORDER_SUPPORT_RUNBOOK.md",
-  "docs/PLAYWRIGHT_MCP_AUDIT.md",
-  "docs/PRODUCTION_RELEASE.md",
-  "docs/PRODUCT_MODEL.md",
-  "docs/PROVIDER_SETUP.md",
-  "docs/QA_FUNCTION_MATRIX.md",
-  "docs/SOCIAL_STATE_MACHINE.md",
-  "docs/STRIPE_SETUP.md",
-  "docs/USER_TESTING_PLAN.md",
-  "docs/VERCEL_BLOB_SETUP.md",
+  "docs/POLARSTEPS_TO_BUILDY.md",
 ];
 
 await runCheck("static", "Doelruntime bevat geen legacy-providerkoppeling", async () => {
@@ -314,7 +303,7 @@ let baseUrl;
 let expectedGitSha;
 if (!staticOnly) {
   await runCheck("live", "Doelomgeving is expliciet en veilig", async () => {
-    assert(["staging", "production"].includes(requestedEnvironment), "gebruik --staging of --production");
+    assert(["preview", "staging", "production"].includes(requestedEnvironment), "gebruik --preview, --staging of --production");
     assert(rawBaseUrl, "geef --base-url=https://... of LAUNCH_BASE_URL op");
     const candidateBaseUrl = new URL(rawBaseUrl.includes("://") ? rawBaseUrl : `https://${rawBaseUrl}`);
     assert(candidateBaseUrl.protocol === "https:", "live launchprobe vereist HTTPS");
@@ -388,27 +377,24 @@ if (!staticOnly && baseUrl) {
     verifyDeployedGitSha(body.data.release, expectedGitSha);
     const capabilities = body.data.capabilities ?? {};
     liveCapabilities = capabilities;
-    const required = ["database", "authentication", "accountLifecycle", "media", "photobooks", "privateBeta"];
-    const unconfigured = required.filter((name) => capabilities[name] !== "ready");
-    assert(unconfigured.length === 0, `kerncapabilities niet ready: ${unconfigured.join(", ")}`);
-    assert(capabilities.email === "disabled", "e-mailcapability moet uit staan");
-    assert(capabilities.printFulfilment === "disabled", "automatische fulfilment moet uit staan");
-    verifyCheckoutCapability(requestedEnvironment, capabilities.payments);
+    verifyFreeMvpCapabilities(capabilities);
     assert(response.headers.has("x-request-id"), "request-ID ontbreekt");
-    return `kern ready; checkout ${capabilities.payments}; release ${body.data.release}`;
+    return `kern ready; invite en checkout uit; release ${body.data.release}`;
+  });
+
+  await runCheck("live", "Server-owned gratis MVP-profiel", async () => {
+    const response = await fetchWithin("/api/product-profile");
+    const body = await responseJson(response);
+    assert(response.status === 200, `product-profile gaf HTTP ${response.status}`);
+    verifyFreeMvpProductProfile(body?.data);
+    return "feedback_beta; open Google-signup; checkout uit";
   });
 
   await runCheck("live", "Readiness en least-privilegerollen", async () => {
     const response = await fetchWithin("/api/readiness");
     const body = await responseJson(response);
     assert(response.status === 200 && body?.data?.ready === true, `readiness gaf HTTP ${response.status}`);
-    const paymentWorkerRequired = requestedEnvironment === "production" || liveCapabilities?.payments === "ready";
-    const failed = Object.entries(body.data.checks ?? {})
-      .filter(([name, state]) => (
-        state !== "pass"
-        && !(name === "paymentWorker" && !paymentWorkerRequired && state === "not_checked")
-      ))
-      .map(([name, state]) => `${name}=${state}`);
+    const failed = freeMvpReadinessFailures(body.data.checks);
     assert(failed.length === 0, `onbewezen checks: ${failed.join(", ")}`);
     return `${Object.keys(body.data.checks).length} configuratie-/databasegrenzen pass`;
   });

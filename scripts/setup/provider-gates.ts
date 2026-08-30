@@ -1,15 +1,3 @@
-export type ProviderTargetEnvironment = "staging" | "production";
-export type ProviderCheckoutMode = "test" | "live" | null;
-
-interface StripeProbeClient {
-  accounts: {
-    retrieveCurrent(): Promise<{ id: string }>;
-  };
-  balance: {
-    retrieve(): Promise<{ livemode: boolean }>;
-  };
-}
-
 interface ListedBlobProbe {
   pathname: string;
   url: string;
@@ -35,17 +23,6 @@ function assertPrivateBlobUrl(value: string): void {
   }
 }
 
-export function requireCheckoutModeForTarget(
-  target: ProviderTargetEnvironment,
-  mode: ProviderCheckoutMode,
-): "test" | "live" {
-  const expected = target === "production" ? "live" : "test";
-  if (mode !== expected) {
-    throw new Error(`CHECKOUT_MODE=${expected} is verplicht voor ${target}`);
-  }
-  return mode;
-}
-
 export function requireListedBlobProbe(
   blobs: readonly ListedBlobProbe[],
 ): ListedBlobProbe {
@@ -69,17 +46,4 @@ export function verifyInspectedPrivateBlob(
   if (!inspected.etag.trim() || !Number.isSafeInteger(inspected.size) || inspected.size < 0) {
     throw new Error("Blob-metadata is onvolledig");
   }
-}
-
-export async function verifyStripeAccount(
-  stripe: StripeProbeClient,
-  expectedAccountId: string,
-  target: ProviderTargetEnvironment,
-): Promise<void> {
-  const [account, balance] = await Promise.all([
-    stripe.accounts.retrieveCurrent(),
-    stripe.balance.retrieve(),
-  ]);
-  if (account.id !== expectedAccountId) throw new Error("account-ID mismatch");
-  if (balance.livemode !== (target === "production")) throw new Error("accountmode mismatch");
 }

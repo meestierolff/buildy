@@ -1,11 +1,11 @@
 const FULL_GIT_SHA = /^[a-f0-9]{40}$/i;
 const SYNTHETIC_STAGING_EMAIL = /^buildy-staging-e2e(?:-[a-z0-9]{1,32})?@[a-z0-9](?:[a-z0-9.-]{0,61}[a-z0-9])?\.[a-z]{2,63}$/i;
 
-const LAUNCH_FLAG_OPTIONS = new Set(["--static", "--staging", "--production"]);
+const LAUNCH_FLAG_OPTIONS = new Set(["--static", "--preview", "--staging", "--production"]);
 const LAUNCH_VALUE_OPTIONS = new Set(["--environment", "--base-url", "--expected-sha"]);
 
 function launchUsageError(message) {
-  return new Error(`${message}. Gebruik: check:launch -- --static | --staging|--production --base-url=https://... --expected-sha=<40-teken-sha>`);
+  return new Error(`${message}. Gebruik: check:launch -- --static | --preview|--staging|--production --base-url=https://... --expected-sha=<40-teken-sha>`);
 }
 
 export function parseLaunchCliArguments(argv, environment = {}) {
@@ -34,6 +34,7 @@ export function parseLaunchCliArguments(argv, environment = {}) {
 
   const staticOnly = flags.has("--static");
   const explicitTargets = [
+    ...(flags.has("--preview") ? ["preview"] : []),
     ...(flags.has("--staging") ? ["staging"] : []),
     ...(flags.has("--production") ? ["production"] : []),
     ...(values.has("--environment") ? [values.get("--environment")] : []),
@@ -49,7 +50,7 @@ export function parseLaunchCliArguments(argv, environment = {}) {
     };
   }
 
-  if (explicitTargets.length !== 1 || !["staging", "production"].includes(explicitTargets[0])) {
+  if (explicitTargets.length !== 1 || !["preview", "staging", "production"].includes(explicitTargets[0])) {
     throw launchUsageError("Kies exact één expliciet live-doel");
   }
 
@@ -78,11 +79,67 @@ export function verifyDeployedGitSha(actualValue, expectedSha) {
   if (actual !== expectedSha) throw new Error("deployment-SHA komt niet overeen met de vastgezette release");
 }
 
-export function verifyCheckoutCapability(environment, capability) {
-  if (capability !== "ready") {
-    const mode = environment === "production" ? "live" : "test";
-    throw new Error(`${environment} vereist ${mode} checkout`);
+export function verifyFreeMvpCapabilities(capabilities) {
+  if (!capabilities || typeof capabilities !== "object") {
+    throw new Error("health bevat geen capabilities");
   }
+
+  const required = ["database", "authentication", "accountLifecycle", "media", "photobooks"];
+  const unavailable = required.filter((name) => capabilities[name] !== "ready");
+  if (unavailable.length > 0) {
+    throw new Error(`kerncapabilities niet ready: ${unavailable.join(", ")}`);
+  }
+
+  for (const name of ["email", "payments", "printFulfilment", "privateBeta"]) {
+    if (capabilities[name] !== "disabled") {
+      throw new Error(`${name} moet disabled zijn voor de gratis MVP`);
+    }
+  }
+}
+
+export function verifyFreeMvpProductProfile(profile) {
+  if (!profile || typeof profile !== "object") {
+    throw new Error("product-profile bevat geen data");
+  }
+  if (profile.profile !== "feedback_beta") throw new Error("PRODUCT_PROFILE moet feedback_beta zijn");
+  if (profile.checkoutMode !== "off") throw new Error("CHECKOUT_MODE moet off zijn");
+  if (profile.betaMode !== false || profile.inviteRequiredForNewAccounts !== false) {
+    throw new Error("BETA_MODE moet false zijn en nieuwe accounts mogen geen invite vereisen");
+  }
+
+  const capabilities = profile.capabilities;
+  if (!capabilities || typeof capabilities !== "object") {
+    throw new Error("product-profile bevat geen capabilitydata");
+  }
+  const required = [
+    "googleSignIn",
+    "renovations",
+    "updates",
+    "story",
+    "media",
+    "photobookPreview",
+    "sharing",
+    "feedback",
+    "accountDeletion",
+  ];
+  const unavailable = required.filter((name) => capabilities[name] !== true);
+  if (unavailable.length > 0) {
+    throw new Error(`productcapabilities niet beschikbaar: ${unavailable.join(", ")}`);
+  }
+  if (capabilities.emailAuth !== false || capabilities.checkout !== false) {
+    throw new Error("e-mailauth en checkout moeten uit staan voor de gratis MVP");
+  }
+}
+
+export function freeMvpReadinessFailures(checks) {
+  if (!checks || typeof checks !== "object") return ["checks=missing"];
+  const optionalIdleWorkers = new Set(["paymentWorker", "photobookWorker"]);
+  return Object.entries(checks)
+    .filter(([name, state]) => (
+      state !== "pass"
+      && !(optionalIdleWorkers.has(name) && state === "not_checked")
+    ))
+    .map(([name, state]) => `${name}=${state}`);
 }
 
 export function requireSyntheticStagingEmail(value) {

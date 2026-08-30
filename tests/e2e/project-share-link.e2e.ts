@@ -132,7 +132,7 @@ test.describe("Tijdelijke projectdeellink", () => {
     allowBrowserDiagnostics(
       page,
       /^console: \[JavaScript Error: "downloadable font: download failed .*Instrument Serif.*$/,
-      /^requestfailed: GET .*instrument-serif.* \(cancelled\)$/,
+      /^requestfailed: GET https?:\/\/[^/]+\/(?:assets\/instrument-serif-latin-400-normal-[\w-]+|node_modules\/@fontsource\/instrument-serif\/files\/instrument-serif-latin-400-normal)\.woff2 \((?:Load request cancelled|cancelled)\)$/,
     );
     const networkUrls: string[] = [];
     page.on("request", (request) => networkUrls.push(request.url()));

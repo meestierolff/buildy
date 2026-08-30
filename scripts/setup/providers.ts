@@ -2,23 +2,20 @@
 
 import { head as headBlob, list as listBlobs } from "@vercel/blob";
 import pg from "pg";
-import Stripe from "stripe";
 
 import { resolveAuthConfiguration } from "../../server/auth/config";
-import { getCapabilities, getRuntimeConfig } from "../../server/config/runtime";
-import {
-  activeCheckoutMode,
-  checkoutConfigurationIssues,
-} from "../../server/orders/checkoutConfiguration";
+import { getCapabilities, getProductProfile, getRuntimeConfig } from "../../server/config/runtime";
 import { resolveRuntimeDataProtection } from "../../server/security/runtimeDataProtection";
 import {
-  requireCheckoutModeForTarget,
+  verifyFreeMvpCapabilities,
+  verifyFreeMvpProductProfile,
+} from "../release-gates.mjs";
+import {
   requireListedBlobProbe,
   verifyInspectedPrivateBlob,
-  verifyStripeAccount,
 } from "./provider-gates";
 
-type TargetEnvironment = "staging" | "production";
+type TargetEnvironment = "preview" | "staging" | "production";
 type ResultStatus = "pass" | "fail" | "manual";
 
 interface CheckResult {
@@ -28,13 +25,15 @@ interface CheckResult {
 }
 
 const argv = new Set(process.argv.slice(2));
-const unknown = [...argv].filter((argument) => !["--check", "--staging", "--production"].includes(argument));
-if (unknown.length > 0 || argv.has("--staging") === argv.has("--production")) {
-  process.stderr.write("Gebruik: bun run setup:providers -- --staging|--production [--check]\n");
+const targetFlags = ["--preview", "--staging", "--production"] as const;
+const unknown = [...argv].filter((argument) => !["--check", ...targetFlags].includes(argument));
+const selectedTargets = targetFlags.filter((flag) => argv.has(flag));
+if (unknown.length > 0 || selectedTargets.length !== 1) {
+  process.stderr.write("Gebruik: bun run setup:providers -- --preview|--staging|--production [--check]\n");
   process.exit(2);
 }
 
-const target: TargetEnvironment = argv.has("--production") ? "production" : "staging";
+const target: TargetEnvironment = selectedTargets[0].slice(2) as TargetEnvironment;
 const remote = argv.has("--check");
 const results: CheckResult[] = [];
 
@@ -120,11 +119,8 @@ await check("Database- en workercredentials", () => {
   if (!runtime) throw new Error("runtimeconfig niet beschikbaar");
   const names = [
     "DATABASE_URL",
-    "DATABASE_DIRECT_URL",
     "DATABASE_ACCOUNT_WORKER_URL",
     "DATABASE_MEDIA_WORKER_URL",
-    "DATABASE_PHOTOBOOK_WORKER_URL",
-    ...(activeCheckoutMode(runtime) ? ["DATABASE_PAYMENT_WORKER_URL"] : []),
   ];
   const urls = names.map((name) => new URL(requireValue(name)));
   if (urls.some((url) => !["postgres:", "postgresql:"].includes(url.protocol))) {
@@ -150,37 +146,26 @@ await check("Encryptie, retentie en private Blob", () => {
   return "keyring, blind index, retentieversie, cronsecret en Blob-token aanwezig";
 });
 
-await check("Checkoutgrens", () => {
+await check("Gratis MVP-profiel", () => {
   if (!runtime) throw new Error("runtimeconfig niet beschikbaar");
-  const mode = requireCheckoutModeForTarget(target, activeCheckoutMode(runtime));
-  const issues = checkoutConfigurationIssues(runtime);
-  if (issues.length > 0) throw new Error(`checkoutconfig ongeldig: ${issues.join(",")}`);
-  return `${mode}-checkout; goedgekeurde prijs- en verkoperconfig geldig`;
+  verifyFreeMvpProductProfile(getProductProfile(runtime));
+  return "feedback_beta; open Google-signup; checkout uit";
 });
 
 await check("Capabilityconfig", () => {
   if (!runtime) throw new Error("runtimeconfig niet beschikbaar");
   const capabilities = getCapabilities(runtime);
-  const required = ["database", "authentication", "accountLifecycle", "media", "photobooks"] as const;
-  const notReady = required.filter((name) => capabilities[name] !== "ready");
-  if (notReady.length > 0) throw new Error(`kerncapabilities niet ready: ${notReady.join(",")}`);
-  if (capabilities.email !== "disabled" || capabilities.printFulfilment !== "disabled") {
-    throw new Error("retired capabilities zijn niet disabled");
-  }
-  const expectedPayments = activeCheckoutMode(runtime) ? "ready" : "disabled";
-  if (capabilities.payments !== expectedPayments) throw new Error("paymentcapability wijkt af");
-  return `kern ready; e-mail en automatische fulfilment uit; payments ${expectedPayments}`;
+  verifyFreeMvpCapabilities(capabilities);
+  return "kern ready; invite, e-mail, checkout en fulfilment uit";
 });
 
 if (remote) {
   await check("Neon connectiviteit", async () => {
-    const client = new pg.Client({ connectionString: requireValue("DATABASE_DIRECT_URL") });
+    const client = new pg.Client({ connectionString: requireValue("DATABASE_URL") });
     try {
       await client.connect();
-      const result = await client.query<{ migration_count: string }>(
-        "select count(*)::text as migration_count from buildy_meta.schema_migrations",
-      );
-      return `${result.rows[0]?.migration_count ?? "0"} migrationledgerregels bereikbaar`;
+      await client.query("select 1");
+      return "least-privilege webruntimeverbinding bereikbaar";
     } finally {
       await client.end().catch(() => undefined);
     }
@@ -207,14 +192,6 @@ if (remote) {
     return "bestaand private Blob-object read-only geïnspecteerd";
   });
 
-  if (runtime && activeCheckoutMode(runtime)) {
-    await check("Stripe account", async () => {
-      const stripe = new Stripe(requireValue("STRIPE_SECRET_KEY"), { telemetry: false });
-      await verifyStripeAccount(stripe, requireValue("STRIPE_EXPECTED_ACCOUNT_ID"), target);
-      return "verwacht Stripe-account en mode bevestigd";
-    });
-  }
-
   await check("Vercel runtime readiness", async () => {
     if (!runtime) throw new Error("runtimeconfig niet beschikbaar");
     const health = await fetchWithTimeout(new URL("/api/health", runtime.APP_ORIGIN));
@@ -231,9 +208,8 @@ record("manual", "Dashboard- en contractchecks", [
   "Neon plan/regio/DPA/backupretentie",
   "Google consent/origins/callback",
   "Vercel Blob-store PRIVATE, regio/DPA en tokenrotatie",
-  "Stripe webhook/tax/businessdetails indien checkout aan staat",
-  "betaalde Bouwboeken handmatig controleren, drukken, verzenden en bijwerken in /beheer/bestellingen",
-  "supportprocedure en proefdruk",
+  "juridische identiteit, vestigingsadres en rechtstreeks privacy-/supportcontact",
+  "retentie-, support- en herstelprocedure",
   "Vercel cron, alerts en budgetlimieten",
 ].join("; "));
 
