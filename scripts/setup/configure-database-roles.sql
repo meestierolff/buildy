@@ -39,11 +39,47 @@ INSERT INTO buildy_runtime_roles (role_name, role_kind) VALUES
   (:'buildy_photobook_worker_role', 'photobook'),
   (:'buildy_payment_worker_role', 'payment');
 
-SELECT format(
-  'ALTER ROLE %I NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS',
-  role_name
-)
-FROM buildy_runtime_roles \gexec
+-- Runtime roles are provisioned outside this script. Provider-managed admin
+-- roles (including Neon) cannot safely normalize SUPERUSER/BYPASSRLS flags on
+-- existing SQL-created roles, so configuration validates and fails closed
+-- before granting anything instead of relying on ALTER ROLE.
+DO $role_boundary$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM buildy_runtime_roles runtime_role
+    LEFT JOIN pg_catalog.pg_roles role ON role.rolname = runtime_role.role_name
+    WHERE role.oid IS NULL
+      OR role.rolsuper
+      OR role.rolcreatedb
+      OR role.rolcreaterole
+      OR role.rolreplication
+      OR role.rolbypassrls
+      OR role.rolinherit
+  ) THEN
+    RAISE EXCEPTION 'a runtime role is absent or privileged';
+  END IF;
+
+  IF EXISTS (
+    WITH RECURSIVE runtime_role_memberships(runtime_role_oid, granted_role_oid) AS (
+      SELECT role.oid, membership.roleid
+      FROM buildy_runtime_roles runtime_role
+      JOIN pg_catalog.pg_roles role ON role.rolname = runtime_role.role_name
+      JOIN pg_catalog.pg_auth_members membership ON membership.member = role.oid
+
+      UNION
+
+      SELECT membership_path.runtime_role_oid, membership.roleid
+      FROM runtime_role_memberships membership_path
+      JOIN pg_catalog.pg_auth_members membership
+        ON membership.member = membership_path.granted_role_oid
+    )
+    SELECT 1 FROM runtime_role_memberships
+  ) THEN
+    RAISE EXCEPTION 'a runtime role has direct or transitive role membership';
+  END IF;
+END
+$role_boundary$;
 
 SELECT format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), role_name)
 FROM buildy_runtime_roles \gexec

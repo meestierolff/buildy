@@ -12,10 +12,22 @@ describe("canonical product route configuration", () => {
       installCommand?: string;
       buildCommand?: string;
     };
+    const tsconfig = JSON.parse(readFileSync(resolve(process.cwd(), "tsconfig.json"), "utf8")) as {
+      compilerOptions?: {
+        target?: string;
+        strictNullChecks?: boolean;
+        noImplicitAny?: boolean;
+      };
+    };
 
     expect(packageJson.engines?.node).toBe("22.x");
     expect(config.installCommand).toBe("bun install --frozen-lockfile");
     expect(config.buildCommand).toBe("bun run typecheck && bun run build");
+    expect(tsconfig.compilerOptions).toMatchObject({
+      target: "ES2022",
+      strictNullChecks: true,
+      noImplicitAny: true,
+    });
   });
 
   it("documents open signup with commerce disabled for the MVP", () => {
