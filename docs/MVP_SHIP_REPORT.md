@@ -6,12 +6,12 @@ Peildatum: 30 augustus 2026. Besluit: **NO-GO voor merge en productie**.
 
 - Startbranch: `codex/buildy-production-finish`.
 - Start-SHA: `b347a63b6e953af29784bda48d0f4e0ed76c7824`.
-- Finale applicatiecandidate: `38b7c9b727df80e94b02f3b2dd3c00753f472daf`.
+- Finale applicatiecandidate: `ac6f21e75767aafc15533bcb091ccd26585b7ee3`.
 - De commit die dit rapport toevoegt is uitsluitend een bewijscommit en kan zijn
   eigen SHA niet in zijn eigen inhoud opnemen; de exacte rapport-SHA staat in
   PR #2 en in de finale oplevering.
 - Pull request: `https://github.com/meestierolff/buildy/pull/2`.
-- Preview: `https://buildy-b3l5y1x86-clarios-projects-05f6a57e.vercel.app`.
+- Preview: `https://buildy-33482e26x-clarios-projects-05f6a57e.vercel.app`.
 - Stabiele Preview-alias:
   `https://buildy-git-codex-buildy-produc-9fc802-clarios-projects-05f6a57e.vercel.app`.
 - Productie: `https://buildy-gamma.vercel.app/` op de oude SHA
@@ -52,8 +52,9 @@ en exact dezelfde volledige SHA. Het serverprofiel is correct
 `feedback_beta`, `BETA_MODE=false` en `CHECKOUT_MODE=off`; invite, e-mail,
 checkout en fulfilment staan uit. De providerafhankelijke capabilities falen
 gesloten als `unconfigured`/`false`. De beschermde Preview stuurt anonieme
-bezoekers naar Vercel SSO. `/auth` heeft de bedoelde securityheaders; de door
-Vercel herschreven `/` mist die headers nog en is daarom niet groen verklaard.
+bezoekers naar Vercel SSO. De volledige bedoelde securityheaders zijn op de
+echte Preview groen voor `/`, `/?x=1`, `/auth`, `/index.html` en een onbekend
+SPA-pad.
 
 ## Verificatie
 
@@ -77,11 +78,13 @@ Vercel herschreven `/` mist die headers nog en is daarom niet groen verklaard.
   exacte test 1/1 en volledige deellinkspec 3/3 groen.
 - Visuele regressies: 14/14 Darwin en 14/14 Linux groen na exact twee
   polishrondes.
-- Hosted CI voor de applicatiecandidate voerde typecheck/lint, Vitest,
-  dependency-audit, migratievalidatie en DB-integratie groen uit. De
-  browserjobs werden alleen overgeslagen omdat dit toen nog ontbrekende rapport
-  de statische launchcheck liet falen. De rapportcommit mag alleen worden
-  gemerged wanneer zijn volledige PR-checkset groen is.
+- Hosted CI-run `33295400225` voor de applicatiecandidate is volledig groen:
+  typecheck/lint, Vitest, productiebuild, dependency-audit,
+  migratievalidatie, DB-integratie, de volledige publieke Playwrightset,
+  Firefox, WebKit, mobile/tablet Chromium en de CI-gate. Alleen de bewust
+  configuratieafhankelijke protected-stagingjobs zijn overgeslagen. De
+  rapportcommit mag alleen worden gemerged wanneer zijn eigen PR-checkset ook
+  groen is.
 
 ## Playwright MCP
 
