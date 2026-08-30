@@ -68,6 +68,9 @@ describe("canonical product route configuration", () => {
     const jsonLd = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1];
     expect(jsonLd).toBeDefined();
     expect(jsonLd).not.toContain('"price"');
+    expect(html).toContain("Maak van je verbouwing een verhaal om te bewaren");
+    expect(html).toContain("persoonlijk digitaal Bouwboek");
+    expect(html).not.toMatch(/budget|mijlpalen|automatisch een gedrukt Bouwboek/i);
     expect(`${html}\n${robots}\n${sitemap}`).not.toMatch(/https:\/\/(?:www\.)?buildy\.app/i);
     expect(sitemap).not.toContain("/ontdekken</loc>");
 
