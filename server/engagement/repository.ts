@@ -20,7 +20,10 @@ import type {
   ReactionSummary,
 } from "../../shared/contracts/engagement.js";
 import type { BuildyDatabase } from "../db/client.js";
-import type { ProjectActor } from "../projects/actor.js";
+import type {
+  AuthenticatedProjectActor,
+  ProjectActor,
+} from "../projects/actor.js";
 import type { ProjectVisibility } from "../../shared/contracts/projects.js";
 import type { CommentCursor, NotificationCursor } from "./cursor.js";
 import { EngagementError } from "./errors.js";
@@ -357,10 +360,11 @@ async function visibleUpdate(
 
 async function lockVisibleUpdate(
   transaction: DatabaseTransaction,
-  actorId: string,
+  viewer: AuthenticatedProjectActor,
   projectId: string,
   updateId: string,
 ): Promise<RawUpdateAccessFacts> {
+  const actorId = viewer.appUserId;
   const first = await loadUpdateAccessFacts(transaction, actorId, projectId, updateId);
   if (!first) throw new EngagementError("CONTENT_NOT_FOUND");
   await lockScopes(transaction, [
@@ -375,7 +379,6 @@ async function lockVisibleUpdate(
     for share of item, project
   `);
   const row = await loadUpdateAccessFacts(transaction, actorId, projectId, updateId);
-  const viewer: ProjectActor = { kind: "authenticated", appUserId: actorId };
   if (!row || !canViewerAccessUpdate(viewer, accessFacts(row))) {
     throw new EngagementError("CONTENT_NOT_FOUND");
   }
@@ -508,7 +511,7 @@ async function notifyCommentAudience(
 ): Promise<void> {
   const audience = new Map<string, { priority: number; type: string }>();
   const offer = (recipientId: string | null, priority: number, type: string): void => {
-    if (!recipientId || recipientId === command.actorId) return;
+    if (!recipientId || recipientId === command.actor.appUserId) return;
     const current = audience.get(recipientId);
     if (!current || priority < current.priority) audience.set(recipientId, { priority, type });
   };
@@ -607,7 +610,8 @@ export class PostgresEngagementRepository implements EngagementRepository {
 
   async createComment(command: CreateCommentCommand) {
     return this.database.transaction(async (transaction) => {
-      await setActor(transaction, command.actorId);
+      const actorId = command.actor.appUserId;
+      await setActor(transaction, actorId, command.actor.shareLinkId);
       await lockScopes(transaction, [`engagement:idempotency:${command.idempotencyKey}`]);
       const replay = await replayedMutation(
         transaction,
@@ -619,7 +623,7 @@ export class PostgresEngagementRepository implements EngagementRepository {
 
       const context = await lockVisibleUpdate(
         transaction,
-        command.actorId,
+        command.actor,
         command.projectId,
         command.updateId,
       );
@@ -627,7 +631,7 @@ export class PostgresEngagementRepository implements EngagementRepository {
       if (command.input.parentCommentId) {
         const parent = await commentTarget(
           transaction,
-          command.actorId,
+          actorId,
           command.projectId,
           command.updateId,
           command.input.parentCommentId,
@@ -645,7 +649,7 @@ export class PostgresEngagementRepository implements EngagementRepository {
           id: command.commentId,
           projectId: command.projectId,
           updateId: command.updateId,
-          authorId: command.actorId,
+          authorId: actorId,
           parentCommentId: command.input.parentCommentId ?? null,
           body: command.input.body,
           status: "published",
@@ -685,7 +689,8 @@ export class PostgresEngagementRepository implements EngagementRepository {
 
   async deleteComment(command: DeleteCommentCommand) {
     return this.database.transaction(async (transaction) => {
-      await setActor(transaction, command.actorId);
+      const actorId = command.actor.appUserId;
+      await setActor(transaction, actorId, command.actor.shareLinkId);
       await lockScopes(transaction, [
         `engagement:comment:${command.commentId}`,
         `engagement:idempotency:${command.idempotencyKey}`,
@@ -703,7 +708,7 @@ export class PostgresEngagementRepository implements EngagementRepository {
 
       const context = await lockVisibleUpdate(
         transaction,
-        command.actorId,
+        command.actor,
         command.projectId,
         command.updateId,
       );
@@ -725,7 +730,7 @@ export class PostgresEngagementRepository implements EngagementRepository {
       if (
         !comment ||
         comment.status === "deleted" ||
-        !canActorDeleteComment(command.actorId, comment.authorId, context.owner_id)
+        !canActorDeleteComment(actorId, comment.authorId, context.owner_id)
       ) {
         throw new EngagementError("CONTENT_NOT_FOUND");
       }
@@ -740,7 +745,7 @@ export class PostgresEngagementRepository implements EngagementRepository {
           deletedAt: command.now,
           updatedAt: command.now,
           version: sql`${comments.version} + 1`,
-          ...(comment.authorId === command.actorId ? { body: "[verwijderd]" } : {}),
+          ...(comment.authorId === actorId ? { body: "[verwijderd]" } : {}),
         })
         .where(and(
           eq(comments.id, command.commentId),
@@ -817,22 +822,23 @@ export class PostgresEngagementRepository implements EngagementRepository {
 
   async addReaction(command: ReactionCommand): Promise<ReactionMutationResult> {
     return this.database.transaction(async (transaction) => {
-      await setActor(transaction, command.actorId);
+      const actorId = command.actor.appUserId;
+      await setActor(transaction, actorId, command.actor.shareLinkId);
       const context = await lockVisibleUpdate(
         transaction,
-        command.actorId,
+        command.actor,
         command.projectId,
         command.updateId,
       );
       const commentId = reactionCommentId(command);
       await lockScopes(transaction, [
-        `engagement:reaction:${command.actorId}:${command.updateId}:${commentId ?? "update"}:${command.input.emoji}`,
+        `engagement:reaction:${actorId}:${command.updateId}:${commentId ?? "update"}:${command.input.emoji}`,
       ]);
       let targetAuthorId = context.update_author_id;
       if (commentId) {
         const target = await commentTarget(
           transaction,
-          command.actorId,
+          actorId,
           command.projectId,
           command.updateId,
           commentId,
@@ -848,7 +854,7 @@ export class PostgresEngagementRepository implements EngagementRepository {
         .select({ id: reactions.id })
         .from(reactions)
         .where(and(
-          eq(reactions.actorId, command.actorId),
+          eq(reactions.actorId, actorId),
           eq(reactions.projectId, command.projectId),
           eq(reactions.updateId, command.updateId),
           targetWhere,
@@ -865,7 +871,7 @@ export class PostgresEngagementRepository implements EngagementRepository {
           projectId: command.projectId,
           updateId: command.updateId,
           commentId,
-          actorId: command.actorId,
+          actorId,
           target: command.input.target,
           emoji: command.input.emoji,
           createdAt: command.now,
@@ -878,7 +884,7 @@ export class PostgresEngagementRepository implements EngagementRepository {
           .select({ id: reactions.id })
           .from(reactions)
           .where(and(
-            eq(reactions.actorId, command.actorId),
+            eq(reactions.actorId, actorId),
             eq(reactions.updateId, command.updateId),
             targetWhere,
             eq(reactions.emoji, command.input.emoji),
@@ -888,7 +894,7 @@ export class PostgresEngagementRepository implements EngagementRepository {
         return { reactionId: raced[0].id, state: "active", replayed: true };
       }
 
-      if (targetAuthorId !== command.actorId) {
+      if (targetAuthorId !== actorId) {
         await appendNotification(transaction, {
           recipientId: targetAuthorId,
           sourceAggregateId: reaction.id,
@@ -901,20 +907,21 @@ export class PostgresEngagementRepository implements EngagementRepository {
 
   async removeReaction(command: ReactionCommand): Promise<ReactionMutationResult> {
     return this.database.transaction(async (transaction) => {
-      await setActor(transaction, command.actorId);
+      const actorId = command.actor.appUserId;
+      await setActor(transaction, actorId, command.actor.shareLinkId);
       await lockVisibleUpdate(
         transaction,
-        command.actorId,
+        command.actor,
         command.projectId,
         command.updateId,
       );
       const commentId = reactionCommentId(command);
       await lockScopes(transaction, [
-        `engagement:reaction:${command.actorId}:${command.updateId}:${commentId ?? "update"}:${command.input.emoji}`,
+        `engagement:reaction:${actorId}:${command.updateId}:${commentId ?? "update"}:${command.input.emoji}`,
       ]);
       if (commentId && !await commentTarget(
         transaction,
-        command.actorId,
+        actorId,
         command.projectId,
         command.updateId,
         commentId,
@@ -927,7 +934,7 @@ export class PostgresEngagementRepository implements EngagementRepository {
       const removed = await transaction
         .delete(reactions)
         .where(and(
-          eq(reactions.actorId, command.actorId),
+          eq(reactions.actorId, actorId),
           eq(reactions.projectId, command.projectId),
           eq(reactions.updateId, command.updateId),
           targetWhere,

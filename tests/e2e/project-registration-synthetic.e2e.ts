@@ -149,7 +149,9 @@ test("bewaart een concept en plaatst exact één Bouwmoment via private Vercel B
   });
 
   await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}`);
-  await page.getByRole("button", { name: "Bouwmoment toevoegen", exact: true }).click();
+  await page.getByRole("region", { name: "Synthetische verbouwing" })
+    .getByRole("button", { name: "Bouwmoment toevoegen", exact: true })
+    .click();
   const title = page.getByLabel("Korte titel of bijschrift (optioneel)");
   await title.fill("De eerste muur is open");
 

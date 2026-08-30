@@ -191,7 +191,6 @@ describe("sociale browsermigratie", () => {
     "src/pages/Profile.tsx",
     "src/components/CommentsSheet.tsx",
     "src/components/ReactionBar.tsx",
-    "src/components/NotificationBell.tsx",
   ];
 
   it.each(migratedFiles)("bevat geen Supabase-clientfallback: %s", (relativePath) => {

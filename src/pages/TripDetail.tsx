@@ -1,51 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { differenceInDays } from "date-fns";
 import {
   BookOpen,
-  Flag,
   Hammer,
-  Images,
-  LayoutGrid,
   Loader2,
-  Map as MapIcon,
   Plus,
   RefreshCw,
   Share2,
-  Trash2,
-  Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import AddStepDialog from "@/components/AddStepDialog";
-import AllPhotosTab from "@/components/AllPhotosTab";
 import BlueprintTimeline from "@/components/BlueprintTimeline";
 import EditStepDialog from "@/components/EditStepDialog";
 import ProgressControl from "@/components/ProgressControl";
 import ReportDialog from "@/components/moderation/ReportDialog";
 import { ResilientImage } from "@/components/ResilientMedia";
 import PrivacyBadge from "@/components/app/PrivacyBadge";
-import { FloorplanBoard } from "@/components/project/FloorplanBoard";
 import { ShareLinkDialog } from "@/components/project/ShareLinkDialog";
 import { Button } from "@/components/ui/button";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePageMeta } from "@/hooks/usePageMeta";
-import { useDeleteProjectMutation, useProject, useUpdateProjectMutation } from "@/hooks/useProjectApi";
+import { useAuth } from "@/hooks/useAuth";
+import { useProject, useUpdateProjectMutation } from "@/hooks/useProjectApi";
 import { ApiClientError } from "@/lib/apiClient";
 import { useAppFeatures } from "@/lib/appFeatures";
-import { createClientIdempotencyKey } from "@/lib/clientIdempotency";
 import { LANDING_PHOTO_INTENT } from "@/lib/landingPhotoHandoffStore";
 import { PRODUCT_ROUTES } from "@/lib/productNavigation";
 import { recordProductEvent } from "@/lib/betaApi";
@@ -79,33 +57,23 @@ function isAccessError(error: unknown): boolean {
   return error instanceof ApiClientError && [401, 403, 404].includes(error.status);
 }
 
-function updateLabel(title: string | null, room: string | null): string {
-  return title?.trim() || room?.trim() || "Bouwmoment";
-}
-
 const TripDetail = () => {
   const { id } = useParams<{ id: string }>();
   const projectId = id ?? "";
+  const { user } = useAuth();
   const appFeatures = useAppFeatures();
-  const mediaFeaturesEnabled = appFeatures.mediaFeaturesEnabled;
   const photobooksEnabled = appFeatures.photobooksEnabled;
   const navigate = useNavigate();
   const { hash, search } = useLocation();
   const { overviewQuery, timelineQuery } = useProject(projectId, Boolean(projectId));
-  const deleteProject = useDeleteProjectMutation(projectId);
   const updateProject = useUpdateProjectMutation(projectId);
   const [showAddUpdate, setShowAddUpdate] = useState(false);
   const [importLandingPhoto, setImportLandingPhoto] = useState(false);
   const [editingUpdate, setEditingUpdate] = useState<ProjectUpdate | null>(null);
-  const [activeTab, setActiveTab] = useState("timeline");
-  const [milestonesOnly, setMilestonesOnly] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
-  const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [isOnline, setIsOnline] = useState(() => (
     typeof navigator === "undefined" || navigator.onLine
   ));
-  const deletionKey = useRef<string | null>(null);
   const composerRequestHandled = useRef<string | null>(null);
 
   const project = overviewQuery.data;
@@ -150,7 +118,6 @@ const TripDetail = () => {
 
     composerRequestHandled.current = project.id;
     if (project.viewerAccess === "owner" && project.canEdit) {
-      setActiveTab("timeline");
       setImportLandingPhoto(query.get("intent") === LANDING_PHOTO_INTENT);
       setShowAddUpdate(true);
     }
@@ -174,7 +141,22 @@ const TripDetail = () => {
   });
 
   const handleShare = async () => {
-    if (project?.visibility === "private") return;
+    if (!project) return;
+    if (project.visibility === "private") {
+      if (project.viewerAccess !== "owner") return;
+      try {
+        await updateProject.mutateAsync({
+          expectedVersion: project.version,
+          visibility: "unlisted",
+        });
+        setShareDialogOpen(true);
+        toast.success("Delen via een beveiligde link staat aan");
+      } catch (error) {
+        console.error("Enable project share link failed", error);
+        toast.error(error instanceof ApiClientError ? error.message : "Delen aanzetten lukt nu niet.");
+      }
+      return;
+    }
     if (project?.visibility === "unlisted") {
       if (project.viewerAccess === "owner") setShareDialogOpen(true);
       return;
@@ -246,26 +228,6 @@ const TripDetail = () => {
     }
   };
 
-  const handleProjectDeletion = async () => {
-    if (!project || deleteConfirmation !== "VERWIJDER VERBOUWING" || deleteProject.isPending) return;
-    deletionKey.current ??= createClientIdempotencyKey("project-deletion");
-    try {
-      await deleteProject.mutateAsync({
-        confirmation: "VERWIJDER VERBOUWING",
-        expectedVersion: project.version,
-        idempotencyKey: deletionKey.current,
-      });
-      toast.success("Verwijdering van de verbouwing gestart");
-      navigate(PRODUCT_ROUTES.projects, { replace: true });
-    } catch (error) {
-      console.error("Project deletion request failed", error);
-      const message = error instanceof ApiClientError && error.status === 409
-        ? error.message
-        : "De verbouwing verwijderen lukt nu niet. Probeer dezelfde aanvraag opnieuw.";
-      toast.error(message);
-    }
-  };
-
   // Compatibility-only normalization for historic update deeplinks. New UI,
   // notifications and copied links exclusively emit the `update` query key.
   const legacyQuery = new URLSearchParams(search);
@@ -288,7 +250,7 @@ const TripDetail = () => {
         <h1 className="text-2xl font-semibold">Verbouwing niet gevonden</h1>
         <p className="mt-2 text-muted-foreground">De link naar deze verbouwing is niet geldig.</p>
         <Button asChild variant="outline" className="mt-6 min-h-11">
-          <Link to={PRODUCT_ROUTES.discover}>Terug naar overzicht</Link>
+          <Link to={PRODUCT_ROUTES.landing}>Naar Buildy</Link>
         </Button>
       </main>
     );
@@ -312,7 +274,7 @@ const TripDetail = () => {
         <h1 className="text-2xl font-semibold">Verbouwing niet gevonden</h1>
         <p className="mt-2 text-muted-foreground">Deze link naar de verbouwing is niet beschikbaar.</p>
         <Button asChild variant="outline" className="mt-6 min-h-11">
-          <Link to={PRODUCT_ROUTES.discover}>Terug naar overzicht</Link>
+          <Link to={PRODUCT_ROUTES.landing}>Naar Buildy</Link>
         </Button>
       </main>
     );
@@ -336,7 +298,7 @@ const TripDetail = () => {
             <RefreshCw className="h-4 w-4" aria-hidden="true" /> Opnieuw proberen
           </Button>
           <Button asChild variant="outline" className="min-h-11">
-            <Link to={PRODUCT_ROUTES.discover}>Terug naar overzicht</Link>
+            <Link to={PRODUCT_ROUTES.landing}>Naar Buildy</Link>
           </Button>
         </div>
       </main>
@@ -345,27 +307,17 @@ const TripDetail = () => {
 
   const isOwner = project.viewerAccess === "owner";
   const canEditProject = isOwner && project.canEdit;
-  const visibleUpdates = milestonesOnly
-    ? updates.filter((update) => update.isMilestone)
-    : updates;
-  const milestones = updates.filter((update) => update.isMilestone).length;
-  const mediaCount = updates.reduce(
-    (count, update) => count + update.media.filter((media) => media.contentType !== "application/pdf").length,
-    0,
-  );
-  const endDate = project.expectedEndDate ? new Date(project.expectedEndDate) : new Date();
-  const days = project.startDate
-    ? Math.max(1, differenceInDays(endDate, new Date(project.startDate)) + 1)
-    : null;
   const privacyLevel = project.visibility === "public"
     ? "public"
     : project.visibility === "private"
       ? "private"
       : "shared";
-  const availableUpdates = updates.map((update) => ({
-    id: update.id,
-    label: updateLabel(update.title, update.room),
-  }));
+  const projectPeriod = project.startDate
+    ? new Intl.DateTimeFormat("nl-NL", { month: "long", year: "numeric" }).format(new Date(project.startDate))
+    : null;
+  const currentPhase = [...updates]
+    .sort((left, right) => right.updateDate.localeCompare(left.updateDate))
+    .find((update) => update.phase)?.phase?.name ?? null;
 
   return (
     <main className="min-h-screen">
@@ -437,9 +389,9 @@ const TripDetail = () => {
                   <Plus className="h-4 w-4" aria-hidden="true" /> Bouwmoment toevoegen
                 </Button>
               ) : null}
-              {project.visibility !== "private" && (project.visibility !== "unlisted" || isOwner) ? (
+              {isOwner || (project.visibility !== "private" && project.visibility !== "unlisted") ? (
                 <Button type="button" variant="outline" onClick={() => void handleShare()} className="min-h-11 gap-2">
-                  <Share2 className="h-4 w-4" aria-hidden="true" /> {project.visibility === "unlisted" ? "Deellink" : "Delen"}
+                  <Share2 className="h-4 w-4" aria-hidden="true" /> {isOwner ? "Deel je verbouwing" : "Delen"}
                 </Button>
               ) : null}
               {!isOwner ? (
@@ -466,11 +418,6 @@ const TripDetail = () => {
                       ))}
                     </SelectContent>
                   </Select>
-                  <Button asChild variant="outline" className="min-h-11 gap-2">
-                    <Link to={PRODUCT_ROUTES.projectBudget(project.id)}>
-                      <Wallet className="h-4 w-4" aria-hidden="true" /> Budget
-                    </Link>
-                  </Button>
                   {photobooksEnabled ? (
                     <Button asChild variant="outline" className="min-h-11 gap-2">
                       <Link to={PRODUCT_ROUTES.projectPhotobook(project.id)}>
@@ -478,73 +425,17 @@ const TripDetail = () => {
                       </Link>
                     </Button>
                   ) : null}
-                  <AlertDialog open={deleteDialogOpen} onOpenChange={(open) => {
-                    if (deleteProject.isPending) return;
-                    setDeleteDialogOpen(open);
-                    if (!open) setDeleteConfirmation("");
-                  }}>
-                    <AlertDialogTrigger asChild>
-                      <Button type="button" variant="outline" className="min-h-11 gap-2 text-destructive hover:text-destructive">
-                        <Trash2 className="h-4 w-4" aria-hidden="true" /> Verwijderen
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Verbouwing definitief verwijderen?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Buildy verbergt de verbouwing direct en verwijdert de privébestanden via een controleerbare achtergrondtaak. Een actieve Bouwboekbestelling blokkeert dit. Bewijs van afgeronde bestellingen blijft volgens het bewaarbeleid beschermd.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <div className="space-y-2">
-                        <label htmlFor="delete-project-confirmation" className="text-sm font-medium">
-                          Typ VERWIJDER VERBOUWING om te bevestigen
-                        </label>
-                        <Input
-                          id="delete-project-confirmation"
-                          autoComplete="off"
-                          value={deleteConfirmation}
-                          onChange={(event) => setDeleteConfirmation(event.target.value)}
-                          disabled={deleteProject.isPending}
-                        />
-                      </div>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel type="button" disabled={deleteProject.isPending}>
-                          Annuleren
-                        </AlertDialogCancel>
-                        <AlertDialogAction
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          disabled={deleteConfirmation !== "VERWIJDER VERBOUWING" || deleteProject.isPending}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            void handleProjectDeletion();
-                          }}
-                        >
-                          {deleteProject.isPending ? "Verwijdering starten…" : "Verbouwing verwijderen"}
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
                 </>
               )}
             </div>
 
-            <div className="lg:col-span-2">
-              <dl className="grid grid-cols-4 border-y border-border">
-                {[
-                  ["Bouwmomenten", project.updateCount],
-                  ["Media", mediaCount],
-                  ["Dagen", days ?? "—"],
-                  ["Mijlpalen", milestones],
-                ].map(([label, value]) => (
-                  <div key={label} className="border-l border-border px-2 py-4 first:border-l-0 first:pl-0 sm:px-4 sm:first:pl-0">
-                    <dt className="truncate text-[9px] font-semibold uppercase tracking-[0.11em] text-muted-foreground sm:text-[10px] sm:tracking-[0.16em]">
-                      {label}
-                    </dt>
-                    <dd className="mt-1 text-lg font-semibold tabular-nums sm:text-xl">{value}</dd>
-                  </div>
-                ))}
-              </dl>
-              <div className="mt-5 max-w-xl">
+            <div className="border-t border-border pt-5 lg:col-span-2 lg:flex lg:items-start lg:justify-between lg:gap-10">
+              <p className="text-sm text-muted-foreground">
+                {project.updateCount} {project.updateCount === 1 ? "Bouwmoment" : "Bouwmomenten"}
+                {currentPhase ? ` · ${currentPhase}` : ""}
+                {projectPeriod ? ` · begonnen in ${projectPeriod}` : ""}
+              </p>
+              <div className="mt-5 w-full max-w-xl lg:mt-0">
                 <ProgressControl
                   projectId={project.id}
                   expectedVersion={project.version}
@@ -557,139 +448,70 @@ const TripDetail = () => {
         </div>
       </section>
 
-      <section className="bg-background" aria-label="Inhoud van de verbouwing">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <Tabs
-            value={activeTab}
-            onValueChange={(value) => {
-              setActiveTab(value);
-              if (value !== "timeline") setMilestonesOnly(false);
-            }}
-            className="pt-5 md:pt-7"
-          >
-            <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-border pb-3">
-              <TabsList className="h-auto max-w-full justify-start overflow-x-auto bg-transparent p-0" aria-label="Weergave van de verbouwing">
-                <TabsTrigger value="timeline" className="min-h-11 gap-1.5 rounded-none border-b-2 border-transparent px-3 data-[state=active]:border-accent data-[state=active]:bg-transparent">
-                  <LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" /> Verhaal
-                </TabsTrigger>
-                {mediaFeaturesEnabled ? (
-                  <TabsTrigger value="floorplan" className="min-h-11 gap-1.5 rounded-none border-b-2 border-transparent px-3 data-[state=active]:border-accent data-[state=active]:bg-transparent">
-                    <MapIcon className="h-3.5 w-3.5" aria-hidden="true" /> Plattegrond
-                  </TabsTrigger>
-                ) : null}
-                {mediaFeaturesEnabled ? (
-                  <TabsTrigger value="photos" className="min-h-11 gap-1.5 rounded-none border-b-2 border-transparent px-3 data-[state=active]:border-accent data-[state=active]:bg-transparent">
-                    <Images className="h-3.5 w-3.5" aria-hidden="true" /> Alle foto&apos;s
-                  </TabsTrigger>
-                ) : null}
-              </TabsList>
-              {milestones > 0 && (
+      <section className="bg-[#FFFDF8]" aria-labelledby="story-title">
+        <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 md:py-16 lg:px-8">
+          <div className="mb-10 border-b border-[#D8CFC1] pb-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#A94E36]">Het Verhaal</p>
+            <h2 id="story-title" className="mt-2 font-serif text-4xl leading-none text-[#26231F] sm:text-5xl">
+              Van eerste foto tot thuis.
+            </h2>
+          </div>
+
+          {timelineQuery.isPending ? (
+            <p className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground" role="status" aria-busy="true">
+              <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> Bouwmomenten laden…
+            </p>
+          ) : timelineQuery.isError ? (
+            <div className="border-y border-[#D8CFC1] py-14 text-center" role="alert">
+              <p className="text-muted-foreground">
+                {isOnline
+                  ? "De Bouwmomenten konden niet worden geladen."
+                  : "Je bent offline. Probeer het opnieuw zodra je verbinding terug is."}
+              </p>
+              <Button type="button" variant="outline" onClick={() => void timelineQuery.refetch()} className="mt-4 min-h-11 gap-2">
+                <RefreshCw className="h-4 w-4" aria-hidden="true" /> Opnieuw proberen
+              </Button>
+            </div>
+          ) : updates.length === 0 ? (
+            <div className="border-y border-[#D8CFC1] py-16 text-center text-[#655F57]">
+              <Hammer className="mx-auto mb-4 h-10 w-10 text-[#A94E36]" strokeWidth={1.5} aria-hidden="true" />
+              <p className="font-serif text-3xl text-[#26231F]">Je verbouwverhaal begint hier.</p>
+              <p className="mt-2 text-sm">Eén foto is genoeg om te beginnen.</p>
+              {canEditProject ? (
                 <Button
                   type="button"
-                  size="sm"
-                  variant={milestonesOnly ? "default" : "outline"}
-                  aria-pressed={milestonesOnly}
-                  onClick={() => {
-                    if (activeTab !== "timeline") {
-                      setActiveTab("timeline");
-                      setMilestonesOnly(true);
-                      return;
-                    }
-                    setMilestonesOnly((current) => !current);
-                  }}
-                  className={`min-h-11 gap-1.5 ${
-                    milestonesOnly ? "bg-accent text-accent-foreground hover:bg-accent/90" : ""
-                  }`}
+                  onClick={() => setShowAddUpdate(true)}
+                  className="mt-6 min-h-11 bg-accent text-accent-foreground hover:bg-accent/90"
                 >
-                  <Flag className="h-3.5 w-3.5" aria-hidden="true" /> Mijlpalen
+                  <Plus className="mr-2 h-4 w-4" aria-hidden="true" /> Bouwmoment toevoegen
                 </Button>
-              )}
+              ) : null}
             </div>
+          ) : (
+            <BlueprintTimeline
+              updates={updates}
+              projectId={project.id}
+              canEdit={canEditProject}
+              canEngage={project.viewerAccess !== "link" || Boolean(user)}
+              canCopyUpdateLink={project.visibility === "followers" || project.visibility === "public"}
+              onEdit={setEditingUpdate}
+            />
+          )}
 
-            <TabsContent value="timeline">
-              {milestonesOnly && (
-                <div className="mb-4 flex items-center justify-between border-l-2 border-accent bg-accent/5 px-4 py-2 text-sm" role="status">
-                  <span>Alleen mijlpalen worden getoond</span>
-                  <Button type="button" size="sm" variant="ghost" onClick={() => setMilestonesOnly(false)} className="min-h-11">
-                    Filter wissen
-                  </Button>
-                </div>
-              )}
-
-              {timelineQuery.isPending ? (
-                <p className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground" role="status" aria-busy="true">
-                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> Bouwmomenten laden…
-                </p>
-              ) : timelineQuery.isError ? (
-                <div className="border-y border-border py-14 text-center" role="alert">
-                  <p className="text-muted-foreground">
-                    {isOnline
-                      ? "De Bouwmomenten konden niet worden geladen."
-                      : "Je bent offline. Maak opnieuw verbinding om de Bouwmomenten te laden."}
-                  </p>
-                  <Button type="button" variant="outline" onClick={() => void timelineQuery.refetch()} className="mt-4 min-h-11 gap-2">
-                    <RefreshCw className="h-4 w-4" aria-hidden="true" /> Opnieuw proberen
-                  </Button>
-                </div>
-              ) : visibleUpdates.length === 0 ? (
-                <div className="border-y border-border py-16 text-center text-muted-foreground">
-                  <Hammer className="mx-auto mb-3 h-12 w-12 opacity-40" aria-hidden="true" />
-                  <p className="text-lg">{milestonesOnly ? "Geen mijlpalen gevonden." : "Nog geen Bouwmomenten."}</p>
-                  {canEditProject && !milestonesOnly && (
-                    <>
-                      <p className="mt-1 text-sm">Begin met een foto van de huidige situatie.</p>
-                      <Button
-                        type="button"
-                        onClick={() => setShowAddUpdate(true)}
-                        className="mt-5 min-h-11 bg-accent text-accent-foreground hover:bg-accent/90"
-                      >
-                        <Plus className="mr-2 h-4 w-4" aria-hidden="true" /> Eerste Bouwmoment toevoegen
-                      </Button>
-                    </>
-                  )}
-                </div>
-              ) : (
-                <BlueprintTimeline
-                  updates={visibleUpdates}
-                  projectId={project.id}
-                  canEdit={canEditProject}
-                  canEngage={project.viewerAccess !== "link"}
-                  canCopyUpdateLink={project.visibility === "followers" || project.visibility === "public"}
-                  onEdit={setEditingUpdate}
-                />
-              )}
-
-              {timelineQuery.hasNextPage && !milestonesOnly && (
-                <div className="flex justify-center pb-8">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={timelineQuery.isFetchingNextPage}
-                    onClick={() => void timelineQuery.fetchNextPage()}
-                    className="min-h-11 gap-2"
-                  >
-                    {timelineQuery.isFetchingNextPage && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
-                    {timelineQuery.isFetchingNextPage ? "Meer Bouwmomenten laden…" : "Oudere Bouwmomenten laden"}
-                  </Button>
-                </div>
-              )}
-            </TabsContent>
-
-            {mediaFeaturesEnabled ? (
-              <TabsContent value="floorplan">
-                <FloorplanBoard
-                  projectId={project.id}
-                  availableUpdates={availableUpdates}
-                />
-              </TabsContent>
-            ) : null}
-
-            {mediaFeaturesEnabled ? (
-              <TabsContent value="photos">
-                <AllPhotosTab projectId={project.id} updates={updates} />
-              </TabsContent>
-            ) : null}
-          </Tabs>
+          {timelineQuery.hasNextPage ? (
+            <div className="flex justify-center pt-10">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={timelineQuery.isFetchingNextPage}
+                onClick={() => void timelineQuery.fetchNextPage()}
+                className="min-h-11 gap-2"
+              >
+                {timelineQuery.isFetchingNextPage && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+                {timelineQuery.isFetchingNextPage ? "Meer Bouwmomenten laden…" : "Oudere Bouwmomenten laden"}
+              </Button>
+            </div>
+          ) : null}
         </div>
       </section>
 

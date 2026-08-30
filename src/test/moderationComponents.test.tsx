@@ -7,6 +7,7 @@ import {
   SUPPORT_PRIVACY_NOTICE_VERSION,
 } from "../../shared/contracts/moderation";
 import ReportDialog from "@/components/moderation/ReportDialog";
+import FeedbackForm from "@/components/moderation/FeedbackForm";
 import SupportForm from "@/components/moderation/SupportForm";
 import {
   useSubmitFeedbackMutation,
@@ -115,6 +116,7 @@ describe("community safety forms", () => {
     window.history.replaceState(null, "", "/support");
 
     render(<SupportForm initialKind="third_party_request" />);
+    expect(screen.queryByRole("option", { name: "Bouwboekbestelling" })).not.toBeInTheDocument();
     const submit = screen.getByRole("button", { name: "Bericht versturen" });
     expect(submit).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Onderwerp"), { target: { value: "privacy" } });
@@ -138,5 +140,77 @@ describe("community safety forms", () => {
       privacyNoticeVersion: SUPPORT_PRIVACY_NOTICE_VERSION,
       website: "",
     });
+  });
+
+  it("serializes the three product questions and optional rating into the encrypted message field", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({
+      id: TARGET_ID,
+      receiptCode: "HELP-11111111",
+      kind: "feedback",
+      status: "received",
+      submittedAt: "2026-08-04T12:00:00.000Z",
+      replayed: false,
+    });
+    vi.mocked(useSubmitFeedbackMutation).mockReturnValue(
+      mutationResult(mutateAsync) as unknown as ReturnType<typeof useSubmitFeedbackMutation>,
+    );
+
+    render(<FeedbackForm />);
+    fireEvent.change(screen.getByLabelText("Wat werkte goed?"), {
+      target: { value: "Het verhaal voelt meteen persoonlijk." },
+    });
+    fireEvent.change(screen.getByLabelText("Wat was onduidelijk?"), {
+      target: { value: "Waar ik de indeling bewaar." },
+    });
+    fireEvent.change(screen.getByLabelText("Wat mis je?"), {
+      target: { value: "Een klein voorwoord." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "4 van 5" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Ik deel geen gevoelige informatie" }));
+    fireEvent.click(screen.getByRole("button", { name: "Feedback versturen" }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledOnce());
+    expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
+      category: "idea",
+      message: [
+        "Buildy-feedback v1",
+        "Context: Algemene productfeedback",
+        "Waardering: 4/5",
+        "",
+        "Wat werkte goed?",
+        "Het verhaal voelt meteen persoonlijk.",
+        "",
+        "Wat was onduidelijk?",
+        "Waar ik de indeling bewaar.",
+        "",
+        "Wat mis je?",
+        "Een klein voorwoord.",
+      ].join("\n"),
+      privacyNoticeVersion: SUPPORT_PRIVACY_NOTICE_VERSION,
+    }));
+  });
+
+  it("records print interest without requiring extra free text", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({
+      id: TARGET_ID,
+      receiptCode: "HELP-11111111",
+      kind: "feedback",
+      status: "received",
+      submittedAt: "2026-08-04T12:00:00.000Z",
+      replayed: false,
+    });
+    vi.mocked(useSubmitFeedbackMutation).mockReturnValue(
+      mutationResult(mutateAsync) as unknown as ReturnType<typeof useSubmitFeedbackMutation>,
+    );
+
+    render(<FeedbackForm intent="print-interest" />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Ik deel geen gevoelige informatie" }));
+    fireEvent.click(screen.getByRole("button", { name: "Interesse delen" }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledOnce());
+    expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
+      category: "idea",
+      message: expect.stringContaining("Context: Interesse in later laten drukken"),
+    }));
   });
 });

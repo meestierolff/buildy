@@ -224,7 +224,7 @@ const Profile = () => {
               Opnieuw proberen
             </Button>
           )}
-          <Link to={PRODUCT_ROUTES.connections} className="block text-xs text-muted-foreground underline">Terug naar connecties</Link>
+          <Link to={PRODUCT_ROUTES.landing} className="block text-xs text-muted-foreground underline">Terug naar Buildy</Link>
         </section>
       </main>
     );
@@ -277,7 +277,7 @@ const Profile = () => {
             </AlertDialogContent>
           </AlertDialog>
           {blockError ? <p className="text-sm text-destructive" role="alert">{blockError}</p> : null}
-          <Link to={PRODUCT_ROUTES.connections} className="block text-xs text-muted-foreground underline">Terug naar connecties</Link>
+          <Link to={PRODUCT_ROUTES.landing} className="block text-xs text-muted-foreground underline">Terug naar Buildy</Link>
         </section>
       </main>
     );
@@ -413,7 +413,7 @@ const Profile = () => {
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
             Projecten, updates en uitgebreide statistieken worden alleen getoond via hun eigen afgeschermde API’s. Op dit profiel staan daarom uitsluitend de veilig vrijgegeven profielgegevens.
           </p>
-          <Link to={PRODUCT_ROUTES.connections} className="inline-block mt-5 text-sm underline underline-offset-4">Meer bouwers ontdekken</Link>
+          <Link to={PRODUCT_ROUTES.landing} className="inline-block mt-5 text-sm underline underline-offset-4">Terug naar Buildy</Link>
         </section>
       </div>
     </main>

@@ -19,7 +19,6 @@ const categories: Array<{ value: SupportCategory; label: string }> = [
   { value: "account", label: "Account of inloggen" },
   { value: "privacy", label: "Privacy of verzoek van een derde" },
   { value: "safety", label: "Veiligheid of misbruik" },
-  { value: "order", label: "Bouwboekbestelling" },
   { value: "technical", label: "Technisch probleem" },
   { value: "content_appeal", label: "Bezwaar over content" },
   { value: "other", label: "Iets anders" },

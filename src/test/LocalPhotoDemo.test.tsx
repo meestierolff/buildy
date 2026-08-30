@@ -55,11 +55,9 @@ describe("lokale foto-demo", () => {
     expect(document.body.textContent).not.toContain(photo.name);
     expect(screen.getByText(/Pas na Google-login en wanneer jij het Bouwmoment plaatst/i)).toBeInTheDocument();
 
-    const saveLink = screen.getByRole("link", { name: /bewaar dit bouwmoment/i });
+    const saveLink = screen.getByRole("link", { name: /doorgaan met google/i });
     const destination = new URL(saveLink.getAttribute("href") ?? "", "https://buildy.test");
     expect(destination.pathname).toBe("/auth");
-    expect(destination.searchParams.get("provider")).toBe("google");
-    expect(destination.searchParams.get("mode")).toBe("register");
     expect(destination.searchParams.get("next")).toBe("/project/nieuw?intent=eerste-bouwmoment");
 
     expect(mocks.saveLandingPhoto).not.toHaveBeenCalled();
@@ -81,7 +79,7 @@ describe("lokale foto-demo", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent(/Kies een JPG-, PNG-, WebP-, AVIF-, HEIC- of HEIF-foto/i);
     expect(createObjectUrl).not.toHaveBeenCalled();
-    expect(screen.queryByRole("link", { name: /bewaar dit bouwmoment/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /doorgaan met google/i })).not.toBeInTheDocument();
   });
 
   it("blijft staan en toont richting als lokale opslag faalt", async () => {
@@ -92,7 +90,7 @@ describe("lokale foto-demo", () => {
     fireEvent.change(screen.getByLabelText("Kies een verbouwfoto van dit apparaat"), {
       target: { files: [photo] },
     });
-    fireEvent.click(screen.getByRole("link", { name: /bewaar dit bouwmoment/i }));
+    fireEvent.click(screen.getByRole("link", { name: /doorgaan met google/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Deze foto kon niet op dit apparaat worden bewaard. Probeer het opnieuw voordat je verdergaat.",

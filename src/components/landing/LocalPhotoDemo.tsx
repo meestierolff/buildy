@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type ChangeEvent, type MouseEvent } from "react";
-import { ArrowRight, BookOpen, Camera, Check, ImagePlus, LockKeyhole } from "lucide-react";
+import { ArrowRight, BookOpen, Camera, Check, ImagePlus, LockKeyhole, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,8 +13,6 @@ import { Link, useNavigate } from "@/lib/router";
 const FIRST_MOMENT_INTENT = `${PRODUCT_ROUTES.newProject}?intent=${LANDING_PHOTO_INTENT}`;
 
 export const LOCAL_PHOTO_AUTH_PATH = `/auth?${new URLSearchParams({
-  mode: "register",
-  provider: "google",
   next: FIRST_MOMENT_INTENT,
 }).toString()}`;
 
@@ -59,6 +57,14 @@ const LocalPhotoDemo = ({ saveHref = LOCAL_PHOTO_AUTH_PATH }: LocalPhotoDemoProp
     setPreviewUrl(URL.createObjectURL(photo));
   };
 
+  const removePhoto = () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+    setSelectedPhoto(null);
+    setError(null);
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
   const preservePhoto = async (event: MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
     if (!selectedPhoto || savingPhoto) return;
@@ -89,15 +95,27 @@ const LocalPhotoDemo = ({ saveHref = LOCAL_PHOTO_AUTH_PATH }: LocalPhotoDemoProp
             Eén foto. Meteen een verhaal.
           </h2>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          className="min-h-11 justify-center border-[#A94E36] bg-transparent px-4 text-[#26231F] hover:bg-[#A94E36] hover:text-white"
-          onClick={() => inputRef.current?.click()}
-        >
-          <ImagePlus aria-hidden="true" />
-          {previewUrl ? "Kies een andere foto" : "Kies een verbouwfoto"}
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          {previewUrl ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="min-h-11 justify-center px-4 text-[#655F57] hover:bg-[#F7F2E9] hover:text-[#26231F]"
+              onClick={removePhoto}
+            >
+              <X aria-hidden="true" /> Verwijder foto
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-11 justify-center border-[#A94E36] bg-transparent px-4 text-[#26231F] hover:bg-[#A94E36] hover:text-white"
+            onClick={() => inputRef.current?.click()}
+          >
+            <ImagePlus aria-hidden="true" />
+            {previewUrl ? "Kies een andere foto" : "Kies een verbouwfoto"}
+          </Button>
+        </div>
         <input
           ref={inputRef}
           id={inputId}
@@ -111,7 +129,7 @@ const LocalPhotoDemo = ({ saveHref = LOCAL_PHOTO_AUTH_PATH }: LocalPhotoDemoProp
 
       <div className="flex items-start gap-3 bg-[#F7F2E9] px-4 py-4 text-sm leading-6 text-[#26231F] sm:px-6">
         <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-[#A94E36]" aria-hidden="true" />
-        <p>Je foto blijft op dit apparaat totdat je kiest om hem te bewaren. Pas na Google-login en wanneer jij het Bouwmoment plaatst, wordt hij privé geüpload.</p>
+        <p>Je foto blijft op dit apparaat totdat je hem bewaart. Pas na Google-login en wanneer jij het Bouwmoment plaatst, wordt hij privé geüpload.</p>
       </div>
 
       {error ? <p className="border-t border-[#D8CFC1] px-4 py-3 text-sm text-destructive sm:px-6" role="alert">{error}</p> : null}
@@ -187,7 +205,11 @@ const LocalPhotoDemo = ({ saveHref = LOCAL_PHOTO_AUTH_PATH }: LocalPhotoDemoProp
               onClick={(event) => void preservePhoto(event)}
               aria-disabled={savingPhoto}
             >
-              {savingPhoto ? "Foto lokaal bewaren…" : "Bewaar dit bouwmoment"} <ArrowRight aria-hidden="true" />
+              {savingPhoto
+                ? "Foto lokaal bewaren…"
+                : saveHref.startsWith("/auth")
+                  ? "Doorgaan met Google"
+                  : "Bewaar dit Bouwmoment"} <ArrowRight aria-hidden="true" />
             </Link>
           </Button>
         </div>

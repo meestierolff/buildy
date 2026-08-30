@@ -2,15 +2,15 @@ import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { BrowserRouter, Route, Routes, useLocation } from "@/lib/router";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "@/lib/router";
 import { AuthProvider } from "@/hooks/useAuth";
 import { useAuth } from "@/hooks/useAuth";
-import { useOwnProfile } from "@/hooks/useProfiles";
+import { useProjectDashboard } from "@/hooks/useProjectApi";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { AppShell, LegacyRedirect, MobileNav } from "@/components/app";
-import { PRODUCT_ROUTES, type ProductNavigationItem } from "@/lib/productNavigation";
+import { getMobileNavigationItems, PRODUCT_ROUTES } from "@/lib/productNavigation";
 
 const Index = lazy(() => import("./pages/Index"));
 const OnboardingDialog = lazy(() => import("@/components/app/OnboardingDialog"));
@@ -56,49 +56,35 @@ const routeParam = (
   key: string,
 ): string | null => params[key]?.trim() || null;
 
-const PUBLIC_MOBILE_NAVIGATION: readonly ProductNavigationItem[] = [
-  { id: "discover", label: "Ontdekken", href: PRODUCT_ROUTES.discover, icon: "discover", exact: true },
-  { id: "connections", label: "Connecties", href: PRODUCT_ROUTES.connections, icon: "connections" },
-  { id: "account", label: "Inloggen", href: "/auth", icon: "account" },
-];
-
-const getAuthenticatedMobileNavigation = (profileSlug?: string): readonly ProductNavigationItem[] => [
-  { id: "projects", label: "Verbouwingen", href: PRODUCT_ROUTES.projects, icon: "projects", exact: true, requiresAuth: true },
-  { id: "following", label: "Volgend", href: PRODUCT_ROUTES.following, icon: "following", requiresAuth: true },
-  {
-    id: "update",
-    label: "Bouwmoment",
-    href: PRODUCT_ROUTES.createUpdate,
-    icon: "add",
-    primaryAction: true,
-    requiresAuth: true,
-  },
-  { id: "discover", label: "Ontdekken", href: PRODUCT_ROUTES.discover, icon: "discover" },
-  {
-    id: "profile",
-    label: "Profiel",
-    href: profileSlug ? PRODUCT_ROUTES.profile(profileSlug) : PRODUCT_ROUTES.account,
-    icon: "profile",
-    requiresAuth: true,
-  },
-];
-
 const ApplicationFrame = () => {
   const { user } = useAuth();
-  const profileQuery = useOwnProfile(Boolean(user));
+  const dashboardQuery = useProjectDashboard(Boolean(user));
   const { pathname } = useLocation();
   const hidesMobileNavigation = pathname === "/auth";
-  const navigationItems = user
-    ? getAuthenticatedMobileNavigation(profileQuery.data?.slug)
-    : PUBLIC_MOBILE_NAVIGATION;
+  const activeProjectId = dashboardQuery.data?.pages
+    .flatMap((page) => page.items)
+    .at(0)?.id;
+  const storyHref = activeProjectId
+    ? PRODUCT_ROUTES.project(activeProjectId)
+    : PRODUCT_ROUTES.newProject;
+  const navigationItems = getMobileNavigationItems({
+    storyHref,
+    updateHref: activeProjectId
+      ? PRODUCT_ROUTES.projectUpdateComposer(activeProjectId)
+      : PRODUCT_ROUTES.newProject,
+    photobookHref: activeProjectId
+      ? PRODUCT_ROUTES.projectPhotobook(activeProjectId)
+      : PRODUCT_ROUTES.newProject,
+    profileHref: PRODUCT_ROUTES.ownProfile,
+  });
   const showFeedbackLauncher = Boolean(user) && !["/feedback", "/support", "/melden"].includes(pathname);
 
   return (
     <>
       <AppShell
-        header={<Header />}
+        header={<Header activeProjectId={activeProjectId} />}
         footer={<Footer />}
-        mobileNavigation={hidesMobileNavigation ? undefined : (
+        mobileNavigation={!user || hidesMobileNavigation ? undefined : (
           <MobileNav items={navigationItems} label="Mobiele navigatie" />
         )}
       >
@@ -109,7 +95,7 @@ const ApplicationFrame = () => {
               <Route path="/ontdekken" element={<Index />} />
               <Route path="/projecten" element={<Index />} />
               <Route path="/auth" element={<Auth />} />
-              <Route path="/account" element={<AccountSettings />} />
+              <Route path="/account" element={<Navigate to={PRODUCT_ROUTES.ownProfile} replace />} />
               <Route path="/project/nieuw" element={<NewTrip />} />
               <Route path="/update/nieuw" element={<NewUpdate />} />
               <Route path="/project/:id/bouwboek" element={<Photobook />} />
@@ -117,6 +103,7 @@ const ApplicationFrame = () => {
               <Route path="/project/:id" element={<TripDetail />} />
               <Route path="/volgend" element={<Favorites />} />
               <Route path="/connecties" element={<Friends />} />
+              <Route path="/profiel" element={<AccountSettings />} />
               <Route path="/profiel/:profileKey" element={<Profile />} />
               <Route path="/notificaties" element={<Notifications />} />
               <Route path="/delen" element={<ShareLinkRedeem />} />
@@ -167,7 +154,10 @@ const ApplicationFrame = () => {
       </AppShell>
       {user ? (
         <Suspense fallback={null}>
-          <OnboardingDialog enabled />
+          <OnboardingDialog
+            enabled={dashboardQuery.isSuccess}
+            activeProjectId={activeProjectId}
+          />
         </Suspense>
       ) : null}
       {showFeedbackLauncher ? (

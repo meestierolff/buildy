@@ -17,6 +17,7 @@ const COMMENT_ID = "00000000-0000-4000-8000-000000000301";
 const NOTIFICATION_ID = "00000000-0000-4000-8000-000000000401";
 const REACTION_ID = "00000000-0000-4000-8000-000000000501";
 const REQUEST_ID = "00000000-0000-4000-8000-000000000901";
+const SHARE_LINK_ID = "00000000-0000-4000-8000-000000000601";
 
 function serviceMocks(): EngagementHttpService {
   return {
@@ -58,12 +59,18 @@ function serviceMocks(): EngagementHttpService {
   };
 }
 
-function actorResolver(actorId: string | null): ProjectActorResolver {
+function actorResolver(actorId: string | null, shareLinkId?: string): ProjectActorResolver {
   return {
     resolve: vi.fn().mockResolvedValue(
       actorId
-        ? { kind: "authenticated", appUserId: actorId }
-        : ANONYMOUS_PROJECT_ACTOR,
+        ? {
+            kind: "authenticated",
+            appUserId: actorId,
+            ...(shareLinkId ? { shareLinkId } : {}),
+          }
+        : shareLinkId
+          ? { kind: "anonymous", shareLinkId }
+          : ANONYMOUS_PROJECT_ACTOR,
     ),
   };
 }
@@ -138,6 +145,7 @@ describe("engagement HTTP handler", () => {
   });
 
   it("uses only the server-resolved actor for comment and reaction writes", async () => {
+    actors = actorResolver(ACTOR_ID, SHARE_LINK_ID);
     const handler = createEngagementHttpHandler({ actors, service });
     const forgedBody = {
       actorId: FORGED_ID,
@@ -157,16 +165,35 @@ describe("engagement HTTP handler", () => {
       ),
       REQUEST_ID,
     );
+    await handler(
+      new Request(
+        `https://app.buildy.test/api/projects/${PROJECT_ID}/updates/${UPDATE_ID}/reactions`,
+        {
+          method: "DELETE",
+          headers: { "content-type": "application/json", "x-user-id": FORGED_ID },
+          body: JSON.stringify({ target: "update", emoji: "👍" }),
+        },
+      ),
+      REQUEST_ID,
+    );
 
+    const actor = { kind: "authenticated", appUserId: ACTOR_ID, shareLinkId: SHARE_LINK_ID } as const;
     expect(service.addReaction).toHaveBeenCalledWith(
-      ACTOR_ID,
+      actor,
       PROJECT_ID,
       UPDATE_ID,
       forgedBody,
     );
+    expect(service.removeReaction).toHaveBeenCalledWith(
+      actor,
+      PROJECT_ID,
+      UPDATE_ID,
+      { target: "update", emoji: "👍" },
+    );
   });
 
   it("routes author/owner comment deletion with path-owned identifiers", async () => {
+    actors = actorResolver(ACTOR_ID, SHARE_LINK_ID);
     const handler = createEngagementHttpHandler({ actors, service });
     const input = { idempotencyKey: "comment-delete-key-0001", expectedVersion: 2 };
 
@@ -184,11 +211,50 @@ describe("engagement HTTP handler", () => {
 
     expect(response.status).toBe(200);
     expect(service.deleteComment).toHaveBeenCalledWith(
-      ACTOR_ID,
+      { kind: "authenticated", appUserId: ACTOR_ID, shareLinkId: SHARE_LINK_ID },
       PROJECT_ID,
       UPDATE_ID,
       COMMENT_ID,
       input,
+    );
+  });
+
+  it("preserves a signed share capability for authenticated reads and writes", async () => {
+    actors = actorResolver(ACTOR_ID, SHARE_LINK_ID);
+    const handler = createEngagementHttpHandler({ actors, service });
+
+    await handler(
+      new Request(
+        `https://app.buildy.test/api/projects/${PROJECT_ID}/updates/${UPDATE_ID}/comments`,
+      ),
+      REQUEST_ID,
+    );
+    await handler(
+      new Request(
+        `https://app.buildy.test/api/projects/${PROJECT_ID}/updates/${UPDATE_ID}/comments`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            idempotencyKey: "comment-create-key-0001",
+            body: "Mooi!",
+          }),
+        },
+      ),
+      REQUEST_ID,
+    );
+
+    const actor = {
+      kind: "authenticated" as const,
+      appUserId: ACTOR_ID,
+      shareLinkId: SHARE_LINK_ID,
+    };
+    expect(service.comments).toHaveBeenCalledWith(actor, PROJECT_ID, UPDATE_ID, {});
+    expect(service.createComment).toHaveBeenCalledWith(
+      actor,
+      PROJECT_ID,
+      UPDATE_ID,
+      expect.objectContaining({ body: "Mooi!" }),
     );
   });
 

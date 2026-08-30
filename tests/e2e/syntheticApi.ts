@@ -253,6 +253,13 @@ export async function installSyntheticApi(
       await fulfillJson(route, syntheticOwnProfile());
       return;
     }
+    if (method === "GET" && url.pathname === "/api/projects" && authenticated) {
+      await fulfillJson(route, success({
+        items: [syntheticProjectCard("private")],
+        nextCursor: null,
+      }));
+      return;
+    }
     if (method === "GET" && url.pathname === "/api/notifications" && authenticated) {
       await fulfillJson(route, success({
         items: [],

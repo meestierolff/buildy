@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectOverview, ProjectUpdate } from "../../shared/contracts/projects";
+import { useAuth } from "@/hooks/useAuth";
 import { useProject } from "@/hooks/useProjectApi";
 import { ApiClientError } from "@/lib/apiClient";
 import TripDetail from "@/pages/TripDetail";
@@ -28,6 +29,7 @@ vi.mock("@/hooks/useProjectApi", () => ({
   useDeleteProjectMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useUpdateProjectMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
 }));
+vi.mock("@/hooks/useAuth", () => ({ useAuth: vi.fn() }));
 vi.mock("@/hooks/usePageMeta", () => ({ usePageMeta: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("@/lib/router", () => ({
@@ -62,21 +64,9 @@ vi.mock("@/components/BlueprintTimeline", () => ({
       data-can-engage={String(canEngage)}
       data-can-copy-update-link={String(canCopyUpdateLink)}
     >
-      {projectId}:{updates.map((update) => update.media.map((media) => media.proxyPath).join(",")).join(";")}
-    </div>
-  ),
-}));
-vi.mock("@/components/AllPhotosTab", () => ({
-  default: ({ updates }: { updates: ProjectUpdate[] }) => (
-    <div data-testid="typed-gallery">{updates.length} typed updates</div>
-  ),
-}));
-vi.mock("@/components/project/FloorplanBoard", () => ({
-  FloorplanBoard: ({ availableUpdates }: {
-    availableUpdates: Array<{ id: string }>;
-  }) => (
-    <div data-testid="floorplan-board">
-      {availableUpdates.map((update) => update.id).join(",")}
+      {projectId}:{updates.map((update) => (
+        `${update.id}:${update.media.map((media) => media.proxyPath).join(",")}`
+      )).join(";")}
     </div>
   ),
 }));
@@ -188,6 +178,9 @@ function mockReadflow(input: {
 describe("TripDetail typed project-readflow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: "provider-owner" },
+    } as unknown as ReturnType<typeof useAuth>);
     Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
     window.history.replaceState(null, "", `/project/${PROJECT_ID}`);
     mockReadflow();
@@ -208,17 +201,18 @@ describe("TripDetail typed project-readflow", () => {
     expect(screen.getByTestId("typed-timeline")).toHaveTextContent(`/api/media/${MEDIA_ID}`);
     expect(screen.queryByRole("button", { name: /update bewerken|update verwijderen/i })).not.toBeInTheDocument();
     expect(screen.getByTestId("progress-control")).toHaveTextContent("versie 7");
-    expect(screen.queryByRole("button", { name: /delen|deellink/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Deel je verbouwing" })).toBeInTheDocument();
   });
 
-  it("opent alleen voor de eigenaar van een unlisted project de veilige deellinkflow", () => {
+  it("opent alleen voor de eigenaar de shareflow en laat een ingelogde shareviewer engageren", () => {
     mockReadflow({ overview: { ...project, visibility: "unlisted" } });
     render(<TripDetail />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Deellink" }));
+    fireEvent.click(screen.getByRole("button", { name: "Deel je verbouwing" }));
     expect(screen.getByRole("dialog")).toHaveTextContent("Deellink voor Ons huis");
 
     cleanup();
+    vi.mocked(useAuth).mockReturnValue({ user: null } as ReturnType<typeof useAuth>);
     mockReadflow({
       overview: {
         ...project,
@@ -233,16 +227,30 @@ describe("TripDetail typed project-readflow", () => {
     expect(screen.queryByRole("link", { name: /Bouwboek|Budget/i })).not.toBeInTheDocument();
     expect(screen.getByTestId("typed-timeline")).toHaveAttribute("data-can-engage", "false");
     expect(screen.getByTestId("typed-timeline")).toHaveAttribute("data-can-copy-update-link", "false");
+
+    cleanup();
+    vi.mocked(useAuth).mockReturnValue({
+      user: { id: "provider-viewer" },
+    } as unknown as ReturnType<typeof useAuth>);
+    mockReadflow({
+      overview: {
+        ...project,
+        visibility: "unlisted",
+        viewerAccess: "link",
+        canEdit: false,
+      },
+    });
+    render(<TripDetail />);
+    expect(screen.getByTestId("typed-timeline")).toHaveAttribute("data-can-engage", "true");
   });
 
-  it("voedt de typed planning- en galerijweergaven met canonieke IDs", async () => {
+  it("toont één gefocust verhaal met de canonieke update en media", () => {
     render(<TripDetail />);
 
-    fireEvent.mouseDown(screen.getByRole("tab", { name: /Plattegrond/i }), { button: 0 });
-    expect(await screen.findByTestId("floorplan-board")).toHaveTextContent(UPDATE_ID);
-
-    fireEvent.mouseDown(screen.getByRole("tab", { name: /Alle foto's/i }), { button: 0 });
-    expect(await screen.findByTestId("typed-gallery")).toHaveTextContent("1 typed updates");
+    expect(screen.queryByRole("tab", { name: /Plattegrond/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Alle foto's/i })).not.toBeInTheDocument();
+    expect(screen.getByTestId("typed-timeline")).toHaveTextContent(UPDATE_ID);
+    expect(screen.getByTestId("typed-timeline")).toHaveTextContent(`/api/media/${MEDIA_ID}`);
   });
 
   it("toont een toegankelijke loadingstate zonder projectmetadata", () => {
@@ -298,7 +306,7 @@ describe("TripDetail typed project-readflow", () => {
     render(<TripDetail />);
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Je bent offline. Maak opnieuw verbinding om de Bouwmomenten te laden.",
+      "Je bent offline. Probeer het opnieuw zodra je verbinding terug is.",
     );
     expect(screen.getByRole("heading", { name: "Ons huis" })).toBeInTheDocument();
   });

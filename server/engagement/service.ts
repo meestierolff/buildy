@@ -17,6 +17,7 @@ import {
 } from "../../shared/contracts/engagement.js";
 import {
   ANONYMOUS_PROJECT_ACTOR,
+  type AuthenticatedProjectActor,
   type ProjectActor,
 } from "../projects/actor.js";
 import type { PrivacyBlindIndex } from "../security/dataProtection.js";
@@ -54,9 +55,26 @@ function notificationId(value: string): string {
 }
 
 function normalizedViewer(viewer: ProjectActor): ProjectActor {
-  return viewer.kind === "authenticated"
-    ? { kind: "authenticated", appUserId: actorId(viewer.appUserId) }
-    : ANONYMOUS_PROJECT_ACTOR;
+  const shareLinkId = viewer.shareLinkId ? contentId(viewer.shareLinkId) : undefined;
+  if (viewer.kind === "authenticated") {
+    return {
+      kind: "authenticated",
+      appUserId: actorId(viewer.appUserId),
+      ...(shareLinkId ? { shareLinkId } : {}),
+    };
+  }
+  return shareLinkId ? { kind: "anonymous", shareLinkId } : ANONYMOUS_PROJECT_ACTOR;
+}
+
+function normalizedAuthenticatedActor(
+  actor: AuthenticatedProjectActor,
+): AuthenticatedProjectActor {
+  const shareLinkId = actor.shareLinkId ? contentId(actor.shareLinkId) : undefined;
+  return {
+    kind: "authenticated",
+    appUserId: actorId(actor.appUserId),
+    ...(shareLinkId ? { shareLinkId } : {}),
+  };
 }
 
 function withoutIdempotencyKey<T extends { idempotencyKey: string }>(
@@ -111,18 +129,19 @@ export class EngagementService {
   }
 
   async createComment(
-    rawActorId: string,
+    rawActor: AuthenticatedProjectActor,
     rawProjectId: string,
     rawUpdateId: string,
     rawInput: unknown,
   ): Promise<CommentMutationResult> {
-    const actor = actorId(rawActorId);
+    const actor = normalizedAuthenticatedActor(rawActor);
+    const actorId = actor.appUserId;
     const projectId = contentId(rawProjectId);
     const updateId = contentId(rawUpdateId);
     const input = createCommentInputSchema.parse(rawInput);
     const operation = "comment.create";
     return this.repository.createComment({
-      actorId: actor,
+      actor,
       commentId: this.createId(),
       projectId,
       updateId,
@@ -135,7 +154,7 @@ export class EngagementService {
       },
       idempotencyKey: scopedEngagementIdempotencyKey(
         operation,
-        actor,
+        actorId,
         updateId,
         input.idempotencyKey,
       ),
@@ -145,27 +164,28 @@ export class EngagementService {
   }
 
   async deleteComment(
-    rawActorId: string,
+    rawActor: AuthenticatedProjectActor,
     rawProjectId: string,
     rawUpdateId: string,
     rawCommentId: string,
     rawInput: unknown,
   ): Promise<CommentMutationResult> {
-    const actor = actorId(rawActorId);
+    const actor = normalizedAuthenticatedActor(rawActor);
+    const actorId = actor.appUserId;
     const projectId = contentId(rawProjectId);
     const updateId = contentId(rawUpdateId);
     const commentId = contentId(rawCommentId);
     const input = deleteCommentInputSchema.parse(rawInput);
     const operation = "comment.delete";
     return this.repository.deleteComment({
-      actorId: actor,
+      actor,
       projectId,
       updateId,
       commentId,
       input,
       idempotencyKey: scopedEngagementIdempotencyKey(
         operation,
-        actor,
+        actorId,
         commentId,
         input.idempotencyKey,
       ),
@@ -195,33 +215,33 @@ export class EngagementService {
   }
 
   async addReaction(
-    rawActorId: string,
+    rawActor: AuthenticatedProjectActor,
     rawProjectId: string,
     rawUpdateId: string,
     rawInput: unknown,
   ): Promise<ReactionMutationResult> {
-    return this.mutateReaction("add", rawActorId, rawProjectId, rawUpdateId, rawInput);
+    return this.mutateReaction("add", rawActor, rawProjectId, rawUpdateId, rawInput);
   }
 
   async removeReaction(
-    rawActorId: string,
+    rawActor: AuthenticatedProjectActor,
     rawProjectId: string,
     rawUpdateId: string,
     rawInput: unknown,
   ): Promise<ReactionMutationResult> {
-    return this.mutateReaction("remove", rawActorId, rawProjectId, rawUpdateId, rawInput);
+    return this.mutateReaction("remove", rawActor, rawProjectId, rawUpdateId, rawInput);
   }
 
   private async mutateReaction(
     action: "add" | "remove",
-    rawActorId: string,
+    rawActor: AuthenticatedProjectActor,
     rawProjectId: string,
     rawUpdateId: string,
     rawInput: unknown,
   ): Promise<ReactionMutationResult> {
     const input = reactionTargetInputSchema.parse(rawInput);
     const command = {
-      actorId: actorId(rawActorId),
+      actor: normalizedAuthenticatedActor(rawActor),
       projectId: contentId(rawProjectId),
       updateId: contentId(rawUpdateId),
       input: input.target === "comment"

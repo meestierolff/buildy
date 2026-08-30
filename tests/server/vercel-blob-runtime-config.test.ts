@@ -53,4 +53,10 @@ describe("private Vercel Blob runtime configuration", () => {
     expect(capabilities.media).toBe("ready");
     expect(capabilities.photobooks).toBe("ready");
   });
+
+  it("keeps the digital Bouwboek ready without the dormant print worker", () => {
+    const capabilities = getCapabilities(configured({ DATABASE_PHOTOBOOK_WORKER_URL: undefined }));
+
+    expect(capabilities.photobooks).toBe("ready");
+  });
 });

@@ -108,8 +108,8 @@ describe("typed discovery browser states", () => {
     render(<BrowserRouter><Index /></BrowserRouter>);
 
     expect(screen.getByRole("heading", { level: 1, name: "Maak van je verbouwing een verhaal om te bewaren." })).toBeInTheDocument();
-    expect(screen.getByText("Het dagboek voor je verbouwing")).toBeInTheDocument();
-    expect(screen.getByText("Leg ieder bouwmoment vast, laat vrienden en familie meekijken en maak er later een persoonlijk Bouwboek van.")).toBeInTheDocument();
+    expect(screen.getByText("Van bouwplaats naar blijvend verhaal")).toBeInTheDocument();
+    expect(screen.getByText("Leg foto’s en updates vast, laat vrienden en familie meekijken en maak er na afloop een persoonlijk Bouwboek van.")).toBeInTheDocument();
     expect(screen.queryByText("Veilige keuken")).not.toBeInTheDocument();
     expect(vi.mocked(useProjectDiscovery)).toHaveBeenCalledWith(false);
     expect(vi.mocked(useProjectDashboard)).toHaveBeenCalledWith(false);

@@ -11,10 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import PhaseSelect, { DEFAULT_PHASES } from "./PhaseSelect";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, Loader2, Star, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2, X } from "lucide-react";
 import DiscardUpdateDraftDialog from "@/components/project/DiscardUpdateDraftDialog";
 import ProjectImagePicker from "@/components/project/ProjectImagePicker";
 import { ResilientImage } from "@/components/ResilientMedia";
@@ -407,21 +406,6 @@ const AddStepDialog = ({
     }
   };
 
-  const setCompareRole = (id: string, role: CompareRole) => {
-    if (formLocked) return;
-    setFiles((previous) =>
-      previous.map((upload) => {
-        if (upload.id === id) {
-          return { ...upload, compareRole: upload.compareRole === role ? null : role };
-        }
-        if (upload.compareRole === role) {
-          return { ...upload, compareRole: null };
-        }
-        return upload;
-      }),
-    );
-  };
-
   const isDirty = Boolean(
     hasRestoredDraft || title.trim() || phaseId || isMilestone || description.trim() ||
     updateDate !== initialDateRef.current || files.length,
@@ -702,7 +686,6 @@ const AddStepDialog = ({
                       >
                         <div className="relative aspect-[4/3] overflow-hidden bg-muted">
                           <ResilientImage src={upload.previewUrl} alt={`Voorvertoning ${index + 1}`} draggable={false} className="h-full w-full object-cover" />
-                          {upload.compareRole && <span className="absolute left-2 top-2 bg-accent px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-accent-foreground">{upload.compareRole === "before" ? "Voor" : "Na"}</span>}
                           <button type="button" onClick={() => removeFile(upload.id)} className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center bg-background/90 text-foreground hover:text-destructive" aria-label={`${file.name} verwijderen`} disabled={formLocked}>
                             <X className="h-4 w-4" />
                           </button>
@@ -716,7 +699,7 @@ const AddStepDialog = ({
                           </p>
                         ) : failedUploadId === upload.id ? (
                           <div className="mt-2 border-l-2 border-destructive pl-2">
-                            <p className="text-xs text-destructive" role="alert">Verwerken mislukt</p>
+                            <p className="text-xs leading-5 text-destructive" role="alert">Deze foto kon niet worden bewaard. Je tekst is niet verloren.</p>
                             <button
                               type="button"
                               className="mt-1 min-h-11 text-left text-xs font-semibold text-accent underline underline-offset-4"
@@ -731,11 +714,6 @@ const AddStepDialog = ({
                         <div className="mt-2 grid grid-cols-2 gap-1">
                           <button type="button" onClick={() => moveUpload(upload.id, -1)} disabled={index === 0 || formLocked} className="flex min-h-11 items-center justify-center border text-muted-foreground disabled:opacity-30" aria-label={`${file.name} naar voren`}><ArrowLeft className="h-4 w-4" /></button>
                           <button type="button" onClick={() => moveUpload(upload.id, 1)} disabled={index === files.length - 1 || formLocked} className="flex min-h-11 items-center justify-center border text-muted-foreground disabled:opacity-30" aria-label={`${file.name} naar achteren`}><ArrowRight className="h-4 w-4" /></button>
-                        </div>
-                        <div className="mt-1 grid grid-cols-2 gap-1">
-                          {(["before", "after"] as const).map((role) => (
-                            <button key={role} type="button" aria-pressed={upload.compareRole === role} onClick={() => setCompareRole(upload.id, role)} className={`min-h-11 border text-xs font-semibold ${upload.compareRole === role ? "border-accent bg-accent text-accent-foreground" : "border-border"}`} disabled={formLocked}>{role === "before" ? "Voor" : "Na"}</button>
-                          ))}
                         </div>
                       </div>
                     );
@@ -762,10 +740,6 @@ const AddStepDialog = ({
               <div className="space-y-2">
                 <Label>Fase <span className="font-normal text-muted-foreground">(optioneel)</span></Label>
                 <PhaseSelect value={phaseId} onChange={setPhaseId} options={phaseOptions} onAddCustom={addCustomPhase} disabled={formLocked || projectQuery.isLoading || projectQuery.isError} />
-              </div>
-              <div className="flex min-h-11 items-center justify-between gap-4 border-y border-border py-2">
-                <Label htmlFor="milestone" className="flex cursor-pointer items-center gap-2"><Star className="h-4 w-4 text-accent" />Markeren als mijlpaal</Label>
-                <Switch id="milestone" checked={isMilestone} onCheckedChange={setIsMilestone} disabled={formLocked} />
               </div>
             </section>
 

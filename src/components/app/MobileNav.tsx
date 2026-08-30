@@ -1,16 +1,10 @@
 import type { ComponentPropsWithoutRef } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
-  Bell,
-  Compass,
-  FolderOpen,
-  Heart,
-  MessageSquareText,
-  PackageCheck,
+  BookOpen,
+  Images,
   Plus,
-  Settings,
   UserCircle2,
-  Users,
 } from "lucide-react";
 import { NavLink } from "@/lib/router";
 
@@ -22,27 +16,22 @@ import {
 } from "@/lib/productNavigation";
 
 const NAVIGATION_ICONS: Record<ProductNavigationIcon, LucideIcon> = {
-  projects: FolderOpen,
-  following: Heart,
+  story: Images,
+  book: BookOpen,
   add: Plus,
-  discover: Compass,
   profile: UserCircle2,
-  connections: Users,
-  notifications: Bell,
-  orders: PackageCheck,
-  account: Settings,
-  feedback: MessageSquareText,
 };
 
 const PRODUCT_LABELS: Readonly<Record<string, string>> = {
-  projects: "Verbouwingen",
-  update: "Bouwmoment",
-  discover: "Verhalen",
-  connections: "Connecties",
+  story: "Verhaal",
+  update: "Toevoegen",
+  photobook: "Bouwboek",
 };
 
 export interface MobileNavProps extends Omit<ComponentPropsWithoutRef<"nav">, "children"> {
   items?: readonly ProductNavigationItem[];
+  storyHref?: string;
+  photobookHref?: string;
   profileHref?: string;
   updateHref?: string;
   label?: string;
@@ -50,13 +39,20 @@ export interface MobileNavProps extends Omit<ComponentPropsWithoutRef<"nav">, "c
 
 const MobileNav = ({
   items,
+  storyHref,
+  photobookHref,
   profileHref,
   updateHref,
   label = "Primaire navigatie",
   className,
   ...props
 }: MobileNavProps) => {
-  const navigationItems = items ?? getMobileNavigationItems({ profileHref, updateHref });
+  const navigationItems = items ?? getMobileNavigationItems({
+    storyHref,
+    photobookHref,
+    profileHref,
+    updateHref,
+  });
 
   return (
     <nav

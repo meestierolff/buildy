@@ -68,7 +68,7 @@ describe("NewTrip typed API retry", () => {
   it("retains one private-default create command after an ambiguous response", async () => {
     render(<NewTrip />);
 
-    const title = screen.getByLabelText("Naam van je verbouwing *");
+    const title = screen.getByRole("textbox", { name: /Hoe heet je verbouwing/ });
     fireEvent.change(title, { target: { value: "Ons jaren-30 huis" } });
     fireEvent.click(screen.getByRole("button", { name: "Verbouwing starten" }));
 
@@ -100,7 +100,7 @@ describe("NewTrip typed API retry", () => {
     });
     render(<NewTrip />);
 
-    fireEvent.change(screen.getByLabelText("Naam van je verbouwing *"), {
+    fireEvent.change(screen.getByRole("textbox", { name: /Hoe heet je verbouwing/ }), {
       target: { value: "Ons familiehuis" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Verbouwing starten" }));
@@ -120,5 +120,30 @@ describe("NewTrip typed API retry", () => {
 
     await waitFor(() => expect(mocks.deleteLandingPhoto).toHaveBeenCalledTimes(1));
     expect(mocks.navigate).toHaveBeenCalledWith("/");
+  });
+
+  it("vraagt alleen om een naam en optioneel type en maakt altijd privé aan", async () => {
+    mocks.createProject.mockReset().mockResolvedValue({
+      project: { id: PROJECT_ID },
+      replayed: false,
+    });
+    render(<NewTrip />);
+
+    expect(screen.getByRole("link", { name: "Terug" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("textbox", { name: /Hoe heet je verbouwing/ })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /Wat verbouw je/ })).toBeInTheDocument();
+    expect(screen.getByText(/Je begint privé/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/adres|startdatum|einddatum|beschrijving|wie kan/i)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("textbox", { name: /Hoe heet je verbouwing/ }), {
+      target: { value: "Ons familiehuis" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Verbouwing starten" }));
+
+    await waitFor(() => expect(mocks.createProject).toHaveBeenCalledOnce());
+    expect(mocks.createProject.mock.calls[0]?.[0]).toMatchObject({
+      visibility: "private",
+      input: { title: "Ons familiehuis" },
+    });
   });
 });

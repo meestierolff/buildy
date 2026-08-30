@@ -26,7 +26,7 @@ const LegalLayout = ({ title, description, updated, children }: Props) => {
       <nav aria-label="Juridische pagina's" className="mt-12 pt-6 border-t border-border flex flex-wrap gap-x-6 gap-y-2 text-xs text-muted-foreground">
         <Link to="/voorwaarden" className="hover:text-foreground">Algemene voorwaarden</Link>
         <Link to="/privacy" className="hover:text-foreground">Privacyverklaring</Link>
-        <Link to="/herroeping" className="hover:text-foreground">Herroepingsrecht</Link>
+        <Link to="/support" className="hover:text-foreground">Support</Link>
       </nav>
     </article>
   );

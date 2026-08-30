@@ -86,23 +86,23 @@ async function installOwnerShareFixture(page: Page) {
 }
 
 test.describe("Tijdelijke projectdeellink", () => {
-  test("eigenaar maakt, kopieert, roteert en trekt een alleen-lezen link in", async ({ page }) => {
+  test("eigenaar maakt, kopieert, roteert en trekt een bearer-deellink in", async ({ page }) => {
     const fixture = await installOwnerShareFixture(page);
     await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}`);
 
-    await page.getByRole("button", { name: "Deellink" }).click();
+    await page.getByRole("button", { name: "Deel je verbouwing" }).click();
     const dialog = page.getByRole("dialog");
-    await expect(dialog.getByText(/Alleen kijken/)).toBeVisible();
+    await expect(dialog.getByText(/link is een toegangssleutel/i)).toBeVisible();
     await dialog.getByRole("button", { name: "Deellink maken" }).click();
-    await dialog.getByRole("button", { name: "Veilige link kopiëren" }).click();
+    await dialog.getByRole("button", { name: "Link kopiëren" }).click();
     await expect.poll(() => page.evaluate(() => (
       window as typeof window & { __buildyCopiedLink?: string }
     ).__buildyCopiedLink)).toBe(`${BASE}/delen#toegang=${RAW_LINK}`);
 
     await dialog.getByRole("button", { name: "Sluiten", exact: true }).last().click();
-    await page.getByRole("button", { name: "Deellink" }).click();
+    await page.getByRole("button", { name: "Deel je verbouwing" }).click();
     await dialog.getByRole("button", { name: "Nieuwe link maken" }).click();
-    await dialog.getByRole("button", { name: "Veilige link kopiëren" }).click();
+    await dialog.getByRole("button", { name: "Link kopiëren" }).click();
     await expect.poll(() => page.evaluate(() => (
       window as typeof window & { __buildyCopiedLink?: string }
     ).__buildyCopiedLink)).toBe(`${BASE}/delen#toegang=${ROTATED_RAW_LINK}`);
@@ -196,7 +196,7 @@ test.describe("Tijdelijke projectdeellink", () => {
 
     await page.goto(`${BASE}/delen#toegang=${RAW_LINK}`);
     await expect(page).toHaveURL(`${BASE}/delen`);
-    await expect(page.getByRole("heading", { name: "Deze deellink is verlopen." })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Deze deel-link is niet meer actief." })).toBeVisible();
     await expect(page.getByText(/vraag de maker/i)).toBeVisible();
     expect(fixture.unhandled).toEqual([]);
   });

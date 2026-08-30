@@ -38,7 +38,7 @@ export const CanonicalPhotobookPage = ({
   return (
     <figure
       aria-hidden={decorative || undefined}
-      aria-label={decorative ? undefined : `Canonical Bouwboekpagina ${page.number}`}
+      aria-label={decorative ? undefined : `Bouwboekpagina ${page.number}`}
       className="relative m-0 w-full overflow-hidden bg-white text-black"
       data-page-number={page.number}
       role={decorative ? "presentation" : undefined}

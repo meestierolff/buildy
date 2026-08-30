@@ -79,28 +79,28 @@ test.describe("Google-only auth", () => {
     await installGoogleOnlyAuthFixture(page);
     await page.goto(`${BASE}/auth`);
 
-    await expect(page.getByRole("heading", { name: "Welkom terug." })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Inloggen met Google" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Ga verder met je verbouwverhaal." })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Doorgaan met Google" })).toBeVisible();
     await expect(page.getByRole("textbox", { name: /e-mailadres/i })).toHaveCount(0);
     await expect(page.getByLabel(/wachtwoord/i)).toHaveCount(0);
     await expect(page.getByText(/magic link/i)).toHaveCount(0);
     await expect(page.getByRole("link", { name: /wachtwoord vergeten/i })).toHaveCount(0);
   });
 
-  test("switches to Google registration without introducing extra onboarding fields", async ({ page }) => {
+  test("keeps historical registration links on the same single Google flow", async ({ page }) => {
     await installGoogleOnlyAuthFixture(page);
-    await page.goto(`${BASE}/auth`);
-    await page.getByRole("button", { name: "Registreer" }).click();
+    await page.goto(`${BASE}/auth?mode=register&provider=google`);
 
-    await expect(page.getByRole("heading", { name: "Start je dagboek." })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Registreren met Google" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Ga verder met je verbouwverhaal." })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Doorgaan met Google" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: /registreer|inloggen met/i })).toHaveCount(0);
     await expect(page.getByLabel(/naam|biografie|adres|budget|aannemer/i)).toHaveCount(0);
   });
 
   test("posts a safe next path and hands navigation to Google", async ({ page }) => {
     const fixture = await installGoogleOnlyAuthFixture(page);
     await page.goto(`${BASE}/auth?next=${encodeURIComponent("/project/nieuw")}`);
-    await page.getByRole("button", { name: "Inloggen met Google" }).click();
+    await page.getByRole("button", { name: "Doorgaan met Google" }).click();
 
     await expect(page).toHaveURL(/^https:\/\/accounts\.google\.com\/o\/oauth2\/v2\/auth/);
     expect(fixture.startBody()).toEqual({ next: "/project/nieuw" });
@@ -121,6 +121,6 @@ test.describe("Google-only auth", () => {
     await expect(page).toHaveURL(
       new RegExp(`/auth\\?next=${encodeURIComponent(`/bestellingen/${orderId}`)}$`),
     );
-    await expect(page.getByRole("button", { name: "Inloggen met Google" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Doorgaan met Google" })).toBeVisible();
   });
 });

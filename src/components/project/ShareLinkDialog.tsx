@@ -1,5 +1,15 @@
 import { useMemo, useRef, useState } from "react";
-import { Clock3, Copy, KeyRound, Loader2, RotateCcw, ShieldCheck, Unlink } from "lucide-react";
+import {
+  Clock3,
+  Copy,
+  KeyRound,
+  Loader2,
+  RotateCcw,
+  Share2,
+  ShieldCheck,
+  TriangleAlert,
+  Unlink,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -80,6 +90,8 @@ export function ShareLinkDialog({
   const revokeKey = useRef<string | null>(null);
   const link = stateQuery.data?.link ?? null;
   const isPending = createLink.isPending || rotateLink.isPending || revokeLink.isPending;
+  const nativeShareAvailable = typeof navigator !== "undefined"
+    && typeof navigator.share === "function";
   const linkStatus = useMemo(() => {
     if (!link) return null;
     return link.state === "expired"
@@ -125,10 +137,25 @@ export function ShareLinkDialog({
     if (!freshShareUrl) return;
     try {
       await copyText(freshShareUrl);
-      toast.success("Veilige deellink gekopieerd");
+      toast.success("Deellink gekopieerd");
       onCopied?.();
     } catch {
       toast.error("Kopiëren lukt niet. Probeer het opnieuw.");
+    }
+  };
+
+  const share = async () => {
+    if (!freshShareUrl || !nativeShareAvailable) return;
+    try {
+      await navigator.share({
+        title: `${projectTitle} op Buildy`,
+        text: `Bekijk het verbouwingsverhaal van ${projectTitle}.`,
+        url: freshShareUrl,
+      });
+      onCopied?.();
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      toast.error("Delen lukt niet. Je kunt de link wel kopiëren.");
     }
   };
 
@@ -167,12 +194,20 @@ export function ShareLinkDialog({
           <div className="grid gap-3 border-y border-border py-4 text-sm sm:grid-cols-2">
             <div className="flex gap-3">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden="true" />
-              <p><span className="font-semibold">Alleen kijken.</span> Bewerken en het Bouwboek blijven privé.</p>
+              <p><span className="font-semibold">Bekijken via de link.</span> Ingelogde Buildy-gebruikers kunnen reageren; bewerken en het Bouwboek blijven privé.</p>
             </div>
             <div className="flex gap-3">
               <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden="true" />
               <p><span className="font-semibold">Direct te stoppen.</span> Intrekken of roteren werkt meteen.</p>
             </div>
+          </div>
+
+          <div className="flex gap-3 rounded-md border border-amber-700/30 bg-amber-50/70 p-4 text-sm text-amber-950" role="note">
+            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <p className="leading-relaxed">
+              <span className="font-semibold">Deze link is een toegangssleutel.</span>{" "}
+              Iedereen die hem ontvangt kan het Verhaal bekijken tot de link verloopt of je hem intrekt. Deel hem alleen met mensen die je vertrouwt.
+            </p>
           </div>
 
           {stateQuery.isPending ? (
@@ -215,11 +250,23 @@ export function ShareLinkDialog({
                 <div className="rounded-md border-2 border-accent bg-accent/5 p-4" aria-live="polite">
                   <p className="text-sm font-semibold">Je nieuwe link staat klaar</p>
                   <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                    Kopieer hem nu. Om veiligheidsredenen kan Buildy hem later niet opnieuw tonen.
+                    Deel of kopieer hem nu. Om veiligheidsredenen kan Buildy hem later niet opnieuw tonen.
                   </p>
-                  <Button type="button" className="mt-4 min-h-11 w-full gap-2" onClick={() => void copy()}>
-                    <Copy className="h-4 w-4" aria-hidden="true" /> Veilige link kopiëren
-                  </Button>
+                  <div className={`mt-4 grid gap-2 ${nativeShareAvailable ? "sm:grid-cols-2" : ""}`}>
+                    {nativeShareAvailable ? (
+                      <Button type="button" className="min-h-11 gap-2" onClick={() => void share()}>
+                        <Share2 className="h-4 w-4" aria-hidden="true" /> Delen
+                      </Button>
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant={nativeShareAvailable ? "outline" : "default"}
+                      className="min-h-11 gap-2"
+                      onClick={() => void copy()}
+                    >
+                      <Copy className="h-4 w-4" aria-hidden="true" /> Link kopiëren
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-2">

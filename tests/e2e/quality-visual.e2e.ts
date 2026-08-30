@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
@@ -30,10 +29,7 @@ const PHASE_ID = "55555555-5555-4555-8555-555555555555";
 const ACTOR_ID = "66666666-6666-4666-8666-666666666666";
 const SECOND_ACTOR_ID = "77777777-7777-4777-8777-777777777777";
 const PHOTOBOOK_DRAFT_ID = "88888888-8888-4888-8888-888888888888";
-const PHOTOBOOK_REVISION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const DOCUMENT_SHA256 = "b".repeat(64);
-const PDF_BYTES = Buffer.from("%PDF-1.7\nsynthetic-buildy-proof\n%%EOF", "utf8");
-const PDF_SHA256 = createHash("sha256").update(PDF_BYTES).digest("hex");
 
 const OWNER = {
   id: OWNER_ID,
@@ -200,29 +196,84 @@ function photobookDocument() {
       crop: null,
     },
     chapters: [],
-    pages: Array.from({ length: 24 }, (_, index) => ({
-      id: index === 0 ? "cover" : `blank:${index + 1}`,
-      number: index + 1,
-      kind: index === 0 ? "cover" as const : "blank" as const,
-      chapterId: null,
-      updateId: null,
-      background: index === 0 ? "#142238" : "#ffffff",
-      overlay: null,
-      blocks: index === 0 ? [{
-        id: "cover-title",
-        type: "text" as const,
-        frame: { xMm: 26, yMm: 126, widthMm: 245, heightMm: 42 },
-        font: "instrument-serif" as const,
-        weight: "semibold" as const,
-        style: "normal" as const,
-        fontSizePt: 36,
-        lineHeightPt: 38,
-        align: "center" as const,
-        color: "#ffffff",
-        text: "Synthetisch Bouwboek",
-        lines: ["Synthetisch Bouwboek"],
-      }] : [],
-    })),
+    pages: Array.from({ length: 24 }, (_, index) => {
+      if (index === 0) {
+        return {
+          id: "cover",
+          number: 1,
+          kind: "cover" as const,
+          chapterId: null,
+          updateId: null,
+          background: "#142238",
+          overlay: null,
+          blocks: [{
+            id: "cover-title",
+            type: "text" as const,
+            frame: { xMm: 26, yMm: 126, widthMm: 245, heightMm: 42 },
+            font: "instrument-serif" as const,
+            weight: "semibold" as const,
+            style: "normal" as const,
+            fontSizePt: 36,
+            lineHeightPt: 38,
+            align: "center" as const,
+            color: "#ffffff",
+            text: "Synthetisch Bouwboek",
+            lines: ["Synthetisch Bouwboek"],
+          }],
+        };
+      }
+      if (index === 1) {
+        return {
+          id: `update:${UPDATE_ID}:text:1`,
+          number: 2,
+          kind: "update_text" as const,
+          chapterId: "chapter:synthetic",
+          updateId: UPDATE_ID,
+          background: "#ffffff",
+          overlay: null,
+          blocks: [
+            {
+              id: `update:${UPDATE_ID}:date:0`,
+              type: "text" as const,
+              frame: { xMm: 12, yMm: 18, widthMm: 273, heightMm: 8 },
+              font: "inter" as const,
+              weight: "regular" as const,
+              style: "normal" as const,
+              fontSizePt: 8,
+              lineHeightPt: 10,
+              align: "left" as const,
+              color: "#777777",
+              text: "18 juli 2026",
+              lines: ["18 juli 2026"],
+            },
+            {
+              id: `update:${UPDATE_ID}:title`,
+              type: "text" as const,
+              frame: { xMm: 12, yMm: 37, widthMm: 273, heightMm: 24 },
+              font: "instrument-serif" as const,
+              weight: "semibold" as const,
+              style: "normal" as const,
+              fontSizePt: 22,
+              lineHeightPt: 25,
+              align: "left" as const,
+              color: "#171717",
+              text: "De oude keuken is verwijderd",
+              lines: ["De oude keuken is verwijderd"],
+            },
+          ],
+        };
+      }
+      return {
+        id: `blank:${index + 1}`,
+        number: index + 1,
+        kind: "blank" as const,
+        chapterId: null,
+        updateId: null,
+        background: "#ffffff",
+        overlay: null,
+        blocks: [],
+      };
+    }),
     sourceAssets: [],
     sourceAssetIds: [],
     pageCount: 24,
@@ -250,15 +301,7 @@ const PHOTOBOOK_DRAFT = {
   },
   exclusions: [],
   document: photobookDocument(),
-  proof: {
-    revisionId: PHOTOBOOK_REVISION_ID,
-    status: "approved" as const,
-    documentSha256: DOCUMENT_SHA256,
-    pdfSha256: PDF_SHA256,
-    pageCount: 24,
-    pdfPath: `/api/photobooks/proofs/${PHOTOBOOK_REVISION_ID}/pdf`,
-    thumbnailPaths: [],
-  },
+  proof: null,
 };
 
 // Keep the route mocks on the same runtime contracts as the browser clients.
@@ -431,6 +474,20 @@ async function installSyntheticNetwork(
       return;
     }
 
+    const reactionPath = new RegExp(
+      `^/api/projects/${PROJECT_ID}/updates/(${UPDATE_ID}|${SECOND_UPDATE_ID})/reactions$`,
+    ).exec(url.pathname);
+    if (method === "GET" && reactionPath) {
+      await json(route, success({
+        projectId: PROJECT_ID,
+        updateId: reactionPath[1],
+        target: "update",
+        commentId: null,
+        items: [],
+      }));
+      return;
+    }
+
     if (method === "GET" && url.pathname === "/api/notifications") {
       await json(route, success({ items: NOTIFICATIONS, nextCursor: null, unreadCount: 2 }));
       return;
@@ -441,26 +498,6 @@ async function installSyntheticNetwork(
       && url.pathname === `/api/projects/${PROJECT_ID}/photobook`
     ) {
       await json(route, success(PHOTOBOOK_DRAFT));
-      return;
-    }
-
-    if (
-      method === "GET"
-      && url.pathname === `/api/photobooks/proofs/${PHOTOBOOK_REVISION_ID}/pdf`
-    ) {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/pdf",
-        headers: {
-          "cache-control": "private, no-store, max-age=0",
-          "content-length": String(PDF_BYTES.byteLength),
-          "x-buildy-proof-revision": PHOTOBOOK_REVISION_ID,
-          "x-buildy-proof-document-sha256": DOCUMENT_SHA256,
-          "x-buildy-proof-pdf-sha256": PDF_SHA256,
-          "x-request-id": REQUEST_ID,
-        },
-        body: PDF_BYTES,
-      });
       return;
     }
 
@@ -577,20 +614,32 @@ const SCENARIOS: readonly VisualScenario[] = [
         name: "Maak van je verbouwing een verhaal om te bewaren.",
       })).toBeVisible();
       await expect(page.getByText(
-        "Je begint privé en kiest zelf wie ieder Bouwmoment kan zien.",
+        "Je begint met Alleen ik. Delen gebeurt pas wanneer jij dat kiest.",
         { exact: true },
       )).toBeVisible();
     },
   },
   {
-    name: "auth-registration",
-    path: "/auth?mode=register&next=%2Fproject%2Fnieuw",
+    name: "auth-google",
+    path: "/auth?next=%2Fproject%2Fnieuw",
     authenticated: false,
     fullPage: true,
     assertReady: async (page) => {
-      await expect(page.getByRole("heading", { level: 1, name: "Start je dagboek." })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Registreren met Google" })).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1, name: "Ga verder met je verbouwverhaal." })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Doorgaan met Google" })).toBeVisible();
       await expect(page.getByLabel(/wachtwoord|e-mailadres/i)).toHaveCount(0);
+    },
+  },
+  {
+    name: "new-project",
+    path: "/project/nieuw",
+    authenticated: true,
+    fullPage: true,
+    assertReady: async (page) => {
+      await expect(page.getByRole("heading", { level: 1, name: "Hoe heet je verbouwing?" })).toBeVisible();
+      await expect(page.getByText(/Je begint privé/i)).toBeVisible();
+      await expect(page.getByLabel("Hoe heet je verbouwing?")).toBeVisible();
+      await expect(page.getByLabel(/beschrijving|adres|budget|zichtbaarheid/i)).toHaveCount(0);
     },
   },
   {
@@ -617,18 +666,7 @@ const SCENARIOS: readonly VisualScenario[] = [
     assertReady: async (page) => {
       await expect(page.getByRole("heading", { name: "Wat is er veranderd?" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Bouwmoment plaatsen" })).toBeEnabled();
-      await expect(page).toHaveURL(appUrl(`/project/${PROJECT_ID}?update=${UPDATE_ID}`));
-    },
-  },
-  {
-    name: "notifications",
-    path: "/notificaties",
-    authenticated: true,
-    fullPage: true,
-    assertReady: async (page) => {
-      await expect(page.getByRole("heading", { level: 1, name: "Notificaties" })).toBeVisible();
-      await expect(page.getByText("Synthetische buur reageerde op je Bouwmoment", { exact: true })).toBeVisible();
-      await expect(page.getByText("Synthetische volger wil je volgen", { exact: true })).toBeVisible();
+      await expect(page).toHaveURL(appUrl(`/project/${PROJECT_ID}`));
     },
   },
   {
@@ -637,26 +675,23 @@ const SCENARIOS: readonly VisualScenario[] = [
     authenticated: true,
     fullPage: false,
     assertReady: async (page) => {
-      await expect(page.getByRole("heading", { level: 1, name: "Synthetisch Bouwboek" })).toBeVisible();
-      await expect(page.getByText("Dit is je echte printproof", { exact: true })).toBeVisible();
-      await expect(page.getByText(/Bestellen is nog niet beschikbaar/i)).toBeVisible();
-      await expect(page.getByRole("button", { name: "Bouwboek bestellen" })).toHaveCount(0);
+      await expect(page.getByRole("heading", { level: 1, name: "Je Bouwboek groeit met je verbouwing mee" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "Bouwboekweergave" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Synthetisch Bouwboek" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Ik wil dit later laten drukken" })).toBeVisible();
+      await expect(page.getByRole("button", { name: /bestellen|checkout|betalen/i })).toHaveCount(0);
     },
   },
   {
-    name: "checkout",
-    path: `/project/${PROJECT_ID}/bouwboek`,
+    name: "feedback",
+    path: "/feedback",
     authenticated: true,
-    checkoutMode: "test",
-    fullPage: false,
-    prepare: async (page) => {
-      await page.getByRole("button", { name: "Bouwboek bestellen" }).click();
-    },
+    fullPage: true,
     assertReady: async (page) => {
-      const dialog = page.getByRole("dialog");
-      await expect(dialog.getByRole("heading", { name: "Bouwboek bestellen" })).toBeVisible();
-      await expect(dialog.getByText("Afleveradres", { exact: true })).toBeVisible();
-      await expect(dialog.getByRole("button", { name: "Prijs en levering opvragen" })).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1, name: "Help Buildy beter bouwen" })).toBeVisible();
+      await expect(page.getByLabel("Wat werkte goed?")).toBeVisible();
+      await expect(page.getByLabel("Wat was onduidelijk?")).toBeVisible();
+      await expect(page.getByLabel("Wat mis je?")).toBeVisible();
     },
   },
 ];

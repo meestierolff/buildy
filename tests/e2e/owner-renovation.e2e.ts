@@ -8,13 +8,20 @@ import {
   syntheticProjectOverview,
   syntheticProjectUpdate,
 } from "./syntheticApi";
-import type { ProjectVisibility } from "../../shared/contracts/projects";
 
-test("maakt een verbouwing en bevestigt gedeelde zichtbaarheid met een afzonderlijke serverwrite", async ({ page }) => {
-  let visibility: ProjectVisibility = "private";
+test("maakt met minimale invoer een privéverbouwing en opent het eerste Bouwmoment", async ({ page }) => {
+  let projectCreated = false;
   const fixture = await installSyntheticApi(page, {
     handle: async ({ request, route, url }) => {
+      if (url.pathname === "/api/projects" && request.method() === "GET") {
+        await fulfillJson(route, success({
+          items: projectCreated ? [syntheticProjectOverview("private")] : [],
+          nextCursor: null,
+        }));
+        return true;
+      }
       if (url.pathname === "/api/projects" && request.method() === "POST") {
+        projectCreated = true;
         await fulfillJson(route, success({
           project: syntheticProjectOverview("private"),
           replayed: false,
@@ -22,20 +29,8 @@ test("maakt een verbouwing en bevestigt gedeelde zichtbaarheid met een afzonderl
         return true;
       }
       if (url.pathname === `/api/projects/${SYNTHETIC_IDS.project}`) {
-        if (request.method() === "PATCH") {
-          const body = request.postDataJSON() as { visibility?: ProjectVisibility };
-          visibility = body.visibility ?? visibility;
-          await fulfillJson(route, success({
-            project: { ...syntheticProjectOverview(visibility), version: 8 },
-            replayed: false,
-          }));
-          return true;
-        }
         if (request.method() === "GET") {
-          await fulfillJson(route, success({
-            ...syntheticProjectOverview(visibility),
-            version: visibility === "private" ? 7 : 8,
-          }));
+          await fulfillJson(route, success(syntheticProjectOverview("private")));
           return true;
         }
       }
@@ -89,42 +84,35 @@ test("maakt een verbouwing en bevestigt gedeelde zichtbaarheid met een afzonderl
   });
 
   await page.goto(`${BASE}/project/nieuw`);
-  await page.getByLabel("Naam van je verbouwing").fill("Ons warme familiehuis");
-  await page.getByLabel("Type verbouwing").click();
+  await expect(page.getByRole("heading", { name: "Hoe heet je verbouwing?" })).toBeVisible();
+  await expect(page.getByText(/Je begint privé/i)).toBeVisible();
+  await page.getByLabel("Hoe heet je verbouwing?").fill("Ons warme familiehuis");
+  await page.getByLabel("Wat verbouw je?").click();
   await page.getByRole("option", { name: "Volledige renovatie" }).click();
-  await page.getByLabel("Korte beschrijving").fill("Van losse foto's naar één rustig Verhaal.");
-  await page.getByLabel("Startdatum").fill("2026-08-01");
-  await page.getByLabel("Verwachte einddatum").fill("2026-12-20");
-  await page.getByLabel(/Adres/).fill("Voorbeeldstraat 1, Utrecht");
-  await page.locator("#visibility").click();
-  await page.getByRole("option", { name: "Mijn volgers" }).click();
+  await expect(page.getByLabel(/beschrijving|startdatum|einddatum|adres|zichtbaarheid/i)).toHaveCount(0);
   await page.getByRole("button", { name: "Verbouwing starten" }).click();
 
-  await expect(page).toHaveURL(`${BASE}/project/${SYNTHETIC_IDS.project}?update=${SYNTHETIC_IDS.update}`);
+  await expect(page).toHaveURL(`${BASE}/project/${SYNTHETIC_IDS.project}`);
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Wat is er veranderd?" })).toBeVisible();
   await page.getByRole("button", { name: "Annuleren" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Synthetische verbouwing" })).toBeVisible();
   await expect(page.getByRole("combobox", { name: /Zichtbaarheid van de verbouwing/ }))
-    .toHaveText("Mijn volgers");
+    .toHaveText("Alleen ik");
 
   const create = fixture.requests.find((request) => (
     request.method === "POST" && request.pathname === "/api/projects"
   ));
   expect(create?.body).toMatchObject({
     title: "Ons warme familiehuis",
-    description: "Van losse foto's naar één rustig Verhaal.",
     projectType: "Volledige renovatie",
-    startDate: "2026-08-01",
-    expectedEndDate: "2026-12-20",
-    privateDetails: { addressLine1: "Voorbeeldstraat 1, Utrecht" },
   });
+  expect(create?.body).not.toHaveProperty("description");
+  expect(create?.body).not.toHaveProperty("startDate");
+  expect(create?.body).not.toHaveProperty("expectedEndDate");
+  expect(create?.body).not.toHaveProperty("privateDetails");
   expect(create?.body).not.toHaveProperty("ownerId");
   expect(create?.body).not.toHaveProperty("visibility");
-  expect(fixture.requests).toContainEqual(expect.objectContaining({
-    method: "PATCH",
-    pathname: `/api/projects/${SYNTHETIC_IDS.project}`,
-    body: { expectedVersion: 7, visibility: "followers" },
-  }));
+  expect(fixture.requests.some((request) => request.method === "PATCH")).toBe(false);
   expect(fixture.unhandled).toEqual([]);
 });

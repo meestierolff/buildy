@@ -158,14 +158,10 @@ function hasCompleteMediaRuntime(config: ConfiguredAuthRuntime): config is Confi
 }
 
 type ConfiguredPhotobookRuntime = ConfiguredAuthRuntime
-  & ConfiguredBlobRuntime
-  & Required<Pick<RuntimeConfig, "DATABASE_PHOTOBOOK_WORKER_URL">>;
+  & ConfiguredBlobRuntime;
 
 function hasCompletePhotobookRuntime(config: ConfiguredAuthRuntime): config is ConfiguredPhotobookRuntime {
-  return Boolean(
-    config.DATABASE_PHOTOBOOK_WORKER_URL
-    && config.BLOB_READ_WRITE_TOKEN
-  );
+  return Boolean(config.BLOB_READ_WRITE_TOKEN);
 }
 
 type ConfiguredAccountRuntime = ConfiguredAuthRuntime
@@ -427,13 +423,17 @@ export function ensureServerComposition(): ServerCompositionStatus {
 
     if (hasCompletePhotobookRuntime(runtime)) {
       const storage = resolveBlobStorage(runtime);
-      const photobookWorker = new PhotobookProofWorker(
-        new PostgresPhotobookRepository(
-          getBuildyWorkerDatabase(runtime.DATABASE_PHOTOBOOK_WORKER_URL, "photobook"),
-        ),
-        storage,
-        `photobook-worker:${runtime.APP_ENV}`,
-      );
+      const proofRuntimeEnabled = (runtime.CHECKOUT_MODE === "test" || runtime.CHECKOUT_MODE === "live")
+        && Boolean(runtime.DATABASE_PHOTOBOOK_WORKER_URL);
+      const photobookWorker = proofRuntimeEnabled
+        ? new PhotobookProofWorker(
+            new PostgresPhotobookRepository(
+              getBuildyWorkerDatabase(runtime.DATABASE_PHOTOBOOK_WORKER_URL!, "photobook"),
+            ),
+            storage,
+            `photobook-worker:${runtime.APP_ENV}`,
+          )
+        : undefined;
       configureDefaultPhotobookRuntime({
         actors,
         service: new PhotobookService(
@@ -444,6 +444,7 @@ export function ensureServerComposition(): ServerCompositionStatus {
           undefined,
           undefined,
           photobookWorker,
+          Boolean(photobookWorker),
         ),
         storage,
       });

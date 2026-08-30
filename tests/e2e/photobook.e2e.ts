@@ -1,152 +1,180 @@
-import type { CheckoutMode } from "../../shared/contracts/productProfile";
-import { BASE, collectImageDiagnostics, expect, test, waitForPhotobookImages } from "./helpers";
+import { BASE, expect, test } from "./helpers";
 import {
   PHOTOBOOK_DOCUMENT_SHA256,
-  PHOTOBOOK_PDF_BYTES,
-  PHOTOBOOK_PDF_SHA256,
-  PHOTOBOOK_REVISION_ID,
   syntheticPhotobookDraft,
 } from "./photobookFixture";
 import {
+  ONE_PIXEL_PNG,
   SYNTHETIC_IDS,
   fulfillJson,
   installSyntheticApi,
+  syntheticProjectCard,
   success,
 } from "./syntheticApi";
 
-async function installPhotobookFixture(
-  page: Parameters<typeof installSyntheticApi>[0],
-  checkoutMode: CheckoutMode,
-  initialProofStatus: "ready" | "approved" | null = "approved",
-) {
-  let proofStatus = initialProofStatus;
-  // Headless engines do not ship a consistent PDF viewer plug-in. The product
-  // still fetches, validates and hashes the private PDF bytes below; only the
-  // final browser-owned object-URL renderer is replaced with a stable document.
-  await page.addInitScript(() => {
-    URL.createObjectURL = () => "about:blank";
-    URL.revokeObjectURL = () => undefined;
+const SECOND_UPDATE_ID = "12121212-1212-4121-8121-121212121212";
+
+function textBlock(input: {
+  id: string;
+  lines: string[];
+  yMm: number;
+  font?: "inter" | "instrument-serif";
+  size?: number;
+}) {
+  const fontSizePt = input.size ?? 12;
+  return {
+    id: input.id,
+    type: "text" as const,
+    frame: { xMm: 28, yMm: input.yMm, widthMm: 241, heightMm: 34 },
+    font: input.font ?? "inter" as const,
+    weight: "regular" as const,
+    style: "normal" as const,
+    fontSizePt,
+    lineHeightPt: fontSizePt + 4,
+    align: "left" as const,
+    color: "#26231f",
+    text: input.lines.join("\n"),
+    lines: input.lines,
+  };
+}
+
+function syntheticDigitalDraft() {
+  const draft = syntheticPhotobookDraft();
+  const pages = draft.document.pages.map((page, index) => {
+    if (index === 1) {
+      return {
+        ...page,
+        id: `update:${SYNTHETIC_IDS.update}:text`,
+        kind: "update_text" as const,
+        updateId: SYNTHETIC_IDS.update,
+        blocks: [
+          textBlock({
+            id: `update:${SYNTHETIC_IDS.update}:date:label`,
+            lines: ["22 augustus 2026"],
+            yMm: 30,
+          }),
+          textBlock({
+            id: `update:${SYNTHETIC_IDS.update}:title`,
+            lines: ["De eerste muur is open"],
+            yMm: 58,
+            font: "instrument-serif",
+            size: 30,
+          }),
+          textBlock({
+            id: `update:${SYNTHETIC_IDS.update}:body`,
+            lines: ["Onder het oude stucwerk kwam het huis tevoorschijn."],
+            yMm: 108,
+          }),
+        ],
+      };
+    }
+    if (index === 2) {
+      return {
+        ...page,
+        id: `update:${SYNTHETIC_IDS.update}:photos`,
+        kind: "photos" as const,
+        updateId: SYNTHETIC_IDS.update,
+        blocks: [{
+          id: `update:${SYNTHETIC_IDS.update}:photo`,
+          type: "photo" as const,
+          frame: { xMm: 18, yMm: 18, widthMm: 261, heightMm: 174 },
+          assetId: SYNTHETIC_IDS.media,
+          crop: { fit: "cover" as const, focusX: 0.5, focusY: 0.5, zoom: 1 },
+          effectiveDpi: 300,
+          altText: "Sloopfoto van de keuken",
+        }],
+      };
+    }
+    if (index === 3) {
+      return {
+        ...page,
+        id: `update:${SECOND_UPDATE_ID}:text`,
+        kind: "update_text" as const,
+        updateId: SECOND_UPDATE_ID,
+        blocks: [
+          textBlock({
+            id: `update:${SECOND_UPDATE_ID}:date:label`,
+            lines: ["24 augustus 2026"],
+            yMm: 30,
+          }),
+          textBlock({
+            id: `update:${SECOND_UPDATE_ID}:title`,
+            lines: ["Licht in de nieuwe keuken"],
+            yMm: 58,
+            font: "instrument-serif",
+            size: 30,
+          }),
+          textBlock({
+            id: `update:${SECOND_UPDATE_ID}:body`,
+            lines: ["De eerste rustige ochtend in de open ruimte."],
+            yMm: 108,
+          }),
+        ],
+      };
+    }
+    return page;
   });
+
+  return {
+    ...draft,
+    document: {
+      ...draft.document,
+      pages,
+      sourceAssets: [{
+        id: SYNTHETIC_IDS.media,
+        sha256: "a".repeat(64),
+        contentType: "image/png" as const,
+        widthPixels: 1200,
+        heightPixels: 900,
+      }],
+      sourceAssetIds: [SYNTHETIC_IDS.media],
+      checksumSha256: PHOTOBOOK_DOCUMENT_SHA256,
+    },
+    proof: null,
+  };
+}
+
+async function installDigitalBookFixture(
+  page: Parameters<typeof installSyntheticApi>[0],
+) {
   return installSyntheticApi(page, {
-    checkoutMode,
+    checkoutMode: "off",
     handle: async ({ request, route, url }) => {
       if (
         request.method() === "GET"
         && url.pathname === `/api/projects/${SYNTHETIC_IDS.project}/photobook`
       ) {
-        const draft = syntheticPhotobookDraft();
-        await fulfillJson(route, success({
-          ...draft,
-          proof: proofStatus ? { ...draft.proof, status: proofStatus } : null,
-        }));
+        await fulfillJson(route, success(syntheticDigitalDraft()));
         return true;
       }
-      if (
-        request.method() === "POST"
-        && url.pathname === `/api/projects/${SYNTHETIC_IDS.project}/photobook/proofs`
-      ) {
-        proofStatus = "ready";
+      if (request.method() === "GET" && url.pathname === "/api/projects") {
         await fulfillJson(route, success({
-          revisionId: PHOTOBOOK_REVISION_ID,
-          status: "ready",
-          replayed: false,
-        }));
-        return true;
-      }
-      if (
-        request.method() === "POST"
-        && url.pathname === `/api/photobooks/proofs/${PHOTOBOOK_REVISION_ID}/approve`
-      ) {
-        proofStatus = "approved";
-        await fulfillJson(route, success({
-          revisionId: PHOTOBOOK_REVISION_ID,
-          status: "approved",
-          replayed: false,
+          items: [syntheticProjectCard()],
+          nextCursor: null,
         }));
         return true;
       }
       if (
         request.method() === "GET"
-        && url.pathname === `/api/photobooks/proofs/${PHOTOBOOK_REVISION_ID}/pdf`
+        && url.pathname === `/api/media/${SYNTHETIC_IDS.media}`
       ) {
         await route.fulfill({
           status: 200,
-          contentType: "application/pdf",
-          headers: {
-            "cache-control": "private, no-store, max-age=0",
-            "content-length": String(PHOTOBOOK_PDF_BYTES.byteLength),
-            "x-buildy-proof-revision": PHOTOBOOK_REVISION_ID,
-            "x-buildy-proof-document-sha256": PHOTOBOOK_DOCUMENT_SHA256,
-            "x-buildy-proof-pdf-sha256": PHOTOBOOK_PDF_SHA256,
-          },
-          body: PHOTOBOOK_PDF_BYTES,
+          contentType: "image/png",
+          headers: { "cache-control": "private, no-store" },
+          body: ONE_PIXEL_PNG,
         });
         return true;
       }
-      if (
-        request.method() === "POST"
-        && url.pathname === `/api/photobooks/proofs/${PHOTOBOOK_REVISION_ID}/quote`
-      ) {
+      if (request.method() === "POST" && url.pathname === "/api/feedback") {
         await fulfillJson(route, success({
-          proofRevisionId: PHOTOBOOK_REVISION_ID,
-          sku: "a4-landscape-hardcover-v1",
-          format: "a4-landscape-hardcover-v1",
-          pageCount: 24,
-          quantity: 1,
-          destinationCountry: "NL",
-          quoteReference: "matrix:synthetic-approved-price",
-          amounts: {
-            currency: "EUR",
-            subtotalMinor: 6_612,
-            shippingMinor: 413,
-            taxMinor: 1_475,
-            totalMinor: 8_500,
-          },
-          deliveryEstimate: "Handmatige controle binnen twee werkdagen",
-          taxTreatment: "vat_included",
-          expiresAt: "2099-08-23T10:15:00.000Z",
-          termsVersion: "2026-08-23",
-          seller: {
-            legalName: "Buildy Test B.V.",
-            tradeName: "Buildy",
-            registrationNumber: "00000000",
-            vatNumber: "NL000000000B00",
-            address: "Teststraat 1, 1234 AB Utrecht, Nederland",
-            countryCode: "NL",
-            supportEmail: "support@example.invalid",
-          },
-          personalisedProduct: true,
-        }));
-        return true;
-      }
-      if (
-        request.method() === "POST"
-        && url.pathname === `/api/photobooks/proofs/${PHOTOBOOK_REVISION_ID}/checkout`
-      ) {
-        await fulfillJson(route, success({
-          orderId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-          orderNumber: "BLD-2026-SYNTH001",
-          projectId: SYNTHETIC_IDS.project,
-          proofRevisionId: PHOTOBOOK_REVISION_ID,
-          sku: "a4-landscape-hardcover-v1",
-          format: "a4-landscape-hardcover-v1",
-          pageCount: 24,
-          quantity: 1,
-          destinationCountry: "NL",
-          amounts: {
-            currency: "EUR",
-            subtotalMinor: 6_612,
-            shippingMinor: 413,
-            taxMinor: 1_475,
-            totalMinor: 8_500,
-          },
-          deliveryEstimate: "Handmatige controle binnen twee werkdagen",
-          termsVersion: "2026-08-23",
-          status: "checkout_open",
-          checkoutUrl: "https://checkout.stripe.com/c/pay/cs_test_buildy_synthetic",
-          checkoutExpiresAt: "2099-08-23T10:35:00.000Z",
+          id: "34343434-3434-4343-8343-343434343434",
+          receiptCode: "HELP-PRINT026",
+          kind: "feedback",
+          status: "received",
+          submittedAt: "2026-08-30T10:00:00.000Z",
           replayed: false,
-        }));
+        }), 201);
         return true;
       }
       return false;
@@ -154,192 +182,120 @@ async function installPhotobookFixture(
   });
 }
 
-test.describe("Bouwboek-preview", () => {
-  test("bouwt, bekijkt en keurt één exacte private printproof goed", async ({ page }) => {
-    const fixture = await installPhotobookFixture(page, "off", null);
-    await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}/bouwboek`);
-
-    await expect(page.getByText("Nog geen printproof")).toBeVisible();
-    await page.getByRole("button", { name: "Echte printproof opbouwen" }).click();
-    await expect(page.getByText("Klaar voor controle")).toBeVisible();
-    const proofFrame = page.getByTitle("Printproof van 24 pagina's");
-    await expect(proofFrame).toBeVisible();
-    // The headless engines have no real PDF plug-in. Signal the final
-    // browser-owned frame load after the product already verified the bytes,
-    // headers and SHA-256 through the same-origin fixture.
-    await proofFrame.dispatchEvent("load");
-    await page.getByRole("button", { name: "Exacte proof goedkeuren" }).click();
-
-    const dialog = page.getByRole("dialog", { name: "Exacte printproof goedkeuren" });
-    const approve = dialog.getByRole("button", { name: "Goedkeuren", exact: true });
-    await expect(approve).toBeDisabled();
-    await dialog.getByLabel(/Ik heb deze echte printproof pagina voor pagina gecontroleerd/).click();
-    await approve.click();
-    await expect(page.getByText("Deze exacte proof is goedgekeurd.")).toBeVisible();
-
-    expect(fixture.requests).toContainEqual(expect.objectContaining({
-      method: "POST",
-      pathname: `/api/projects/${SYNTHETIC_IDS.project}/photobook/proofs`,
-      body: expect.objectContaining({
-        expectedDraftVersion: 4,
-        expectedDocumentSha256: PHOTOBOOK_DOCUMENT_SHA256,
-      }),
-    }));
-    expect(fixture.requests).toContainEqual(expect.objectContaining({
-      method: "POST",
-      pathname: `/api/photobooks/proofs/${PHOTOBOOK_REVISION_ID}/approve`,
-      body: expect.objectContaining({
-        documentSha256: PHOTOBOOK_DOCUMENT_SHA256,
-        pdfSha256: PHOTOBOOK_PDF_SHA256,
-        proofViewed: true,
-      }),
-    }));
-    expect(fixture.unhandled).toEqual([]);
-  });
-
-  test("rendert de canonical cover en bladert printveilig op desktop", async ({ page }) => {
-    const fixture = await installPhotobookFixture(page, "off");
+test.describe("Gratis digitaal Bouwboek", () => {
+  test("bladert deterministisch van cover via voorwoord en Bouwmomenten naar het slot", async ({ page }) => {
+    const fixture = await installDigitalBookFixture(page);
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}/bouwboek`);
 
-    await expect(page.getByRole("heading", { level: 1, name: "Synthetisch Bouwboek" })).toBeVisible();
-    await expect(page.getByText("Dit is je echte printproof")).toBeVisible();
-    await expect(page.getByTitle("Printproof van 24 pagina's")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "A4 liggend hardcover" })).toBeVisible();
-    await expect(page.getByRole("button", { name: /staand/i })).toHaveCount(0);
-    await waitForPhotobookImages(page);
-    expect(await collectImageDiagnostics(page)).toEqual({
-      visibleImages: 0,
-      brokenImages: 0,
-      overlaps: 0,
-    });
+    await expect(page.getByRole("heading", {
+      level: 1,
+      name: "Je Bouwboek groeit met je verbouwing mee",
+    })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Synthetisch Bouwboek" })).toBeVisible();
 
-    await expect(page.getByText("Pagina 1 van 24")).toBeVisible();
-    await page.getByRole("button", { name: "Volgende pagina" }).click();
-    await expect(page.getByText("Pagina's 2–3 van 24")).toBeVisible();
+    const viewer = page.getByRole("region", { name: "Bouwboekweergave" });
+    await expect(viewer.getByText("Cover · 1 van 6", { exact: true })).toBeVisible();
+    await expect(viewer.getByLabel("Bouwboekpagina 1").getByText("Synthetisch Bouwboek", { exact: true })).toBeVisible();
+
+    await viewer.getByRole("button", { name: "Volgende pagina" }).click();
+    await expect(viewer.getByText("2–3 van 6", { exact: true })).toBeVisible();
+    await expect(viewer.getByLabel("Bouwboekpagina 2").getByText("Van eerste idee", { exact: true })).toBeVisible();
+    await expect(viewer.getByLabel("Bouwboekpagina 3").getByText("De eerste muur is open", { exact: true })).toBeVisible();
+
+    await viewer.getByRole("button", { name: "Volgende pagina" }).click();
+    await expect(viewer.getByText("4–5 van 6", { exact: true })).toBeVisible();
+    await expect(viewer.getByLabel("Bouwboekpagina 4").getByRole("img", { name: "Sloopfoto van de keuken" })).toBeVisible();
+    await expect(viewer.getByLabel("Bouwboekpagina 5").getByText("Licht in de nieuwe keuken", { exact: true })).toBeVisible();
+
+    await viewer.getByRole("button", { name: "Volgende pagina" }).click();
+    await expect(viewer.getByText("Tot slot · 6 van 6", { exact: true })).toBeVisible();
+    await expect(viewer.getByLabel("Bouwboekpagina 6").getByText("Verder bouwen,", { exact: true })).toBeVisible();
+
+    const layoutSection = page.getByRole("heading", { name: "Indeling" }).locator("..");
+    await expect(layoutSection.getByRole("button")).toHaveCount(2);
+    await expect(layoutSection.getByRole("button", { name: "Afwisselend" })).toBeVisible();
+    await expect(layoutSection.getByRole("button", { name: "Foto groot" })).toBeVisible();
     expect(fixture.unhandled).toEqual([]);
   });
 
-  test("bladert op 390px pagina voor pagina zonder horizontale pagina-overflow", async ({ page }) => {
-    const fixture = await installPhotobookFixture(page, "off");
+  test("blijft op 390px op iedere digitale bladzijde binnen het scherm", async ({ page }) => {
+    const fixture = await installDigitalBookFixture(page);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}/bouwboek`);
 
-    await expect(page.getByText("Pagina 1 van 24")).toBeVisible();
-    await page.getByRole("button", { name: "Volgende pagina" }).click();
-    await expect(page.getByText("Pagina 2 van 24")).toBeVisible();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth)).toBe(false);
-    expect(fixture.unhandled).toEqual([]);
-  });
-});
+    const viewer = page.getByRole("region", { name: "Bouwboekweergave" });
+    const labels = [
+      "Cover · 1 van 6",
+      "Voorwoord · 2 van 6",
+      "Bouwmoment · 3 van 6",
+      "Foto’s · 4 van 6",
+      "Bouwmoment · 5 van 6",
+      "Tot slot · 6 van 6",
+    ];
 
-test.describe("Bouwboek-checkout", () => {
-  test("blijft fail-closed bij CHECKOUT_MODE=off", async ({ page }) => {
-    const fixture = await installPhotobookFixture(page, "off");
-    await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}/bouwboek`);
-
-    await expect(page.getByText("Deze exacte proof is goedgekeurd.")).toBeVisible();
-    await expect(page.getByText(/Bestellen is nog niet beschikbaar/i)).toBeVisible();
-    await expect(page.getByRole("button", { name: "Bouwboek bestellen" })).toHaveCount(0);
-    expect(fixture.requests.some((request) => request.pathname.endsWith("/quote"))).toBe(false);
-    expect(fixture.requests.some((request) => request.pathname.endsWith("/checkout"))).toBe(false);
-    expect(fixture.unhandled).toEqual([]);
-  });
-
-  test("vraagt in testmodus alleen een exacte serverquote op en toont handmatige fulfilment", async ({ page }) => {
-    const fixture = await installPhotobookFixture(page, "test");
-    await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}/bouwboek`);
-    await page.getByRole("button", { name: "Bouwboek bestellen" }).click();
-
-    const dialog = page.getByRole("dialog", { name: "Bouwboek bestellen" });
-    await dialog.getByLabel("Voornaam").fill("Ada");
-    await dialog.getByLabel("Achternaam").fill("Tester");
-    await dialog.getByLabel("Straat en huisnummer").fill("Teststraat 1");
-    await dialog.getByLabel("Postcode").fill("1234 AB");
-    await dialog.getByLabel("Plaats").fill("Utrecht");
-    await dialog.getByRole("button", { name: "Prijs en levering opvragen" }).click();
-
-    await expect(dialog.getByText("Exacte quote")).toBeVisible();
-    await expect(dialog.getByText("Buildy Test B.V.")).toBeVisible();
-    await expect(dialog.getByText(/plaatst de drukopdracht handmatig/i)).toBeVisible();
-    await expect(dialog.getByRole("button", { name: "Naar beveiligde betaling" })).toBeDisabled();
-
-    const quote = fixture.requests.find((request) => request.pathname.endsWith("/quote"));
-    expect(quote?.body).toEqual({
-      documentSha256: PHOTOBOOK_DOCUMENT_SHA256,
-      pdfSha256: PHOTOBOOK_PDF_SHA256,
-      quantity: 1,
-      shippingAddress: {
-        firstName: "Ada",
-        lastName: "Tester",
-        addressLine1: "Teststraat 1",
-        addressLine2: null,
-        postalCode: "1234 AB",
-        city: "Utrecht",
-        state: null,
-        countryCode: "NL",
-      },
-    });
-    expect(quote?.body).not.toHaveProperty("amounts");
-    expect(quote?.body).not.toHaveProperty("productReference");
-    expect(fixture.requests.some((request) => request.pathname.endsWith("/checkout"))).toBe(false);
+    for (const [index, label] of labels.entries()) {
+      await expect(viewer.getByText(label, { exact: true })).toBeVisible();
+      expect(await page.evaluate(() => ({
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: window.innerWidth,
+      }))).toEqual({ documentWidth: 390, viewportWidth: 390 });
+      if (index < labels.length - 1) {
+        await viewer.getByRole("button", { name: "Volgende pagina" }).click();
+      }
+    }
     expect(fixture.unhandled).toEqual([]);
   });
 
-  test("bevestigt de exacte quote en navigeert pas daarna naar gehoste Stripe Checkout", async ({ page }) => {
-    const fixture = await installPhotobookFixture(page, "test");
-    await page.route("https://checkout.stripe.com/**", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "text/html",
-        body: "<!doctype html><title>Stripe Checkout test</title><h1>Beveiligde testbetaling</h1>",
-      });
-    });
+  test("opent drie printinteressevragen met een optionele waardering en gebruikt de feedbackbackend", async ({ page }) => {
+    const fixture = await installDigitalBookFixture(page);
     await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}/bouwboek`);
-    await page.getByRole("button", { name: "Bouwboek bestellen" }).click();
+    await page.getByRole("button", { name: "Ik wil dit later laten drukken" }).click();
 
-    const dialog = page.getByRole("dialog", { name: "Bouwboek bestellen" });
-    await dialog.getByLabel("Voornaam").fill("Ada");
-    await dialog.getByLabel("Achternaam").fill("Tester");
-    await dialog.getByLabel("Straat en huisnummer").fill("Teststraat 1");
-    await dialog.getByLabel("Postcode").fill("1234 AB");
-    await dialog.getByLabel("Plaats").fill("Utrecht");
-    await dialog.getByRole("button", { name: "Prijs en levering opvragen" }).click();
-    await dialog.getByLabel(/Ik ga akkoord met de algemene voorwaarden/).click();
-    await dialog.getByLabel(/Ik bevestig dat dit Bouwboek volgens mijn specificaties/).click();
-    await dialog.getByRole("button", { name: "Naar beveiligde betaling" }).click();
-
-    await expect(page).toHaveURL("https://checkout.stripe.com/c/pay/cs_test_buildy_synthetic");
-    await expect(page.getByRole("heading", { name: "Beveiligde testbetaling" })).toBeVisible();
-    const checkout = fixture.requests.find((request) => request.pathname.endsWith("/checkout"));
-    expect(checkout?.body).toEqual({
-      documentSha256: PHOTOBOOK_DOCUMENT_SHA256,
-      pdfSha256: PHOTOBOOK_PDF_SHA256,
-      quantity: 1,
-      shippingAddress: {
-        firstName: "Ada",
-        lastName: "Tester",
-        addressLine1: "Teststraat 1",
-        addressLine2: null,
-        postalCode: "1234 AB",
-        city: "Utrecht",
-        state: null,
-        countryCode: "NL",
-      },
-      idempotencyKey: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/),
-      expectedQuoteReference: "matrix:synthetic-approved-price",
-      expectedQuoteExpiresAt: "2099-08-23T10:15:00.000Z",
-      expectedAmounts: {
-        currency: "EUR",
-        subtotalMinor: 6_612,
-        shippingMinor: 413,
-        taxMinor: 1_475,
-        totalMinor: 8_500,
-      },
-      termsVersion: "2026-08-23",
-      termsAccepted: true,
-      personalisedProductAccepted: true,
+    const dialog = page.getByRole("dialog", {
+      name: "Vertel ons wat een gedrukt Bouwboek nodig heeft",
     });
+    const form = dialog.getByRole("form", { name: "Interesse in een gedrukt Bouwboek delen" });
+    await expect(form.locator("textarea")).toHaveCount(3);
+    await expect(form.getByLabel("Wat werkte goed?", { exact: true })).toBeVisible();
+    await expect(form.getByLabel("Wat was onduidelijk?", { exact: true })).toBeVisible();
+    await expect(form.getByLabel("Wat mis je?", { exact: true })).toBeVisible();
+
+    const rating = form.getByRole("group", { name: "Waardering van 1 tot 5" });
+    await expect(rating.getByRole("button")).toHaveCount(5);
+    await expect(form.getByText("(optioneel)", { exact: true })).toBeVisible();
+    await form.getByLabel("Ik deel geen gevoelige informatie").check();
+    await expect(form.getByRole("button", { name: "Interesse delen" })).toBeEnabled();
+
+    await form.getByLabel("Wat werkte goed?", { exact: true }).fill("Het digitale verhaal leest rustig.");
+    await form.getByLabel("Wat was onduidelijk?", { exact: true }).fill("Niets was onduidelijk.");
+    await form.getByLabel("Wat mis je?", { exact: true }).fill("Een keuze voor papiersoort.");
+    await rating.getByRole("button", { name: "4 van 5" }).click();
+    await form.getByRole("button", { name: "Interesse delen" }).click();
+
+    await expect(dialog.getByRole("status")).toContainText("HELP-PRINT026");
+    expect(fixture.requests).toContainEqual(expect.objectContaining({
+      method: "POST",
+      pathname: "/api/feedback",
+      body: expect.objectContaining({
+        category: "idea",
+        route: `/project/${SYNTHETIC_IDS.project}/bouwboek`,
+        message: [
+          "Buildy-feedback v1",
+          "Context: Interesse in later laten drukken",
+          "Waardering: 4/5",
+          "",
+          "Wat werkte goed?",
+          "Het digitale verhaal leest rustig.",
+          "",
+          "Wat was onduidelijk?",
+          "Niets was onduidelijk.",
+          "",
+          "Wat mis je?",
+          "Een keuze voor papiersoort.",
+        ].join("\n"),
+      }),
+    }));
     expect(fixture.unhandled).toEqual([]);
   });
 });

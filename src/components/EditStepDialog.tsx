@@ -4,7 +4,6 @@ import {
   ArrowRight,
   FileText,
   Loader2,
-  Star,
   Trash2,
   X,
 } from "lucide-react";
@@ -28,7 +27,6 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -112,11 +110,11 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
   const mediaUpload = usePrivateMediaUpload();
 
   const [title, setTitle] = useState(update.title ?? "");
-  const [room, setRoom] = useState(update.room ?? "");
+  const [room] = useState(update.room ?? "");
   const [description, setDescription] = useState(update.description ?? "");
   const [updateDate, setUpdateDate] = useState(update.updateDate);
   const [phaseId, setPhaseId] = useState(update.phase?.id ?? "");
-  const [isMilestone, setIsMilestone] = useState(update.isMilestone);
+  const [isMilestone] = useState(update.isMilestone);
   const [media, setMedia] = useState<EditorMedia[]>(() => initialMedia(update));
   const [isDirty, setIsDirty] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -338,17 +336,6 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
     markDirty();
   };
 
-  const setCompareRole = (key: string, role: CompareRole) => {
-    if (formLocked) return;
-    setMedia((current) => current.map((item) => {
-      if (item.key === key) {
-        return { ...item, compareRole: item.compareRole === role ? null : role };
-      }
-      return item.compareRole === role ? { ...item, compareRole: null } : item;
-    }));
-    markDirty();
-  };
-
   const readyMediaManifest = async () => {
     const manifest: Array<{
       assetId: string;
@@ -521,7 +508,6 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
               {media.length > 0 && (
                 <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {media.map((item, index) => {
-                    const canCompare = item.file || !item.contentType || item.contentType.startsWith("image/");
                     return (
                       <div key={item.key} className="border bg-background p-2">
                         <div className="relative aspect-[4/3] overflow-hidden bg-muted">
@@ -534,11 +520,6 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
                             <ResilientVideo src={item.previewUrl} className="h-full w-full object-cover" aria-label={`Video ${index + 1}`} />
                           ) : (
                             <ResilientImage src={item.previewUrl} alt={`Media ${index + 1}`} className="h-full w-full object-cover" />
-                          )}
-                          {item.compareRole && (
-                            <span className="absolute left-2 top-2 bg-accent px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-accent-foreground">
-                              {item.compareRole === "before" ? "Voor" : "Na"}
-                            </span>
                           )}
                           <button
                             type="button"
@@ -558,7 +539,7 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
                           </p>
                         ) : failedUploadKey === item.key ? (
                           <div className="mt-2 border-l-2 border-destructive pl-2">
-                            <p className="text-xs text-destructive" role="alert">Verwerken mislukt</p>
+                            <p className="text-xs leading-5 text-destructive" role="alert">Deze foto kon niet worden bewaard. Je tekst is niet verloren.</p>
                             <button
                               type="button"
                               className="mt-1 min-h-11 text-left text-xs font-semibold text-accent underline underline-offset-4"
@@ -574,22 +555,6 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
                           <button type="button" onClick={() => moveMedia(item.key, -1)} disabled={index === 0 || formLocked} className="flex min-h-11 items-center justify-center border disabled:opacity-30" aria-label={`Media ${index + 1} naar voren`}><ArrowLeft className="h-4 w-4" /></button>
                           <button type="button" onClick={() => moveMedia(item.key, 1)} disabled={index === media.length - 1 || formLocked} className="flex min-h-11 items-center justify-center border disabled:opacity-30" aria-label={`Media ${index + 1} naar achteren`}><ArrowRight className="h-4 w-4" /></button>
                         </div>
-                        {canCompare && (
-                          <div className="mt-1 grid grid-cols-2 gap-1">
-                            {(["before", "after"] as const).map((role) => (
-                              <button
-                                key={role}
-                                type="button"
-                                aria-pressed={item.compareRole === role}
-                                onClick={() => setCompareRole(item.key, role)}
-                                className={`min-h-11 border text-xs font-semibold ${item.compareRole === role ? "border-accent bg-accent text-accent-foreground" : "border-border"}`}
-                                disabled={formLocked}
-                              >
-                                {role === "before" ? "Voor" : "Na"}
-                              </button>
-                            ))}
-                          </div>
-                        )}
                       </div>
                     );
                   })}
@@ -602,10 +567,6 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
               <div className="space-y-2">
                 <Label htmlFor="edit-update-title">Titel</Label>
                 <Input id="edit-update-title" value={title} onChange={(event) => { setTitle(event.target.value); markDirty(); }} maxLength={120} className="min-h-11" disabled={formLocked} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-update-room">Ruimte</Label>
-                <Input id="edit-update-room" value={room} onChange={(event) => { setRoom(event.target.value); markDirty(); }} maxLength={80} className="min-h-11" disabled={formLocked} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-update-description">Vertel wat je wilt onthouden</Label>
@@ -626,10 +587,6 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
                   <Label htmlFor="edit-update-date">Datum</Label>
                   <Input id="edit-update-date" type="date" value={updateDate} onChange={(event) => { setUpdateDate(event.target.value); markDirty(); }} required className="min-h-11" disabled={formLocked} />
                 </div>
-              </div>
-              <div className="flex min-h-11 items-center justify-between gap-4 border-y border-border py-2">
-                <Label htmlFor="edit-milestone" className="flex cursor-pointer items-center gap-2"><Star className="h-4 w-4 text-accent" />Markeren als mijlpaal</Label>
-                <Switch id="edit-milestone" checked={isMilestone} onCheckedChange={(checked) => { setIsMilestone(checked); markDirty(); }} disabled={formLocked} />
               </div>
             </section>
 

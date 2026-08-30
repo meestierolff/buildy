@@ -7,6 +7,7 @@ export type PhotobookErrorReason =
   | "STALE_DRAFT"
   | "IDEMPOTENCY_CONFLICT"
   | "PROOF_BLOCKED"
+  | "PROOF_UNAVAILABLE"
   | "PROOF_NOT_READY"
   | "PROOF_NOT_APPROVABLE"
   | "INVALID_STATE"
@@ -46,6 +47,11 @@ const ERROR_DETAILS: Record<PhotobookErrorReason, {
     status: 422,
     apiCode: "VALIDATION_FAILED",
     message: "Los eerst de blokkerende printwaarschuwingen op.",
+  },
+  PROOF_UNAVAILABLE: {
+    status: 503,
+    apiCode: "PROVIDER_UNAVAILABLE",
+    message: "Printvoorbereiding is niet beschikbaar in deze versie van Buildy.",
   },
   PROOF_NOT_READY: {
     status: 409,

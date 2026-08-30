@@ -244,6 +244,28 @@ describe("PhotobookService", () => {
     expect(repository.requested).toBeNull();
   });
 
+  it("keeps printproof requests dormant for the free digital Bouwboek", async () => {
+    const repository = new MemoryPhotobookRepository();
+    const service = new PhotobookService(
+      repository,
+      "buildy-private",
+      blindIndex,
+      undefined,
+      undefined,
+      async () => measurer,
+      undefined,
+      false,
+    );
+    const editor = await service.editor(ACTOR_ID, PROJECT_ID);
+
+    await expect(service.requestProof(ACTOR_ID, PROJECT_ID, {
+      idempotencyKey: "60000000-0000-4000-8000-000000000022",
+      expectedDraftVersion: editor.version,
+      expectedDocumentSha256: editor.document.checksumSha256,
+    })).rejects.toMatchObject({ reason: "PROOF_UNAVAILABLE" });
+    expect(repository.requested).toBeNull();
+  });
+
   it("approves only the explicitly hashed revision and never trusts a redirect", async () => {
     const repository = new MemoryPhotobookRepository();
     const service = new PhotobookService(

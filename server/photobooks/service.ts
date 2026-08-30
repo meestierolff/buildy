@@ -93,6 +93,7 @@ export class PhotobookService {
     private readonly createId: PhotobookIdFactory = () => crypto.randomUUID(),
     private readonly typography: () => Promise<PhotobookTextMeasurer> = resolveTypography,
     private readonly proofProcessor?: PhotobookProofProcessor,
+    private readonly proofRequestsEnabled = true,
   ) {}
 
   private async buildDocument(source: PhotobookSource): Promise<PhotobookDocument> {
@@ -193,6 +194,7 @@ export class PhotobookService {
     projectId: string,
     rawInput: unknown,
   ): Promise<PhotobookProofMutation> {
+    if (!this.proofRequestsEnabled) throw new PhotobookError("PROOF_UNAVAILABLE");
     const input = requestPhotobookProofInputSchema.parse(rawInput);
     const editor = await this.buildEditorState(actorId, projectId, false);
     if (

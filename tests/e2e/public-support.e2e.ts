@@ -17,14 +17,12 @@ const SUPPORT_RECEIPT = {
 } as const;
 
 test.describe("Juridische en contactroutes", () => {
-  test("opent iedere zichtbare juridische route met een bruikbare titel", async ({ page }) => {
+  test("opent iedere actieve juridische en supportroute met een bruikbare titel", async ({ page }) => {
     const fixture = await installSyntheticApi(page, { authenticated: false });
     for (const [pathname, title] of [
       ["/voorwaarden", "Algemene voorwaarden"],
       ["/privacy", "Privacyverklaring"],
-      ["/herroeping", "Herroepingsrecht Bouwboek"],
-      ["/contentbeleid", "Contentbeleid"],
-      ["/huisregels", "Huisregels"],
+      ["/support", "Waar kunnen we naar kijken?"],
     ] as const) {
       await page.goto(`${BASE}${pathname}`);
       await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
@@ -110,8 +108,10 @@ test.describe("Juridische en contactroutes", () => {
     });
     await page.goto(`${BASE}/feedback`);
 
-    await page.getByLabel("Soort feedback").selectOption("bug");
-    await page.getByLabel("Wat wil je ons meegeven?").fill("De fotovolgorde sprong terug.");
+    await page.getByLabel("Wat werkte goed?").fill("Het Verhaal leest rustig.");
+    await page.getByLabel("Wat was onduidelijk?").fill("De fotovolgorde was even zoeken.");
+    await page.getByLabel("Wat mis je?").fill("Een sneller fotovoorbeeld.");
+    await page.getByRole("button", { name: "4 van 5" }).click();
     await page.getByLabel("Ik deel geen gevoelige informatie").check();
     await page.getByRole("button", { name: "Feedback versturen" }).click();
 
@@ -119,7 +119,11 @@ test.describe("Juridische en contactroutes", () => {
     expect(fixture.requests).toContainEqual(expect.objectContaining({
       method: "POST",
       pathname: "/api/feedback",
-      body: expect.objectContaining({ category: "bug", route: "/feedback" }),
+      body: expect.objectContaining({
+        category: "idea",
+        route: "/feedback",
+        message: expect.stringContaining("Waardering: 4/5"),
+      }),
     }));
     expect(fixture.unhandled).toEqual([]);
   });

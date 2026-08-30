@@ -4,10 +4,10 @@ import {
   FileArchive,
   Loader2,
   Lock,
+  LogOut,
   Mail,
   MapPin,
   MonitorSmartphone,
-  PackageCheck,
   Save,
   ShieldAlert,
   Trash2,
@@ -45,7 +45,6 @@ import { useAppFeatures } from "@/lib/appFeatures";
 import { ApiClientError } from "@/lib/apiClient";
 import { createClientIdempotencyKey } from "@/lib/clientIdempotency";
 import { Link, Navigate } from "@/lib/router";
-import { PRODUCT_ROUTES } from "@/lib/productNavigation";
 import type { UpdateOwnProfileInput } from "../../shared/contracts/profiles";
 import type { AccountExportStatus } from "../../shared/contracts/account";
 
@@ -103,7 +102,7 @@ const AccountSettings = () => {
   usePageMeta({
     title: "Account & instellingen — Buildy",
     description: "Beheer je profiel, privacy en Google-login.",
-    path: "/account",
+    path: "/profiel",
     noIndex: true,
   });
   const { user, loading: authLoading, signOut } = useAuth();
@@ -142,7 +141,7 @@ const AccountSettings = () => {
     );
   }
 
-  if (!user) return <Navigate to="/auth?next=/account" replace />;
+  if (!user) return <Navigate to="/auth?next=/profiel" replace />;
 
   const setField = <Key extends keyof ProfileDraft>(key: Key, value: ProfileDraft[Key]) => {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -239,30 +238,25 @@ const AccountSettings = () => {
     }
   };
 
+  const logout = async () => {
+    await signOut();
+    window.location.assign("/");
+  };
+
   return (
     <main className="mx-auto max-w-3xl space-y-10 px-6 py-12 md:py-16">
-      <header>
-        <p className="eyebrow mb-2">Account</p>
-        <h1 className="font-serif text-4xl italic leading-tight">Instellingen</h1>
-        <p className="mt-3 text-sm text-muted-foreground">
-          Beheer wat andere bouwers van je zien en houd je login veilig.
-        </p>
-      </header>
-
-      <section className="rounded-xl border border-border bg-card p-5 md:p-6" aria-labelledby="orders-link-title">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3">
-            <PackageCheck className="mt-0.5 h-5 w-5 text-accent" aria-hidden="true" />
-            <div>
-              <h2 id="orders-link-title" className="text-base font-semibold">Bouwboekbestellingen</h2>
-              <p className="mt-1 text-sm text-muted-foreground">Bekijk betalingen, productie en bezorging vanuit de vastgelegde bestelstatus.</p>
-            </div>
-          </div>
-          <Button asChild variant="outline" className="shrink-0">
-            <Link to={PRODUCT_ROUTES.orders}>Bekijk bestellingen</Link>
-          </Button>
+      <header className="flex flex-col gap-5 border-b border-border pb-8 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="eyebrow mb-2">Profiel</p>
+          <h1 className="font-serif text-4xl leading-tight">Jouw Buildy</h1>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Beheer je profiel, privacy en Google-login.
+          </p>
         </div>
-      </section>
+        <Button type="button" variant="outline" className="min-h-11 gap-2" onClick={() => void logout()}>
+          <LogOut className="h-4 w-4" aria-hidden="true" /> Uitloggen
+        </Button>
+      </header>
 
       <section className="rounded-xl border border-border bg-card p-6 md:p-8" aria-labelledby="profile-settings-title">
         <div className="mb-6 flex items-start gap-4">
@@ -539,7 +533,7 @@ const AccountSettings = () => {
             <h2 id="delete-account-title" className="text-base font-semibold">Account verwijderen</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Je account en projecten worden meteen afgeschermd. Verwijdering gebeurt daarna gecontroleerd op de achtergrond.
-              Lopende bouwboekbestellingen blokkeren de aanvraag; wettelijke bestelgegevens blijven minimaal bewaard.
+              Gegevens die wettelijk bewaard moeten blijven, worden niet voortijdig verwijderd.
             </p>
           </div>
         </div>

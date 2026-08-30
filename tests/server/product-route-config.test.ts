@@ -4,6 +4,27 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("canonical product route configuration", () => {
+  it("pins Node 22 and makes Vercel typecheck the exact production build", () => {
+    const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf8")) as {
+      engines?: { node?: string };
+    };
+    const config = JSON.parse(readFileSync(resolve(process.cwd(), "vercel.json"), "utf8")) as {
+      installCommand?: string;
+      buildCommand?: string;
+    };
+
+    expect(packageJson.engines?.node).toBe("22.x");
+    expect(config.installCommand).toBe("bun install --frozen-lockfile");
+    expect(config.buildCommand).toBe("bun run typecheck && bun run build");
+  });
+
+  it("documents open signup with commerce disabled for the MVP", () => {
+    const environmentExample = readFileSync(resolve(process.cwd(), ".env.example"), "utf8");
+
+    expect(environmentExample).toMatch(/^BETA_MODE="false"/m);
+    expect(environmentExample).toMatch(/^CHECKOUT_MODE="off"/m);
+  });
+
   it("keeps every legacy public URL as a permanent redirect", () => {
     const config = JSON.parse(readFileSync(resolve(process.cwd(), "vercel.json"), "utf8")) as {
       redirects?: Array<{ source: string; destination: string; permanent?: boolean }>;
@@ -48,6 +69,7 @@ describe("canonical product route configuration", () => {
     expect(jsonLd).toBeDefined();
     expect(jsonLd).not.toContain('"price"');
     expect(`${html}\n${robots}\n${sitemap}`).not.toMatch(/https:\/\/(?:www\.)?buildy\.app/i);
+    expect(sitemap).not.toContain("/ontdekken</loc>");
 
     const csp = config.headers
       ?.flatMap((entry) => entry.headers ?? [])

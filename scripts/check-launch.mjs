@@ -283,7 +283,7 @@ await runCheck("static", "Zichtbare provider- en bestelteksten spreken de MVP-wa
     "src/pages/legal/Withdrawal.tsx",
     "src/pages/OrderAdmin.tsx",
     "src/pages/OrderConfirmation.tsx",
-    "src/components/photobook/PhotobookCheckoutDialog.tsx",
+    "src/pages/Photobook.tsx",
   ];
   const combined = files.map((path) => readFileSync(join(root, path), "utf8")).join("\n");
   assert(!/Peecho|Brevo|Cloudflare R2|cloudflarestorage/i.test(combined), "zichtbare copy noemt een uitgefaseerde provider");

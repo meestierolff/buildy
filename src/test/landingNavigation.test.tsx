@@ -5,13 +5,11 @@ import Header from "@/components/Header";
 import MobileNav from "@/components/app/MobileNav";
 import { useAuth } from "@/hooks/useAuth";
 import { useOwnProfile } from "@/hooks/useProfiles";
-import { MOBILE_NAVIGATION_ITEMS, type ProductNavigationItem } from "@/lib/productNavigation";
+import { getMobileNavigationItems, MOBILE_NAVIGATION_ITEMS } from "@/lib/productNavigation";
 import { BrowserRouter } from "@/lib/router";
 
 vi.mock("@/hooks/useAuth", () => ({ useAuth: vi.fn() }));
 vi.mock("@/hooks/useProfiles", () => ({ useOwnProfile: vi.fn() }));
-vi.mock("@/components/BetaBadge", () => ({ default: () => null }));
-vi.mock("@/components/NotificationBell", () => ({ default: () => null }));
 
 describe("landing- en productnavigatie", () => {
   beforeEach(() => {
@@ -34,37 +32,101 @@ describe("landing- en productnavigatie", () => {
 
     expect(screen.getByRole("link", { name: "Buildy" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: "Bekijk voorbeeld" })).toHaveAttribute("href", "/#voorbeeld");
-    expect(screen.getByRole("link", { name: "Ontdek verbouwingen" })).toHaveAttribute("href", "/ontdekken");
-    expect(screen.getByRole("link", { name: "Hoe werkt het?" })).toHaveAttribute("href", "/#zo-werkt-het");
+    expect(screen.getByRole("link", { name: "Hoe werkt het" })).toHaveAttribute("href", "/#zo-werkt-het");
     expect(screen.getByRole("link", { name: "Inloggen" })).toHaveAttribute("href", "/auth");
-    expect(screen.getAllByRole("link", { name: "Voeg je eerste verbouwfoto toe" })).toHaveLength(1);
+    expect(screen.getAllByRole("link", { name: "Start je verbouwverhaal" })).toHaveLength(1);
+    expect(screen.queryByRole("link", { name: /ontdek/i })).not.toBeInTheDocument();
   });
 
-  it("gebruikt producttaal in de standaard mobiele navigatie", () => {
+  it("toont ingelogd alleen de vier primaire desktopbestemmingen", () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: {
+        id: "owner",
+        name: "Ada Bouwer",
+        email: "ada@example.com",
+        emailVerified: true,
+        image: null,
+        createdAt: new Date("2026-08-04T10:00:00.000Z"),
+        updatedAt: new Date("2026-08-04T10:00:00.000Z"),
+        user_metadata: { display_name: "Ada Bouwer", full_name: "Ada Bouwer" },
+      },
+      session: null,
+      loading: false,
+      refreshing: false,
+      error: null,
+      refetchSession: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    render(<BrowserRouter><Header activeProjectId="project-1" /></BrowserRouter>);
+
+    expect(screen.getByRole("link", { name: "Mijn verbouwing" })).toHaveAttribute("href", "/project/project-1");
+    expect(screen.getByRole("link", { name: "Bouwmoment toevoegen" })).toHaveAttribute("href", "/project/project-1?update=nieuw");
+    expect(screen.getByRole("link", { name: "Bouwboek" })).toHaveAttribute("href", "/project/project-1/bouwboek");
+    expect(screen.getByRole("link", { name: "Profiel" })).toHaveAttribute("href", "/profiel");
+    expect(screen.queryByRole("link", { name: /connecties|volgend|bestellingen|meldingen/i })).not.toBeInTheDocument();
+  });
+
+  it("stuurt alle projectacties zonder bestaande verbouwing naar de korte aanmaakflow", () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: {
+        id: "owner",
+        name: "Ada Bouwer",
+        email: "ada@example.com",
+        emailVerified: true,
+        image: null,
+        createdAt: new Date("2026-08-04T10:00:00.000Z"),
+        updatedAt: new Date("2026-08-04T10:00:00.000Z"),
+        user_metadata: { display_name: "Ada Bouwer", full_name: "Ada Bouwer" },
+      },
+      session: null,
+      loading: false,
+      refreshing: false,
+      error: null,
+      refetchSession: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    render(<BrowserRouter><Header /></BrowserRouter>);
+
+    expect(screen.getByRole("link", { name: "Mijn verbouwing" })).toHaveAttribute("href", "/project/nieuw");
+    expect(screen.getByRole("link", { name: "Bouwmoment toevoegen" })).toHaveAttribute("href", "/project/nieuw");
+    expect(screen.getByRole("link", { name: "Bouwboek" })).toHaveAttribute("href", "/project/nieuw");
+  });
+
+  it("gebruikt exact de vier afgesproken mobiele labels", () => {
     expect(MOBILE_NAVIGATION_ITEMS.map((item) => item.label)).toEqual([
-      "Verbouwingen",
-      "Volgend",
-      "Bouwmoment",
-      "Verhalen",
+      "Verhaal",
+      "Toevoegen",
+      "Bouwboek",
       "Profiel",
     ]);
   });
 
-  it("normaliseert ook oude door App aangeleverde labels", () => {
-    const legacyItems: readonly ProductNavigationItem[] = [
-      { id: "projects", label: "Projecten", href: "/projecten", icon: "projects" },
-      { id: "update", label: "Update", href: "/update/nieuw", icon: "add", primaryAction: true },
-      { id: "discover", label: "Ontdekken", href: "/ontdekken", icon: "discover" },
-      { id: "connections", label: "Vrienden", href: "/connecties", icon: "connections" },
-    ];
+  it("koppelt mobiele bestemmingen aan de actieve verbouwing", () => {
+    const items = getMobileNavigationItems({
+      storyHref: "/project/project-1",
+      updateHref: "/project/project-1?update=nieuw",
+      photobookHref: "/project/project-1/bouwboek",
+      profileHref: "/profiel",
+    });
 
-    render(<BrowserRouter><MobileNav items={legacyItems} /></BrowserRouter>);
+    render(<BrowserRouter><MobileNav items={items} /></BrowserRouter>);
 
-    expect(screen.getByRole("link", { name: "Verbouwingen" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Bouwmoment" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Verhalen" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Connecties" })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Projecten" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Update" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Verhaal" })).toHaveAttribute("href", "/project/project-1");
+    expect(screen.getByRole("link", { name: "Toevoegen" })).toHaveAttribute("href", "/project/project-1?update=nieuw");
+    expect(screen.getByRole("link", { name: "Bouwboek" })).toHaveAttribute("href", "/project/project-1/bouwboek");
+    expect(screen.getByRole("link", { name: "Profiel" })).toHaveAttribute("href", "/profiel");
+  });
+
+  it("houdt ook mobiele fallbacks binnen de actieve MVP-routes", () => {
+    const items = getMobileNavigationItems();
+
+    expect(items.map((item) => item.href)).toEqual([
+      "/project/nieuw",
+      "/project/nieuw",
+      "/project/nieuw",
+      "/profiel",
+    ]);
   });
 });

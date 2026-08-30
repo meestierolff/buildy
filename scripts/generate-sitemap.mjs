@@ -60,7 +60,6 @@ const fetchPublicEntries = async () => {
 
 const staticRoutes = [
   { path: "/", changefreq: "weekly", priority: "1.0", lastmod: today },
-  { path: "/ontdekken", changefreq: "daily", priority: "0.8", lastmod: today },
   { path: "/voorwaarden", changefreq: "yearly", priority: "0.2", lastmod: today },
   { path: "/privacy", changefreq: "yearly", priority: "0.2", lastmod: today },
   { path: "/herroeping", changefreq: "yearly", priority: "0.2", lastmod: today },

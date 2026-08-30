@@ -164,15 +164,16 @@ async function installProjectFixture(page: Page) {
 }
 
 test.describe("Verbouwing detail", () => {
-  test("toont Bouwmomenten en de vier expliciete zichtbaarheidstanden", async ({ page }) => {
+  test("toont het foto-first Verhaal en de vier server-owned zichtbaarheidstanden", async ({ page }) => {
     const fixture = await installProjectFixture(page);
     await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}`);
 
     await expect(page.getByRole("heading", { level: 1, name: "Synthetische verbouwing" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Bouwmoment toevoegen", exact: true })).toBeVisible();
-    await expect(page.getByRole("tab", { name: "Verhaal" })).toBeVisible();
-    await expect(page.getByRole("tab", { name: "Plattegrond" })).toBeVisible();
-    await expect(page.getByRole("tab", { name: "Alle foto's" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Van eerste foto tot thuis." })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 3, name: "De eerste muur is open" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /Plattegrond|Alle foto's/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Mijlpalen" })).toHaveCount(0);
 
     await page.getByLabel("Zichtbaarheid van de verbouwing").click();
     for (const option of ["Alleen ik", "Mijn volgers", "Alleen via deellink", "Openbaar"]) {
@@ -186,25 +187,6 @@ test.describe("Verbouwing detail", () => {
       method: "PATCH",
       pathname: `/api/projects/${SYNTHETIC_IDS.project}`,
     }));
-    expect(fixture.unhandled).toEqual([]);
-  });
-
-  test("wisselt tijdlijn, plattegrond en alle foto's zonder data buiten de API", async ({ page }) => {
-    const fixture = await installProjectFixture(page);
-    await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}`);
-
-    await page.getByRole("button", { name: "Mijlpalen" }).click();
-    await expect(page.getByText("Alleen mijlpalen worden getoond")).toBeVisible();
-
-    await page.getByRole("tab", { name: "Plattegrond" }).click();
-    await expect(page.getByText("Nog geen plattegrond")).toBeVisible();
-
-    await page.getByRole("tab", { name: "Alle foto's" }).click();
-    await page.getByRole("button", { name: "Open media van De eerste muur is open" }).click();
-    await expect(page.getByTestId("media-lightbox")).toBeVisible();
-    await page.getByRole("button", { name: "Lightbox sluiten" }).click();
-    await expect(page.getByTestId("media-lightbox")).toHaveCount(0);
-
     expect(fixture.unhandled).toEqual([]);
   });
 
@@ -227,35 +209,10 @@ test.describe("Verbouwing detail", () => {
     expect(fixture.unhandled).toEqual([]);
   });
 
-  test("verwijdert een verbouwing pas na de exacte destructieve bevestiging", async ({ page }) => {
-    const fixture = await installProjectFixture(page);
-    await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}`);
-
-    await page.getByRole("button", { name: "Verwijderen" }).click();
-    const dialog = page.getByRole("alertdialog");
-    const submit = dialog.getByRole("button", { name: "Verbouwing verwijderen" });
-    await expect(submit).toBeDisabled();
-    await dialog.getByLabel("Typ VERWIJDER VERBOUWING om te bevestigen").fill("VERWIJDER VERBOUWING");
-    await expect(submit).toBeEnabled();
-    await submit.click();
-
-    await expect(page).toHaveURL(`${BASE}/projecten`);
-    expect(fixture.requests).toContainEqual(expect.objectContaining({
-      method: "DELETE",
-      pathname: `/api/projects/${SYNTHETIC_IDS.project}`,
-      body: expect.objectContaining({
-        confirmation: "VERWIJDER VERBOUWING",
-        expectedVersion: 7,
-      }),
-    }));
-    expect(fixture.unhandled).toEqual([]);
-  });
-
   test("plaatst en verwijdert reacties en een eigen comment via serverwrites", async ({ page }) => {
     const fixture = await installProjectFixture(page);
     await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}`);
 
-    await page.getByRole("button", { name: "De eerste muur is open uitklappen" }).click();
     await page.getByRole("button", { name: "Reactie kiezen" }).click();
     await page.getByRole("button", { name: "Reageer met 👍" }).click();
     const activeReaction = page.getByRole("button", { name: "Verwijder reactie 👍, 1" });
@@ -263,7 +220,7 @@ test.describe("Verbouwing detail", () => {
     await activeReaction.click();
     await expect(activeReaction).toHaveCount(0);
 
-    await page.getByRole("button", { name: "Reacties openen" }).click();
+    await page.getByRole("button", { name: "Opmerkingen openen" }).click();
     await page.getByLabel("Nieuwe reactie").fill("Wat een mooi Bouwmoment!");
     await page.getByRole("button", { name: "Plaatsen", exact: true }).click();
     await expect(page.getByText("Wat een mooi Bouwmoment!", { exact: true })).toBeVisible();

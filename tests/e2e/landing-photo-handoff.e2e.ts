@@ -1,4 +1,4 @@
-import { BASE, expect, test } from "./helpers";
+import { allowBrowserDiagnostics, BASE, expect, test } from "./helpers";
 import {
   ONE_PIXEL_PNG,
   SYNTHETIC_IDS,
@@ -11,7 +11,12 @@ import {
 } from "./syntheticApi";
 
 test("draagt een landingfoto lokaal door Google-login naar het eerste Bouwmoment", async ({ page }) => {
+  allowBrowserDiagnostics(
+    page,
+    /^requestfailed: GET https?:\/\/[^/]+\/images\/buildy-(?:renovation-(?:progress|complete)|bouwboek-preview)\.webp \(NS_BINDING_ABORTED\)$/,
+  );
   let authenticated = false;
+  let projectCreated = false;
   let googleStartBody: unknown = null;
   const requestedUrls: string[] = [];
   page.on("request", (request) => requestedUrls.push(request.url()));
@@ -19,6 +24,13 @@ test("draagt een landingfoto lokaal door Google-login naar het eerste Bouwmoment
   const fixture = await installSyntheticApi(page, {
     authenticated: false,
     handle: async ({ request, route, url }) => {
+      if (
+        request.method() === "GET"
+        && /^\/images\/buildy-(?:renovation-(?:progress|complete)|bouwboek-preview)\.webp$/.test(url.pathname)
+      ) {
+        await route.fulfill({ status: 200, contentType: "image/png", body: ONE_PIXEL_PNG });
+        return true;
+      }
       if (request.method() === "GET" && url.pathname === "/api/auth/session") {
         await fulfillJson(route, syntheticAuthSession(authenticated));
         return true;
@@ -33,6 +45,13 @@ test("draagt een landingfoto lokaal door Google-login naar het eerste Bouwmoment
       }
       if (authenticated && request.method() === "GET" && url.pathname === "/api/notifications") {
         await fulfillJson(route, success({ items: [], nextCursor: null, unreadCount: 0 }));
+        return true;
+      }
+      if (authenticated && request.method() === "GET" && url.pathname === "/api/projects") {
+        await fulfillJson(route, success({
+          items: projectCreated ? [syntheticProjectOverview("private")] : [],
+          nextCursor: null,
+        }));
         return true;
       }
       if (request.method() === "POST" && url.pathname === "/api/auth/sign-in/google") {
@@ -51,6 +70,7 @@ test("draagt een landingfoto lokaal door Google-login naar het eerste Bouwmoment
         return true;
       }
       if (request.method() === "POST" && url.pathname === "/api/projects") {
+        projectCreated = true;
         await fulfillJson(route, success({
           project: { ...syntheticProjectOverview("private"), updateCount: 0 },
           replayed: false,
@@ -83,15 +103,20 @@ test("draagt een landingfoto lokaal door Google-login naar het eerste Bouwmoment
   });
 
   await page.goto(`${BASE}/#probeer-buildy`);
+  await page.waitForFunction(() => {
+    const images = Array.from(document.images)
+      .filter((image) => image.getAttribute("src")?.startsWith("/images/buildy-"));
+    return images.length >= 3 && images.every((image) => image.complete && image.naturalWidth > 0);
+  });
   await page.getByLabel("Kies een verbouwfoto van dit apparaat").setInputFiles({
     name: "keuken-met-privenaam.png",
     mimeType: "image/png",
     buffer: ONE_PIXEL_PNG,
   });
-  await page.getByRole("link", { name: "Bewaar dit bouwmoment" }).click();
+  await page.getByRole("link", { name: "Doorgaan met Google" }).click();
 
   await expect(page).toHaveURL(
-    /\/auth\?mode=register&provider=google&next=%2Fproject%2Fnieuw%3Fintent%3Deerste-bouwmoment$/,
+    /\/auth\?next=%2Fproject%2Fnieuw%3Fintent%3Deerste-bouwmoment$/,
   );
   const localRecord = await page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -122,13 +147,13 @@ test("draagt een landingfoto lokaal door Google-login naar het eerste Bouwmoment
   expect(fixture.requests.some((request) => request.pathname.startsWith("/api/media"))).toBe(false);
   expect(requestedUrls.some((url) => url.includes("blob.vercel-storage.com"))).toBe(false);
 
-  await page.getByRole("button", { name: "Registreren met Google" }).click();
+  await page.getByRole("button", { name: "Doorgaan met Google" }).click();
   await expect(page).toHaveURL(/^https:\/\/accounts\.google\.com\/o\/oauth2\/v2\/auth/);
   expect(googleStartBody).toEqual({ next: "/project/nieuw?intent=eerste-bouwmoment" });
 
   authenticated = true;
   await page.goto(`${BASE}/project/nieuw?intent=eerste-bouwmoment`);
-  await page.getByLabel("Naam van je verbouwing").fill("Ons synthetische familiehuis");
+  await page.getByLabel("Hoe heet je verbouwing?").fill("Ons synthetische familiehuis");
   await page.getByRole("button", { name: "Verbouwing starten" }).click();
 
   await expect(page).toHaveURL(`${BASE}/project/${SYNTHETIC_IDS.project}`);

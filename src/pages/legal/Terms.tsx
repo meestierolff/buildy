@@ -1,169 +1,117 @@
+import { Link } from "@/lib/router";
 import LegalLayout from "./LegalLayout";
 import LegalPendingNotice from "./LegalPendingNotice";
 
 const Terms = () => (
   <LegalLayout
     title="Algemene voorwaarden"
-    description="De voorwaarden voor het gebruik van Buildy en het bestellen van een persoonlijk gedrukt Bouwboek."
-    updated="23 augustus 2026"
+    description="De voorwaarden voor het gratis gebruik van Buildy en je digitale Bouwboek."
+    updated="29 augustus 2026"
   >
-    <LegalPendingNotice title="Nog aan te vullen vóór registratie en verkoop">
+    <LegalPendingNotice title="Exploitantgegevens nog vereist">
       <p>
-        De exploitant heeft de juridische handelsnaam, het vestigings- en klachtenadres,
-        KvK-nummer, btw-identificatienummer, telefoonnummer, bereikbaarheid en een
-        geverifieerd contactadres nog niet aangeleverd. Zolang die gegevens hier niet
-        zijn gepubliceerd, mogen registratie en Bouwboek-bestellingen niet publiek worden
-        opengesteld.
+        De exploitant moet vóór publieke registratie de juridische naam, het
+        vestigingsadres, het KvK-nummer (als dat van toepassing is) en een rechtstreeks
+        contactadres publiceren. Deze gegevens zijn nog niet aangeleverd. Tot die tijd is
+        het publieke <Link to="/support">supportformulier</Link> de beschikbare
+        contactroute; dit formulier vervangt de ontbrekende exploitantgegevens niet.
       </p>
     </LegalPendingNotice>
 
     <p>
-      Deze voorwaarden gelden voor het gebruik van het Buildy-platform en voor de koop
-      van een fysiek Bouwboek. Bij het aanmaken van een account en vóór een bestelling
-      krijg je de gelegenheid om deze voorwaarden te lezen en op te slaan. Voor een
-      bestelling geldt de versie die op het moment van bestellen aan je beschikbaar is
-      gesteld.
+      Deze voorwaarden gelden voor het gebruik van de gratis Buildy-MVP. Buildy helpt je
+      een verbouwing vast te leggen in Bouwmomenten, het verhaal gecontroleerd te delen en
+      daarvan een digitaal Bouwboek samen te stellen.
     </p>
 
-    <h2>1. Aanbieder en verkoper</h2>
+    <h2>1. De dienst</h2>
     <p>
-      Buildy is een platform voor het vastleggen en delen van een verbouwing en het
-      samenstellen van een persoonlijk fotoboek. De onderneming achter Buildy is de
-      aanbieder van het platform én de verkoper van het Bouwboek aan de consument.
-      Als checkout is geactiveerd, verwerkt Stripe de betaling. Buildy controleert iedere
-      betaalde drukopdracht handmatig en kiest de drukker en bezorger; deze partijen nemen
-      de wettelijke verplichtingen van Buildy als verkoper niet over.
+      Buildy is op dit moment een gratis digitale dienst. Een gedrukt Bouwboek kun je in
+      deze versie niet kopen. Een vraag over interesse in een gedrukt Bouwboek is alleen
+      productonderzoek: je reactie legt jou of Buildy nergens op vast.
     </p>
 
-    <h2>2. Account en gebruik van het platform</h2>
+    <h2>2. Account en Google-login</h2>
     <ul>
-      <li>Je verstrekt juiste accountgegevens en houdt je inloggegevens geheim.</li>
-      <li>Je bent verantwoordelijk voor handelingen die via jouw account worden verricht, behalve voor zover dat redelijkerwijs niet aan jou kan worden toegerekend.</li>
-      <li>Je kunt je account via <em>Account &rsaquo; Account verwijderen</em> verwijderen. Gegevens die Buildy wettelijk moet bewaren, worden niet door die actie gewist.</li>
-      <li>Gebruik het platform niet om de werking of beveiliging te verstoren, accounts van anderen te benaderen of de dienst voor fraude of andere onrechtmatige activiteiten te gebruiken.</li>
+      <li>Je logt uitsluitend in met Google. Buildy beheert geen eigen wachtwoord voor je.</li>
+      <li>Je verstrekt juiste profielinformatie en beveiligt de toegang tot je Google-account.</li>
+      <li>Je gebruikt geen account van een ander en probeert toegangscontroles niet te omzeilen.</li>
+      <li>Je kunt via <em>Profiel &rsaquo; Account verwijderen</em> de verwijdering van je account aanvragen.</li>
     </ul>
 
-    <h2>3. Jouw inhoud en zichtbaarheid</h2>
+    <h2>3. Jouw foto&apos;s, verhalen en reacties</h2>
     <p>
-      Je behoudt de rechten op foto's, video's, tekst, reacties en andere inhoud die je
-      plaatst. Je geeft Buildy alleen de niet-exclusieve, kosteloze gebruiksrechten die
-      technisch nodig zijn om jouw inhoud op te slaan, te beveiligen, volgens jouw
-      privacykeuze te tonen en — wanneer jij een Bouwboek bestelt — aan de druk- en
-      verzendpartners te verstrekken. Dit recht eindigt wanneer de inhoud wordt verwijderd,
-      behalve voor nog lopende bestellingen, wettelijke bewaring en tijdelijke back-ups.
+      Je behoudt de rechten op de foto&apos;s, tekst en andere inhoud die je plaatst. Je
+      geeft Buildy alleen het niet-exclusieve en kosteloze gebruiksrecht dat technisch
+      nodig is om die inhoud op te slaan, te beveiligen, volgens jouw keuzes te tonen en
+      in jouw digitale Bouwboek te verwerken. Dit recht eindigt wanneer de inhoud wordt
+      verwijderd, behalve voor tijdelijke back-ups of bewaring die wettelijk noodzakelijk
+      is.
     </p>
+    <p>
+      Plaats alleen inhoud die je rechtmatig mag gebruiken en delen. Houd rekening met
+      auteursrecht, portretrecht en de privacy van bewoners, buren, bezoekers en vakmensen.
+    </p>
+
+    <h2>4. Zichtbaarheid en delen</h2>
+    <p>
+      Een verbouwing kan <em>privé</em>, voor <em>volgers</em>, via een
+      <em>deel-link</em> of <em>openbaar</em> zichtbaar zijn. Controleer deze keuze
+      voordat je publiceert. Een deel-link werkt als toegangssleutel: iedereen die de link
+      ontvangt kan hem doorsturen. Trek de link in als die niet meer gebruikt mag worden.
+      Openbare inhoud kan buiten Buildy worden gedeeld, gecachet of door zoekmachines
+      worden gevonden. Geen enkel online toegangsmechanisme kan voorkomen dat een
+      toegelaten kijker zelf een kopie maakt.
+    </p>
+
+    <h2>5. Gedragsregels en meldingen</h2>
+    <p>Het is niet toegestaan om:</p>
     <ul>
-      <li>Bij een openbaar profiel of openbare verbouwing kan inhoud zonder account zichtbaar zijn, door zoekmachines worden geïndexeerd en door anderen worden gedeeld.</li>
-      <li>Bij een privéprofiel of privéverbouwing is inhoud alleen zichtbaar volgens de toegangsinstellingen. Geen enkel online toegangsmechanisme kan voorkomen dat een toegelaten kijker zelf een kopie maakt.</li>
-      <li>Het afzonderlijk opgeslagen verbouwingsadres en niet-openbare budget- of aannemersinformatie worden niet openbaar gemaakt via de pagina van de verbouwing.</li>
-    </ul>
-
-    <h2>4. Rechten van anderen en gedragsregels</h2>
-    <p>Je plaatst alleen inhoud die je rechtmatig mag gebruiken en delen. Het is niet toegestaan om:</p>
-    <ul>
-      <li>inbreuk te maken op auteursrecht, portretrecht, privacy of andere rechten van iemand anders;</li>
-      <li>onrechtmatige, bedreigende, discriminerende, misleidende of strafbare inhoud te plaatsen;</li>
-      <li>zonder goede reden gevoelige persoonsgegevens, exacte woongegevens of vertrouwelijke informatie van anderen openbaar te maken;</li>
-      <li>spam, malware of inhoud te plaatsen die de veiligheid van gebruikers of de dienst schaadt.</li>
+      <li>inbreuk te maken op auteursrecht, portretrecht, privacy of andere rechten;</li>
+      <li>bedreigende, discriminerende, misleidende, strafbare of anderszins onrechtmatige inhoud te plaatsen;</li>
+      <li>adresgegevens, toegangscodes of andere gevoelige informatie van anderen zonder geldige reden openbaar te maken;</li>
+      <li>spam of schadelijke software te plaatsen of de werking en beveiliging van Buildy te verstoren.</li>
     </ul>
     <p>
-      Buildy kan specifieke inhoud beperken of verwijderen en, als dat evenredig en nodig
-      is, een account beperken bij een overtreding van deze regels of de wet. Behalve als
-      snel handelen wettelijk of vanwege een acuut veiligheidsrisico nodig is, ontvangt de
-      gebruiker de reden en de mogelijkheid om via het gepubliceerde contactpunt te reageren.
-      Meldingen over mogelijk illegale inhoud moeten via het vóór livegang te publiceren
-      elektronische meldpunt kunnen worden gedaan.
+      Buildy kan inhoud of een account beperken als dat redelijkerwijs nodig is voor de
+      veiligheid, naleving van deze regels of een wettelijke verplichting. Als de situatie
+      dat toelaat, krijgt de gebruiker uitleg en kan die via <Link to="/support">Support</Link>
+      reageren. Bij direct gevaar bel je 112; Buildy is geen noodkanaal.
     </p>
 
-    <h2>5. Samenstellen en controleren van een Bouwboek</h2>
+    <h2>6. Digitaal Bouwboek en printinteresse</h2>
     <p>
-      Een Bouwboek wordt volgens jouw keuzes gemaakt uit onder meer de geselecteerde foto's,
-      teksten, opmaak, het formaat en het aantal pagina's. Controleer vóór betaling de
-      voorbeeldweergave, spelling, uitsnedes, volgorde, formaat en het afleveradres. Een
-      fout in de door jou aangeleverde inhoud is op zichzelf geen gebrek als het geleverde
-      boek overeenkomt met de bestelling. Dit beperkt je rechten niet wanneer het boek niet
-      aan de overeenkomst beantwoordt.
+      Het digitale Bouwboek wordt samengesteld uit de geselecteerde Bouwmomenten, foto&apos;s
+      en instellingen. Controleer zelf de selectie, volgorde, uitsnede en tekst. Buildy
+      belooft niet dat een digitale voorbeeldweergave zonder aanvullende controle geschikt
+      is om professioneel te laten drukken. De optionele printinteressevragen zijn alleen
+      feedback en leveren geen recht op een fysiek product, prijs of leverdatum op.
     </p>
 
-    <h2>6. Prijs, betaling en totstandkoming</h2>
-    <ul>
-      <li>Vóór betaling toont Buildy de prijs van het boek in euro's inclusief toepasselijke btw, de verzendkosten en het totaalbedrag.</li>
-      <li>De beschikbare betaalmiddelen en eventuele leveringsbeperkingen worden uiterlijk aan het begin van de checkout getoond.</li>
-      <li>De overeenkomst voor het Bouwboek komt tot stand wanneer je de bestelling in Stripe Checkout met betalingsverplichting afrondt.</li>
-      <li>Na server-side bevestiging van de betaling blijven de ordergegevens en deze voorwaarden in Buildy beschikbaar. Een bevoegde beheerder controleert de print-PDF en plaatst de drukopdracht daarna handmatig bij de gekozen drukker.</li>
-      <li>Niet vooraf vermelde bijkomende kosten worden niet achteraf in rekening gebracht.</li>
-    </ul>
-
-    <h2>7. Productie, levering en risico</h2>
+    <h2>7. Beschikbaarheid en wijzigingen</h2>
     <p>
-      De beschikbare landen en de overeengekomen levertermijn worden vóór betaling en in de
-      orderbevestiging vermeld. Tenzij uitdrukkelijk een andere termijn is overeengekomen,
-      wordt uiterlijk binnen dertig dagen geleverd. Bij vertraging informeert Buildy je en
-      behoud je de rechten die de wet je geeft. Het risico van verlies of beschadiging
-      tijdens de bezorging blijft bij Buildy totdat jij, of een door jou aangewezen derde
-      die niet de vervoerder is, het Bouwboek heeft ontvangen.
+      Buildy is een MVP en kan worden verbeterd, gewijzigd of tijdelijk onderbroken. De
+      dienst wordt zorgvuldig onderhouden, maar een ononderbroken of foutloze werking kan
+      niet worden gegarandeerd. Bewaar daarom ook je oorspronkelijke foto&apos;s. Bij een
+      wezenlijke nadelige wijziging informeert Buildy gebruikers vooraf in de app wanneer
+      dat redelijkerwijs mogelijk is.
     </p>
 
-    <h2>8. Geen bedenktijd voor het persoonlijke Bouwboek</h2>
+    <h2>8. Aansprakelijkheid</h2>
     <p>
-      Een Bouwboek wordt niet vooraf als standaardproduct gemaakt, maar op basis van jouw
-      individuele keuzes. Daarom geldt voor deze consumentenkoop de wettelijke uitzondering
-      op het herroepingsrecht voor volgens specificaties van de consument vervaardigde zaken.
-      Daarvoor hoef je geen afstand te doen van een recht: voor dit maatwerk bestaat het
-      herroepingsrecht niet. Lees de praktische uitleg op de pagina <em>Herroepingsrecht</em>.
+      Inhoud van andere gebruikers is een persoonlijke ervaring en geen professioneel
+      bouwkundig, juridisch of financieel advies. Niets in deze voorwaarden sluit
+      aansprakelijkheid uit die volgens dwingend recht niet mag worden uitgesloten. Voor
+      het overige gelden de normale regels van het Nederlandse recht.
     </p>
 
-    <h2>9. Wettelijke garantie en klachten</h2>
+    <h2>9. Contact, recht en geschillen</h2>
     <p>
-      Het Bouwboek moet aan de overeenkomst beantwoorden. Is het beschadigd, onvolledig,
-      verkeerd uitgevoerd of anderszins niet conform, neem dan binnen bekwame tijd na
-      ontdekking contact op via de gegevens in artikel 1. Een melding binnen twee maanden
-      na ontdekking is bij consumentenkoop in ieder geval tijdig. Buildy kan om foto's van
-      het boek en de verpakking en om het ordernummer vragen voor zover dat nodig is om de
-      klacht te onderzoeken.
-    </p>
-    <p>
-      Als de klacht gegrond is, zorgt Buildy zonder kosten en binnen een redelijke termijn
-      voor herstel of vervanging, tenzij dat onmogelijk is of niet kan worden gevergd. In
-      de gevallen die de wet noemt, kun je recht hebben op prijsvermindering of ontbinding
-      en terugbetaling. De gekozen drukker of vervoerder kan bij de afhandeling helpen, maar Buildy
-      blijft jouw aanspreekpunt als verkoper.
-    </p>
-
-    <h2>10. Beschikbaarheid en aansprakelijkheid</h2>
-    <p>
-      Buildy onderhoudt het platform zorgvuldig, maar kan niet beloven dat de dienst altijd
-      zonder onderbreking of fout beschikbaar is. Niets in deze voorwaarden sluit
-      aansprakelijkheid uit die volgens dwingend recht niet mag worden uitgesloten, waaronder
-      aansprakelijkheid bij opzet of bewuste roekeloosheid en jouw wettelijke rechten bij een
-      gebrekkig Bouwboek. Voor het overige gelden de normale regels van het Nederlandse recht.
-    </p>
-
-    <h2>11. Beperking of beëindiging van een account</h2>
-    <p>
-      Buildy kan een account alleen beperken of beëindigen als daarvoor een redelijke grond
-      bestaat, zoals fraude, een ernstige of herhaalde overtreding of een wettelijke
-      verplichting. De maatregel moet passend zijn bij de situatie. Als dat redelijkerwijs
-      mogelijk is, ontvangt de gebruiker vooraf of direct daarna een motivering en informatie
-      over de mogelijkheid om bezwaar te maken. Lopende betaalde bestellingen en wettelijke
-      consumentenrechten blijven bestaan.
-    </p>
-
-    <h2>12. Wijzigingen</h2>
-    <p>
-      Een wijziging heeft geen terugwerkende kracht voor een al geplaatste bestelling. Buildy
-      kan de platformvoorwaarden wijzigen bij een verandering van de dienst, de wet of een
-      aantoonbaar veiligheidsbelang. Bij een wezenlijke nadelige wijziging informeren we je
-      vooraf per e-mail of in de app en kun je je account vóór de ingangsdatum beëindigen.
-      Een urgente wijziging vanwege wet of veiligheid kan direct ingaan.
-    </p>
-
-    <h2>13. Recht en geschillen</h2>
-    <p>
-      Op deze voorwaarden is Nederlands recht van toepassing. Dit ontneemt een consument
-      niet de bescherming van dwingend recht die geldt in het land waar die consument woont.
-      Probeer een geschil eerst via de gepubliceerde klachtenroute op te lossen. Daarna kan
-      het geschil worden voorgelegd aan de volgens de wet bevoegde rechter.
+      Vragen, privacyverzoeken en bezwaren kun je indienen via het publieke
+      <Link to="/support"> supportformulier</Link>. Op deze voorwaarden is Nederlands
+      recht van toepassing, zonder afbreuk te doen aan dwingende bescherming die volgens
+      de wet voor jou geldt. Probeer een geschil eerst via Support op te lossen; daarna kan
+      het worden voorgelegd aan de bevoegde rechter.
     </p>
   </LegalLayout>
 );

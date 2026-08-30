@@ -2,7 +2,6 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectUpdate } from "../../shared/contracts/projects";
-import AllPhotosTab from "@/components/AllPhotosTab";
 import BlueprintTimeline from "@/components/BlueprintTimeline";
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
@@ -97,14 +96,12 @@ describe("BlueprintTimeline typed engagement boundary", () => {
       "src",
       `/api/media/${MEDIA_ID}`,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Keuken gestript uitklappen" }));
-
     expect(screen.getByTestId("reaction-bar")).toHaveTextContent(`${PROJECT_ID}:${UPDATE_ID}`);
     expect(screen.getByTestId("report-update")).toHaveTextContent(UPDATE_ID);
     expect(screen.getByText("Concept")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /like|bewerken|verwijderen|fotovolgorde/i })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Reacties openen" }));
+    fireEvent.click(screen.getByRole("button", { name: "Opmerkingen openen" }));
     expect(screen.getByTestId("comments-sheet")).toHaveTextContent(":open");
   });
 
@@ -113,7 +110,6 @@ describe("BlueprintTimeline typed engagement boundary", () => {
     const { rerender } = render(
       <BlueprintTimeline updates={[update]} projectId={PROJECT_ID} canEdit={false} onEdit={onEdit} />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Keuken gestript uitklappen" }));
     expect(screen.queryByRole("button", { name: "Keuken gestript bewerken" })).not.toBeInTheDocument();
 
     rerender(
@@ -123,7 +119,7 @@ describe("BlueprintTimeline typed engagement boundary", () => {
     expect(onEdit).toHaveBeenCalledWith(update);
   });
 
-  it("houdt een tijdelijke deellink echt alleen-lezen en kopieert geen kale UUID-link", () => {
+  it("houdt de engagementcontrols van een anonieme shareviewer read-only en kopieert geen kale UUID-link", () => {
     render(
       <BlueprintTimeline
         updates={[update]}
@@ -132,24 +128,8 @@ describe("BlueprintTimeline typed engagement boundary", () => {
         canCopyUpdateLink={false}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Keuken gestript uitklappen" }));
-
     expect(screen.queryByRole("button", { name: "Link naar Bouwmoment kopiëren" })).not.toBeInTheDocument();
     expect(screen.getByTestId("reaction-bar")).toHaveAttribute("data-can-react", "false");
     expect(screen.getByTestId("comments-sheet")).toHaveAttribute("data-can-comment", "false");
-  });
-});
-
-describe("AllPhotosTab typed media boundary", () => {
-  afterEach(cleanup);
-
-  it("bouwt de galerij rechtstreeks uit private proxy descriptors", () => {
-    render(<AllPhotosTab projectId={PROJECT_ID} updates={[update]} />);
-
-    expect(screen.getByRole("img", { name: "Keuken gestript" })).toHaveAttribute(
-      "src",
-      `/api/media/${MEDIA_ID}`,
-    );
-    expect(screen.getByRole("button", { name: "Sloopwerk" })).toHaveAttribute("aria-pressed", "false");
   });
 });

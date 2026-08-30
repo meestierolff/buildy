@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { nl } from "date-fns/locale";
-import { Flag, Loader2, Reply, Trash2 } from "lucide-react";
+import { Flag, Loader2, LogIn, Reply, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { EngagementComment } from "../../shared/contracts/engagement";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -16,7 +16,9 @@ import {
   useInfiniteComments,
 } from "@/hooks/useEngagement";
 import { createClientIdempotencyKey } from "@/lib/clientIdempotency";
+import { authPagePath } from "@/lib/authClient";
 import { extractMentionSlugs } from "@/lib/engagementApi";
+import { Link } from "@/lib/router";
 import { resolveVisibleMentionSlugs } from "@/lib/socialApi";
 
 interface CommentsSheetProps {
@@ -26,6 +28,11 @@ interface CommentsSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCountChange?: (delta: number) => void;
+}
+
+function currentPagePath(): string {
+  if (typeof window === "undefined") return "/";
+  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
 }
 
 const CommentsSheet = ({
@@ -38,6 +45,8 @@ const CommentsSheet = ({
 }: CommentsSheetProps) => {
   const { user } = useAuth();
   const available = Boolean(projectId && updateId);
+  const canWrite = canComment && Boolean(user);
+  const signInPath = authPagePath(currentPagePath());
   const commentsQuery = useInfiniteComments(projectId ?? "", updateId, open && available);
   const createComment = useCreateCommentMutation(projectId ?? "", updateId);
   const deleteComment = useDeleteCommentMutation(projectId ?? "", updateId);
@@ -136,7 +145,7 @@ const CommentsSheet = ({
         </div>
         <div className="flex items-center gap-3 mt-1 px-2 text-[11px] text-muted-foreground">
           <span>{formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true, locale: nl })}</span>
-          {user && canComment && (
+          {canWrite && (
             <button
               type="button"
               onClick={() => setReplyTo(comment)}
@@ -146,7 +155,7 @@ const CommentsSheet = ({
               <Reply className="h-3 w-3" aria-hidden="true" /> Antwoord
             </button>
           )}
-          {canComment && comment.canDelete && (
+          {canWrite && comment.canDelete && (
             <button
               type="button"
               onClick={() => remove(comment)}
@@ -220,9 +229,23 @@ const CommentsSheet = ({
             </>
           )}
         </div>
-        {available && !canComment ? (
+        {available && !user ? (
+          <div className="mt-2 space-y-3 border-t pt-4 text-center">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Praat mee over dit Bouwmoment</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                Log in met Google om te reageren. Daarna kom je terug bij deze gedeelde verbouwing.
+              </p>
+            </div>
+            <Button asChild type="button" size="sm" className="min-h-11 w-full gap-2">
+              <Link to={signInPath}>
+                <LogIn className="h-4 w-4" aria-hidden="true" /> Inloggen met Google
+              </Link>
+            </Button>
+          </div>
+        ) : available && !canComment ? (
           <p className="border-t pt-3 text-center text-xs text-muted-foreground">
-            Via deze deellink kun je reacties alleen lezen.
+            Reageren is voor jou niet beschikbaar.
           </p>
         ) : available && user ? (
           <div className="border-t pt-3 mt-2 space-y-2">

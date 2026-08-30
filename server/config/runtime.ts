@@ -149,7 +149,7 @@ export function getCapabilities(config = getRuntimeConfig()): HealthResponse["da
     ),
     photobooks: optionalCapability(
       enableCoreExtras,
-      config.DATABASE_PHOTOBOOK_WORKER_URL,
+      config.DATABASE_URL,
       config.BLOB_READ_WRITE_TOKEN,
     ),
     email: "disabled",

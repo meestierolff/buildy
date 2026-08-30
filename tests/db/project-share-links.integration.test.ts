@@ -15,6 +15,8 @@ const ids = {
   update: "74444444-4444-4444-8444-444444444444",
   comment: "75555555-5555-4555-8555-555555555555",
   reaction: "76666666-6666-4666-8666-666666666666",
+  viewerComment: "75555555-5555-4555-8555-555555555556",
+  viewerReaction: "76666666-6666-4666-8666-666666666667",
   updateMedia: "77777777-7777-4777-8777-777777777777",
   floorplanMedia: "78888888-8888-4888-8888-888888888888",
   floorplan: "79999999-9999-4999-8999-999999999999",
@@ -109,7 +111,7 @@ async function issueLink(
 }
 
 describeWithDatabase("project share-link PostgreSQL boundary", () => {
-  it("revalidates one read-only grant across every project surface and invalidation event", async () => {
+  it("revalidates one bearer grant across every project surface and invalidation event", async () => {
     assertLocalDisposableDatabase(databaseUrl!, webRole!);
     const client = new Client({ connectionString: databaseUrl });
     await client.connect();
@@ -193,6 +195,20 @@ describeWithDatabase("project share-link PostgreSQL boundary", () => {
       });
       const deniedEdit = await client.query("UPDATE projects SET title = 'Niet toegestaan' WHERE id = $1 RETURNING id", [ids.project]);
       expect(deniedEdit.rowCount).toBe(0);
+
+      await setContext(client, webRole!, ids.viewer, ids.link1);
+      const sharedComment = await client.query<{ id: string }>(`
+        INSERT INTO comments (id, project_id, update_id, author_id, body, status)
+        VALUES ($1, $2, $3, $4, 'Reactie via gedeelde verbouwing', 'published')
+        RETURNING id
+      `, [ids.viewerComment, ids.project, ids.update, ids.viewer]);
+      const sharedReaction = await client.query<{ id: string }>(`
+        INSERT INTO reactions (id, project_id, update_id, actor_id, target, emoji)
+        VALUES ($1, $2, $3, $4, 'update', '👏')
+        RETURNING id
+      `, [ids.viewerReaction, ids.project, ids.update, ids.viewer]);
+      expect(sharedComment.rows[0]?.id).toBe(ids.viewerComment);
+      expect(sharedReaction.rows[0]?.id).toBe(ids.viewerReaction);
 
       await client.query("RESET ROLE");
       await client.query(`

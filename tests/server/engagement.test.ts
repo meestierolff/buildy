@@ -48,8 +48,14 @@ const BLIND_INDEX = new PrivacyBlindIndex(Buffer.alloc(32, 15).toString("base64"
 const SECOND_NOTIFICATION_ID = "00000000-0000-4000-8000-000000000402";
 const THIRD_NOTIFICATION_ID = "00000000-0000-4000-8000-000000000403";
 const REACTION_ID = "00000000-0000-4000-8000-000000000501";
+const SHARE_LINK_ID = "00000000-0000-4000-8000-000000000601";
 
 const ACTOR: ProjectActor = { kind: "authenticated", appUserId: ACTOR_ID };
+const SHARE_ACTOR = {
+  kind: "authenticated" as const,
+  appUserId: ACTOR_ID,
+  shareLinkId: SHARE_LINK_ID,
+};
 const NOW = new Date("2026-08-04T12:00:00.000Z");
 
 function comment(
@@ -121,6 +127,7 @@ class TestEngagementRepository implements EngagementRepository {
   createCommands: CreateCommentCommand[] = [];
   deleteCommands: DeleteCommentCommand[] = [];
   reactionCommands: ReactionCommand[] = [];
+  reactionSummaryViewers: ProjectActor[] = [];
   notificationUpdates: Array<{
     recipientId: string;
     notificationId: string;
@@ -162,11 +169,12 @@ class TestEngagementRepository implements EngagementRepository {
   }
 
   async reactionSummary(
-    _viewer: ProjectActor,
+    viewer: ProjectActor,
     projectId: string,
     updateId: string,
     commentId: string | null,
   ) {
+    this.reactionSummaryViewers.push(viewer);
     return {
       projectId,
       updateId,
@@ -317,6 +325,17 @@ describe("engagement contracts and service", () => {
       .rejects.toMatchObject({ reason: "CONTENT_NOT_FOUND", status: 404 });
   });
 
+  it("preserves anonymous and authenticated share grants through engagement reads", async () => {
+    const { repository, service } = serviceWith();
+    const anonymousShare = { kind: "anonymous" as const, shareLinkId: SHARE_LINK_ID };
+
+    await service.comments(anonymousShare, PROJECT_ID, UPDATE_ID, {});
+    await service.reactions(SHARE_ACTOR, PROJECT_ID, UPDATE_ID, {});
+
+    expect(repository.commentCalls[0]?.viewer).toEqual(anonymousShare);
+    expect(repository.reactionSummaryViewers).toEqual([SHARE_ACTOR]);
+  });
+
   it("scopes create idempotency to actor/update and detects a changed retry", async () => {
     const { repository, service } = serviceWith();
     const input = {
@@ -324,13 +343,13 @@ describe("engagement contracts and service", () => {
       body: "Eerste reactie",
       mentionUserIds: [OTHER_ID],
     };
-    const first = await service.createComment(ACTOR_ID, PROJECT_ID, UPDATE_ID, input);
-    const replay = await service.createComment(ACTOR_ID, PROJECT_ID, UPDATE_ID, input);
+    const first = await service.createComment(SHARE_ACTOR, PROJECT_ID, UPDATE_ID, input);
+    const replay = await service.createComment(SHARE_ACTOR, PROJECT_ID, UPDATE_ID, input);
 
     expect(first).toEqual({ commentId: COMMENT_ID, replayed: false });
     expect(replay).toEqual({ commentId: COMMENT_ID, replayed: true });
     expect(repository.createCommands[0]).toMatchObject({
-      actorId: ACTOR_ID,
+      actor: SHARE_ACTOR,
       projectId: PROJECT_ID,
       updateId: UPDATE_ID,
       now: NOW,
@@ -340,7 +359,7 @@ describe("engagement contracts and service", () => {
     expect(repository.createCommands[0]?.idempotencyKey).toMatch(
       /^engagement-command:v1:comment\.create:[0-9a-f]{64}$/,
     );
-    await expect(service.createComment(ACTOR_ID, PROJECT_ID, UPDATE_ID, {
+    await expect(service.createComment(SHARE_ACTOR, PROJECT_ID, UPDATE_ID, {
       ...input,
       body: "Gewijzigde retry",
     })).rejects.toMatchObject({ reason: "IDEMPOTENCY_CONFLICT" });
@@ -348,18 +367,18 @@ describe("engagement contracts and service", () => {
 
   it("passes no client identity or target shape outside the discriminated reaction", async () => {
     const { repository, service } = serviceWith();
-    await service.addReaction(ACTOR_ID, PROJECT_ID, UPDATE_ID, {
+    await service.addReaction(SHARE_ACTOR, PROJECT_ID, UPDATE_ID, {
       target: "comment",
       commentId: COMMENT_ID.toUpperCase(),
       emoji: "❤️",
     });
     expect(repository.reactionCommands[0]).toMatchObject({
-      actorId: ACTOR_ID,
+      actor: SHARE_ACTOR,
       projectId: PROJECT_ID,
       updateId: UPDATE_ID,
       input: { target: "comment", commentId: COMMENT_ID, emoji: "❤️" },
     });
-    await expect(service.addReaction(ACTOR_ID, PROJECT_ID, UPDATE_ID, {
+    await expect(service.addReaction(SHARE_ACTOR, PROJECT_ID, UPDATE_ID, {
       target: "update",
       commentId: COMMENT_ID,
       emoji: "❤️",

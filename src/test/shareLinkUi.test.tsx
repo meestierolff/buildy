@@ -75,6 +75,10 @@ describe("project share owner UI", () => {
       configurable: true,
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: undefined,
+    });
   });
 
   afterEach(cleanup);
@@ -85,10 +89,35 @@ describe("project share owner UI", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Deellink maken" }));
     expect(await screen.findByText("Je nieuwe link staat klaar")).toBeInTheDocument();
+    expect(screen.getByText(/link is een toegangssleutel/i)).toBeInTheDocument();
     expect(screen.queryByText(RAW)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Veilige link kopiëren" }));
+    fireEvent.click(screen.getByRole("button", { name: "Link kopiëren" }));
 
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(SHARE_URL));
+    expect(onCopied).toHaveBeenCalledOnce();
+  });
+
+  it("biedt native delen én kopiëren zonder de bearerlink te renderen", async () => {
+    const nativeShare = vi.fn().mockResolvedValue(undefined);
+    const onCopied = vi.fn();
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: nativeShare,
+    });
+    render(<ShareLinkDialog open onOpenChange={vi.fn()} onCopied={onCopied} projectId={PROJECT_ID} projectTitle="Ons huis" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Deellink maken" }));
+    await screen.findByText("Je nieuwe link staat klaar");
+    expect(screen.getByRole("button", { name: "Delen" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Link kopiëren" })).toBeInTheDocument();
+    expect(screen.queryByText(RAW)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delen" }));
+    await waitFor(() => expect(nativeShare).toHaveBeenCalledWith({
+      title: "Ons huis op Buildy",
+      text: "Bekijk het verbouwingsverhaal van Ons huis.",
+      url: SHARE_URL,
+    }));
     expect(onCopied).toHaveBeenCalledOnce();
   });
 
@@ -131,7 +160,7 @@ describe("share-link redemption UI", () => {
 
     render(<ShareLinkRedeem />);
 
-    expect(await screen.findByRole("heading", { name: "Deze deellink is verlopen." })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Deze deel-link is niet meer actief." })).toBeInTheDocument();
     expect(screen.getByText(/vraag de maker/i)).toBeInTheDocument();
     expect(forgetPendingProjectShareToken).toHaveBeenCalledOnce();
     expect(screen.queryByText(RAW)).not.toBeInTheDocument();
@@ -144,7 +173,7 @@ describe("share-link redemption UI", () => {
       status: 404,
     }));
     const { unmount } = render(<ShareLinkRedeem />);
-    expect(await screen.findByRole("heading", { name: "Deze deellink werkt niet meer." })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "De eigenaar heeft deze deel-link ingetrokken." })).toBeInTheDocument();
     unmount();
 
     vi.mocked(redeemProjectShareLink).mockRejectedValue(new TypeError("offline"));

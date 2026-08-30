@@ -68,15 +68,15 @@ const ShareLinkRedeem = () => {
     ? {
         icon: Clock3,
         eyebrow: "Toegang verlopen",
-        title: "Deze deellink is verlopen.",
+        title: "Deze deel-link is niet meer actief.",
         description: "Vraag de maker van de verbouwing om een nieuwe tijdelijke link.",
       }
     : state === "unavailable"
       ? {
           icon: AlertTriangle,
           eyebrow: "Toegang gestopt",
-          title: "Deze deellink werkt niet meer.",
-          description: "De maker heeft de link ingetrokken of de verbouwing is niet langer gedeeld.",
+          title: "De eigenaar heeft deze deel-link ingetrokken.",
+          description: "Vraag de eigenaar om een nieuwe link wanneer je weer wilt meekijken.",
         }
       : state === "invalid"
         ? {
@@ -123,7 +123,7 @@ const ShareLinkRedeem = () => {
                 </Button>
               ) : null}
               <Button asChild variant="outline" className="min-h-11">
-                <Link to={PRODUCT_ROUTES.discover}>Naar Buildy</Link>
+                <Link to={PRODUCT_ROUTES.landing}>Naar Buildy</Link>
               </Button>
             </div>
           </div>

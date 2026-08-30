@@ -86,14 +86,14 @@ describe("product profile", () => {
     expect(profile.capabilities.googleSignIn).toBe(true);
   });
 
-  it("does not advertise media or photobook preview when those capabilities are unavailable", () => {
+  it("keeps the digital photobook available without the isolated media worker", () => {
     const profile = getProductProfile(configured({
       DATABASE_MEDIA_WORKER_URL: undefined,
       DATABASE_PHOTOBOOK_WORKER_URL: undefined,
     }));
 
     expect(profile.capabilities.media).toBe(false);
-    expect(profile.capabilities.photobookPreview).toBe(false);
+    expect(profile.capabilities.photobookPreview).toBe(true);
   });
 
   it("publishes approved Stripe Checkout while automated fulfilment remains disabled", () => {

@@ -25,9 +25,8 @@ const Support = () => {
           <p className="mt-1 text-muted-foreground">Bij direct gevaar bel je 112. Deel hier geen wachtwoorden, toegangscodes of volledige adresgegevens.</p>
         </div>
         <nav className="mt-8 flex flex-col items-start gap-3 text-sm" aria-label="Beleid en informatie">
-          <Link to="/contentbeleid" className="font-medium text-accent underline underline-offset-4">Lees het contentbeleid</Link>
-          <Link to="/huisregels" className="font-medium text-accent underline underline-offset-4">Lees de huisregels</Link>
           <Link to="/privacy" className="font-medium text-accent underline underline-offset-4">Lees de privacy-informatie</Link>
+          <Link to="/voorwaarden" className="font-medium text-accent underline underline-offset-4">Lees de voorwaarden</Link>
         </nav>
       </section>
       <section className="border-y border-border bg-card/50 p-5 sm:p-8" aria-label="Supportformulier">
@@ -38,4 +37,3 @@ const Support = () => {
 };
 
 export default Support;
-

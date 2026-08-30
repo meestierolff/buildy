@@ -174,6 +174,8 @@ describe("profile browser flow", () => {
     expect(mocks.publicProfile).toHaveBeenCalledWith("ada-bouwer", true);
     expect(mocks.socialProfile).toHaveBeenCalledWith(PROFILE_ID, true);
     expect(mocks.socialProfile).not.toHaveBeenCalledWith("google-oidc-auth-user", true);
+    expect(screen.queryByRole("link", { name: /connecties|ontdekken/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Terug naar Buildy" })).toHaveAttribute("href", "/");
   });
 
   it("blokkeert een ander profiel pas na bevestiging en biedt direct deblokkeerherstel", async () => {
