@@ -548,6 +548,7 @@ type MigrationConnectionIdentity = {
   database_name: string;
   role_name: string;
   server_version_num: string;
+  has_role_membership: boolean;
   rolsuper: boolean;
   rolcreatedb: boolean;
   rolcreaterole: boolean;
@@ -581,10 +582,24 @@ export async function assertSafeMigrationConnection(
   }
 
   const result = await client.query<MigrationConnectionIdentity>(`
+    WITH RECURSIVE migration_role_memberships(granted_role_oid) AS (
+      SELECT membership.roleid
+      FROM pg_catalog.pg_roles migration_role
+      JOIN pg_catalog.pg_auth_members membership ON membership.member = migration_role.oid
+      WHERE migration_role.rolname = current_user
+
+      UNION
+
+      SELECT membership.roleid
+      FROM migration_role_memberships membership_path
+      JOIN pg_catalog.pg_auth_members membership
+        ON membership.member = membership_path.granted_role_oid
+    )
     SELECT
       current_database() AS database_name,
       current_user AS role_name,
       current_setting('server_version_num') AS server_version_num,
+      EXISTS (SELECT 1 FROM migration_role_memberships) AS has_role_membership,
       roles.rolsuper,
       roles.rolcreatedb,
       roles.rolcreaterole,
@@ -604,6 +619,11 @@ export async function assertSafeMigrationConnection(
   }
   if (Number.parseInt(identity.server_version_num, 10) < 160_000) {
     throw new MigrationValidationError("Buildy-migrations vereisen PostgreSQL 16 of nieuwer.");
+  }
+  if (identity.has_role_membership) {
+    throw new MigrationValidationError(
+      "De migrationrol heeft directe of transitieve rollidmaatschappen; gebruik een dedicated rol zonder pg_auth_members-lidmaatschap.",
+    );
   }
   if (
     identity.rolsuper ||

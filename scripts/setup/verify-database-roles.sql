@@ -205,6 +205,27 @@ BEGIN
     RAISE EXCEPTION 'a runtime role is absent or privileged';
   END IF;
 
+  -- NOINHERIT does not remove SET ROLE paths. Runtime credentials must have no
+  -- direct or transitive membership, including provider-managed admin roles.
+  IF EXISTS (
+    WITH RECURSIVE runtime_role_memberships(runtime_role_oid, granted_role_oid) AS (
+      SELECT role.oid, membership.roleid
+      FROM unnest(active_roles) candidate(role_name)
+      JOIN pg_catalog.pg_roles role ON role.rolname = candidate.role_name
+      JOIN pg_catalog.pg_auth_members membership ON membership.member = role.oid
+
+      UNION
+
+      SELECT membership_path.runtime_role_oid, membership.roleid
+      FROM runtime_role_memberships membership_path
+      JOIN pg_catalog.pg_auth_members membership
+        ON membership.member = membership_path.granted_role_oid
+    )
+    SELECT 1 FROM runtime_role_memberships
+  ) THEN
+    RAISE EXCEPTION 'a runtime role has direct or transitive role membership';
+  END IF;
+
   IF EXISTS (
     SELECT 1
     FROM pg_catalog.pg_class relation

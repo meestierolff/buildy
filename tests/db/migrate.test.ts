@@ -4,10 +4,11 @@ import { createHash } from "node:crypto";
 import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_MIGRATIONS_DIRECTORY,
   MigrationValidationError,
+  assertSafeMigrationConnection,
   discoverMigrations,
   parseMigrationArguments,
   parseMigrationFilename,
@@ -275,6 +276,27 @@ describe("migration ledger reconciliation", () => {
 });
 
 describe("migration URL and CLI boundaries", () => {
+  const migrationUrl =
+    "postgresql://buildy_migrator:secret@127.0.0.1/buildy?sslmode=disable";
+
+  function migrationIdentityClient(hasRoleMembership: boolean) {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{
+        database_name: "buildy",
+        role_name: "buildy_migrator",
+        server_version_num: "160004",
+        has_role_membership: hasRoleMembership,
+        rolsuper: false,
+        rolcreatedb: false,
+        rolcreaterole: false,
+        rolreplication: false,
+        rolbypassrls: false,
+      }],
+    });
+    const client = { query } as unknown as Parameters<typeof assertSafeMigrationConnection>[0];
+    return { client, query };
+  }
+
   it("never falls back to DATABASE_URL", () => {
     expect(() =>
       requireMigrationDatabaseUrl({
@@ -303,6 +325,28 @@ describe("migration URL and CLI boundaries", () => {
         "postgresql://migrator:secret@ep-pooler.example.com/buildy?sslmode=require",
       ),
     ).toThrow(/pooled endpoint/);
+  });
+
+  it("accepts a dedicated migration role without role memberships", async () => {
+    const { client, query } = migrationIdentityClient(false);
+
+    await expect(assertSafeMigrationConnection(client, migrationUrl)).resolves.toBeUndefined();
+    expect(query).toHaveBeenCalledOnce();
+  });
+
+  it("rejects direct and transitive migration-role memberships", async () => {
+    const { client, query } = migrationIdentityClient(true);
+
+    await expect(assertSafeMigrationConnection(client, migrationUrl)).rejects.toThrow(
+      /directe of transitieve rollidmaatschappen/,
+    );
+    const identityQuery = String(query.mock.calls[0]?.[0]);
+    expect(identityQuery).toContain(
+      "WITH RECURSIVE migration_role_memberships(granted_role_oid)",
+    );
+    expect(identityQuery).toContain(
+      "ON membership.member = membership_path.granted_role_oid",
+    );
   });
 
   it("parses exactly one execution mode and bounded timeouts", () => {
