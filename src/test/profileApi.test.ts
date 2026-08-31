@@ -103,13 +103,14 @@ describe("profielbrowsermigratie", () => {
     expect(source.toLocaleLowerCase("nl-NL")).not.toContain("supabase");
   });
 
-  it("gebruikt voor eigen profielnavigatie nooit de Better Auth provider-id", () => {
+  it("gebruikt voor eigen profielnavigatie nooit het externe provider-id", () => {
     const header = readFileSync(resolve(process.cwd(), "src/components/Header.tsx"), "utf8");
     const app = readFileSync(resolve(process.cwd(), "src/App.tsx"), "utf8");
-    expect(header).toContain("profile.slug");
+    expect(header).toContain("PRODUCT_ROUTES.ownProfile");
+    expect(header).not.toContain("profile.slug");
     expect(header).not.toMatch(/profile\/\$\{user\.id\}/);
     expect(header).not.toContain("OnboardingDialog");
-    expect(app).toContain("profileQuery.data?.slug");
+    expect(app).toContain("profileHref: PRODUCT_ROUTES.ownProfile");
     expect(app).not.toMatch(/profile\/\$\{user\.id\}/);
   });
 

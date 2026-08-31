@@ -1,73 +1,252 @@
-import { test, expect, BASE, OWNER_PROJECT_ID, PUBLIC_PROJECT_ID, trackConsoleErrors } from "./helpers";
+import type { Page } from "@playwright/test";
 
-const hasExplicitBackendBaseUrl = Boolean(process.env.PLAYWRIGHT_BASE_URL);
+import { BASE, expect, test } from "./helpers";
+import {
+  ONE_PIXEL_PNG,
+  SYNTHETIC_IDS,
+  fulfillJson,
+  installSyntheticApi,
+  success,
+  syntheticProjectOverview,
+  syntheticProjectUpdate,
+} from "./syntheticApi";
+import type { ProjectVisibility } from "../../shared/contracts/projects";
 
-test.describe("Project detail", () => {
-  test.beforeEach(() => {
-    test.skip(!hasExplicitBackendBaseUrl, "requires explicit backend-backed project data");
+const COMMENT_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const REACTION_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+async function installProjectFixture(page: Page) {
+  let visibility: ProjectVisibility = "private";
+  let commentBody: string | null = null;
+  let reactionActive = false;
+  return installSyntheticApi(page, {
+    handle: async ({ request, route, url }) => {
+      if (url.pathname === "/api/projects" && request.method() === "GET") {
+        await fulfillJson(route, success({ items: [], nextCursor: null }));
+        return true;
+      }
+      if (url.pathname === `/api/media/${SYNTHETIC_IDS.media}`) {
+        if (request.method() === "HEAD") {
+          await route.fulfill({ status: 200, headers: { "content-type": "image/png" } });
+          return true;
+        }
+        if (request.method() === "GET") {
+          await route.fulfill({
+            status: 200,
+            contentType: "image/png",
+            headers: { "cache-control": "private, no-store" },
+            body: ONE_PIXEL_PNG,
+          });
+          return true;
+        }
+      }
+      if (url.pathname === `/api/projects/${SYNTHETIC_IDS.project}`) {
+        if (request.method() === "GET") {
+          await fulfillJson(route, success(syntheticProjectOverview(visibility)));
+          return true;
+        }
+        if (request.method() === "PATCH") {
+          const body = request.postDataJSON() as { visibility?: ProjectVisibility };
+          visibility = body.visibility ?? visibility;
+          await fulfillJson(route, success({
+            project: {
+              ...syntheticProjectOverview(visibility),
+              version: 8,
+            },
+            replayed: false,
+          }));
+          return true;
+        }
+        if (request.method() === "DELETE") {
+          await fulfillJson(route, success({
+            deletion: {
+              id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+              projectId: SYNTHETIC_IDS.project,
+              status: "deletion_pending",
+              activeOrderCount: 0,
+            },
+            replayed: false,
+          }), 202);
+          return true;
+        }
+      }
+      if (
+        request.method() === "GET"
+        && url.pathname === `/api/projects/${SYNTHETIC_IDS.project}/updates`
+      ) {
+        await fulfillJson(route, success({
+          projectId: SYNTHETIC_IDS.project,
+          items: [syntheticProjectUpdate()],
+          nextCursor: null,
+        }));
+        return true;
+      }
+      if (
+        request.method() === "GET"
+        && url.pathname === `/api/projects/${SYNTHETIC_IDS.project}/floorplans`
+      ) {
+        await fulfillJson(route, success({
+          projectId: SYNTHETIC_IDS.project,
+          viewerAccess: "owner",
+          canEdit: true,
+          floorplans: [],
+        }));
+        return true;
+      }
+      if (url.pathname === `/api/projects/${SYNTHETIC_IDS.project}/updates/${SYNTHETIC_IDS.update}/reactions`) {
+        if (request.method() === "GET") {
+          await fulfillJson(route, success({
+            projectId: SYNTHETIC_IDS.project,
+            updateId: SYNTHETIC_IDS.update,
+            target: "update",
+            commentId: null,
+            items: reactionActive ? [{ emoji: "👍", count: 1, viewerReacted: true }] : [],
+          }));
+          return true;
+        }
+        if (request.method() === "PUT" || request.method() === "DELETE") {
+          reactionActive = request.method() === "PUT";
+          await fulfillJson(route, success({
+            reactionId: reactionActive ? REACTION_ID : null,
+            state: reactionActive ? "active" : "removed",
+            replayed: false,
+          }));
+          return true;
+        }
+      }
+      if (
+        url.pathname === `/api/projects/${SYNTHETIC_IDS.project}/updates/${SYNTHETIC_IDS.update}/comments`
+      ) {
+        if (request.method() === "GET") {
+          await fulfillJson(route, success({
+            projectId: SYNTHETIC_IDS.project,
+            updateId: SYNTHETIC_IDS.update,
+            items: commentBody ? [{
+              id: COMMENT_ID,
+              projectId: SYNTHETIC_IDS.project,
+              updateId: SYNTHETIC_IDS.update,
+              parentCommentId: null,
+              author: {
+                id: SYNTHETIC_IDS.owner,
+                displayName: "Synthetische eigenaar",
+                slug: "synthetische-eigenaar",
+                avatar: null,
+              },
+              body: commentBody,
+              mentionCount: 0,
+              version: 1,
+              canDelete: true,
+              createdAt: "2026-08-23T10:00:00.000Z",
+              updatedAt: "2026-08-23T10:00:00.000Z",
+            }] : [],
+            nextCursor: null,
+          }));
+          return true;
+        }
+        if (request.method() === "POST") {
+          const body = request.postDataJSON() as { body?: string };
+          commentBody = body.body ?? null;
+          await fulfillJson(route, success({ commentId: COMMENT_ID, replayed: false }), 201);
+          return true;
+        }
+      }
+      if (
+        request.method() === "DELETE"
+        && url.pathname === `/api/projects/${SYNTHETIC_IDS.project}/updates/${SYNTHETIC_IDS.update}/comments/${COMMENT_ID}`
+      ) {
+        commentBody = null;
+        await fulfillJson(route, success({ commentId: COMMENT_ID, replayed: false }));
+        return true;
+      }
+      return false;
+    },
+  });
+}
+
+test.describe("Verbouwing detail", () => {
+  test("toont het foto-first Verhaal en de vier server-owned zichtbaarheidstanden", async ({ page }) => {
+    const fixture = await installProjectFixture(page);
+    await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}`);
+
+    await expect(page.getByRole("heading", { level: 1, name: "Synthetische verbouwing" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Bouwmoment toevoegen", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Van eerste foto tot thuis." })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 3, name: "De eerste muur is open" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /Plattegrond|Alle foto's/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Mijlpalen" })).toHaveCount(0);
+
+    await page.getByLabel("Zichtbaarheid van de verbouwing").click();
+    for (const option of ["Alleen ik", "Mijn volgers", "Alleen via deellink", "Openbaar"]) {
+      await expect(page.getByRole("option", { name: option })).toBeVisible();
+    }
+    await page.getByRole("option", { name: "Openbaar" }).click();
+    await expect(page.getByText("Zichtbaarheid ingesteld op Openbaar")).toBeVisible();
+
+    expect(fixture.requests).toContainEqual(expect.objectContaining({
+      body: { expectedVersion: 7, visibility: "public" },
+      method: "PATCH",
+      pathname: `/api/projects/${SYNTHETIC_IDS.project}`,
+    }));
+    expect(fixture.unhandled).toEqual([]);
   });
 
-  test("loads header, timeline and all three tabs", async ({ page }) => {
-    const errors = trackConsoleErrors(page);
-    await page.goto(`${BASE}/project/${OWNER_PROJECT_ID}`);
-    await page.waitForSelector("h1", { timeout: 8000 });
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-    await expect(page.getByRole("tab", { name: "Tijdlijn" })).toBeVisible();
-    await expect(page.getByRole("tab", { name: "Plattegrond" })).toBeVisible();
-    await expect(page.getByRole("tab", { name: "Alle foto's" })).toBeVisible();
-    expect(errors).toEqual([]);
+  test("laadt privémedia uitsluitend via de Buildy-proxy en doet geen HEAD N+1", async ({ page }) => {
+    const network: Array<{ method: string; url: string }> = [];
+    page.on("request", (request) => network.push({ method: request.method(), url: request.url() }));
+    const fixture = await installProjectFixture(page);
+
+    await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}`);
+    await expect(page.getByAltText("Omslagfoto van Synthetische verbouwing")).toBeVisible();
+
+    const proxyRequests = network.filter(({ url }) => (
+      new URL(url).pathname === `/api/media/${SYNTHETIC_IDS.media}`
+    ));
+    expect(proxyRequests.some(({ method }) => method === "GET")).toBe(true);
+    expect(network.some(({ url }) => /\.blob\.vercel-storage\.com/i.test(url))).toBe(false);
+    expect(network.filter(({ method, url }) => (
+      method === "HEAD" && /\/(comments|reactions)(?:\?|$)/.test(url)
+    ))).toEqual([]);
+    expect(fixture.unhandled).toEqual([]);
   });
 
-  test("keeps an update draft when the mobile composer is closed accidentally", async ({ page }) => {
-    await page.goto(`${BASE}/project/${OWNER_PROJECT_ID}`);
-    const addUpdate = page.getByRole("button", { name: "Update toevoegen", exact: true });
-    test.skip((await addUpdate.count()) === 0, "requires authenticated owner session");
-    await addUpdate.click();
-    const title = page.getByLabel("Titel *");
-    await title.fill("Concept dat niet verloren mag gaan");
+  test("plaatst en verwijdert reacties en een eigen comment via serverwrites", async ({ page }) => {
+    const fixture = await installProjectFixture(page);
+    await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}`);
 
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("alertdialog")).toContainText("Concept bewaren?");
-    await page.getByRole("button", { name: "Verder met update" }).click();
+    await page.getByRole("button", { name: "Reactie kiezen" }).click();
+    await page.getByRole("button", { name: "Reageer met 👍" }).click();
+    const activeReaction = page.getByRole("button", { name: "Verwijder reactie 👍, 1" });
+    await expect(activeReaction).toBeVisible();
+    await activeReaction.click();
+    await expect(activeReaction).toHaveCount(0);
 
-    await expect(title).toHaveValue("Concept dat niet verloren mag gaan");
-  });
+    await page.getByRole("button", { name: "Opmerkingen openen" }).click();
+    await page.getByLabel("Nieuwe reactie").fill("Wat een mooi Bouwmoment!");
+    await page.getByRole("button", { name: "Plaatsen", exact: true }).click();
+    await expect(page.getByText("Wat een mooi Bouwmoment!", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Reactie van Synthetische eigenaar verwijderen" }).click();
+    await expect(page.getByText("Wees de eerste die reageert.")).toBeVisible();
 
-  test("no failed HEAD requests for likes/comments (N+1 regression)", async ({ page }) => {
-    const failed: string[] = [];
-    page.on("requestfailed", (req) => {
-      if (req.method() === "HEAD") failed.push(req.url());
-    });
-    await page.goto(`${BASE}/project/${OWNER_PROJECT_ID}`);
-    await page.waitForTimeout(3000);
-    const bad = failed.filter((u) => u.includes("/comments") || u.includes("/likes"));
-    expect(bad).toHaveLength(0);
-  });
-
-  test("switching between timeline / floorplan / all photos tabs works", async ({ page }) => {
-    await page.goto(`${BASE}/project/${PUBLIC_PROJECT_ID}`, { waitUntil: "networkidle" });
-    await page.getByRole("tab", { name: "Alle foto's" }).click();
-    await expect(page.getByRole("button", { name: /mijlpalen/i })).toBeVisible();
-    await page.getByRole("tab", { name: "Plattegrond" }).click();
-    await page.waitForTimeout(300);
-    await page.getByRole("tab", { name: "Tijdlijn" }).click();
-    await expect(page.getByRole("tab", { name: "Tijdlijn", selected: true })).toBeVisible();
-  });
-
-  test("milestone filter toggles the timeline notice", async ({ page }) => {
-    await page.goto(`${BASE}/project/${PUBLIC_PROJECT_ID}`, { waitUntil: "networkidle" });
-    await page.getByRole("button", { name: /mijlpalen/i }).click();
-    await expect(page.getByText(/alleen mijlpalen worden getoond/i)).toBeVisible();
-  });
-
-  test("lightbox opens on photo click and closes with its close control", async ({ page }) => {
-    await page.goto(`${BASE}/project/${PUBLIC_PROJECT_ID}`, { waitUntil: "networkidle" });
-    const firstMedia = page.getByTestId("timeline-primary-media").filter({ has: page.locator("img, video") }).first();
-    test.skip((await firstMedia.count()) === 0, "no photos or videos on this project");
-    await firstMedia.click();
-    const lightbox = page.getByTestId("media-lightbox");
-    await expect(lightbox).toBeVisible();
-    await page.getByRole("button", { name: /lightbox sluiten/i }).click();
-    await expect(lightbox).toHaveCount(0);
+    expect(fixture.requests).toContainEqual(expect.objectContaining({
+      method: "PUT",
+      pathname: `/api/projects/${SYNTHETIC_IDS.project}/updates/${SYNTHETIC_IDS.update}/reactions`,
+      body: { target: "update", emoji: "👍" },
+    }));
+    expect(fixture.requests).toContainEqual(expect.objectContaining({
+      method: "DELETE",
+      pathname: `/api/projects/${SYNTHETIC_IDS.project}/updates/${SYNTHETIC_IDS.update}/reactions`,
+      body: { target: "update", emoji: "👍" },
+    }));
+    expect(fixture.requests).toContainEqual(expect.objectContaining({
+      method: "POST",
+      pathname: `/api/projects/${SYNTHETIC_IDS.project}/updates/${SYNTHETIC_IDS.update}/comments`,
+      body: expect.objectContaining({ body: "Wat een mooi Bouwmoment!", mentionUserIds: [] }),
+    }));
+    expect(fixture.requests).toContainEqual(expect.objectContaining({
+      method: "DELETE",
+      pathname: `/api/projects/${SYNTHETIC_IDS.project}/updates/${SYNTHETIC_IDS.update}/comments/${COMMENT_ID}`,
+      body: expect.objectContaining({ expectedVersion: 1 }),
+    }));
+    expect(fixture.unhandled).toEqual([]);
   });
 });

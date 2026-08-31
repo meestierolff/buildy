@@ -4,51 +4,29 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import type { SocialMutationResult } from "../../shared/contracts/social";
+import type {
+  SocialConnectionView,
+  SocialMutationResult,
+} from "../../shared/contracts/social";
 import {
   acceptSocialFollowRequest,
-  acceptSocialProjectAccess,
   blockSocialProfile,
-  cancelSocialProjectAccess,
   followSocialProfile,
-  followSocialProject,
-  getSocialProjectAccess,
-  getSocialProjectState,
+  getSocialConnections,
   getSocialProfile,
   rejectSocialFollowRequest,
-  rejectSocialProjectAccess,
   removeSocialFollower,
   removeSocialProfileFollow,
-  requestSocialProjectAccess,
-  revokeSocialProjectAccess,
   searchSocialProfiles,
   unblockSocialProfile,
-  unfollowSocialProject,
 } from "@/lib/socialApi";
 
 export const socialQueryKeys = {
   all: ["social"] as const,
   profiles: (query: string) => ["social", "profiles", query] as const,
+  connections: (view: SocialConnectionView) => ["social", "connections", view] as const,
   profile: (profileId: string) => ["social", "profile", profileId] as const,
-  projectState: (projectId: string) => ["social", "project", projectId, "state"] as const,
-  projectAccess: (projectId: string) => ["social", "project", projectId, "access"] as const,
 };
-
-export function useSocialProjectState(projectId: string, enabled = true) {
-  return useQuery({
-    queryKey: socialQueryKeys.projectState(projectId),
-    queryFn: ({ signal }) => getSocialProjectState(projectId, signal),
-    enabled: enabled && Boolean(projectId),
-  });
-}
-
-export function useSocialProjectAccess(projectId: string, enabled = true) {
-  return useQuery({
-    queryKey: socialQueryKeys.projectAccess(projectId),
-    queryFn: ({ signal }) => getSocialProjectAccess(projectId, signal),
-    enabled: enabled && Boolean(projectId),
-  });
-}
 
 export function useSocialProfile(profileId: string, enabled = true) {
   return useQuery({
@@ -70,6 +48,23 @@ export function useInfiniteSocialProfiles(query = "", enabled = true) {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: enabled && (!normalizedQuery || normalizedQuery.length >= 2),
+  });
+}
+
+export function useInfiniteSocialConnections(
+  view: SocialConnectionView,
+  enabled = true,
+) {
+  return useInfiniteQuery({
+    queryKey: socialQueryKeys.connections(view),
+    queryFn: ({ pageParam, signal }) => getSocialConnections({
+      ...(pageParam ? { cursor: pageParam } : {}),
+      limit: 50,
+      view,
+    }, signal),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    enabled,
   });
 }
 
@@ -128,90 +123,18 @@ export function useProfileBlockMutation() {
   });
 }
 
-type ProjectFollowVariables = {
-  action: "follow" | "remove";
-  projectId: string;
+export type SocialRequestDecisionVariables = {
+  actorId: string;
+  decision: "accept" | "reject";
+  kind: "profile";
 };
-
-export function useProjectFollowMutation() {
-  const queryClient = useQueryClient();
-  return useMutation<SocialMutationResult, Error, ProjectFollowVariables>({
-    mutationFn: ({ action, projectId }) => action === "follow"
-      ? followSocialProject(projectId)
-      : unfollowSocialProject(projectId),
-    onSuccess: async (_result, variables) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: socialQueryKeys.projectState(variables.projectId) }),
-        queryClient.invalidateQueries({ queryKey: ["projects", "following"] }),
-      ]);
-    },
-  });
-}
-
-type ProjectAccessVariables = {
-  action: "request" | "cancel";
-  projectId: string;
-};
-
-export function useProjectAccessMutation() {
-  const queryClient = useQueryClient();
-  return useMutation<SocialMutationResult, Error, ProjectAccessVariables>({
-    mutationFn: ({ action, projectId }) => action === "request"
-      ? requestSocialProjectAccess(projectId)
-      : cancelSocialProjectAccess(projectId),
-    onSuccess: async (_result, variables) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: socialQueryKeys.projectState(variables.projectId) }),
-        queryClient.invalidateQueries({ queryKey: ["projects", "following"] }),
-      ]);
-    },
-  });
-}
-
-export function useRevokeProjectAccessMutation() {
-  const queryClient = useQueryClient();
-  return useMutation<
-    SocialMutationResult,
-    Error,
-    { projectId: string; requesterId: string }
-  >({
-    mutationFn: ({ projectId, requesterId }) =>
-      revokeSocialProjectAccess(projectId, requesterId),
-    onSuccess: async (_result, variables) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: socialQueryKeys.projectAccess(variables.projectId) }),
-        queryClient.invalidateQueries({ queryKey: ["projects", "following"] }),
-      ]);
-    },
-  });
-}
-
-export type SocialRequestDecisionVariables =
-  | {
-      actorId: string;
-      decision: "accept" | "reject";
-      kind: "profile";
-    }
-  | {
-      actorId: string;
-      decision: "accept" | "reject";
-      kind: "project";
-      projectId: string;
-    };
 
 export function useSocialRequestDecisionMutation() {
   const queryClient = useQueryClient();
   return useMutation<SocialMutationResult, Error, SocialRequestDecisionVariables>({
-    mutationFn: (variables) => {
-      if (variables.kind === "profile") {
-        return variables.decision === "accept"
-          ? acceptSocialFollowRequest(variables.actorId)
-          : rejectSocialFollowRequest(variables.actorId);
-      }
-      return variables.decision === "accept"
-        ? acceptSocialProjectAccess(variables.projectId, variables.actorId)
-        : rejectSocialProjectAccess(variables.projectId, variables.actorId);
-    },
+    mutationFn: (variables) => variables.decision === "accept"
+      ? acceptSocialFollowRequest(variables.actorId)
+      : rejectSocialFollowRequest(variables.actorId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: socialQueryKeys.all });
     },

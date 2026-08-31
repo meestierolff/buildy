@@ -2,9 +2,9 @@ import { useEffect } from "react";
 
 const DEFAULT_TITLE = "Buildy — Verbouwingsdagboek en Bouwboek maken";
 const DEFAULT_DESCRIPTION =
-  "Houd je verbouwing bij met foto's, updates, mijlpalen en budget. Maak van je renovatie automatisch een gedrukt Bouwboek.";
+  "Houd je verbouwing bij met foto's, Bouwmomenten, mijlpalen en budget. Maak van je renovatie automatisch een gedrukt Bouwboek.";
 const DEFAULT_IMAGE = "/og-image.png";
-const DEFAULT_IMAGE_ALT = "Buildy toont een renovatieproject als tijdlijn en gedrukt Bouwboek.";
+const DEFAULT_IMAGE_ALT = "Buildy toont een verbouwing als Verhaal en gedrukt Bouwboek.";
 
 interface PageMeta {
   title?: string;

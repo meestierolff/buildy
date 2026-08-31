@@ -6,7 +6,6 @@ export const LAUNCH_PHOTOBOOK_MIN_PAGES = 24;
 
 const uuidSchema = z.string().uuid();
 const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
-const proofViewReceiptSchema = z.string().regex(/^v1\.[1-9][0-9]{0,12}\.[A-Za-z0-9_-]{43}$/);
 const millimetresSchema = z.number().finite().nonnegative().max(1_000);
 const normalizedSchema = z.number().finite().min(0).max(1);
 
@@ -77,7 +76,7 @@ export const approvePhotobookProofInputSchema = z.object({
   idempotencyKey: z.string().uuid(),
   documentSha256: sha256Schema,
   pdfSha256: sha256Schema,
-  viewReceipt: proofViewReceiptSchema,
+  proofViewed: z.literal(true),
 }).strict();
 
 const blockFrameSchema = z.object({

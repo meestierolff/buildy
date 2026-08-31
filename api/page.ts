@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { getRuntimeConfig } from "../server/config/runtime.js";
+import { getRuntimeConfig, type RuntimeConfig } from "../server/config/runtime.js";
 import { getBuildyDatabase } from "../server/db/client.js";
 import { ANONYMOUS_PROJECT_ACTOR } from "../server/projects/actor.js";
 import { PostgresProjectRepository } from "../server/projects/repository.js";
@@ -30,8 +30,14 @@ function validatedAppOrigin(): string {
   return origin.origin;
 }
 
-async function readAnonymousPublicProject(projectId: string): Promise<PublicProjectPageData | null> {
-  const config = getRuntimeConfig();
+export async function readAnonymousPublicProject(
+  projectId: string,
+  config: RuntimeConfig = getRuntimeConfig(),
+): Promise<PublicProjectPageData | null> {
+  // public_demo is a fully static surface. A direct /project/<uuid> request
+  // must not query or inject metadata from the live social product before the
+  // client-side deferred route takes over.
+  if (config.PRODUCT_PROFILE === "public_demo") return null;
   if (!config.DATABASE_URL) return null;
   const project = await new PostgresProjectRepository(getBuildyDatabase(config.DATABASE_URL))
     .getOverview(ANONYMOUS_PROJECT_ACTOR, projectId);

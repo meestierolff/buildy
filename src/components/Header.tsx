@@ -1,110 +1,86 @@
-import { Link, NavLink, useLocation } from "@/lib/router";
-import { useAuth } from "@/hooks/useAuth";
-import { useOwnProfile } from "@/hooks/useProfiles";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import BrandLogo from "@/components/BrandLogo";
-import { Plus, LogOut, User, Settings } from "lucide-react";
-import NotificationBell from "@/components/NotificationBell";
-import BetaBadge from "@/components/BetaBadge";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
 import { PRODUCT_ROUTES } from "@/lib/productNavigation";
+import { Link, NavLink } from "@/lib/router";
 
-const Header = () => {
-  const { user, signOut } = useAuth();
-  const { pathname } = useLocation();
-  const profileQuery = useOwnProfile(Boolean(user));
-  const profile = profileQuery.data;
+type HeaderProps = {
+  activeProjectId?: string;
+  publicDemo?: boolean;
+};
 
-  const isAuthRoute = pathname === "/auth" || pathname === "/wachtwoord-vergeten" || pathname === "/wachtwoord-resetten";
-  const isPrimaryCreateRoute = pathname === PRODUCT_ROUTES.createUpdate;
+const Header = ({ activeProjectId, publicDemo = false }: HeaderProps) => {
+  const { user } = useAuth();
+  const storyHref = activeProjectId
+    ? PRODUCT_ROUTES.project(activeProjectId)
+    : PRODUCT_ROUTES.newProject;
+  const updateHref = activeProjectId
+    ? PRODUCT_ROUTES.projectUpdateComposer(activeProjectId)
+    : PRODUCT_ROUTES.newProject;
+  const photobookHref = activeProjectId
+    ? PRODUCT_ROUTES.projectPhotobook(activeProjectId)
+    : PRODUCT_ROUTES.newProject;
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-    `rounded-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.2em] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-      isActive ? "text-foreground bg-secondary/80 shadow-xs" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+    `relative inline-flex min-h-11 items-center px-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none ${
+      isActive
+        ? "text-foreground after:absolute after:inset-x-2 after:bottom-1 after:h-0.5 after:bg-accent"
+        : "text-muted-foreground hover:text-foreground"
     }`;
-
-  const displayName = profile?.displayName || user?.email || "";
-  const initial = displayName[0]?.toUpperCase() || "?";
-  const ownProfilePath = profile ? PRODUCT_ROUTES.profile(profile.slug) : PRODUCT_ROUTES.account;
+  const quietLinkClass =
+    "inline-flex min-h-11 items-center px-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none";
 
   return (
-    <>
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 text-foreground sm:px-6 md:px-8">
-        <div className="flex items-center gap-2">
-          <BrandLogo imageClassName="h-8 w-8 rounded-lg shadow-xs" />
-          <BetaBadge className="hidden sm:inline-flex" />
-        </div>
+    <div className="mx-auto flex min-h-[4.5rem] max-w-7xl flex-wrap items-center justify-between gap-x-3 px-4 text-foreground sm:px-6 md:px-8">
+      <BrandLogo
+        imageClassName="h-8 w-8 rounded-md shadow-none"
+        nativeNavigation={publicDemo}
+        textClassName="hidden min-[360px]:inline"
+      />
 
-        <nav className="hidden md:flex items-center gap-2" aria-label="Hoofdnavigatie">
-          {user ? <NavLink to={PRODUCT_ROUTES.projects} end className={navLinkClass}>Projecten</NavLink> : null}
-          {user ? <NavLink to={PRODUCT_ROUTES.following} className={navLinkClass}>Volgend</NavLink> : null}
-          <NavLink to={PRODUCT_ROUTES.discover} end className={navLinkClass}>Ontdekken</NavLink>
-          <NavLink to={PRODUCT_ROUTES.connections} className={navLinkClass} aria-label="Connecties en vrienden">Connecties</NavLink>
+      {publicDemo ? (
+        <nav
+          className="order-3 flex w-full items-center justify-center gap-3 border-t border-border/60 py-1 sm:order-none sm:w-auto sm:border-0 sm:py-0"
+          aria-label="Hoofdnavigatie"
+        >
+          <a href="/#zo-werkt-het" className={quietLinkClass}>Hoe werkt het?</a>
+          <a href="/#voorbeeld" className={quietLinkClass}>Bekijk voorbeeld</a>
         </nav>
+      ) : user ? (
+        <nav className="hidden items-center gap-2 lg:flex" aria-label="Hoofdnavigatie">
+          <NavLink to={storyHref} end className={navLinkClass}>Mijn verbouwing</NavLink>
+          <Link to={updateHref} className={quietLinkClass}>Bouwmoment toevoegen</Link>
+          <NavLink to={photobookHref} end className={navLinkClass}>Bouwboek</NavLink>
+          <NavLink to={PRODUCT_ROUTES.ownProfile} end className={navLinkClass}>Profiel</NavLink>
+        </nav>
+      ) : (
+        <nav
+          className="order-3 flex w-full items-center justify-center gap-3 border-t border-border/60 py-1 sm:order-none sm:w-auto sm:border-0 sm:py-0"
+          aria-label="Hoofdnavigatie"
+        >
+          <Link to="/#zo-werkt-het" className={quietLinkClass}>Hoe werkt het</Link>
+          <Link to="/#voorbeeld" className={quietLinkClass}>Bekijk voorbeeld</Link>
+        </nav>
+      )}
 
-        <div className="flex items-center gap-3">
-          {user ? (
-            <>
-              <NotificationBell />
-              {!isPrimaryCreateRoute && (
-                <Button asChild variant="pillOutline" className="hidden h-9 px-4 sm:inline-flex shadow-xs hover:shadow-sm transition-all">
-                  <Link to={PRODUCT_ROUTES.createUpdate}>
-                    <Plus className="h-3.5 w-3.5" />
-                    Nieuwe update
-                  </Link>
-                </Button>
-              )}
-              {!isPrimaryCreateRoute && (
-                <Button asChild size="icon" variant="outline" className="h-9 w-9 rounded-full border-border sm:hidden">
-                  <Link to={PRODUCT_ROUTES.createUpdate} aria-label="Nieuwe update">
-                    <Plus className="h-4 w-4" />
-                  </Link>
-                </Button>
-              )}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="rounded-full ring-offset-background transition-transform active:scale-95" aria-label="Open accountmenu">
-                    <Avatar className="h-8 w-8 border border-border/80 shadow-xs">
-                      <AvatarImage src={profile?.avatar?.proxyPath || ""} alt={displayName} />
-                      <AvatarFallback className="bg-accent/20 text-accent text-xs font-semibold">
-                        {initial}
-                      </AvatarFallback>
-                    </Avatar>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52 p-1.5 shadow-lg border-border/80">
-                  <DropdownMenuItem asChild>
-                    <Link to={ownProfilePath} className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium cursor-pointer rounded-md">
-                      <User className="h-4 w-4 text-muted-foreground" /> Profiel
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to={PRODUCT_ROUTES.account} className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium cursor-pointer rounded-md">
-                      <Settings className="h-4 w-4 text-muted-foreground" /> Account
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to={PRODUCT_ROUTES.newProject} className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium cursor-pointer rounded-md">
-                      <Plus className="h-4 w-4 text-muted-foreground" /> Nieuw project
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={signOut} className="flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-destructive focus:text-destructive cursor-pointer rounded-md">
-                    <LogOut className="h-4 w-4" /> Uitloggen
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </>
-          ) : (
-            <Button asChild variant={isAuthRoute ? "pillOutline" : "pill"} className="h-9 px-5 shadow-xs hover:shadow-md transition-all">
-              <Link to={isAuthRoute ? PRODUCT_ROUTES.landing : "/auth"}>
-                {isAuthRoute ? "Bekijk projecten" : "Inloggen"}
-              </Link>
-            </Button>
-          )}
+      {publicDemo ? (
+        <Button asChild className="min-h-11 bg-[#A94E36] px-3 text-xs text-white hover:bg-[#8F3F2C] sm:px-4 sm:text-sm">
+          <a href="/#probeer-buildy">Probeer met je bouwfoto</a>
+        </Button>
+      ) : !user ? (
+        <div className="flex items-center gap-1 sm:gap-2">
+          <Link
+            to="/auth"
+            className="inline-flex min-h-11 items-center px-2 text-xs font-semibold text-foreground underline decoration-[#D8CFC1] underline-offset-4 transition-colors hover:decoration-[#A94E36] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:text-sm"
+          >
+            Inloggen
+          </Link>
+          <Button asChild className="min-h-11 bg-[#A94E36] px-3 text-xs text-white hover:bg-[#8F3F2C] sm:px-4 sm:text-sm">
+            <Link to="/auth">Start je verbouwverhaal</Link>
+          </Button>
         </div>
-      </div>
-    </>
+      ) : null}
+    </div>
   );
 };
 

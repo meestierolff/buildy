@@ -8,12 +8,11 @@ import {
   createEngagementComment,
   extractMentionSlugs,
   getEngagementReactions,
+  markAllEngagementNotificationsRead,
   updateEngagementNotification,
 } from "@/lib/engagementApi";
 import {
   followSocialProfile,
-  getSocialProjectAccess,
-  getSocialProjectState,
   getSocialProfile,
   resolveVisibleMentionSlugs,
   searchSocialProfiles,
@@ -95,29 +94,6 @@ describe("social API client", () => {
     expect(resolved.has("noor-bouwt-extra")).toBe(false);
   });
 
-  it("leest projectrelatie en owner-toegang zonder client-identiteit", async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(successResponse({
-        projectId: PROJECT_ID,
-        viewerRole: "viewer",
-        followStatus: "none",
-        accessStatus: "pending",
-      }))
-      .mockResolvedValueOnce(successResponse({ projectId: PROJECT_ID, items: [] }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    await getSocialProjectState(PROJECT_ID);
-    await getSocialProjectAccess(PROJECT_ID);
-
-    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
-      `/api/social/projects/${PROJECT_ID}/state`,
-      `/api/social/projects/${PROJECT_ID}/access-requests`,
-    ]);
-    expect(fetchMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
-      credentials: "include",
-      method: "GET",
-    }));
-  });
 });
 
 describe("engagement API client", () => {
@@ -180,6 +156,27 @@ describe("engagement API client", () => {
     expect(JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body))).toEqual({ action: "read" });
   });
 
+  it("markeert alle meldingen via één server-owned accountgrens", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(successResponse({
+      updatedCount: 24,
+      unreadCount: 0,
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(markAllEngagementNotificationsRead()).resolves.toEqual({
+      updatedCount: 24,
+      unreadCount: 0,
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/notifications");
+    expect(fetchMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
+      credentials: "include",
+      method: "PATCH",
+    }));
+    expect(JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)))
+      .toEqual({ action: "read_all" });
+  });
+
   it("extraheert unieke, genormaliseerde mention-slugs", () => {
     expect(extractMentionSlugs("Hoi @Noor-Bouwt en @sam. Nogmaals @noor-bouwt")).toEqual([
       "noor-bouwt",
@@ -192,11 +189,8 @@ describe("sociale browsermigratie", () => {
   const migratedFiles = [
     "src/pages/Friends.tsx",
     "src/pages/Profile.tsx",
-    "src/components/FollowButton.tsx",
-    "src/components/RequestAccessCard.tsx",
     "src/components/CommentsSheet.tsx",
     "src/components/ReactionBar.tsx",
-    "src/components/NotificationBell.tsx",
   ];
 
   it.each(migratedFiles)("bevat geen Supabase-clientfallback: %s", (relativePath) => {

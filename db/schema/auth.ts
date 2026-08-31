@@ -18,7 +18,7 @@ import {
   timestamps,
 } from "./common.js";
 
-// Better Auth uses text identifiers. Model names are configured explicitly in the auth adapter.
+// Historical provider-era tables. Kept intact as a compatibility bridge for existing identities.
 export const authUsers = pgTable(
   "auth_users",
   {
@@ -90,7 +90,7 @@ export const authVerifications = pgTable(
   ],
 );
 
-// Internal, shared rate-limit state for Better Auth. The request-derived key is
+// Internal, shared authentication rate-limit state. The request-derived key is
 // HMAC blind-indexed before it reaches this table; raw IP/path material is never
 // persisted. This table is server-only and deliberately not exposed through RLS.
 export const authRateLimits = pgTable(
@@ -111,6 +111,89 @@ export const authRateLimits = pgTable(
       "auth_rate_limits_timestamps_ck",
       sql`${table.windowStartedAtMs} > 0 AND ${table.lastRequestAtMs} >= ${table.windowStartedAtMs}`,
     ),
+  ],
+);
+
+/**
+ * Active Google identity boundary. `authUserId` is a compatibility bridge into
+ * the stable app-user mapping while legacy auth rows remain untouched.
+ */
+export const googleOidcIdentities = pgTable(
+  "google_oidc_identities",
+  {
+    subject: text("subject").primaryKey(),
+    authUserId: text("auth_user_id")
+      .notNull()
+      .unique()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    lastAuthenticatedAt: timestamp("last_authenticated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    check(
+      "google_oidc_identities_subject_ck",
+      sql`char_length(${table.subject}) BETWEEN 1 AND 255 AND ${table.subject} !~ '[[:cntrl:]]'`,
+    ),
+    check(
+      "google_oidc_identities_authenticated_clock_ck",
+      sql`${table.lastAuthenticatedAt} >= ${table.createdAt}`,
+    ),
+  ],
+);
+
+export const googleOidcLoginAttempts = pgTable(
+  "google_oidc_login_attempts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    stateHash: text("state_hash").notNull().unique(),
+    sourceHash: text("source_hash").notNull(),
+    browserBindingHash: text("browser_binding_hash").notNull(),
+    codeVerifierCiphertext: text("code_verifier_ciphertext").notNull(),
+    nonceCiphertext: text("nonce_ciphertext").notNull(),
+    nextPath: text("next_path").default("/").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("google_oidc_login_attempts_source_expiry_idx")
+      .on(table.sourceHash, table.expiresAt)
+      .where(sql`${table.consumedAt} IS NULL`),
+    index("google_oidc_login_attempts_expiry_idx").on(table.expiresAt),
+    check("google_oidc_login_attempts_state_hash_ck", sql`${table.stateHash} ~ '^[0-9a-f]{64}$'`),
+    check("google_oidc_login_attempts_source_hash_ck", sql`${table.sourceHash} ~ '^[0-9a-f]{64}$'`),
+    check(
+      "google_oidc_login_attempts_browser_binding_hash_ck",
+      sql`${table.browserBindingHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "google_oidc_login_attempts_expiry_ck",
+      sql`${table.expiresAt} > ${table.createdAt} AND ${table.expiresAt} <= ${table.createdAt} + interval '15 minutes'`,
+    ),
+  ],
+);
+
+export const googleOidcSessions = pgTable(
+  "google_oidc_sessions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    identitySubject: text("identity_subject")
+      .notNull()
+      .references(() => googleOidcIdentities.subject, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull().unique(),
+    userAgent: text("user_agent"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("google_oidc_sessions_identity_expiry_idx")
+      .on(table.identitySubject, table.expiresAt)
+      .where(sql`${table.revokedAt} IS NULL`),
+    index("google_oidc_sessions_expiry_idx").on(table.expiresAt),
+    check("google_oidc_sessions_token_hash_ck", sql`${table.tokenHash} ~ '^[0-9a-f]{64}$'`),
   ],
 );
 

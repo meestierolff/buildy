@@ -17,6 +17,7 @@ import {
   type PhotobookSettings,
 } from "../../shared/contracts/photobooks.js";
 import type { BuildyDatabase } from "../db/client.js";
+import type { PrivacyBlindIndex } from "../security/dataProtection.js";
 import { createObjectKey } from "../storage/objectStorage.js";
 import { PhotobookError } from "./errors.js";
 import {
@@ -158,15 +159,9 @@ function normalizedSettings(row: SourceHeaderRow): PhotobookSettings {
   });
 }
 
-function requestPayloadHash(document: PhotobookDocument): string {
-  return createHash("sha256")
-    .update("buildy-photobook-proof-request:v1\0")
-    .update(document.checksumSha256)
-    .digest("hex");
-}
-
 function isProofPayload(value: unknown): value is {
   schemaVersion: 1;
+  requestHashVersion: 2;
   projectId: string;
   revisionId: string;
   requestHash: string;
@@ -174,6 +169,7 @@ function isProofPayload(value: unknown): value is {
   if (!value || typeof value !== "object") return false;
   const payload = value as Record<string, unknown>;
   return payload.schemaVersion === 1
+    && payload.requestHashVersion === 2
     && typeof payload.projectId === "string"
     && typeof payload.revisionId === "string"
     && typeof payload.requestHash === "string";
@@ -742,7 +738,7 @@ export class PostgresPhotobookRepository implements PhotobookRepository {
           projectId: command.projectId,
           purpose: "photobook_pdf",
           status: "processing",
-          storageProvider: "r2",
+          storageProvider: "vercel_blob",
           bucket: command.bucket,
           objectKey: command.pdfObjectKey,
           uploadIdempotencyKey: `photobook-proof:v1:${command.revisionId}`,
@@ -777,6 +773,7 @@ export class PostgresPhotobookRepository implements PhotobookRepository {
             projectId: command.projectId,
             revisionId: command.revisionId,
             requestHash: command.requestHash,
+            requestHashVersion: command.requestHashVersion,
           },
         });
         await transaction.update(photobookDrafts)
@@ -880,6 +877,7 @@ export class PostgresPhotobookRepository implements PhotobookRepository {
             projectId: proof.project_id,
             revisionId: command.revisionId,
             requestHash: command.requestHash,
+            requestHashVersion: command.requestHashVersion,
           },
         });
         return { revisionId: command.revisionId, status: "approved", replayed: false };
@@ -938,59 +936,88 @@ export class PostgresPhotobookRepository implements PhotobookRepository {
     });
   }
 
+  private async beginClaimedRenderJob(
+    transaction: DatabaseTransaction,
+    workerId: string,
+    eventId: string,
+  ): Promise<PhotobookRenderJob> {
+    const begun = await transaction.execute<{
+      event_id: string;
+      revision_id: string;
+      pdf_asset_id: string;
+      pdf_object_key: string;
+      document: unknown;
+      source_assets: unknown;
+      attempt_count: number | string;
+    }>(sql`select * from public.app_begin_photobook_render(${workerId}, ${eventId}::uuid)`);
+    const row = begun.rows[0];
+    if (!row) throw new PhotobookError("INVALID_STATE");
+
+    const document = photobookDocumentSchema.parse(objectValue(row.document));
+    const rawAssets = objectValue(row.source_assets);
+    if (!Array.isArray(rawAssets)) throw new PhotobookError("INVALID_STATE");
+    const assets = rawAssets.map((value): PhotobookProofAsset => {
+      if (!value || typeof value !== "object") throw new PhotobookError("INVALID_STATE");
+      const asset = value as Record<string, unknown>;
+      const contentType = asset.contentType;
+      if (!document.sourceAssets.some((source) => source.id === asset.id)) {
+        throw new PhotobookError("INVALID_STATE");
+      }
+      if (!["image/jpeg", "image/png", "image/webp", "image/avif"].includes(String(contentType))) {
+        throw new PhotobookError("INVALID_STATE");
+      }
+      return {
+        id: String(asset.id),
+        objectKey: String(asset.objectKey),
+        sizeBytes: numberValue(asset.sizeBytes as number | string),
+        sha256: String(asset.sha256),
+        contentType: contentType as PhotobookProofAsset["contentType"],
+        widthPixels: numberValue(asset.widthPixels as number | string),
+        heightPixels: numberValue(asset.heightPixels as number | string),
+      };
+    });
+    return {
+      workerId,
+      eventId: row.event_id,
+      revisionId: row.revision_id,
+      pdfAssetId: row.pdf_asset_id,
+      pdfObjectKey: row.pdf_object_key,
+      document,
+      assets,
+      attemptCount: numberValue(row.attempt_count),
+    };
+  }
+
   async claimRenderJob(workerId: string, leaseSeconds: number): Promise<PhotobookRenderJob | null> {
     return this.database.transaction(async (transaction) => {
       const claimed = await transaction.execute<{ event_id: string }>(sql`
         select event_id from public.app_photobook_worker_claim(${workerId}, ${leaseSeconds})
       `);
       const eventId = claimed.rows[0]?.event_id;
-      if (!eventId) return null;
-      const begun = await transaction.execute<{
-        event_id: string;
-        revision_id: string;
-        pdf_asset_id: string;
-        pdf_object_key: string;
-        document: unknown;
-        source_assets: unknown;
-        attempt_count: number | string;
-      }>(sql`select * from public.app_begin_photobook_render(${workerId}, ${eventId}::uuid)`);
-      const row = begun.rows[0];
-      if (!row) {
-        throw new PhotobookError("INVALID_STATE");
-      }
-      const document = photobookDocumentSchema.parse(objectValue(row.document));
-      const rawAssets = objectValue(row.source_assets);
-      if (!Array.isArray(rawAssets)) throw new PhotobookError("INVALID_STATE");
-      const assets = rawAssets.map((value): PhotobookProofAsset => {
-        if (!value || typeof value !== "object") throw new PhotobookError("INVALID_STATE");
-        const asset = value as Record<string, unknown>;
-        const contentType = asset.contentType;
-        if (!document.sourceAssets.some((source) => source.id === asset.id)) {
-          throw new PhotobookError("INVALID_STATE");
-        }
-        if (!["image/jpeg", "image/png", "image/webp", "image/avif"].includes(String(contentType))) {
-          throw new PhotobookError("INVALID_STATE");
-        }
-        return {
-          id: String(asset.id),
-          objectKey: String(asset.objectKey),
-          sizeBytes: numberValue(asset.sizeBytes as number | string),
-          sha256: String(asset.sha256),
-          contentType: contentType as PhotobookProofAsset["contentType"],
-          widthPixels: numberValue(asset.widthPixels as number | string),
-          heightPixels: numberValue(asset.heightPixels as number | string),
-        };
-      });
-      return {
-        workerId,
-        eventId: row.event_id,
-        revisionId: row.revision_id,
-        pdfAssetId: row.pdf_asset_id,
-        pdfObjectKey: row.pdf_object_key,
-        document,
-        assets,
-        attemptCount: numberValue(row.attempt_count),
-      };
+      return eventId ? this.beginClaimedRenderJob(transaction, workerId, eventId) : null;
+    });
+  }
+
+  async claimRenderJobForRevision(
+    revisionId: string,
+    workerId: string,
+    leaseSeconds: number,
+  ): Promise<PhotobookRenderJob | null> {
+    return this.database.transaction(async (transaction) => {
+      const claimed = await transaction.execute<{ event_id: string }>(sql`
+        select event_id
+        from public.app_photobook_worker_claim_revision(
+          ${workerId},
+          ${revisionId}::uuid,
+          ${leaseSeconds}
+        )
+      `);
+      const eventId = claimed.rows[0]?.event_id;
+      const job = eventId
+        ? await this.beginClaimedRenderJob(transaction, workerId, eventId)
+        : null;
+      if (job && job.revisionId !== revisionId) throw new PhotobookError("INVALID_STATE");
+      return job;
     });
   }
 
@@ -1034,8 +1061,15 @@ export class PostgresPhotobookRepository implements PhotobookRepository {
   }
 }
 
-export function photobookProofRequestHash(document: PhotobookDocument): string {
-  return requestPayloadHash(document);
+export function photobookProofRequestHash(
+  blindIndex: PrivacyBlindIndex,
+  document: PhotobookDocument,
+): string {
+  const canonicalDigest = createHash("sha256")
+    .update("buildy-photobook-proof-request-payload:v2\0")
+    .update(document.checksumSha256)
+    .digest("hex");
+  return blindIndex.create("photobook-proof-request-v2", canonicalDigest);
 }
 
 export function expectedPhotobookPdfObjectKey(pdfAssetId: string): string {

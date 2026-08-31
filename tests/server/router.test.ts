@@ -12,7 +12,8 @@ describe("API router", () => {
     vi.stubEnv("APP_ENV", "test");
     vi.stubEnv("APP_ORIGIN", "https://test.buildy.example");
     vi.stubEnv("DATABASE_URL", "");
-    vi.stubEnv("BETTER_AUTH_SECRET", "");
+    vi.stubEnv("GOOGLE_CLIENT_ID", "");
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", "");
     resetRuntimeConfigForTests();
     resetServerCompositionForTests();
   });
@@ -38,6 +39,114 @@ describe("API router", () => {
     expect(JSON.stringify(body)).not.toContain("DATABASE_URL");
   });
 
+  it("exposes the full immutable deployment SHA for exact launch binding", async () => {
+    const releaseSha = "0123456789abcdef0123456789abcdef01234567";
+    vi.stubEnv("VERCEL_GIT_COMMIT_SHA", releaseSha);
+    resetRuntimeConfigForTests();
+
+    const response = await handleApiRequest(new Request("https://test.buildy.example/api/health"));
+
+    await expect(response.json()).resolves.toMatchObject({ data: { release: releaseSha } });
+  });
+
+  it("reports the provider-independent public demo ready without database or Google auth", async () => {
+    vi.stubEnv("PRODUCT_PROFILE", "public_demo");
+    resetRuntimeConfigForTests();
+    resetServerCompositionForTests();
+
+    const response = await handleApiRequest(
+      new Request("https://test.buildy.example/api/readiness"),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        ready: true,
+        checks: {
+          configuration: "pass",
+          database: "not_checked",
+          accountWorker: "not_checked",
+          mediaWorker: "not_checked",
+          paymentWorker: "not_checked",
+          photobookWorker: "not_checked",
+        },
+      },
+    });
+  });
+
+  it("exposes only anonymous support from the composed moderation surface in public_demo", async () => {
+    vi.stubEnv("PRODUCT_PROFILE", "public_demo");
+    resetRuntimeConfigForTests();
+    resetServerCompositionForTests();
+
+    for (const path of ["/api/moderation/reports", "/api/feedback"]) {
+      const response = await handleApiRequest(new Request(`https://test.buildy.example${path}`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "https://test.buildy.example",
+        },
+        body: "{}",
+      }));
+
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          code: "AUTH_UNAVAILABLE",
+          message: "Deze functie is niet beschikbaar in de openbare demo.",
+        },
+      });
+    }
+
+    const support = await handleApiRequest(new Request("https://test.buildy.example/api/support", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://test.buildy.example",
+      },
+      body: "{}",
+    }));
+    await expect(support.json()).resolves.toMatchObject({
+      error: { code: "AUTH_UNAVAILABLE" },
+    });
+  });
+
+  it("keeps scheduled account maintenance deliberately dormant in public_demo", async () => {
+    vi.stubEnv("PRODUCT_PROFILE", "public_demo");
+    resetRuntimeConfigForTests();
+    resetServerCompositionForTests();
+
+    const response = await handleApiRequest(new Request(
+      "https://test.buildy.example/api/internal/cron/account-lifecycle",
+    ));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "AUTH_UNAVAILABLE",
+        message: "Accountonderhoud is niet actief in de openbare demo.",
+      },
+    });
+  });
+
+  it("keeps feedback_beta readiness closed without its authenticated runtime", async () => {
+    vi.stubEnv("PRODUCT_PROFILE", "feedback_beta");
+    resetRuntimeConfigForTests();
+    resetServerCompositionForTests();
+
+    const response = await handleApiRequest(
+      new Request("https://test.buildy.example/api/readiness"),
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        ready: false,
+        checks: { configuration: "fail", database: "not_checked" },
+      },
+    });
+  });
+
   it("returns a stable Dutch not-found error with a request id", async () => {
     const response = await handleApiRequest(new Request("https://test.buildy.example/api/nope"));
     const body = await response.json() as { error: { code: string; requestId: string } };
@@ -50,7 +159,8 @@ describe("API router", () => {
   it("keeps readiness closed when present auth key material is malformed", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.stubEnv("DATABASE_URL", "postgresql://buildy:buildy@127.0.0.1:5432/buildy");
-    vi.stubEnv("BETTER_AUTH_SECRET", "s".repeat(32));
+    vi.stubEnv("GOOGLE_CLIENT_ID", "google-client");
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", "google-secret");
     vi.stubEnv("PII_ENCRYPTION_KEYS", "not-json");
     vi.stubEnv("PII_ENCRYPTION_CURRENT_VERSION", "1");
     vi.stubEnv("PII_BLIND_INDEX_KEY", Buffer.alloc(32, 1).toString("base64"));
@@ -113,6 +223,64 @@ describe("API router", () => {
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({
       error: { code: "PROVIDER_UNAVAILABLE" },
+    });
+  });
+
+  it("registers the authenticated customer order collection route", async () => {
+    const response = await handleApiRequest(new Request(
+      "https://test.buildy.example/api/orders",
+    ));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "PROVIDER_UNAVAILABLE" },
+    });
+  });
+
+  it("registers guarded bestellingbeheer but keeps it unavailable without server composition", async () => {
+    const response = await handleApiRequest(new Request(
+      "https://test.buildy.example/api/admin/orders",
+    ));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "AUTH_UNAVAILABLE" },
+    });
+  });
+
+  it.each([
+    ["GET", "/api/internal/cron/email"],
+    ["GET", "/api/internal/cron/peecho-fulfilment"],
+    ["POST", "/api/webhooks/brevo"],
+    ["POST", "/api/webhooks/peecho"],
+  ])("does not expose the retired %s %s route", async (method, path) => {
+    const response = await handleApiRequest(new Request(
+      `https://test.buildy.example${path}`,
+      { method },
+    ));
+
+    expect(response.status).toBe(404);
+  });
+
+  it.each([
+    ["GET", "/api/social/projects/00000000-0000-4000-8000-000000000101/state"],
+    ["PUT", "/api/social/projects/00000000-0000-4000-8000-000000000101/follow"],
+    ["DELETE", "/api/social/projects/00000000-0000-4000-8000-000000000101/follow"],
+    ["PUT", "/api/social/projects/00000000-0000-4000-8000-000000000101/access"],
+    ["DELETE", "/api/social/projects/00000000-0000-4000-8000-000000000101/access"],
+    ["GET", "/api/social/projects/00000000-0000-4000-8000-000000000101/access-requests"],
+    ["POST", "/api/social/projects/00000000-0000-4000-8000-000000000101/access-requests/00000000-0000-4000-8000-000000000002/accept"],
+    ["POST", "/api/social/projects/00000000-0000-4000-8000-000000000101/access-requests/00000000-0000-4000-8000-000000000002/reject"],
+    ["DELETE", "/api/social/projects/00000000-0000-4000-8000-000000000101/access-requests/00000000-0000-4000-8000-000000000002"],
+  ])("keeps retired project-social endpoint %s %s at router-level 404", async (method, path) => {
+    const response = await handleApiRequest(new Request(
+      `https://test.buildy.example${path}`,
+      { method },
+    ));
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "NOT_FOUND" },
     });
   });
 });

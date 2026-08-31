@@ -6,19 +6,23 @@
     },
     {
       "path": "./tsconfig.node.json"
+    },
+    {
+      "path": "./tsconfig.setup.json"
     }
   ],
   "compilerOptions": {
+    "target": "ES2022",
     "paths": {
       "@/*": [
         "./src/*"
       ]
     },
-    "noImplicitAny": false,
+    "noImplicitAny": true,
     "noUnusedParameters": false,
     "skipLibCheck": true,
     "allowJs": true,
     "noUnusedLocals": false,
-    "strictNullChecks": false
+    "strictNullChecks": true
   }
 }

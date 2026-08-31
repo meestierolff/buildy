@@ -3,6 +3,8 @@ import { apiSuccessSchema } from "./api.js";
 
 export const mediaRoutes = {
   uploadIntents: "/api/media/upload-intents",
+  blobUpload: "/api/media/:assetId/blob-upload",
+  blobUploadCompleted: "/api/media/blob-upload-completed",
   completeUpload: "/api/media/:assetId/complete",
   display: "/api/media/:assetId",
   originalGrant: "/api/media/:assetId/original-grant",
@@ -54,10 +56,14 @@ export const mediaAssetStateSchema = z.object({
 });
 
 export const mediaUploadGrantSchema = z.object({
-  method: z.literal("PUT"),
-  url: z.string().url(),
-  expiresAt: z.string().datetime(),
-  requiredHeaders: z.record(z.string()),
+  provider: z.literal("vercel_blob"),
+  method: z.literal("POST"),
+  pathname: z.string().regex(
+    /^temporary\/[0-9a-f]{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  ),
+  handleUploadPath: z.string().regex(
+    /^\/api\/media\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/blob-upload$/,
+  ),
   exactSizeBytes: z.number().int().positive(),
 });
 

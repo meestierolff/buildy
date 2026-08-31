@@ -6,12 +6,16 @@ export const PRODUCT_ROUTES = {
   discover: "/ontdekken",
   connections: "/connecties",
   notifications: "/notificaties",
+  orders: "/bestellingen",
   account: "/account",
   feedback: "/feedback",
+  share: "/delen",
+  ownProfile: "/profiel",
   newProject: "/project/nieuw",
   project: (projectId: string) => `/project/${encodeURIComponent(projectId)}`,
   projectBudget: (projectId: string) => `/project/${encodeURIComponent(projectId)}/budget`,
   projectPhotobook: (projectId: string) => `/project/${encodeURIComponent(projectId)}/bouwboek`,
+  order: (orderId: string) => `/bestellingen/${encodeURIComponent(orderId)}`,
   projectUpdateComposer: (projectId: string) => `/project/${encodeURIComponent(projectId)}?update=nieuw`,
   projectUpdate: (projectId: string, updateId: string) => {
     const query = new URLSearchParams({ update: updateId });
@@ -21,15 +25,10 @@ export const PRODUCT_ROUTES = {
 } as const;
 
 export type ProductNavigationIcon =
-  | "projects"
-  | "following"
+  | "story"
+  | "book"
   | "add"
-  | "discover"
-  | "profile"
-  | "connections"
-  | "notifications"
-  | "account"
-  | "feedback";
+  | "profile";
 
 export interface ProductNavigationItem {
   id: string;
@@ -43,89 +42,55 @@ export interface ProductNavigationItem {
 
 export const MOBILE_NAVIGATION_ITEMS: readonly ProductNavigationItem[] = [
   {
-    id: "projects",
-    label: "Mijn projecten",
-    href: PRODUCT_ROUTES.projects,
-    icon: "projects",
-    requiresAuth: true,
-  },
-  {
-    id: "following",
-    label: "Volgend",
-    href: PRODUCT_ROUTES.following,
-    icon: "following",
+    id: "story",
+    label: "Verhaal",
+    href: PRODUCT_ROUTES.newProject,
+    icon: "story",
+    exact: true,
     requiresAuth: true,
   },
   {
     id: "update",
-    label: "Update",
-    href: PRODUCT_ROUTES.createUpdate,
+    label: "Toevoegen",
+    href: PRODUCT_ROUTES.newProject,
     icon: "add",
     primaryAction: true,
     requiresAuth: true,
   },
   {
-    id: "discover",
-    label: "Ontdekken",
-    href: PRODUCT_ROUTES.discover,
-    icon: "discover",
+    id: "photobook",
+    label: "Bouwboek",
+    href: PRODUCT_ROUTES.newProject,
+    icon: "book",
+    exact: true,
+    requiresAuth: true,
   },
   {
     id: "profile",
     label: "Profiel",
-    href: PRODUCT_ROUTES.account,
+    href: PRODUCT_ROUTES.ownProfile,
     icon: "profile",
-    requiresAuth: true,
-  },
-];
-
-export const PRIMARY_NAVIGATION_ITEMS: readonly ProductNavigationItem[] = [
-  MOBILE_NAVIGATION_ITEMS[0],
-  MOBILE_NAVIGATION_ITEMS[1],
-  MOBILE_NAVIGATION_ITEMS[3],
-  {
-    id: "connections",
-    label: "Connecties",
-    href: PRODUCT_ROUTES.connections,
-    icon: "connections",
-    requiresAuth: true,
-  },
-];
-
-export const ACCOUNT_NAVIGATION_ITEMS: readonly ProductNavigationItem[] = [
-  {
-    id: "notifications",
-    label: "Notificaties",
-    href: PRODUCT_ROUTES.notifications,
-    icon: "notifications",
-    requiresAuth: true,
-  },
-  {
-    id: "account",
-    label: "Account en privacy",
-    href: PRODUCT_ROUTES.account,
-    icon: "account",
-    requiresAuth: true,
-  },
-  {
-    id: "feedback",
-    label: "Feedback",
-    href: PRODUCT_ROUTES.feedback,
-    icon: "feedback",
+    exact: true,
     requiresAuth: true,
   },
 ];
 
 interface MobileNavigationOverrides {
+  storyHref?: string;
+  photobookHref?: string;
   profileHref?: string;
   updateHref?: string;
 }
 
 export const getMobileNavigationItems = ({
-  profileHref = PRODUCT_ROUTES.account,
-  updateHref = PRODUCT_ROUTES.createUpdate,
+  storyHref = PRODUCT_ROUTES.newProject,
+  photobookHref = PRODUCT_ROUTES.newProject,
+  profileHref = PRODUCT_ROUTES.ownProfile,
+  updateHref = PRODUCT_ROUTES.newProject,
 }: MobileNavigationOverrides = {}): readonly ProductNavigationItem[] =>
   MOBILE_NAVIGATION_ITEMS.map((item) => {
+    if (item.id === "story") return { ...item, href: storyHref };
+    if (item.id === "photobook") return { ...item, href: photobookHref };
     if (item.id === "profile") return { ...item, href: profileHref };
     if (item.id === "update") return { ...item, href: updateHref };
     return item;

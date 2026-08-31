@@ -17,6 +17,7 @@ import {
 import { appUsers } from "./auth.js";
 import {
   fulfilmentStatusEnum,
+  manualFulfilmentStatusEnum,
   optimisticVersion,
   paymentStatusEnum,
   photobookDraftStatusEnum,
@@ -225,6 +226,9 @@ export const photobookOrders = pgTable(
     status: photobookOrderStatusEnum("status").default("draft").notNull(),
     paymentStatus: paymentStatusEnum("payment_status").default("unpaid").notNull(),
     fulfilmentStatus: fulfilmentStatusEnum("fulfilment_status").default("unclaimed").notNull(),
+    manualFulfilmentStatus: manualFulfilmentStatusEnum("manual_fulfilment_status")
+      .default("awaiting_review")
+      .notNull(),
     currency: text("currency").notNull(),
     quantity: integer("quantity").default(1).notNull(),
     subtotalMinor: integer("subtotal_minor").notNull(),
@@ -254,6 +258,19 @@ export const photobookOrders = pgTable(
     deliveryEstimate: text("delivery_estimate"),
     trackingCode: text("tracking_code"),
     trackingUrl: text("tracking_url"),
+    manualProviderReference: text("manual_provider_reference"),
+    manualTrackingUrl: text("manual_tracking_url"),
+    fulfilmentNotesCiphertext: text("fulfilment_notes_ciphertext"),
+    manualFulfilmentUpdatedAt: timestamp("manual_fulfilment_updated_at", { withTimezone: true }),
+    manualFulfilmentActorId: uuid("manual_fulfilment_actor_id").references(() => appUsers.id, {
+      onDelete: "set null",
+    }),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    orderedManuallyAt: timestamp("ordered_manually_at", { withTimezone: true }),
+    inProductionAt: timestamp("in_production_at", { withTimezone: true }),
+    shippedAt: timestamp("shipped_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    refundReviewAt: timestamp("refund_review_at", { withTimezone: true }),
     fulfilmentLeaseOwner: text("fulfilment_lease_owner"),
     fulfilmentLeaseExpiresAt: timestamp("fulfilment_lease_expires_at", { withTimezone: true }),
     retryCount: integer("retry_count").default(0).notNull(),
@@ -278,16 +295,18 @@ export const photobookOrders = pgTable(
     uniqueIndex("photobook_orders_order_number_uq").on(table.orderNumber),
     uniqueIndex("photobook_orders_merchant_reference_uq").on(table.merchantReference),
     uniqueIndex("photobook_orders_idempotency_uq").on(table.idempotencyKey),
-    uniqueIndex("photobook_orders_proof_revision_uq").on(table.proofRevisionId),
+    uniqueIndex("photobook_orders_active_proof_revision_uq")
+      .on(table.proofRevisionId)
+      .where(sql`${table.status} NOT IN ('payment_failed', 'expired', 'cancelled', 'manual_review')`),
     uniqueIndex("photobook_orders_stripe_session_uq").on(table.stripeCheckoutSessionId),
     uniqueIndex("photobook_orders_stripe_intent_uq").on(table.stripePaymentIntentId),
     uniqueIndex("photobook_orders_stripe_charge_uq").on(table.stripeChargeId),
     uniqueIndex("photobook_orders_peecho_order_uq").on(table.peechoOrderId),
     index("photobook_orders_owner_created_idx").on(table.ownerId, table.createdAt),
     index("photobook_orders_fulfilment_queue_idx").on(table.fulfilmentStatus, table.nextRetryAt),
-    index("photobook_orders_peecho_paid_queue_idx")
-      .on(table.nextRetryAt, table.fulfilmentLeaseExpiresAt, table.createdAt)
-      .where(sql`${table.status} = 'paid' AND ${table.paymentStatus} = 'paid' AND ${table.fulfilmentStatus} IN ('unclaimed', 'claimed', 'peecho_order_created', 'peecho_payment_pending', 'retry_scheduled') AND ${table.fulfilmentDeadLetteredAt} IS NULL`),
+    index("photobook_orders_manual_queue_idx")
+      .on(table.manualFulfilmentStatus, table.paidAt, table.id)
+      .where(sql`${table.paymentStatus} IN ('paid', 'partially_refunded', 'refunded')`),
     check("photobook_orders_number_ck", sql`${table.orderNumber} ~ '^BLD-[A-Z0-9-]{8,40}$'`),
     check("photobook_orders_reference_ck", sql`char_length(${table.merchantReference}) BETWEEN 8 AND 100`),
     check("photobook_orders_currency_country_ck", sql`${table.currency} ~ '^[A-Z]{3}$' AND ${table.shippingCountry} ~ '^[A-Z]{2}$'`),
@@ -304,6 +323,10 @@ export const photobookOrders = pgTable(
     check("photobook_orders_peecho_payment_ck", sql`${table.peechoPaymentStartedAt} IS NULL OR ${table.peechoOrderId} IS NOT NULL`),
     check("photobook_orders_peecho_submission_ck", sql`${table.peechoSubmittedAt} IS NULL OR ${table.peechoOrderId} IS NOT NULL`),
     check("photobook_orders_tracking_code_ck", sql`${table.trackingCode} IS NULL OR char_length(${table.trackingCode}) BETWEEN 1 AND 500`),
+    check("photobook_orders_manual_provider_reference_ck", sql`${table.manualProviderReference} IS NULL OR char_length(btrim(${table.manualProviderReference})) BETWEEN 1 AND 200`),
+    check("photobook_orders_manual_tracking_url_ck", sql`${table.manualTrackingUrl} IS NULL OR ${table.manualTrackingUrl} ~ '^https://[^[:space:]]{1,1900}$'`),
+    check("photobook_orders_fulfilment_notes_ciphertext_ck", sql`${table.fulfilmentNotesCiphertext} IS NULL OR (${table.fulfilmentNotesCiphertext} LIKE 'v1.%' AND char_length(${table.fulfilmentNotesCiphertext}) <= 16000)`),
+    check("photobook_orders_manual_fulfilment_time_ck", sql`${table.manualFulfilmentUpdatedAt} IS NOT NULL OR ${table.manualFulfilmentStatus} = 'awaiting_review'`),
     check("photobook_orders_fulfilment_dead_letter_ck", sql`${table.fulfilmentDeadLetteredAt} IS NULL OR (${table.fulfilmentStatus} = 'manual_review' AND ${table.status} = 'manual_review')`),
     check(
       "photobook_orders_refund_amount_ck",

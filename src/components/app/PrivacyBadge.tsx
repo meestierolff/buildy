@@ -16,7 +16,7 @@ interface PrivacyBadgeConfig {
 const PRIVACY_BADGE_CONFIG: Record<PrivacyBadgeLevel, PrivacyBadgeConfig> = {
   private: {
     label: "Privé",
-    description: "Alleen zichtbaar voor jou en mensen met toegang",
+    description: "Alleen zichtbaar voor jou",
     icon: LockKeyhole,
     className: "border-foreground/[0.15] bg-secondary text-secondary-foreground",
   },
@@ -28,7 +28,7 @@ const PRIVACY_BADGE_CONFIG: Record<PrivacyBadgeLevel, PrivacyBadgeConfig> = {
   },
   shared: {
     label: "Gedeeld",
-    description: "Zichtbaar voor mensen met toegang",
+    description: "Zichtbaar voor het gekozen publiek",
     icon: Users,
     className: "border-blue-300/60 bg-blue-50 text-blue-950 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-100",
   },

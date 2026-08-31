@@ -115,7 +115,7 @@ const Profile = () => {
         toast.success("Volgverzoek verstuurd");
         return;
       }
-      if (result.state === "following" || result.state === "accepted") {
+      if (result.state === "following") {
         setRestrictedFollowState("following");
         toast.success("Toegang verleend");
         await profileQuery.refetch();
@@ -224,7 +224,7 @@ const Profile = () => {
               Opnieuw proberen
             </Button>
           )}
-          <Link to={PRODUCT_ROUTES.connections} className="block text-xs text-muted-foreground underline">Terug naar connecties</Link>
+          <Link to={PRODUCT_ROUTES.landing} className="block text-xs text-muted-foreground underline">Terug naar Buildy</Link>
         </section>
       </main>
     );
@@ -235,6 +235,50 @@ const Profile = () => {
       <main className="flex items-center justify-center min-h-[60vh]" role="status">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true" />
         <span className="sr-only">Profiel laden…</span>
+      </main>
+    );
+  }
+
+  if (blockState === "blocked") {
+    return (
+      <main className="container flex min-h-[60vh] items-center justify-center py-20">
+        <section className="w-full max-w-md space-y-5 rounded-xl border bg-card p-8 text-center shadow-sm" aria-labelledby="blocked-profile-title">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <Ban className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+          </div>
+          <div className="space-y-2">
+            <h1 id="blocked-profile-title" className="text-xl font-serif font-semibold">Bouwer geblokkeerd</h1>
+            <p className="text-sm leading-6 text-muted-foreground">
+              Profielgegevens en verbouwingen zijn verborgen. Deblokkeren herstelt geen oude volgrelatie.
+            </p>
+          </div>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button type="button" variant="outline" className="w-full" disabled={blockMutation.isPending}>
+                {blockMutation.isPending
+                  ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  : <Ban className="h-4 w-4" aria-hidden="true" />}
+                Deblokkeren
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Deze bouwer deblokkeren?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Jullie kunnen elkaars openbare profiel en verbouwingen daarna weer zien. Volgrelaties worden niet automatisch hersteld.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Annuleren</AlertDialogCancel>
+                <AlertDialogAction disabled={blockMutation.isPending} onClick={() => void toggleBlock()}>
+                  Deblokkeren
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          {blockError ? <p className="text-sm text-destructive" role="alert">{blockError}</p> : null}
+          <Link to={PRODUCT_ROUTES.landing} className="block text-xs text-muted-foreground underline">Terug naar Buildy</Link>
+        </section>
       </main>
     );
   }
@@ -285,33 +329,27 @@ const Profile = () => {
                   <LogOut className="h-3.5 w-3.5" aria-hidden="true" /> Uitloggen
                 </Button>
               ) : user ? (
-                blockState === "blocked" ? (
-                  <span className="inline-flex min-h-9 items-center gap-1.5 rounded-full border px-4 text-sm text-muted-foreground" role="status">
-                    <Ban className="h-3.5 w-3.5" aria-hidden="true" /> Geblokkeerd
-                  </span>
-                ) : (
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={toggleFollow}
-                    disabled={followMutation.isPending}
-                    aria-pressed={isFollowing}
-                    className={`rounded-full px-5 text-[11px] font-bold uppercase tracking-widest gap-1.5 ${
-                      isFollowing || isPending
-                        ? "bg-foreground text-background hover:bg-foreground/90"
-                        : "bg-accent text-accent-foreground hover:bg-accent/90"
-                    }`}
-                  >
-                    {followMutation.isPending ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-                    ) : isFollowing || isPending ? (
-                      <UserCheck className="h-3.5 w-3.5" aria-hidden="true" />
-                    ) : (
-                      <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
-                    )}
-                    {isFollowing ? "Volgend" : isPending ? "Verzoek intrekken" : "Volgen"}
-                  </Button>
-                )
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={toggleFollow}
+                  disabled={followMutation.isPending}
+                  aria-pressed={isFollowing}
+                  className={`rounded-full px-5 text-[11px] font-bold uppercase tracking-widest gap-1.5 ${
+                    isFollowing || isPending
+                      ? "bg-foreground text-background hover:bg-foreground/90"
+                      : "bg-accent text-accent-foreground hover:bg-accent/90"
+                  }`}
+                >
+                  {followMutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                  ) : isFollowing || isPending ? (
+                    <UserCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                  ) : (
+                    <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
+                  )}
+                  {isFollowing ? "Volgend" : isPending ? "Verzoek intrekken" : "Volgen"}
+                </Button>
               ) : (
                 <Button asChild size="sm" className="rounded-full px-5 gap-1.5">
                   <Link to={authPagePath(PRODUCT_ROUTES.profile(profile.slug))}>
@@ -340,28 +378,26 @@ const Profile = () => {
                       {blockMutation.isPending
                         ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
                         : <Ban className="h-3.5 w-3.5" aria-hidden="true" />}
-                      {blockState === "blocked" ? "Deblokkeren" : "Blokkeren"}
+                      Blokkeren
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
                       <AlertDialogTitle>
-                        {blockState === "blocked" ? "Deze bouwer deblokkeren?" : "Deze bouwer blokkeren?"}
+                        Deze bouwer blokkeren?
                       </AlertDialogTitle>
                       <AlertDialogDescription>
-                        {blockState === "blocked"
-                          ? "Na deblokkeren kunnen jullie elkaars openbare profiel en projecten weer zien. Volgrelaties worden niet automatisch hersteld."
-                          : "Jullie zien elkaars profiel en projecten niet meer. Bestaande volgrelaties en projecttoegang worden ingetrokken."}
+                        Jullie zien elkaars profiel en verbouwingen niet meer. Bestaande volgrelaties worden ingetrokken.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Annuleren</AlertDialogCancel>
                       <AlertDialogAction
-                        className={blockState === "blocked" ? "" : "bg-destructive text-destructive-foreground hover:bg-destructive/90"}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                         disabled={blockMutation.isPending}
                         onClick={() => void toggleBlock()}
                       >
-                        {blockState === "blocked" ? "Deblokkeren" : "Blokkeren"}
+                        Blokkeren
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
@@ -377,7 +413,7 @@ const Profile = () => {
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
             Projecten, updates en uitgebreide statistieken worden alleen getoond via hun eigen afgeschermde API’s. Op dit profiel staan daarom uitsluitend de veilig vrijgegeven profielgegevens.
           </p>
-          <Link to={PRODUCT_ROUTES.connections} className="inline-block mt-5 text-sm underline underline-offset-4">Meer bouwers ontdekken</Link>
+          <Link to={PRODUCT_ROUTES.landing} className="inline-block mt-5 text-sm underline underline-offset-4">Terug naar Buildy</Link>
         </section>
       </div>
     </main>

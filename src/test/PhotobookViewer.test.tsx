@@ -55,7 +55,7 @@ const Harness = () => {
 describe("PhotobookViewer", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("rendert uitsluitend persisted lines en toegankelijke paginanavigatie", () => {
+  it("rendert uitsluitend persisted lines en eenvoudige paginanavigatie", () => {
     render(<Harness />);
 
     expect(screen.getAllByText("Vastgelegde regel één")).not.toHaveLength(0);
@@ -63,24 +63,25 @@ describe("PhotobookViewer", () => {
     expect(screen.queryByText("Deze tekst mag de browser niet zelf omlopen")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Vorige pagina" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Volgende pagina" })).toBeEnabled();
-    expect(screen.getByLabelText("Zoomniveau van het Bouwboek")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Bouwboekweergave" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Zoomniveau van het Bouwboek")).not.toBeInTheDocument();
   });
 
   it("bladert mobiel met knop en toetsenbord één pagina per keer", () => {
     render(<Harness />);
-    const viewer = screen.getByRole("region", { name: "Bouwboek printweergave" });
+    const viewer = screen.getByRole("region", { name: "Bouwboekweergave" });
 
     fireEvent.click(screen.getByRole("button", { name: "Volgende pagina" }));
-    expect(screen.getByText("Pagina 2 van 24")).toBeInTheDocument();
+    expect(screen.getByText("Verhaal · 2 van 24")).toBeInTheDocument();
     fireEvent.keyDown(viewer, { key: "End" });
-    expect(screen.getByText("Pagina 24 van 24")).toBeInTheDocument();
+    expect(screen.getByText("Verhaal · 24 van 24")).toBeInTheDocument();
     fireEvent.keyDown(viewer, { key: "Home" });
-    expect(screen.getByText("Pagina 1 van 24")).toBeInTheDocument();
-    const pageViewport = viewer.querySelector(".overflow-auto");
+    expect(screen.getByText("Cover · 1 van 24")).toBeInTheDocument();
+    const pageViewport = viewer.querySelector(".overflow-hidden.rounded-lg");
     expect(pageViewport).not.toBeNull();
     fireEvent.touchStart(pageViewport!, { touches: [{ clientX: 300 }] });
     fireEvent.touchEnd(pageViewport!, { changedTouches: [{ clientX: 220 }] });
-    expect(screen.getByText("Pagina 2 van 24")).toBeInTheDocument();
+    expect(screen.getByText("Verhaal · 2 van 24")).toBeInTheDocument();
   });
 
   it("toont de cover los en daarna echte gebonden spreads op desktop", () => {
@@ -96,10 +97,10 @@ describe("PhotobookViewer", () => {
     }));
     render(<Harness />);
 
-    expect(screen.getByText("Pagina 1 van 24")).toBeInTheDocument();
+    expect(screen.getByText("Cover · 1 van 24")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Volgende pagina" }));
-    expect(screen.getByText("Pagina's 2–3 van 24")).toBeInTheDocument();
+    expect(screen.getByText("2–3 van 24")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Vorige pagina" }));
-    expect(screen.getByText("Pagina 1 van 24")).toBeInTheDocument();
+    expect(screen.getByText("Cover · 1 van 24")).toBeInTheDocument();
   });
 });

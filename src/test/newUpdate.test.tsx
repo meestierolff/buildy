@@ -71,7 +71,7 @@ describe("central update action", () => {
     vi.mocked(useAuth).mockReturnValue(auth(true));
     render(<BrowserRouter><NewUpdate /></BrowserRouter>);
 
-    expect(screen.getByRole("link", { name: /nieuwe update toevoegen aan jaren-dertig huis/i }))
+    expect(screen.getByRole("link", { name: /nieuw Bouwmoment toevoegen aan jaren-dertig huis/i }))
       .toHaveAttribute("href", `/project/${PROJECT_ID}?update=nieuw`);
   });
 

@@ -17,7 +17,7 @@ const NotFound = () => {
         <h1 className="mb-4 font-serif italic text-4xl md:text-5xl">Pagina niet gevonden.</h1>
         <p className="mb-8 text-sm text-muted-foreground">Deze pagina bestaat niet of is verplaatst.</p>
         <Link to="/" className="text-[11px] font-bold uppercase tracking-widest underline underline-offset-4 hover:text-accent">
-          Terug naar ontdekken
+          Terug naar Buildy
         </Link>
       </div>
     </div>

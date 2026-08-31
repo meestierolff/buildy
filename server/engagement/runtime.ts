@@ -13,7 +13,7 @@ type EngagementHandler = (
 
 let defaultHandler: EngagementHandler | undefined;
 
-/** Compose only after a trusted Better Auth session-to-app-user mapper exists. */
+/** Compose only after a trusted session-to-app-user mapper exists. */
 export function configureDefaultEngagementRuntime(
   dependencies: EngagementHttpDependencies,
 ): void {

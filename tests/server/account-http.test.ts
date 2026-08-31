@@ -46,8 +46,16 @@ function service(): AccountHttpService {
     }),
     exports: vi.fn().mockResolvedValue([accountExport]),
     createExport: vi.fn().mockResolvedValue({ export: accountExport, replayed: false }),
-    downloadExport: vi.fn().mockResolvedValue({
-      bytes: Uint8Array.from([0x50, 0x4b, 0x03, 0x04]),
+    downloadExport: vi.fn().mockImplementation(async (_actor, _job, range, headOnly) => ({
+      body: headOnly ? null : new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(range ? Uint8Array.from([0x4b, 0x03]) : Uint8Array.from([0x50, 0x4b, 0x03, 0x04]));
+          controller.close();
+        },
+      }),
+      status: range ? 206 : 200,
+      contentLength: range ? 2 : 4,
+      range: range ? { start: 1, end: 2 } : undefined,
       filename: "buildy-data-export-33333333.zip",
       object: {
         jobId: JOB_ID,
@@ -56,7 +64,7 @@ function service(): AccountHttpService {
         sha256: "a".repeat(64),
         manifestSha256: "b".repeat(64),
       },
-    }),
+    })),
     requestDeletion: vi.fn().mockResolvedValue({
       jobId: JOB_ID,
       status: "deletion_pending",
@@ -126,6 +134,11 @@ describe("account HTTP boundary", () => {
     expect(head.headers.get("content-length")).toBe("4");
     expect(await head.text()).toBe("");
     expect(vi.mocked(account.downloadExport)).toHaveBeenCalledTimes(2);
+
+    const partial = await handler(new Request(path, { headers: { range: "bytes=1-2" } }), REQUEST_ID);
+    expect(partial.status).toBe(206);
+    expect(partial.headers.get("content-range")).toBe("bytes 1-2/4");
+    expect(new Uint8Array(await partial.arrayBuffer())).toEqual(Uint8Array.from([0x4b, 0x03]));
   });
 
   it("vertaalt een persisted active-order blokkade naar een geldige getypeerde HTTP-fout", async () => {
@@ -190,9 +203,11 @@ describe("account HTTP boundary", () => {
 describe("account lifecycle cron boundary", () => {
   it("weigert een ontbrekend of onjuist bearer secret zonder een job te claimen", async () => {
     const processNext = vi.fn().mockResolvedValue({ status: "idle" });
+    const cleanupOrphans = vi.fn();
     const runtime = {
       cronSecret: "a-production-length-cron-secret-value",
       worker: { processNext },
+      orphanCleanup: { cleanupOrphans },
     } as unknown as AccountWorkerRuntime;
     const handler = createAccountCronHandler(() => runtime);
 
@@ -205,19 +220,26 @@ describe("account lifecycle cron boundary", () => {
       { headers: { authorization: "Bearer incorrect" } },
     ), REQUEST_ID)).rejects.toMatchObject({ code: "UNAUTHENTICATED", status: 401 });
     expect(processNext).not.toHaveBeenCalled();
+    expect(cleanupOrphans).not.toHaveBeenCalled();
   });
 
-  it("claimt exact één begrensde lifecyclejob na constante-tijd secretcontrole", async () => {
-    const processNext = vi.fn().mockResolvedValue({
-      status: "export_ready",
-      jobId: JOB_ID,
-      archiveSha256: "a".repeat(64),
-    });
+  it("verwerkt een begrensde batch tot de queue idle is na constante-tijd secretcontrole", async () => {
+    const processNext = vi.fn()
+      .mockResolvedValueOnce({
+        status: "export_ready",
+        jobId: JOB_ID,
+        archiveSha256: "a".repeat(64),
+      })
+      .mockResolvedValueOnce({
+        status: "deletion_completed",
+        jobId: "55555555-5555-4555-8555-555555555555",
+      })
+      .mockResolvedValue({ status: "idle" });
     const runtime = {
       cronSecret: "a-production-length-cron-secret-value",
       worker: { processNext },
     } as unknown as AccountWorkerRuntime;
-    const handler = createAccountCronHandler(() => runtime);
+    const handler = createAccountCronHandler(() => runtime, { maximumAccountClaims: 5 });
 
     const response = await handler(new Request(
       "https://app.buildy.test/api/internal/cron/account-lifecycle",
@@ -225,10 +247,129 @@ describe("account lifecycle cron boundary", () => {
     ), REQUEST_ID);
 
     expect(response.status).toBe(200);
-    expect(processNext).toHaveBeenCalledOnce();
+    expect(processNext).toHaveBeenCalledTimes(3);
     await expect(response.json()).resolves.toMatchObject({
-      data: { status: "export_ready", jobId: JOB_ID },
+      data: {
+        status: "completed",
+        account: {
+          claims: 3,
+          processed: 2,
+          limitedBy: "idle",
+          outcomes: { export_ready: 1, deletion_completed: 1 },
+          deadLetters: [],
+        },
+        media: { status: "unconfigured" },
+      },
       meta: { requestId: REQUEST_ID },
+    });
+  });
+
+  it("stopt strikt op de claimgrens en rapporteert achterblijvend werk", async () => {
+    const processNext = vi.fn().mockResolvedValue({
+      status: "export_expired",
+      jobId: JOB_ID,
+    });
+    const runtime = {
+      cronSecret: "a-production-length-cron-secret-value",
+      worker: { processNext },
+    } as unknown as AccountWorkerRuntime;
+    const handler = createAccountCronHandler(() => runtime, { maximumAccountClaims: 3 });
+
+    const response = await handler(new Request(
+      "https://app.buildy.test/api/internal/cron/account-lifecycle",
+      { headers: { authorization: `Bearer ${runtime.cronSecret}` } },
+    ), REQUEST_ID);
+    const body = await response.json();
+
+    expect(processNext).toHaveBeenCalledTimes(3);
+    expect(body.data).toMatchObject({
+      status: "partial",
+      account: {
+        claims: 3,
+        processed: 3,
+        limitedBy: "count",
+        outcomes: { export_expired: 3 },
+      },
+    });
+  });
+
+  it("reserveert Vercel-headroom, stopt tussen claims op tijd en voert media niet te laat uit", async () => {
+    let timestamp = 1_000;
+    const processNext = vi.fn().mockImplementation(async () => {
+      timestamp += 30;
+      return { status: "export_expired", jobId: JOB_ID };
+    });
+    const cleanupOrphans = vi.fn();
+    const runtime = {
+      cronSecret: "a-production-length-cron-secret-value",
+      worker: { processNext },
+      orphanCleanup: { cleanupOrphans },
+    } as unknown as AccountWorkerRuntime;
+    const handler = createAccountCronHandler(() => runtime, {
+      maximumAccountClaims: 20,
+      accountTimeBudgetMs: 50,
+      totalTimeBudgetMs: 50,
+      now: () => timestamp,
+    });
+
+    const response = await handler(new Request(
+      "https://app.buildy.test/api/internal/cron/account-lifecycle",
+      { headers: { authorization: `Bearer ${runtime.cronSecret}` } },
+    ), REQUEST_ID);
+    const body = await response.json();
+
+    expect(processNext).toHaveBeenCalledTimes(2);
+    expect(cleanupOrphans).not.toHaveBeenCalled();
+    expect(body.data).toMatchObject({
+      status: "partial",
+      elapsedMs: 60,
+      account: { limitedBy: "time", processed: 2 },
+      media: { status: "partial", result: { limitedBy: "time" } },
+    });
+  });
+
+  it("vouwt hervatbare orphan-cleanup in dezelfde geautoriseerde dagrun", async () => {
+    const processNext = vi.fn().mockResolvedValue({ status: "idle" });
+    const cleanupOrphans = vi.fn().mockResolvedValue({
+      inspected: 7,
+      pages: 3,
+      deleteAttempts: 2,
+      deleted: 2,
+      deleteFailures: 0,
+      checkpointsClaimed: 3,
+      checkpointsCompleted: 3,
+      limitedBy: "page_limit",
+      failures: [],
+    });
+    const runtime = {
+      cronSecret: "a-production-length-cron-secret-value",
+      worker: { processNext },
+      orphanCleanup: { cleanupOrphans },
+    } as unknown as AccountWorkerRuntime;
+    const handler = createAccountCronHandler(() => runtime, {
+      mediaPagesPerPrefix: 2,
+      mediaDeleteAttempts: 9,
+    });
+
+    const response = await handler(new Request(
+      "https://app.buildy.test/api/internal/cron/account-lifecycle",
+      { headers: { authorization: `Bearer ${runtime.cronSecret}` } },
+    ), REQUEST_ID);
+
+    expect(cleanupOrphans).toHaveBeenCalledWith({
+      maximumPagesPerPrefix: 2,
+      maximumDeleteAttempts: 9,
+      shouldContinue: expect.any(Function),
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        status: "partial",
+        account: { limitedBy: "idle" },
+        media: {
+          status: "partial",
+          result: { inspected: 7, deleted: 2, limitedBy: "page_limit" },
+        },
+      },
     });
   });
 
@@ -237,20 +378,30 @@ describe("account lifecycle cron boundary", () => {
     const runtime = {
       cronSecret: "a-production-length-cron-secret-value",
       worker: {
-        processNext: vi.fn().mockResolvedValue({
-          status: "dead_letter",
-          jobId: JOB_ID,
-          operation: "deletion",
-        }),
+        processNext: vi.fn()
+          .mockResolvedValueOnce({
+            status: "dead_letter",
+            jobId: JOB_ID,
+            operation: "deletion",
+          })
+          .mockResolvedValue({ status: "idle" }),
       },
     } as unknown as AccountWorkerRuntime;
     const handler = createAccountCronHandler(() => runtime);
 
     try {
-      await handler(new Request(
+      const response = await handler(new Request(
         "https://app.buildy.test/api/internal/cron/account-lifecycle",
         { headers: { authorization: `Bearer ${runtime.cronSecret}` } },
       ), REQUEST_ID);
+      await expect(response.json()).resolves.toMatchObject({
+        data: {
+          status: "completed_with_failures",
+          account: {
+            deadLetters: [{ jobId: JOB_ID, operation: "deletion" }],
+          },
+        },
+      });
       expect(errorLog).toHaveBeenCalledOnce();
       expect(JSON.parse(String(errorLog.mock.calls[0]?.[0]))).toMatchObject({
         level: "error",

@@ -23,6 +23,7 @@ function service(): OrderHttpService {
       checkoutUrl: "https://checkout.stripe.com/test",
     }),
     order: vi.fn().mockResolvedValue({ orderId: ORDER_ID }),
+    orders: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
   } as unknown as OrderHttpService;
 }
 
@@ -81,6 +82,36 @@ describe("order HTTP boundary", () => {
 
     expect(response.status).toBe(200);
     expect(orders.order).toHaveBeenCalledWith(ACTOR_ID, ORDER_ID);
+  });
+
+  it("lists only the authenticated actor's orders with typed paging input", async () => {
+    const orders = service();
+    const handler = createOrderHttpHandler({ actors, service: orders });
+
+    const response = await handler(
+      new Request("https://app.buildy.test/api/orders?limit=12&cursor=opaque-page"),
+      "request-orders",
+    );
+
+    expect(response.status).toBe(200);
+    expect(orders.orders).toHaveBeenCalledWith(ACTOR_ID, {
+      limit: "12",
+      cursor: "opaque-page",
+    });
+  });
+
+  it("does not expose the customer order list without an authenticated actor", async () => {
+    const orders = service();
+    const anonymousActors: ProjectActorResolver = {
+      resolve: vi.fn().mockResolvedValue({ kind: "anonymous" }),
+    };
+    const handler = createOrderHttpHandler({ actors: anonymousActors, service: orders });
+
+    await expect(handler(
+      new Request("https://app.buildy.test/api/orders"),
+      "request-anonymous-orders",
+    )).rejects.toMatchObject({ status: 401, code: "UNAUTHENTICATED" });
+    expect(orders.orders).not.toHaveBeenCalled();
   });
 
   it("requires JSON and rejects malformed identifiers before service access", async () => {

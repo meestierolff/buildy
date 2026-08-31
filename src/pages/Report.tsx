@@ -15,7 +15,7 @@ const Report = () => {
       <header className="max-w-2xl">
         <p className="eyebrow flex items-center gap-2"><Flag className="h-4 w-4" aria-hidden="true" /> Melden</p>
         <h1 className="mt-3 font-serif text-4xl">Meld het op de plek waar je het ziet</h1>
-        <p className="mt-4 leading-7 text-muted-foreground">Bij een profiel, project, update, foto of reactie staat een knop <em>Melden</em>. Daarmee kan de server eerst veilig controleren dat de inhoud voor jou zichtbaar is.</p>
+        <p className="mt-4 leading-7 text-muted-foreground">Bij een profiel, verbouwing, Bouwmoment, foto of reactie staat een knop <em>Melden</em>. Daarmee kan de server eerst veilig controleren dat de inhoud voor jou zichtbaar is.</p>
       </header>
       <section className="mt-9 border-l-2 border-accent bg-accent/5 p-5">
         <h2 className="font-semibold">Geen account of gaat de inhoud over jou?</h2>
@@ -28,4 +28,3 @@ const Report = () => {
 };
 
 export default Report;
-

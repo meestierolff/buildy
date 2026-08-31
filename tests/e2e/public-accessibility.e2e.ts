@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 
 import { BASE, expect, test } from "./helpers";
+import { fulfillJson, installSyntheticApi, success } from "./syntheticApi";
 
 const PUBLIC_ROUTES = [
   { label: "landing", path: "/" },
@@ -10,6 +11,16 @@ const PUBLIC_ROUTES = [
 
 for (const route of PUBLIC_ROUTES) {
   test(`${route.label} heeft geen ernstige toegankelijkheidsproblemen`, async ({ page }) => {
+    const fixture = await installSyntheticApi(page, {
+      authenticated: false,
+      handle: async ({ request, route: interceptedRoute, url }) => {
+        if (request.method() === "GET" && url.pathname === "/api/discovery") {
+          await fulfillJson(interceptedRoute, success({ items: [], nextCursor: null }));
+          return true;
+        }
+        return false;
+      },
+    });
     await page.goto(`${BASE}${route.path}`, { waitUntil: "domcontentloaded" });
     await expect(page.locator("#root")).toBeVisible();
 
@@ -24,5 +35,6 @@ for (const route of PUBLIC_ROUTES) {
       }));
 
     expect(blocking).toEqual([]);
+    expect(fixture.unhandled).toEqual([]);
   });
 }

@@ -7,7 +7,7 @@ import { Link, Navigate } from "@/lib/router";
 const Feedback = () => {
   usePageMeta({
     title: "Feedback — Buildy",
-    description: "Help de besloten Buildy-bèta verbeteren met privacybewuste productfeedback.",
+    description: "Help Buildy verbeteren met privacybewuste productfeedback.",
     path: "/feedback",
     noIndex: true,
   });
@@ -19,7 +19,7 @@ const Feedback = () => {
   return (
     <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6 md:px-8 md:py-16">
       <header className="border-b border-border pb-7">
-        <p className="eyebrow flex items-center gap-2"><MessageSquareText className="h-4 w-4" aria-hidden="true" /> Besloten bèta</p>
+        <p className="eyebrow flex items-center gap-2"><MessageSquareText className="h-4 w-4" aria-hidden="true" /> Productfeedback</p>
         <h1 className="mt-3 font-serif text-4xl">Help Buildy beter bouwen</h1>
         <p className="mt-4 max-w-2xl leading-7 text-muted-foreground">Vertel wat je probeerde en waar je vastliep. Feedback wordt versleuteld opgeslagen; zet geen persoonsgegevens in je bericht.</p>
       </header>
@@ -30,4 +30,3 @@ const Feedback = () => {
 };
 
 export default Feedback;
-

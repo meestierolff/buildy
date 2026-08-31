@@ -9,14 +9,9 @@ import {
 import {
   appUsers,
   profiles,
-  projectAccessRequests,
-  projectFollowers,
   userRelationships,
 } from "../../db/schema/index.js";
 import type {
-  ProjectAccessEntry,
-  ProjectAccessList,
-  ProjectSocialState,
   SocialMutationResult,
   SocialProfile,
 } from "../../shared/contracts/social.js";
@@ -25,6 +20,8 @@ import { SocialError } from "./errors.js";
 import type {
   ProfileListRecord,
   ProfileSearch,
+  ConnectionListRecord,
+  ConnectionListSearch,
   SocialActorId,
   SocialRepository,
   SocialViewerId,
@@ -49,8 +46,23 @@ type RawProfile = {
   location: string | null;
   slug: string;
   user_id: string;
-  viewer_access: "owner" | "public" | "follower";
+  viewer_access: "owner" | "public" | "follower" | "requestable";
   viewer_follow_status: "self" | "none" | "pending" | "following";
+};
+
+type RawConnection = {
+  avatar_content_type: string | null;
+  avatar_height: number | null;
+  avatar_id: string | null;
+  avatar_width: number | null;
+  display_name: string;
+  follows_viewer: boolean;
+  is_private: boolean;
+  relationship_at: Date | string;
+  slug: string;
+  total_count: number | string;
+  user_id: string;
+  viewer_follow_status: "none" | "pending" | "following";
 };
 
 type LockedProfile = {
@@ -58,34 +70,10 @@ type LockedProfile = {
   userId: string;
 };
 
-type LockedProject = {
-  id: string;
-  ownerId: string;
-  visibility: "private" | "public";
-};
-
 type RelationshipRecord = {
   id: string;
   status: "active" | "pending" | "rejected" | "revoked";
   version: number;
-};
-
-type AccessRecord = {
-  id: string;
-  status: "accepted" | "cancelled" | "pending" | "rejected" | "revoked";
-  version: number;
-};
-
-type RawProjectAccessEntry = {
-  requester_id: string;
-  display_name: string | null;
-  avatar_id: string | null;
-  avatar_content_type: string | null;
-  avatar_width: number | null;
-  avatar_height: number | null;
-  status: "pending" | "accepted";
-  requested_at: Date | string;
-  updated_at: Date | string;
 };
 
 export const SOCIAL_NOTIFICATION_OUTBOX_PAYLOAD = Object.freeze({ schemaVersion: 1 as const });
@@ -138,6 +126,29 @@ function mapProfile(row: RawProfile): ProfileListRecord {
 function withoutCursor(profile: ProfileListRecord): SocialProfile {
   const { cursorTimestamp: _cursorTimestamp, ...result } = profile;
   return result;
+}
+
+function mapConnection(row: RawConnection): ConnectionListRecord {
+  return {
+    avatar: row.avatar_id
+      ? {
+          contentType: row.avatar_content_type,
+          height: row.avatar_height === null ? null : Number(row.avatar_height),
+          id: row.avatar_id,
+          proxyPath: `/api/media/${row.avatar_id}`,
+          width: row.avatar_width === null ? null : Number(row.avatar_width),
+        }
+      : null,
+    cursorTimestamp: iso(row.relationship_at),
+    displayName: row.display_name,
+    followsViewer: row.follows_viewer,
+    id: row.user_id,
+    isPrivate: row.is_private,
+    relationshipAt: iso(row.relationship_at),
+    slug: row.slug,
+    totalCount: Number(row.total_count),
+    viewerFollowStatus: row.viewer_follow_status,
+  } satisfies ConnectionListRecord;
 }
 
 async function setActor(
@@ -284,7 +295,6 @@ async function appendNotification(
   transaction: DatabaseTransaction,
   input: {
     actorId: string;
-    projectId?: string;
     recipientId: string;
     type: string;
   },
@@ -293,7 +303,7 @@ async function appendNotification(
     select app_enqueue_social_notification(
       ${input.recipientId}::uuid,
       ${input.type}::text,
-      ${input.projectId ?? null}::uuid
+      null::uuid
     )
   `);
 }
@@ -323,161 +333,33 @@ async function profileRelationshipUpdate(
   return rows[0];
 }
 
-async function projectSnapshot(
+async function revokeLegacyProjectRelationships(
   transaction: DatabaseTransaction,
-  projectId: string,
-  lockProject = false,
-): Promise<LockedProject | null> {
-  const result = await transaction.execute(sql<{
-    owner_id: string;
-    project_id: string;
-    visibility: "private" | "public";
-  }>`
-    select project_id, owner_id, visibility
-    from app_social_project_context(${projectId}::uuid, ${lockProject}::boolean)
-  `);
-  const row = typedRows<{
-    owner_id: string;
-    project_id: string;
-    visibility: "private" | "public";
-  }>(result.rows)[0];
-  return row
-    ? { id: row.project_id, ownerId: row.owner_id, visibility: row.visibility }
-    : null;
-}
-
-async function lockedProjectContext(
-  transaction: DatabaseTransaction,
-  actorId: string,
-  projectId: string,
-): Promise<LockedProject> {
-  const snapshot = await projectSnapshot(transaction, projectId);
-  if (!snapshot) throw new SocialError("TARGET_NOT_FOUND");
-  if (snapshot.ownerId === actorId) throw new SocialError("SELF_ACTION");
-
-  await lockPair(transaction, actorId, snapshot.ownerId);
-  await lockActiveUsers(transaction, actorId, snapshot.ownerId);
-  const project = await projectSnapshot(transaction, projectId, true);
-  if (!project || project.ownerId !== snapshot.ownerId) {
-    throw new SocialError("TARGET_NOT_FOUND");
-  }
-  await assertNotBlocked(transaction, actorId, project.ownerId);
-  return project;
-}
-
-async function actorCanViewProject(
-  transaction: DatabaseTransaction,
-  actorId: string,
-  project: LockedProject,
-): Promise<boolean> {
-  if (project.visibility === "public") return true;
-  const rows = await transaction
-    .select({ id: projectAccessRequests.id })
-    .from(projectAccessRequests)
-    .where(
-      and(
-        eq(projectAccessRequests.projectId, project.id),
-        eq(projectAccessRequests.requesterId, actorId),
-        eq(projectAccessRequests.status, "accepted"),
-      ),
-    )
-    .limit(1);
-  return Boolean(rows[0]);
-}
-
-async function ownedProjectContext(
-  transaction: DatabaseTransaction,
-  ownerId: string,
-  projectId: string,
-  requesterId: string,
-): Promise<LockedProject> {
-  const snapshot = await projectSnapshot(transaction, projectId);
-  if (!snapshot || snapshot.ownerId !== ownerId) throw new SocialError("TARGET_NOT_FOUND");
-  await lockPair(transaction, ownerId, requesterId);
-  await lockActiveUsers(transaction, ownerId, requesterId);
-  const project = await projectSnapshot(transaction, projectId, true);
-  if (
-    !project ||
-    project.ownerId !== ownerId ||
-    project.visibility !== "private"
-  ) {
-    throw new SocialError("TARGET_NOT_FOUND");
-  }
-  await assertNotBlocked(transaction, ownerId, requesterId);
-  return project;
-}
-
-async function accessRecord(
-  transaction: DatabaseTransaction,
-  projectId: string,
-  requesterId: string,
-): Promise<AccessRecord | null> {
-  const rows = await transaction
-    .select({
-      id: projectAccessRequests.id,
-      status: projectAccessRequests.status,
-      version: projectAccessRequests.version,
-    })
-    .from(projectAccessRequests)
-    .where(
-      and(
-        eq(projectAccessRequests.projectId, projectId),
-        eq(projectAccessRequests.requesterId, requesterId),
-      ),
-    )
-    .limit(1)
-    .for("update");
-  return rows[0] ?? null;
-}
-
-async function accessUpdate(
-  transaction: DatabaseTransaction,
-  record: AccessRecord,
-  status: AccessRecord["status"],
-  decidedById: string | null,
-  now: Date,
-): Promise<AccessRecord> {
-  const rows = await transaction
-    .update(projectAccessRequests)
-    .set({
-      decidedAt: status === "pending" ? null : now,
-      decidedById,
-      revokedAt: status === "revoked" ? now : null,
-      status,
-      updatedAt: now,
-      version: sql`${projectAccessRequests.version} + 1`,
-    })
-    .where(
-      and(
-        eq(projectAccessRequests.id, record.id),
-        eq(projectAccessRequests.version, record.version),
-      ),
-    )
-    .returning({
-      id: projectAccessRequests.id,
-      status: projectAccessRequests.status,
-      version: projectAccessRequests.version,
-    });
-  if (!rows[0]) throw new SocialError("INVALID_TRANSITION");
-  return rows[0];
-}
-
-async function revokeProjectFollower(
-  transaction: DatabaseTransaction,
-  projectId: string,
   followerId: string,
+  ownerId: string,
+  decidedById: string,
   now: Date,
 ): Promise<void> {
-  await transaction
-    .update(projectFollowers)
-    .set({ status: "revoked", updatedAt: now })
-    .where(
-      and(
-        eq(projectFollowers.projectId, projectId),
-        eq(projectFollowers.followerId, followerId),
-        inArray(projectFollowers.status, ["active", "muted"]),
-      ),
-    );
+  await transaction.execute(sql`
+    update project_access_requests access
+    set
+      status = 'revoked',
+      decided_by_id = ${decidedById}::uuid,
+      decided_at = ${now},
+      revoked_at = ${now},
+      version = access.version + 1,
+      updated_at = ${now}
+    where access.status in ('pending', 'accepted')
+      and access.requester_id = ${followerId}::uuid
+      and access.project_owner_id = ${ownerId}::uuid
+  `);
+  await transaction.execute(sql`
+    update project_followers follower
+    set status = 'revoked', updated_at = ${now}
+    where follower.status in ('active', 'muted')
+      and follower.follower_id = ${followerId}::uuid
+      and follower.project_owner_id = ${ownerId}::uuid
+  `);
 }
 
 export class PostgresSocialRepository implements SocialRepository {
@@ -593,113 +475,22 @@ export class PostgresSocialRepository implements SocialRepository {
     });
   }
 
-  async getProjectState(
+  async listConnections(
     actorId: SocialActorId,
-    projectId: string,
-  ): Promise<ProjectSocialState | null> {
+    search: ConnectionListSearch,
+  ): Promise<ConnectionListRecord[]> {
     return this.database.transaction(async (transaction) => {
       await setActor(transaction, actorId);
-      const project = await projectSnapshot(transaction, projectId);
-      if (!project) return null;
-      if (project.ownerId === actorId) {
-        return {
-          projectId,
-          viewerRole: "owner",
-          followStatus: "none",
-          accessStatus: "owner",
-        };
-      }
-
-      const followRows = await transaction
-        .select({ status: projectFollowers.status })
-        .from(projectFollowers)
-        .where(and(
-          eq(projectFollowers.projectId, projectId),
-          eq(projectFollowers.followerId, actorId),
-          eq(projectFollowers.status, "active"),
-        ))
-        .limit(1);
-      const accessRows = await transaction
-        .select({ status: projectAccessRequests.status })
-        .from(projectAccessRequests)
-        .where(and(
-          eq(projectAccessRequests.projectId, projectId),
-          eq(projectAccessRequests.requesterId, actorId),
-          inArray(projectAccessRequests.status, ["pending", "accepted"]),
-        ))
-        .limit(1);
-
-      return {
-        projectId,
-        viewerRole: "viewer",
-        followStatus: followRows[0] ? "following" : "none",
-        accessStatus: project.visibility === "public"
-          ? "not_required"
-          : accessRows[0]?.status === "pending" || accessRows[0]?.status === "accepted"
-            ? accessRows[0].status
-            : "none",
-      };
-    });
-  }
-
-  async listProjectAccess(
-    actorId: SocialActorId,
-    projectId: string,
-  ): Promise<ProjectAccessList | null> {
-    return this.database.transaction(async (transaction) => {
-      await setActor(transaction, actorId);
-      const project = await projectSnapshot(transaction, projectId);
-      if (!project || project.ownerId !== actorId) return null;
-
-      const result = await transaction.execute(sql<RawProjectAccessEntry>`
-        select
-          access.requester_id,
-          profile.display_name,
-          avatar.id as avatar_id,
-          avatar.detected_content_type as avatar_content_type,
-          avatar.width_pixels as avatar_width,
-          avatar.height_pixels as avatar_height,
-          access.status,
-          access.created_at as requested_at,
-          access.updated_at
-        from project_access_requests access
-        left join profiles profile on profile.user_id = access.requester_id
-        left join media_assets avatar
-          on avatar.id = profile.avatar_asset_id
-         and avatar.owner_id = profile.user_id
-         and avatar.project_id is null
-         and avatar.original_asset_id is null
-         and avatar.purpose = 'avatar'
-         and avatar.status = 'ready'
-         and avatar.is_current
-         and avatar.exif_stripped
-         and avatar.deleted_at is null
-         and avatar.ready_at is not null
-         and avatar.detected_content_type like 'image/%'
-         and avatar.width_pixels > 0
-         and avatar.height_pixels > 0
-        where access.project_id = ${projectId}::uuid
-          and access.project_owner_id = ${actorId}::uuid
-          and access.status in ('pending', 'accepted')
-        order by (access.status = 'pending') desc, access.created_at asc, access.requester_id
+      const result = await transaction.execute(sql<RawConnection>`
+        select *
+        from public.app_list_profile_connections(
+          ${search.view}::text,
+          ${search.cursor?.timestamp ?? null}::timestamptz,
+          ${search.cursor?.id ?? null}::uuid,
+          ${search.limit}::integer
+        )
       `);
-      const items: ProjectAccessEntry[] = typedRows<RawProjectAccessEntry>(result.rows).map((row) => ({
-        requesterId: row.requester_id,
-        displayName: row.display_name ?? "Buildy-gebruiker",
-        avatar: row.avatar_id
-          ? {
-              id: row.avatar_id,
-              contentType: row.avatar_content_type,
-              width: row.avatar_width === null ? null : Number(row.avatar_width),
-              height: row.avatar_height === null ? null : Number(row.avatar_height),
-              proxyPath: `/api/media/${row.avatar_id}`,
-            }
-          : null,
-        status: row.status,
-        requestedAt: iso(row.requested_at),
-        updatedAt: iso(row.updated_at),
-      }));
-      return { projectId, items };
+      return typedRows<RawConnection>(result.rows).map(mapConnection);
     });
   }
 
@@ -710,96 +501,14 @@ export class PostgresSocialRepository implements SocialRepository {
     return this.database.transaction(async (transaction) => {
       await setActor(transaction, viewerId);
       const query = search.normalizedQuery || null;
-      const cursorFilter = search.cursor
-        ? sql`and (profile.created_at, profile.user_id) < (${search.cursor.timestamp}::timestamptz, ${search.cursor.id}::uuid)`
-        : sql``;
       const result = await transaction.execute(sql<RawProfile>`
-        select
-          profile.user_id,
-          profile.display_name,
-          profile.slug,
-          profile.bio,
-          profile.location,
-          profile.is_private,
-          profile.is_pro,
-          profile.created_at,
-          avatar.id as avatar_id,
-          avatar.detected_content_type as avatar_content_type,
-          avatar.width_pixels as avatar_width,
-          avatar.height_pixels as avatar_height,
-          coalesce(follower_stats.count, 0) as follower_count,
-          coalesce(following_stats.count, 0) as following_count,
-          case
-            when profile.user_id = ${viewerId}::uuid then 'owner'
-            when profile.is_private then 'follower'
-            else 'public'
-          end as viewer_access,
-          case
-            when profile.user_id = ${viewerId}::uuid then 'self'
-            when viewer_follow.status = 'active' then 'following'
-            when viewer_follow.status = 'pending' then 'pending'
-            else 'none'
-          end as viewer_follow_status,
-          coalesce(target_follow.status = 'active', false) as follows_viewer
-        from profiles profile
-        left join user_relationships viewer_follow
-          on viewer_follow.source_user_id = ${viewerId}::uuid
-         and viewer_follow.target_user_id = profile.user_id
-         and viewer_follow.kind = 'follow'
-        left join user_relationships target_follow
-          on target_follow.source_user_id = profile.user_id
-         and target_follow.target_user_id = ${viewerId}::uuid
-         and target_follow.kind = 'follow'
-        left join lateral (
-          select count(*)::integer as count
-          from user_relationships relationship
-          where relationship.target_user_id = profile.user_id
-            and relationship.kind = 'follow'
-            and relationship.status = 'active'
-        ) follower_stats on true
-        left join lateral (
-          select count(*)::integer as count
-          from user_relationships relationship
-          where relationship.source_user_id = profile.user_id
-            and relationship.kind = 'follow'
-            and relationship.status = 'active'
-        ) following_stats on true
-        left join media_assets avatar
-          on avatar.id = profile.avatar_asset_id
-         and avatar.owner_id = profile.user_id
-         and avatar.project_id is null
-         and avatar.original_asset_id is null
-         and avatar.purpose = 'avatar'
-         and avatar.status = 'ready'
-         and avatar.is_current
-         and avatar.exif_stripped
-         and avatar.deleted_at is null
-         and avatar.ready_at is not null
-         and avatar.detected_content_type like 'image/%'
-         and avatar.width_pixels > 0
-         and avatar.height_pixels > 0
-        where not exists (
-            select 1 from user_relationships block
-            where block.kind = 'block'
-              and block.status = 'active'
-              and (
-                (block.source_user_id = ${viewerId}::uuid and block.target_user_id = profile.user_id)
-                or (block.target_user_id = ${viewerId}::uuid and block.source_user_id = profile.user_id)
-              )
-          )
-          and (
-            profile.is_private = false
-            or profile.user_id = ${viewerId}::uuid
-            or viewer_follow.status = 'active'
-          )
-          and (
-            ${query}::text is null
-            or position(${query}::text in lower(profile.display_name)) > 0
-            or position(${query}::text in lower(profile.slug)) > 0
-          )
-          ${cursorFilter}
-        order by profile.created_at desc, profile.user_id desc
-        limit ${search.limit}
+        select *
+        from public.app_search_profile_identities(
+          ${query}::text,
+          ${search.cursor?.timestamp ?? null}::timestamptz,
+          ${search.cursor?.id ?? null}::uuid,
+          ${search.limit}::integer
+        )
       `);
       return typedRows<RawProfile>(result.rows).map(mapProfile);
     });
@@ -870,6 +579,13 @@ export class PostgresSocialRepository implements SocialRepository {
       await lockActiveActor(transaction, actorId);
       await usersBlocked(transaction, actorId, profileId);
       const existing = await relationship(transaction, actorId, profileId, "follow");
+      await revokeLegacyProjectRelationships(
+        transaction,
+        actorId,
+        profileId,
+        actorId,
+        now,
+      );
       if (!existing || existing.status === "rejected" || existing.status === "revoked") {
         return { replayed: true, state: "none" };
       }
@@ -908,6 +624,15 @@ export class PostgresSocialRepository implements SocialRepository {
       await assertNotBlocked(transaction, actorId, requesterId);
       const existing = await relationship(transaction, requesterId, actorId, "follow");
       if (existing?.status === decision) {
+        if (decision === "rejected") {
+          await revokeLegacyProjectRelationships(
+            transaction,
+            requesterId,
+            actorId,
+            actorId,
+            now,
+          );
+        }
         return {
           replayed: true,
           state: decision === "active" ? "following" : "rejected",
@@ -917,6 +642,15 @@ export class PostgresSocialRepository implements SocialRepository {
         throw new SocialError("TARGET_NOT_FOUND");
       }
       await profileRelationshipUpdate(transaction, existing, decision, now);
+      if (decision === "rejected") {
+        await revokeLegacyProjectRelationships(
+          transaction,
+          requesterId,
+          actorId,
+          actorId,
+          now,
+        );
+      }
       await appendNotification(transaction, {
         actorId,
         recipientId: requesterId,
@@ -943,11 +677,27 @@ export class PostgresSocialRepository implements SocialRepository {
       await lockedProfile(transaction, actorId);
       await usersBlocked(transaction, actorId, followerId);
       const existing = await relationship(transaction, followerId, actorId, "follow");
-      if (existing?.status === "revoked") return { replayed: true, state: "revoked" };
+      if (existing?.status === "revoked") {
+        await revokeLegacyProjectRelationships(
+          transaction,
+          followerId,
+          actorId,
+          actorId,
+          now,
+        );
+        return { replayed: true, state: "revoked" };
+      }
       if (!existing || existing.status !== "active") {
         throw new SocialError("TARGET_NOT_FOUND");
       }
       await profileRelationshipUpdate(transaction, existing, "revoked", now);
+      await revokeLegacyProjectRelationships(
+        transaction,
+        followerId,
+        actorId,
+        actorId,
+        now,
+      );
       return { replayed: false, state: "revoked" };
     });
   }
@@ -1012,30 +762,20 @@ export class PostgresSocialRepository implements SocialRepository {
           ),
         );
 
-      await transaction.execute(sql`
-        update project_access_requests access
-        set
-          status = 'revoked',
-          decided_by_id = ${actorId}::uuid,
-          decided_at = ${now},
-          revoked_at = ${now},
-          version = access.version + 1,
-          updated_at = ${now}
-        where access.status in ('pending', 'accepted')
-          and (
-            (access.requester_id = ${actorId}::uuid and access.project_owner_id = ${profileId}::uuid)
-            or (access.requester_id = ${profileId}::uuid and access.project_owner_id = ${actorId}::uuid)
-          )
-      `);
-      await transaction.execute(sql`
-        update project_followers follower
-        set status = 'revoked', updated_at = ${now}
-        where follower.status in ('active', 'muted')
-          and (
-            (follower.follower_id = ${actorId}::uuid and follower.project_owner_id = ${profileId}::uuid)
-            or (follower.follower_id = ${profileId}::uuid and follower.project_owner_id = ${actorId}::uuid)
-          )
-      `);
+      await revokeLegacyProjectRelationships(
+        transaction,
+        actorId,
+        profileId,
+        actorId,
+        now,
+      );
+      await revokeLegacyProjectRelationships(
+        transaction,
+        profileId,
+        actorId,
+        actorId,
+        now,
+      );
       return { replayed: Boolean(replayed), state: "blocked" };
     });
   }
@@ -1057,234 +797,4 @@ export class PostgresSocialRepository implements SocialRepository {
     });
   }
 
-  async followProject(
-    actorId: string,
-    projectId: string,
-    now: Date,
-  ): Promise<SocialMutationResult> {
-    return this.mutation(actorId, async (transaction) => {
-      const project = await lockedProjectContext(transaction, actorId, projectId);
-      if (!(await actorCanViewProject(transaction, actorId, project))) {
-        throw new SocialError("TARGET_NOT_FOUND");
-      }
-
-      const existing = await transaction
-        .select({ status: projectFollowers.status })
-        .from(projectFollowers)
-        .where(
-          and(
-            eq(projectFollowers.projectId, projectId),
-            eq(projectFollowers.followerId, actorId),
-          ),
-        )
-        .limit(1)
-        .for("update");
-      if (existing[0]?.status === "active") {
-        return { replayed: true, state: "following" };
-      }
-
-      if (existing[0]) {
-        await transaction
-          .update(projectFollowers)
-          .set({ followedAt: now, status: "active", updatedAt: now })
-          .where(
-            and(
-              eq(projectFollowers.projectId, projectId),
-              eq(projectFollowers.followerId, actorId),
-            ),
-          );
-      } else {
-        await transaction
-          .insert(projectFollowers)
-          .values({
-            followedAt: now,
-            followerId: actorId,
-            projectId,
-            projectOwnerId: project.ownerId,
-            status: "active",
-            updatedAt: now,
-          })
-          .onConflictDoNothing({
-            target: [projectFollowers.projectId, projectFollowers.followerId],
-          });
-      }
-
-      await appendNotification(transaction, {
-        actorId,
-        projectId,
-        recipientId: project.ownerId,
-        type: "project.followed",
-      });
-      return { replayed: false, state: "following" };
-    });
-  }
-
-  async unfollowProject(
-    actorId: string,
-    projectId: string,
-    now: Date,
-  ): Promise<SocialMutationResult> {
-    return this.mutation(actorId, async (transaction) => {
-      const project = await lockedProjectContext(transaction, actorId, projectId);
-      if (!(await actorCanViewProject(transaction, actorId, project))) {
-        throw new SocialError("TARGET_NOT_FOUND");
-      }
-      const existing = await transaction
-        .select({ status: projectFollowers.status })
-        .from(projectFollowers)
-        .where(
-          and(
-            eq(projectFollowers.projectId, projectId),
-            eq(projectFollowers.followerId, actorId),
-          ),
-        )
-        .limit(1)
-        .for("update");
-      if (!existing[0] || existing[0].status === "revoked") {
-        return { replayed: true, state: "none" };
-      }
-      await transaction
-        .update(projectFollowers)
-        .set({ status: "revoked", updatedAt: now })
-        .where(
-          and(
-            eq(projectFollowers.projectId, projectId),
-            eq(projectFollowers.followerId, actorId),
-          ),
-        );
-      return { replayed: false, state: "none" };
-    });
-  }
-
-  async requestProjectAccess(
-    actorId: string,
-    projectId: string,
-    now: Date,
-  ): Promise<SocialMutationResult> {
-    return this.mutation(actorId, async (transaction) => {
-      const project = await lockedProjectContext(transaction, actorId, projectId);
-      if (project.visibility !== "private") throw new SocialError("TARGET_NOT_FOUND");
-      const existing = await accessRecord(transaction, projectId, actorId);
-      if (existing?.status === "pending") return { replayed: true, state: "pending" };
-      if (existing?.status === "accepted") return { replayed: true, state: "accepted" };
-
-      if (existing) {
-        await accessUpdate(transaction, existing, "pending", null, now);
-      } else {
-        const inserted = await transaction
-          .insert(projectAccessRequests)
-          .values({
-            projectId,
-            projectOwnerId: project.ownerId,
-            requesterId: actorId,
-            status: "pending",
-          })
-          .onConflictDoNothing({
-            target: [projectAccessRequests.projectId, projectAccessRequests.requesterId],
-          })
-          .returning({ id: projectAccessRequests.id });
-        if (!inserted[0] && !(await accessRecord(transaction, projectId, actorId))) {
-          throw new SocialError("INVALID_TRANSITION");
-        }
-      }
-
-      await appendNotification(transaction, {
-        actorId,
-        projectId,
-        recipientId: project.ownerId,
-        type: "project.access.requested",
-      });
-      return { replayed: false, state: "pending" };
-    });
-  }
-
-  async cancelProjectAccess(
-    actorId: string,
-    projectId: string,
-    now: Date,
-  ): Promise<SocialMutationResult> {
-    return this.mutation(actorId, async (transaction) => {
-      const project = await lockedProjectContext(transaction, actorId, projectId);
-      if (project.visibility !== "private") throw new SocialError("TARGET_NOT_FOUND");
-      const existing = await accessRecord(transaction, projectId, actorId);
-      if (
-        !existing ||
-        existing.status === "cancelled" ||
-        existing.status === "rejected" ||
-        existing.status === "revoked"
-      ) {
-        return { replayed: true, state: "cancelled" };
-      }
-      await accessUpdate(transaction, existing, "cancelled", actorId, now);
-      await revokeProjectFollower(transaction, projectId, actorId, now);
-      return { replayed: false, state: "cancelled" };
-    });
-  }
-
-  async acceptProjectAccess(
-    actorId: string,
-    projectId: string,
-    requesterId: string,
-    now: Date,
-  ): Promise<SocialMutationResult> {
-    return this.decideProjectAccess(actorId, projectId, requesterId, "accepted", now);
-  }
-
-  async rejectProjectAccess(
-    actorId: string,
-    projectId: string,
-    requesterId: string,
-    now: Date,
-  ): Promise<SocialMutationResult> {
-    return this.decideProjectAccess(actorId, projectId, requesterId, "rejected", now);
-  }
-
-  private async decideProjectAccess(
-    actorId: string,
-    projectId: string,
-    requesterId: string,
-    decision: "accepted" | "rejected",
-    now: Date,
-  ): Promise<SocialMutationResult> {
-    return this.mutation(actorId, async (transaction) => {
-      await ownedProjectContext(transaction, actorId, projectId, requesterId);
-      const existing = await accessRecord(transaction, projectId, requesterId);
-      if (existing?.status === decision) {
-        return { replayed: true, state: decision };
-      }
-      if (!existing || existing.status !== "pending") {
-        throw new SocialError("TARGET_NOT_FOUND");
-      }
-      await accessUpdate(transaction, existing, decision, actorId, now);
-      await appendNotification(transaction, {
-        actorId,
-        projectId,
-        recipientId: requesterId,
-        type:
-          decision === "accepted"
-            ? "project.access.accepted"
-            : "project.access.rejected",
-      });
-      return { replayed: false, state: decision };
-    });
-  }
-
-  async revokeProjectAccess(
-    actorId: string,
-    projectId: string,
-    requesterId: string,
-    now: Date,
-  ): Promise<SocialMutationResult> {
-    return this.mutation(actorId, async (transaction) => {
-      await ownedProjectContext(transaction, actorId, projectId, requesterId);
-      const existing = await accessRecord(transaction, projectId, requesterId);
-      if (existing?.status === "revoked") return { replayed: true, state: "revoked" };
-      if (!existing || existing.status !== "accepted") {
-        throw new SocialError("TARGET_NOT_FOUND");
-      }
-      await accessUpdate(transaction, existing, "revoked", actorId, now);
-      await revokeProjectFollower(transaction, projectId, requesterId, now);
-      return { replayed: false, state: "revoked" };
-    });
-  }
 }

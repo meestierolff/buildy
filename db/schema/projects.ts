@@ -107,6 +107,54 @@ export const projects = pgTable(
   ],
 );
 
+export const projectShareLinks = pgTable(
+  "project_share_links",
+  {
+    id: uuid("id").primaryKey(),
+    projectId: uuid("project_id").notNull(),
+    ownerId: uuid("owner_id").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    issueIdempotencyHash: text("issue_idempotency_hash").notNull(),
+    issueRequestHash: text("issue_request_hash").notNull(),
+    revokeIdempotencyHash: text("revoke_idempotency_hash"),
+    revokeRequestHash: text("revoke_request_hash"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    version: optimisticVersion(),
+    ...timestamps(),
+  },
+  (table) => [
+    foreignKey({
+      name: "project_share_links_project_owner_fk",
+      columns: [table.projectId, table.ownerId],
+      foreignColumns: [projects.id, projects.ownerId],
+    }).onDelete("cascade"),
+    uniqueIndex("project_share_links_token_hash_uq").on(table.tokenHash),
+    uniqueIndex("project_share_links_issue_idempotency_uq").on(table.issueIdempotencyHash),
+    uniqueIndex("project_share_links_revoke_idempotency_uq")
+      .on(table.revokeIdempotencyHash)
+      .where(sql`${table.revokeIdempotencyHash} IS NOT NULL`),
+    uniqueIndex("project_share_links_current_project_uq")
+      .on(table.projectId)
+      .where(sql`${table.revokedAt} IS NULL`),
+    index("project_share_links_owner_created_idx").on(table.ownerId, table.createdAt, table.id),
+    check("project_share_links_token_hash_ck", sql`${table.tokenHash} ~ '^[0-9a-f]{64}$'`),
+    check("project_share_links_issue_idempotency_hash_ck", sql`${table.issueIdempotencyHash} ~ '^[0-9a-f]{64}$'`),
+    check("project_share_links_issue_request_hash_ck", sql`${table.issueRequestHash} ~ '^[0-9a-f]{64}$'`),
+    check("project_share_links_revoke_hash_pair_ck", sql`
+      (${table.revokeIdempotencyHash} IS NULL) = (${table.revokeRequestHash} IS NULL)
+      AND (${table.revokeIdempotencyHash} IS NULL OR ${table.revokeIdempotencyHash} ~ '^[0-9a-f]{64}$')
+      AND (${table.revokeRequestHash} IS NULL OR ${table.revokeRequestHash} ~ '^[0-9a-f]{64}$')
+    `),
+    check("project_share_links_expiry_ck", sql`${table.expiresAt} > ${table.createdAt}`),
+    check("project_share_links_revocation_ck", sql`
+      ((${table.revokedAt} IS NULL) = (${table.revokeIdempotencyHash} IS NULL))
+      OR (${table.revokedAt} IS NOT NULL AND ${table.revokeIdempotencyHash} IS NULL)
+    `),
+    check("project_share_links_version_ck", sql`${table.version} > 0`),
+  ],
+);
+
 export const projectPrivateDetails = pgTable(
   "project_private_details",
   {

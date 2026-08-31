@@ -1,14 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { sql } from "drizzle-orm";
-import type {
-  BetterAuthOptions,
-  DBAdapter,
-  DBTransactionAdapter,
-} from "better-auth";
-import { authAccounts, authSessions, authUsers, authVerifications } from "../../db/schema/auth.js";
 import type { BuildyDatabase } from "../db/client.js";
-import type { DataProtectionKeyring, PrivacyBlindIndex } from "../security/dataProtection.js";
 
 export type BuildyAuthTransaction = Parameters<
   Parameters<BuildyDatabase["transaction"]>[0]
@@ -157,10 +149,7 @@ export function createAuthIdentityProvisioner<Transaction>(
   };
 }
 
-export function createPostgresAuthIdentityProvisioner(
-  keyring: DataProtectionKeyring,
-  blindIndex: PrivacyBlindIndex,
-): AuthIdentityProvisioner {
+export function createPostgresAuthIdentityProvisioner(): AuthIdentityProvisioner {
   const provision = async (
     transaction: BuildyAuthTransaction,
     authUserId: string,
@@ -181,193 +170,12 @@ export function createPostgresAuthIdentityProvisioner(
     return appUserId;
   };
 
-  const registerRecipient = async (
-    transaction: BuildyAuthTransaction,
-    authUserId: string,
-    appUserId: string,
-    rawEmail: string,
-  ): Promise<void> => {
-    const email = rawEmail.normalize("NFKC").trim().toLowerCase();
-    if (
-      !email
-      || Buffer.byteLength(email, "utf8") > 254
-      || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email)
-    ) {
-      throw new AuthIdentityProvisioningError("invalid_auth_email");
-    }
-    const recipientCiphertext = keyring.encrypt(email, `email-recipient:${appUserId}:address`);
-    const recipientHash = blindIndex.create("email-recipient", email);
-    await transaction.execute(sql`
-      select app_register_auth_email_recipient(
-        ${authUserId},
-        ${recipientCiphertext},
-        ${recipientHash}
-      )
-    `);
-  };
-
   return {
     async provisionForAuthUser(transaction, user) {
-      const appUserId = await provision(transaction, user.id, false);
-      await registerRecipient(transaction, user.id, appUserId, user.email);
+      await provision(transaction, user.id, false);
     },
     async ensureForSession(transaction, authUserId) {
-      if (!authUserId || Buffer.byteLength(authUserId, "utf8") > 512) {
-        throw new AuthIdentityProvisioningError("invalid_auth_user_id");
-      }
-      const authUser = await transaction.execute<{ email: string }>(sql`
-        select email from auth_users where id = ${authUserId} limit 1
-      `);
-      const email = authUser.rows[0]?.email;
-      if (!email) throw new AuthIdentityProvisioningError("auth_user_missing");
-      const appUserId = await provision(transaction, authUserId, false);
-      await registerRecipient(transaction, authUserId, appUserId, email);
       await provision(transaction, authUserId, true);
     },
-  };
-}
-
-const authSchema = {
-  authAccounts,
-  authSessions,
-  authUsers,
-  authVerifications,
-};
-
-interface ProvisionedAdapterOptions<Transaction> {
-  authorizer?: AuthNewUserAuthorizer<Transaction>;
-  baseAdapter: DBAdapter;
-  beginTransaction<R>(
-    callback: (transaction: Transaction, baseAdapter: DBAdapter) => Promise<R>,
-  ): Promise<R>;
-  provisioner: AuthIdentityProvisioner<Transaction>;
-  transaction?: Transaction;
-}
-
-function authUserFromResult(value: unknown): AuthIdentityUser {
-  if (!value || typeof value !== "object") {
-    throw new AuthIdentityProvisioningError("invalid_auth_user_result");
-  }
-
-  const candidate = value as Partial<AuthIdentityUser>;
-  if (
-    typeof candidate.id !== "string" ||
-    typeof candidate.email !== "string" ||
-    typeof candidate.name !== "string"
-  ) {
-    throw new AuthIdentityProvisioningError("invalid_auth_user_result");
-  }
-  return { email: candidate.email, id: candidate.id, name: candidate.name };
-}
-
-function sessionUserId(data: Record<string, unknown>): string {
-  const userId = data.userId;
-  if (typeof userId !== "string" || !userId) {
-    throw new AuthIdentityProvisioningError("invalid_session_user");
-  }
-  return userId;
-}
-
-function isUserModel(model: string): boolean {
-  return model === "user" || model === "authUsers";
-}
-
-function isSessionModel(model: string): boolean {
-  return model === "session" || model === "authSessions";
-}
-
-/**
- * Decorates Better Auth's adapter at its write boundary. Better Auth database
- * `after` hooks run after commit, so they cannot guarantee that an auth user
- * and its domain identity are created atomically.
- */
-export function withAuthIdentityProvisioning<Transaction>(
-  options: ProvisionedAdapterOptions<Transaction>,
-): DBAdapter {
-  const inAtomicTransaction = async <Result>(
-    operation: (
-      transaction: Transaction,
-      baseAdapter: DBAdapter,
-      transactionAdapter: DBAdapter,
-    ) => Promise<Result>,
-  ): Promise<Result> => {
-    if (options.transaction !== undefined) {
-      return operation(options.transaction, options.baseAdapter, adapter);
-    }
-    return options.beginTransaction(async (transaction, baseAdapter) => {
-      const transactionAdapter = withAuthIdentityProvisioning({
-        authorizer: options.authorizer,
-        baseAdapter,
-        beginTransaction: options.beginTransaction,
-        provisioner: options.provisioner,
-        transaction,
-      });
-      return operation(transaction, baseAdapter, transactionAdapter);
-    });
-  };
-
-  const create = (async (request: Parameters<DBAdapter["create"]>[0]) => {
-    if (!isUserModel(request.model) && !isSessionModel(request.model)) {
-      return options.baseAdapter.create(request);
-    }
-
-    return inAtomicTransaction(async (transaction, baseAdapter) => {
-      if (isUserModel(request.model)) {
-        const createdUser = await baseAdapter.create(request);
-        await options.provisioner.provisionForAuthUser(
-          transaction,
-          authUserFromResult(createdUser),
-        );
-        await options.authorizer?.authorizeNewUser(
-          transaction,
-          authUserFromResult(createdUser),
-        );
-        return createdUser;
-      }
-
-      await options.provisioner.ensureForSession(
-        transaction,
-        sessionUserId(request.data as Record<string, unknown>),
-      );
-      return baseAdapter.create(request);
-    });
-  }) as DBAdapter["create"];
-
-  const adapter: DBAdapter = {
-    ...options.baseAdapter,
-    create,
-    transaction: async <Result>(
-      callback: (transaction: DBTransactionAdapter) => Promise<Result>,
-    ) =>
-      inAtomicTransaction((_, _baseAdapter, transactionAdapter) =>
-        callback(transactionAdapter as DBTransactionAdapter),
-      ),
-  };
-
-  return adapter;
-}
-
-export function createProvisionedDrizzleAuthAdapter(
-  database: BuildyDatabase,
-  provisioner: AuthIdentityProvisioner,
-  authorizer?: AuthNewUserAuthorizer,
-): (options: BetterAuthOptions) => DBAdapter {
-  return (options) => {
-    const createBaseAdapter = (connection: BuildyDatabase | BuildyAuthTransaction) =>
-      drizzleAdapter(connection, {
-        provider: "pg",
-        schema: authSchema,
-        transaction: false,
-      })(options);
-
-    return withAuthIdentityProvisioning({
-      authorizer,
-      baseAdapter: createBaseAdapter(database),
-      beginTransaction: (callback) =>
-        database.transaction(async (transaction) =>
-          callback(transaction, createBaseAdapter(transaction)),
-        ),
-      provisioner,
-    });
   };
 }

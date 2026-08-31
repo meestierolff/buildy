@@ -2,52 +2,72 @@
 
 ## Product
 
-Buildy is een privacy-first sociaal verbouwingsdagboek. In code zijn historische
-`trip`/`step` namen alleen nog compatibiliteitsnamen; nieuwe domeincode en UI
-gebruiken `project` en `update`. Nederlandse gebruikerscopy, Engelse
-variabelen/comments.
+Buildy is een privacy-first, foto-first verbouwingsdagboek met een sociaal
+meeleefmodel en een bewaar-/bestelpad voor een production-MVP.
+
+De kernbelofte is:
+
+`Maak van je verbouwing een verhaal om te bewaren.`
+
+Historische `trip`/`step`, project-follow- en project-accessnamen mogen in
+append-only data en migrations blijven. Nieuwe zichtbare UI gebruikt
+`Verbouwing`, `Bouwmoment`, `Verhaal`, `Bouwboek`, `Connecties` en `Volgend`.
 
 ## Doelstack
 
-- React 18 + TypeScript + Vite + Tailwind/shadcn;
-- typed same-origin Vercel Functions API;
-- Neon PostgreSQL + Drizzle;
-- Better Auth met authoritative HttpOnly cookies;
-- private Cloudflare R2;
-- Brevo transactionele e-mail;
-- Stripe Checkout en raw-signature webhooks;
-- Peecho REST v3 via een durable fulfilmentworker;
-- TanStack Query v5 en Wouter-compatibiliteitsrouter.
+- React 18 + TypeScript + Vite
+- typed same-origin Vercel Functions API
+- Neon PostgreSQL + Drizzle
+- Google OpenID Connect
+- server-owned sessies
+- private Vercel Blob
+- Stripe-hosted Checkout met geverifieerde webhook
+- server-owned prijs-, seller- en termsconfiguratie
+- handmatige printfulfilment vanuit de adminorderqueue
+- TanStack Query v5 en Wouter-compatibiliteitsrouter
 
-Voeg geen browserdatabaseclient, publieke objectbucket, permanente signed URL,
-directe providerwrite vanuit React of afgeschafte prototypeprovider toe.
+## Actief productcontract
+
+- Google OIDC is de enige loginmethode.
+- Er is één canoniek profiel-followmodel: openbaar volgt direct; privé gebruikt
+  een followrequest. Block trekt toegang in en unblock herstelt niets.
+- Verbouwingen hebben exact `private`, `followers`, `unlisted` en `public`.
+- Preview en geautomatiseerde betaaltests gebruiken `CHECKOUT_MODE=test`.
+- Live commerce gebruikt alleen na alle releasegates `CHECKOUT_MODE=live`.
+- `off`, `test` en `live` falen gesloten bij ontbrekende/mismatched config.
+- Een betaalde order wordt in `/beheer/bestellingen` handmatig beoordeeld,
+  extern geplaatst en in Buildy bijgewerkt.
+
+## Niet actief in de MVP-runtime
+
+- Better Auth
+- wachtwoorden, magic links en e-maillogin
+- Brevo of een andere e-mailprovider
+- Cloudflare R2 of AWS S3
+- Peecho-API, callback, worker, poller, cron of env
+- automatische printfulfilment
+- project-follow of project-accessrequest als tweede zichtbaar sociaal model
+- frequente crons; alleen de dagelijkse begrensde account-lifecyclecron is actief
 
 ## Grenzen
 
-- Browsercode gebruikt uitsluitend clients in `src/lib/*Api.ts`.
-- Autorisatie gebeurt altijd opnieuw in de server/repository; clientrollen zijn
-  geen bewijs.
-- Database-, e-mail-, media-, account-, payment-, photobook- en fulfilmentworkers
-  hebben ieder een afzonderlijke login en alleen begrensde function-execute.
-- Gebruik outbox/inbox, lease, idempotency en monotone transitions voor externe
-  side effects.
-- PII nooit in logs, eventmetadata, idempotencykeys, URLs of artifacts. Gebruik
-  envelope-encryptie, vaste AAD en blind indexes waar het datamodel dat vereist.
-- Provideraccount en environment worden server-side gecontroleerd.
-- Checkout blijft uit tenzij `CHECKOUT_ENABLED=true`; dat is een expliciet
-  launchbesluit, niet het gevolg van aanwezige secrets.
-- Verzin geen juridische identiteit, prijs, btw, retentie, provider-ID of
-  succesvolle externe test.
-
-## Codeconventies
-
-- Componenten/pages PascalCase; hooks `use*`; databasevelden snake_case.
-- Geen `any` zonder aantoonbare noodzaak; valideer externe input met Zod.
-- Early returns boven diepe nesting.
-- `toast.error()` voor gebruikersfouten en PII-veilige structured serverlogs.
-- Gepubliceerde SQL-migrations zijn append-only en worden niet herschreven.
-- Gebruik `apply_patch` voor handmatige file-edits en behoud niet-gerelateerde
-  wijzigingen in een dirty worktree.
+- Browsercode gebruikt uitsluitend typed API-clients.
+- Autorisatie gebeurt altijd server-side.
+- Frontendcapabilities komen van de server-owned product profile truth.
+- Media blijft privé; geen permanente signed URL of publieke object-URL.
+- Media-completion en Bouwboekproofrequests verwerken exact het aangevraagde
+  asset/de revisie via de geïsoleerde workerrol. Owner-polling herhaalt veilig;
+  er is geen media- of photobookcron en hun capability hangt niet van
+  `CRON_SECRET` af.
+- De browser bepaalt nooit prijs, btw, verzending, seller, betaalstatus of rol.
+- Alleen de geverifieerde Stripe-webhook kan betaling bevestigen.
+- Een Stripe-successredirect of drukkerportaalstatus is geen databasewaarheid.
+- SQL-migrations zijn append-only.
+- PII hoort niet in logs, eventmetadata, idempotencykeys of URLs.
+- Production blijft NO-GO zolang hosting/commercial, legal, pricing/seller,
+  provider, Preview, rolreizen, cross-browser en Browser MCP niet groen zijn.
+- De huidige Browser MCP-enumeratie `[]` is een harde interactieve blokkade.
+- Claim geen production deploy of mutation zonder werkelijk, vastgelegd bewijs.
 
 ## Verificatie
 
@@ -56,12 +76,14 @@ bun run typecheck
 bun run lint
 bun run test
 bun run build
-node --import tsx db/migrate.ts --check
-bun run test:e2e:preview
+bun run check:bundle
 bun run check:launch -- --static
 ```
 
-Gebruik `bun run test`, niet het kale `bun test`. Echte PostgreSQL-
-integratietests, providerprobes en browserflows mogen nooit stil skippen wanneer
-zij als launchbewijs worden aangevoerd. Zie `docs/LAUNCH_READINESS.md` voor het
-verschil tussen codebewijs en externe gates.
+Voor databasegrenzen gebruik je daarnaast de tijdelijke PostgreSQL workflow uit
+de CI-slice en `db/verify.ts`.
+
+Canonieke product- en releasewaarheid staat in `docs/PRODUCT_MODEL.md`,
+`docs/SOCIAL_STATE_MACHINE.md`, `docs/STRIPE_SETUP.md`,
+`docs/MANUAL_PEECHO_FULFILMENT.md`, `docs/PRODUCTION_RELEASE.md` en
+`docs/MVP_RELEASE_REPORT.md`.

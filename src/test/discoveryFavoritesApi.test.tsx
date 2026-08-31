@@ -56,8 +56,8 @@ function auth(authenticated: boolean): ReturnType<typeof useAuth> {
           email: "noor@example.com",
           emailVerified: true,
           image: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          createdAt: new Date("2026-08-04T10:00:00.000Z"),
+          updatedAt: new Date("2026-08-04T10:00:00.000Z"),
           user_metadata: { display_name: "Noor", full_name: "Noor" },
         }
       : null,
@@ -87,6 +87,7 @@ describe("typed discovery browser states", () => {
   });
 
   it("renders only the typed public discovery DTO", () => {
+    window.history.replaceState({}, "", "/ontdekken");
     render(<BrowserRouter><Index /></BrowserRouter>);
     expect(screen.getAllByText("Veilige keuken").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Door Noor/).length).toBeGreaterThan(0);
@@ -94,21 +95,42 @@ describe("typed discovery browser states", () => {
   });
 
   it("fails closed when discovery cannot be verified", () => {
+    window.history.replaceState({}, "", "/ontdekken");
     vi.mocked(useProjectDiscovery).mockReturnValue(
       infiniteResult([], true) as unknown as ReturnType<typeof useProjectDiscovery>,
     );
     render(<BrowserRouter><Index /></BrowserRouter>);
-    expect(screen.getByText("Openbare projecten zijn even niet bereikbaar")).toBeInTheDocument();
+    expect(screen.getByText("Openbare verbouwingen zijn even niet bereikbaar")).toBeInTheDocument();
     expect(screen.queryByText("Veilige keuken")).not.toBeInTheDocument();
   });
 
   it("keeps the landing route marketing-only while discovery has its own canonical page", () => {
-    window.history.replaceState({}, "", "/ontdekken");
     render(<BrowserRouter><Index /></BrowserRouter>);
 
-    expect(screen.getByRole("heading", { level: 1, name: /openbare bouwverhalen/i })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: /van eerste sleutel tot laatste plint/i })).not.toBeInTheDocument();
-    expect(vi.mocked(useProjectDiscovery)).toHaveBeenCalledWith(true);
+    expect(screen.getByRole("heading", { level: 1, name: "Maak van je verbouwing een verhaal om te bewaren." })).toBeInTheDocument();
+    expect(screen.getByText("Van bouwplaats naar blijvend verhaal")).toBeInTheDocument();
+    expect(screen.getByText("Leg foto’s en updates vast, laat vrienden en familie meekijken en maak er na afloop een persoonlijk Bouwboek van.")).toBeInTheDocument();
+    expect(screen.queryByText("Veilige keuken")).not.toBeInTheDocument();
+    expect(vi.mocked(useProjectDiscovery)).toHaveBeenCalledWith(false);
+    expect(vi.mocked(useProjectDashboard)).toHaveBeenCalledWith(false);
+  });
+
+  it("renders the exact public-demo outcome without discovery or account promises", () => {
+    render(<BrowserRouter><Index feedbackEnabled publicDemo /></BrowserRouter>);
+
+    expect(screen.getByText("Het dagboek voor je verbouwing")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Maak van je verbouwing een verhaal om te bewaren." })).toBeInTheDocument();
+    expect(screen.getByText("Zie hoe losse bouwfoto’s veranderen in een rustig verbouwverhaal en een persoonlijk Bouwboek.")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Probeer met je bouwfoto" })).toHaveLength(2);
+    expect(screen.getAllByRole("link", { name: "Probeer met je bouwfoto" })[0]).toHaveAttribute("href", "#probeer-buildy");
+    expect(screen.getByRole("link", { name: "Bekijk een voorbeeld" })).toHaveAttribute("href", "#voorbeeld");
+    expect(screen.getByText("Voorbeeldverbouwing", { selector: "figcaption span" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /voorbeeld-Bouwboek/i })).toHaveAttribute(
+      "href",
+      "/project/voorbeeldverbouwing/bouwboek",
+    );
+    expect(screen.queryByText(/Google-login|start je account|inloggen/i)).not.toBeInTheDocument();
+    expect(vi.mocked(useProjectDiscovery)).toHaveBeenCalledWith(false);
     expect(vi.mocked(useProjectDashboard)).toHaveBeenCalledWith(false);
   });
 
@@ -120,8 +142,8 @@ describe("typed discovery browser states", () => {
     window.history.replaceState({}, "", "/projecten");
     render(<BrowserRouter><Index /></BrowserRouter>);
 
-    expect(screen.getByRole("heading", { level: 1, name: "Mijn projecten." })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: /van eerste sleutel tot laatste plint/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Mijn verbouwingen" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /maak van je verbouwing/i })).not.toBeInTheDocument();
     expect(vi.mocked(useProjectDiscovery)).toHaveBeenCalledWith(false);
     expect(vi.mocked(useProjectDashboard)).toHaveBeenCalledWith(true);
   });

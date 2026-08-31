@@ -22,9 +22,9 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes("node_modules")) return undefined;
           if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return "react-core";
-          if (id.includes("/node_modules/better-auth/") || id.includes("/node_modules/@better-auth/")) {
-            return "auth-core";
-          }
+          if (id.includes("/node_modules/lucide-react/")) return "icons-core";
+          if (id.includes("/node_modules/wouter/")) return "router-core";
+          if (id.includes("/node_modules/zod/")) return "validation-core";
           if (id.includes("/node_modules/@tanstack/")) return "query-core";
           if (
             id.includes("/node_modules/@radix-ui/")

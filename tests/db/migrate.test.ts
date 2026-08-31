@@ -4,10 +4,11 @@ import { createHash } from "node:crypto";
 import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_MIGRATIONS_DIRECTORY,
   MigrationValidationError,
+  assertSafeMigrationConnection,
   discoverMigrations,
   parseMigrationArguments,
   parseMigrationFilename,
@@ -86,6 +87,32 @@ describe("migration discovery", () => {
       "0022_moderation_admin_rbac.sql",
       "0023_profile_onboarding_completion.sql",
       "0024_update_deletion_saga.sql",
+      "0025_lifecycle_function_repairs.sql",
+      "0026_lifecycle_constraint_and_export_fix.sql",
+      "0027_auth_and_account_email_repairs.sql",
+      "0028_account_email_prepare_fix.sql",
+      "0029_onboarding_event_properties_fix.sql",
+      "0030_product_event_and_reaction_visibility_fix.sql",
+      "0031_project_deletion_asset_scope_fix.sql",
+      "0032_audit_event_clock_timestamp.sql",
+      "0033_google_oidc_sessions.sql",
+      "0034_manual_print_fulfilment.sql",
+      "0035_canonical_social_connections.sql",
+      "0036_project_visibility_modes.sql",
+      "0037_vercel_blob_storage_default.sql",
+      "0038_retire_automated_email.sql",
+      "0039_profile_follow_event_status_fix.sql",
+      "0040_request_driven_media_processing.sql",
+      "0041_request_driven_photobook_processing.sql",
+      "0042_active_worker_retry_enum_casts.sql",
+      "0043_vercel_blob_account_exports.sql",
+      "0044_bounded_media_orphan_maintenance.sql",
+      "0045_request_hash_privacy.sql",
+      "0046_checkout_reservation_recovery.sql",
+      "0047_project_share_links.sql",
+      "0048_feedback_admin_review.sql",
+      "0049_product_notifications.sql",
+      "0050_product_event_key_privacy.sql",
     ]);
     expect(migrations.every((migration) => /^[0-9a-f]{64}$/.test(migration.sha256))).toBe(true);
   });
@@ -249,6 +276,27 @@ describe("migration ledger reconciliation", () => {
 });
 
 describe("migration URL and CLI boundaries", () => {
+  const migrationUrl =
+    "postgresql://buildy_migrator:secret@127.0.0.1/buildy?sslmode=disable";
+
+  function migrationIdentityClient(hasRoleMembership: boolean) {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{
+        database_name: "buildy",
+        role_name: "buildy_migrator",
+        server_version_num: "160004",
+        has_role_membership: hasRoleMembership,
+        rolsuper: false,
+        rolcreatedb: false,
+        rolcreaterole: false,
+        rolreplication: false,
+        rolbypassrls: false,
+      }],
+    });
+    const client = { query } as unknown as Parameters<typeof assertSafeMigrationConnection>[0];
+    return { client, query };
+  }
+
   it("never falls back to DATABASE_URL", () => {
     expect(() =>
       requireMigrationDatabaseUrl({
@@ -279,6 +327,28 @@ describe("migration URL and CLI boundaries", () => {
     ).toThrow(/pooled endpoint/);
   });
 
+  it("accepts a dedicated migration role without role memberships", async () => {
+    const { client, query } = migrationIdentityClient(false);
+
+    await expect(assertSafeMigrationConnection(client, migrationUrl)).resolves.toBeUndefined();
+    expect(query).toHaveBeenCalledOnce();
+  });
+
+  it("rejects direct and transitive migration-role memberships", async () => {
+    const { client, query } = migrationIdentityClient(true);
+
+    await expect(assertSafeMigrationConnection(client, migrationUrl)).rejects.toThrow(
+      /directe of transitieve rollidmaatschappen/,
+    );
+    const identityQuery = String(query.mock.calls[0]?.[0]);
+    expect(identityQuery).toContain(
+      "WITH RECURSIVE migration_role_memberships(granted_role_oid)",
+    );
+    expect(identityQuery).toContain(
+      "ON membership.member = membership_path.granted_role_oid",
+    );
+  });
+
   it("parses exactly one execution mode and bounded timeouts", () => {
     expect(parseMigrationArguments(["--dry-run", "--lock-timeout-ms", "2500"])).toEqual({
       mode: "dry-run",
@@ -288,9 +358,9 @@ describe("migration URL and CLI boundaries", () => {
     expect(() => parseMigrationArguments(["--statement-timeout-ms", "0"])).toThrow(/tussen 1/);
   });
 
-  it("keeps the schema contract at 48 public and 43 RLS tables", () => {
-    expect(EXPECTED_PUBLIC_TABLES).toHaveLength(48);
-    expect(EXPECTED_RLS_TABLES).toHaveLength(43);
+  it("keeps the schema contract at 53 public and 45 RLS tables", () => {
+    expect(EXPECTED_PUBLIC_TABLES).toHaveLength(53);
+    expect(EXPECTED_RLS_TABLES).toHaveLength(45);
     expect(() => compareExpectedNames("test", ["one"], ["one"])).not.toThrow();
     expect(() => compareExpectedNames("test", ["one"], ["two"])).toThrow(/ontbreekt.*onverwacht/);
   });

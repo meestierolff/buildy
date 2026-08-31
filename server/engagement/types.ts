@@ -4,16 +4,20 @@ import type {
   DeleteCommentInput,
   EngagementComment,
   EngagementNotification,
+  NotificationMarkAllReadResult,
   NotificationMutationResult,
   ReactionMutationResult,
   ReactionSummary,
   ReactionTargetInput,
 } from "../../shared/contracts/engagement.js";
-import type { ProjectActor } from "../projects/actor.js";
+import type {
+  AuthenticatedProjectActor,
+  ProjectActor,
+} from "../projects/actor.js";
 import type { CommentCursor, NotificationCursor } from "./cursor.js";
 
 export type CreateCommentCommand = {
-  actorId: string;
+  actor: AuthenticatedProjectActor;
   commentId: string;
   projectId: string;
   updateId: string;
@@ -24,7 +28,7 @@ export type CreateCommentCommand = {
 };
 
 export type DeleteCommentCommand = {
-  actorId: string;
+  actor: AuthenticatedProjectActor;
   projectId: string;
   updateId: string;
   commentId: string;
@@ -35,7 +39,7 @@ export type DeleteCommentCommand = {
 };
 
 export type ReactionCommand = {
-  actorId: string;
+  actor: AuthenticatedProjectActor;
   projectId: string;
   updateId: string;
   input: ReactionTargetInput;
@@ -67,13 +71,17 @@ export interface EngagementRepository {
     cursor: NotificationCursor | undefined,
     limit: number,
     status: NotificationListStatus,
-  ): Promise<EngagementNotification[]>;
+  ): Promise<{ items: EngagementNotification[]; unreadCount: number }>;
   updateNotification(
     recipientId: string,
     notificationId: string,
     action: "read" | "archive",
     now: Date,
   ): Promise<NotificationMutationResult>;
+  markAllNotificationsRead(
+    recipientId: string,
+    now: Date,
+  ): Promise<NotificationMarkAllReadResult>;
 }
 
 export type EngagementClock = () => Date;

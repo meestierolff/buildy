@@ -14,12 +14,7 @@ const MAX_PROJECT_IMAGE_BYTES = 50 * 1024 * 1024;
 const DEFAULT_READY_TIMEOUT_MS = 2 * 60 * 1_000;
 const DEFAULT_POLL_DELAY_MS = 1_000;
 const MAX_POLL_DELAY_MS = 5_000;
-const RETRYABLE_UPLOAD_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
-const ALLOWED_UPLOAD_HEADERS = new Set([
-  "content-length",
-  "content-type",
-  "x-amz-meta-buildy-sha256",
-]);
+const PRIVATE_BLOB_HOST = /^[a-z0-9]+\.private\.blob\.vercel-storage\.com$/;
 
 export type PreparedProjectImage = {
   file: File;
@@ -124,6 +119,36 @@ export async function preparePrivateProjectImage(file: File): Promise<PreparedPr
 
 type Sleep = (milliseconds: number, signal?: AbortSignal) => Promise<void>;
 
+export type VercelBlobBrowserUpload = (
+  pathname: string,
+  body: Blob,
+  options: {
+    access: "private";
+    handleUploadUrl: string;
+    contentType: string;
+    multipart: false;
+    abortSignal?: AbortSignal;
+  },
+) => Promise<{
+  pathname: string;
+  contentType: string;
+  url: string;
+  downloadUrl: string;
+  etag: string;
+}>;
+
+let configuredBlobUpload: VercelBlobBrowserUpload | undefined;
+
+/** Integration seam for the official `upload` export from `@vercel/blob/client`. */
+export function configureVercelBlobClientUpload(upload: VercelBlobBrowserUpload): void {
+  if (configuredBlobUpload) throw new Error("De Vercel Blob-clientupload is al geconfigureerd.");
+  configuredBlobUpload = upload;
+}
+
+export function resetVercelBlobClientUploadForTests(): void {
+  configuredBlobUpload = undefined;
+}
+
 function defaultSleep(milliseconds: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -144,6 +169,7 @@ function defaultSleep(milliseconds: number, signal?: AbortSignal): Promise<void>
 
 type MediaUploadRuntime = {
   fetch?: typeof globalThis.fetch;
+  blobUpload?: VercelBlobBrowserUpload;
   now?: () => number;
   sleep?: Sleep;
   readyTimeoutMs?: number;
@@ -151,116 +177,60 @@ type MediaUploadRuntime = {
   maximumPollDelayMs?: number;
 };
 
-function normalizedGrantHeaders(
-  requiredHeaders: Readonly<Record<string, string>>,
-): Map<string, string> {
-  const result = new Map<string, string>();
-  for (const [name, value] of Object.entries(requiredHeaders)) {
-    const normalizedName = name.trim().toLowerCase();
-    if (!ALLOWED_UPLOAD_HEADERS.has(normalizedName) || result.has(normalizedName)) {
+function assertPrivateBlobResult(
+  result: Awaited<ReturnType<VercelBlobBrowserUpload>>,
+  pathname: string,
+  contentType: ProjectImageContentType,
+): void {
+  const assertPrivateUrl = (rawUrl: string, download: boolean): void => {
+    let url: URL;
+    try {
+      url = new URL(rawUrl);
+    } catch (cause) {
       throw new PrivateMediaUploadError(
         "UNSAFE_UPLOAD_GRANT",
-        "De uploadopdracht bevat onverwachte headers.",
+        "De opslagprovider bevestigde geen geldige private upload.",
+        { cause },
       );
     }
-    result.set(normalizedName, value);
-  }
-  return result;
-}
+    let returnedPathname = "";
+    try {
+      returnedPathname = decodeURIComponent(url.pathname.slice(1));
+    } catch (cause) {
+      throw new PrivateMediaUploadError(
+        "UNSAFE_UPLOAD_GRANT",
+        "De opslagprovider bevestigde een ongeldig objectpad.",
+        { cause },
+      );
+    }
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.search !== (download ? "?download=1" : "") ||
+      url.hash ||
+      !PRIVATE_BLOB_HOST.test(url.hostname) ||
+      returnedPathname !== pathname
+    ) {
+      throw new PrivateMediaUploadError(
+        "UNSAFE_UPLOAD_GRANT",
+        "De opslagprovider bevestigde geen private Buildy-upload.",
+      );
+    }
+  };
 
-function browserPutHeaders(
-  requiredHeaders: Readonly<Record<string, string>>,
-  prepared: PreparedProjectImage,
-): Headers {
-  const grantHeaders = normalizedGrantHeaders(requiredHeaders);
+  assertPrivateUrl(result.url, false);
+  assertPrivateUrl(result.downloadUrl, true);
+
   if (
-    grantHeaders.size !== ALLOWED_UPLOAD_HEADERS.size ||
-    grantHeaders.get("content-length") !== String(prepared.sizeBytes) ||
-    grantHeaders.get("content-type") !== prepared.contentType ||
-    grantHeaders.get("x-amz-meta-buildy-sha256") !== prepared.checksumSha256Base64
+    result.pathname !== pathname ||
+    result.contentType !== contentType ||
+    !result.etag
   ) {
     throw new PrivateMediaUploadError(
       "UNSAFE_UPLOAD_GRANT",
-      "De uploadopdracht wijkt af van de gecontroleerde foto.",
+      "De opslagprovider bevestigde geen private Buildy-upload.",
     );
-  }
-
-  const headers = new Headers();
-  headers.set("content-type", prepared.contentType);
-  headers.set("x-amz-meta-buildy-sha256", prepared.checksumSha256Base64);
-  // Browsers forbid setting Content-Length from script. The signed exact value
-  // is checked above; fetch derives the wire header from this immutable body.
-  return headers;
-}
-
-function safeSignedUploadUrl(value: string): string {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch (cause) {
-    throw new PrivateMediaUploadError(
-      "UNSAFE_UPLOAD_GRANT",
-      "De opslagprovider gaf geen geldige uploadverbinding.",
-      { cause },
-    );
-  }
-  if (url.protocol !== "https:" || url.username || url.password) {
-    throw new PrivateMediaUploadError(
-      "UNSAFE_UPLOAD_GRANT",
-      "De opslagprovider gaf geen veilige uploadverbinding.",
-    );
-  }
-  // Do not reserialize the presigned URL: even harmless normalization can
-  // change bytes covered by a provider signature.
-  return value;
-}
-
-async function putWithBoundedRetry(input: {
-  url: string;
-  headers: Headers;
-  file: File;
-  expiresAt: string;
-  signal?: AbortSignal;
-  fetcher: typeof globalThis.fetch;
-  now: () => number;
-  sleep: Sleep;
-}): Promise<void> {
-  const expiresAt = Date.parse(input.expiresAt);
-  if (!Number.isFinite(expiresAt)) {
-    throw new PrivateMediaUploadError("UNSAFE_UPLOAD_GRANT", "De uploadopdracht heeft geen geldige vervaltijd.");
-  }
-
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    if (input.now() >= expiresAt - 5_000) {
-      throw new PrivateMediaUploadError("UPLOAD_FAILED", "De uploadopdracht is verlopen. Probeer opnieuw.");
-    }
-    try {
-      const response = await input.fetcher(input.url, {
-        method: "PUT",
-        headers: input.headers,
-        body: input.file,
-        credentials: "omit",
-        cache: "no-store",
-        redirect: "error",
-        referrerPolicy: "no-referrer",
-        signal: input.signal,
-      });
-      if (response.ok) return;
-      if (!RETRYABLE_UPLOAD_STATUSES.has(response.status) || attempt === 1) {
-        throw new PrivateMediaUploadError("UPLOAD_FAILED", "De foto kon niet veilig worden geüpload.");
-      }
-    } catch (cause) {
-      if (cause instanceof PrivateMediaUploadError) throw cause;
-      if (input.signal?.aborted) throw cause;
-      if (attempt === 1) {
-        throw new PrivateMediaUploadError(
-          "UPLOAD_FAILED",
-          "De foto-upload werd onderbroken. Probeer opnieuw.",
-          { cause },
-        );
-      }
-    }
-    await input.sleep(500, input.signal);
   }
 }
 
@@ -277,6 +247,50 @@ export async function waitForProjectMediaReady(
   const maximumDelay = options.maximumPollDelayMs ?? MAX_POLL_DELAY_MS;
 
   while (now() - startedAt < timeout) {
+    let processingResponseLost = false;
+    try {
+      const response = await fetcher(`/api/media/${encodeURIComponent(assetId)}/complete`, {
+        method: "POST",
+        headers: { accept: "application/json", "content-type": "application/json" },
+        body: "{}",
+        credentials: "include",
+        cache: "no-store",
+        redirect: "error",
+        signal: options.signal,
+      });
+      if (response.ok) {
+        const parsed = mediaUploadCompletionResponseSchema.safeParse(
+          await response.json().catch(() => undefined),
+        );
+        if (!parsed.success || parsed.data.data.asset.id !== assetId) {
+          throw new PrivateMediaUploadError(
+            "READINESS_FAILED",
+            "De verwerkingsstatus van de foto kon niet veilig worden gecontroleerd.",
+          );
+        }
+        if (parsed.data.data.asset.status === "ready") return;
+        if (parsed.data.data.asset.status === "failed") {
+          throw new PrivateMediaUploadError(
+            "PROCESSING_FAILED",
+            "Deze foto kon niet veilig worden verwerkt.",
+          );
+        }
+      } else if (response.status === 404) {
+        throw new PrivateMediaUploadError(
+          "PROCESSING_FAILED",
+          "Deze foto kon niet veilig worden verwerkt.",
+        );
+      } else if (response.status !== 429 && response.status < 500) {
+        throw new PrivateMediaUploadError(
+          "READINESS_FAILED",
+          "De verwerkingsstatus van de foto kon niet veilig worden gecontroleerd.",
+        );
+      }
+    } catch (cause) {
+      if (cause instanceof PrivateMediaUploadError || options.signal?.aborted) throw cause;
+      processingResponseLost = true;
+    }
+
     try {
       const response = await fetcher(`/api/media/${encodeURIComponent(assetId)}?size=small`, {
         method: "HEAD",
@@ -294,11 +308,15 @@ export async function waitForProjectMediaReady(
       }
     } catch (cause) {
       if (cause instanceof PrivateMediaUploadError || options.signal?.aborted) throw cause;
-      // A brief connection loss does not restart or duplicate the upload. Keep
-      // polling the authenticated proxy within the same bounded deadline.
+      // A lost processing or readiness response is safe to retry: completion
+      // and the exact-asset worker claim are both idempotent and leased.
+      processingResponseLost = true;
     }
     await sleep(delay, options.signal);
-    delay = Math.min(maximumDelay, Math.max(1, Math.round(delay * 1.6)));
+    delay = Math.min(
+      maximumDelay,
+      Math.max(1, Math.round(delay * (processingResponseLost ? 1.25 : 1.6))),
+    );
   }
 
   throw new PrivateMediaUploadError(
@@ -315,7 +333,7 @@ function assertScopedAsset(
   if (asset.projectId !== projectId || asset.purpose !== purpose) {
     throw new PrivateMediaUploadError(
       "UNSAFE_UPLOAD_GRANT",
-      "De uploadopdracht hoort niet bij dit project of dit gebruiksdoel.",
+      "De uploadopdracht hoort niet bij deze verbouwing of dit gebruiksdoel.",
     );
   }
 }
@@ -369,30 +387,66 @@ async function uploadPrivateProjectImage(
 
   let asset = intent.asset;
   if (intent.upload) {
-    if (asset.status !== "pending_upload" || intent.upload.exactSizeBytes !== input.prepared.sizeBytes) {
+    if (
+      asset.status !== "pending_upload" ||
+      intent.upload.method !== "POST" ||
+      intent.upload.provider !== "vercel_blob" ||
+      intent.upload.exactSizeBytes !== input.prepared.sizeBytes ||
+      intent.upload.pathname !== `temporary/${asset.id.slice(0, 2)}/${asset.id}` ||
+      intent.upload.handleUploadPath !== `/api/media/${asset.id}/blob-upload`
+    ) {
       throw new PrivateMediaUploadError("UNSAFE_UPLOAD_GRANT", "De uploadopdracht heeft een ongeldige toestand.");
     }
     input.onStage?.("uploading");
-    await putWithBoundedRetry({
-      url: safeSignedUploadUrl(intent.upload.url),
-      headers: browserPutHeaders(intent.upload.requiredHeaders, input.prepared),
-      file: input.prepared.file,
-      expiresAt: intent.upload.expiresAt,
-      signal: input.signal,
-      fetcher: runtime.fetch ?? globalThis.fetch,
-      now: runtime.now ?? Date.now,
-      sleep: runtime.sleep ?? defaultSleep,
-    });
-    const completed = (await apiRequest(
-      `/api/media/${encodeURIComponent(asset.id)}/complete`,
-      mediaUploadCompletionResponseSchema,
-      { method: "POST", body: {}, signal: input.signal },
-    )).data.asset;
-    assertScopedAsset(completed, input.projectId, purpose);
-    if (completed.id !== asset.id) {
-      throw new PrivateMediaUploadError("UNSAFE_UPLOAD_GRANT", "De uploadbevestiging wijkt af van de foto-opdracht.");
+    const blobUpload = runtime.blobUpload ?? configuredBlobUpload;
+    if (!blobUpload) {
+      throw new PrivateMediaUploadError(
+        "UPLOAD_FAILED",
+        "De private foto-opslag is nog niet beschikbaar.",
+      );
     }
-    asset = completed;
+    let uploadFailure: unknown;
+    try {
+      const result = await blobUpload(intent.upload.pathname, input.prepared.file, {
+        access: "private",
+        handleUploadUrl: intent.upload.handleUploadPath,
+        contentType: input.prepared.contentType,
+        multipart: false,
+        abortSignal: input.signal,
+      });
+      assertPrivateBlobResult(result, intent.upload.pathname, input.prepared.contentType);
+    } catch (cause) {
+      if (input.signal?.aborted) throw cause;
+      if (cause instanceof PrivateMediaUploadError) throw cause;
+      uploadFailure = cause;
+    }
+
+    let completed: MediaAssetState | undefined;
+    try {
+      completed = (await apiRequest(
+        `/api/media/${encodeURIComponent(asset.id)}/complete`,
+        mediaUploadCompletionResponseSchema,
+        { method: "POST", body: {}, signal: input.signal },
+      )).data.asset;
+    } catch (cause) {
+      if (uploadFailure) {
+        throw new PrivateMediaUploadError(
+          "UPLOAD_FAILED",
+          "De foto kon niet veilig worden geüpload. Probeer opnieuw.",
+          { cause: uploadFailure },
+        );
+      }
+      if (input.signal?.aborted) throw cause;
+      // The upload bytes were accepted by Blob. A lost or transient complete
+      // response is recovered by the bounded, owner-authenticated polling loop.
+    }
+    if (completed) {
+      assertScopedAsset(completed, input.projectId, purpose);
+      if (completed.id !== asset.id) {
+        throw new PrivateMediaUploadError("UNSAFE_UPLOAD_GRANT", "De uploadbevestiging wijkt af van de foto-opdracht.");
+      }
+      asset = completed;
+    }
   } else if (asset.status === "pending_upload") {
     throw new PrivateMediaUploadError("UNSAFE_UPLOAD_GRANT", "De uploadopdracht bevat geen uploadtoestemming.");
   }

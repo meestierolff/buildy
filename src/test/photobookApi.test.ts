@@ -24,7 +24,6 @@ const UPDATE_ID = "44444444-4444-4444-8444-444444444444";
 const REQUEST_ID = "55555555-5555-4555-8555-555555555555";
 const DOCUMENT_SHA = "a".repeat(64);
 const PDF_SHA = "b".repeat(64);
-const VIEW_RECEIPT = `v1.1893456000.${"a".repeat(43)}`;
 
 const settings = {
   coverMediaAssetId: null,
@@ -154,7 +153,7 @@ describe("photobook API client", () => {
       idempotencyKey: REQUEST_ID,
       documentSha256: DOCUMENT_SHA,
       pdfSha256: PDF_SHA,
-      viewReceipt: VIEW_RECEIPT,
+      proofViewed: true,
     });
 
     expect(JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body))).toMatchObject({
@@ -165,7 +164,7 @@ describe("photobook API client", () => {
     expect(JSON.parse(String((fetchMock.mock.calls[1]?.[1] as RequestInit).body))).toMatchObject({
       documentSha256: DOCUMENT_SHA,
       pdfSha256: PDF_SHA,
-      viewReceipt: VIEW_RECEIPT,
+      proofViewed: true,
     });
   });
 });

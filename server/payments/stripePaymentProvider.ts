@@ -15,7 +15,6 @@ export interface StripePaymentProviderConfig {
   environment: PaymentEnvironment;
 }
 
-const ISO_COUNTRY = /^[A-Z]{2}$/;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9:_-]{16,128}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -27,6 +26,31 @@ function requireHttpsCheckoutUrl(value: string): string {
   }
   if (url.username || url.password) {
     throw new PaymentProviderError("INVALID_CHECKOUT", "Checkoutredirect mag geen credentials bevatten.", false);
+  }
+  return url.toString();
+}
+
+function requireHostedStripeCheckoutUrl(value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch (error) {
+    throw new PaymentProviderError("PROVIDER_UNAVAILABLE", "Stripe Checkout gaf geen geldige URL terug.", false, {
+      cause: error,
+    });
+  }
+  if (
+    url.protocol !== "https:"
+    || url.hostname !== "checkout.stripe.com"
+    || url.username
+    || url.password
+    || (url.port && url.port !== "443")
+  ) {
+    throw new PaymentProviderError(
+      "PROVIDER_UNAVAILABLE",
+      "Stripe Checkout gaf geen gehoste betaalpagina terug.",
+      false,
+    );
   }
   return url.toString();
 }
@@ -57,13 +81,6 @@ function validateCheckout(input: CreateCheckoutInput): CreateCheckoutInput {
     ) {
       throw new PaymentProviderError("INVALID_CHECKOUT", "Checkoutregel is ongeldig.", false);
     }
-  }
-  if (
-    input.allowedShippingCountries.length < 1 ||
-    input.allowedShippingCountries.length > 20 ||
-    input.allowedShippingCountries.some((country) => !ISO_COUNTRY.test(country))
-  ) {
-    throw new PaymentProviderError("INVALID_CHECKOUT", "Verzendlanden zijn ongeldig.", false);
   }
   requireHttpsCheckoutUrl(input.successUrl);
   requireHttpsCheckoutUrl(input.cancelUrl);
@@ -147,7 +164,6 @@ export class StripePaymentProvider implements PaymentProvider {
       throw error;
     });
     await this.accountVerification;
-    const allowedCountries = input.allowedShippingCountries as Stripe.Checkout.SessionCreateParams.ShippingAddressCollection.AllowedCountry[];
     let session: Stripe.Checkout.Session;
 
     try {
@@ -158,8 +174,9 @@ export class StripePaymentProvider implements PaymentProvider {
         customer_email: input.customerEmail,
         success_url: input.successUrl,
         cancel_url: input.cancelUrl,
-        expires_at: Math.floor(Date.now() / 1_000) + 30 * 60,
-        shipping_address_collection: { allowed_countries: allowedCountries },
+        // Stripe measures its 30-minute minimum from provider-side creation.
+        // Five minutes of margin keeps transport/queue latency from crossing it.
+        expires_at: Math.floor(Date.now() / 1_000) + 35 * 60,
         line_items: input.lines.map((line) => ({
           quantity: line.quantity,
           price_data: {
@@ -197,11 +214,19 @@ export class StripePaymentProvider implements PaymentProvider {
     if (!session.url || !session.expires_at) {
       throw new PaymentProviderError("PROVIDER_UNAVAILABLE", "Stripe Checkout gaf geen bruikbare sessie terug.", true);
     }
+    const expectedSessionPrefix = this.config.environment === "live" ? "cs_live_" : "cs_test_";
+    if (!session.id.startsWith(expectedSessionPrefix)) {
+      throw new PaymentProviderError(
+        "ENVIRONMENT_MISMATCH",
+        "Stripe Checkout-sessie hoort bij een andere omgeving.",
+        false,
+      );
+    }
 
     return {
       provider: "stripe",
       sessionId: session.id,
-      url: session.url,
+      url: requireHostedStripeCheckoutUrl(session.url),
       expiresAt: new Date(session.expires_at * 1_000).toISOString(),
     };
   }
@@ -235,6 +260,16 @@ export class StripePaymentProvider implements PaymentProvider {
     const paymentIntentId = event.type.startsWith("payment_intent.")
       ? objectId
       : relatedObjectId(object, "payment_intent");
+    if (
+      checkoutSessionId
+      && !checkoutSessionId.startsWith(eventEnvironment === "live" ? "cs_live_" : "cs_test_")
+    ) {
+      throw new PaymentProviderError(
+        "ENVIRONMENT_MISMATCH",
+        "Stripe Checkout-sessie hoort bij een andere omgeving.",
+        false,
+      );
+    }
 
     return {
       provider: "stripe",

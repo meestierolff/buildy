@@ -9,6 +9,7 @@ import type {
   ProjectUpdate,
 } from "../../shared/contracts/projects";
 import type { BuildyDatabase } from "../../server/db/client";
+import { PrivacyBlindIndex } from "../../server/security/dataProtection";
 import {
   ANONYMOUS_PROJECT_ACTOR,
   StrictMappedProjectActorResolver,
@@ -43,6 +44,8 @@ const OTHER_ID = "22222222-2222-4222-8222-222222222222";
 const PROJECT_ID = "33333333-3333-4333-8333-333333333333";
 const UPDATE_ID = "44444444-4444-4444-8444-444444444444";
 const SECOND_UPDATE_ID = "55555555-5555-4555-8555-555555555555";
+const BLIND_INDEX = new PrivacyBlindIndex(Buffer.alloc(32, 11).toString("base64"));
+const OTHER_BLIND_INDEX = new PrivacyBlindIndex(Buffer.alloc(32, 12).toString("base64"));
 
 function card(overrides: Partial<ProjectCard> = {}): ProjectCard {
   return {
@@ -293,14 +296,14 @@ class RecordingProtector implements ProjectPrivateDetailsProtector {
 
 describe("project repository security rules", () => {
   it("resolves only a trusted session subject through the stable identity mapping", async () => {
-    const subjects = { resolveAuthUserId: vi.fn(async () => "better-auth-user") };
+    const subjects = { resolveAuthUserId: vi.fn(async () => "google-oidc-user") };
     const appUsers = { findActiveAppUserId: vi.fn(async () => ACTOR_ID) };
     const resolver = new StrictMappedProjectActorResolver(subjects, appUsers);
 
     await expect(resolver.resolve(new Request("https://buildy.test/api/projects", {
       headers: { "x-user-id": OTHER_ID },
     }))).resolves.toEqual({ kind: "authenticated", appUserId: ACTOR_ID });
-    expect(appUsers.findActiveAppUserId).toHaveBeenCalledWith("better-auth-user");
+    expect(appUsers.findActiveAppUserId).toHaveBeenCalledWith("google-oidc-user");
   });
 
   it("represents a missing session explicitly as an anonymous actor", async () => {
@@ -317,7 +320,7 @@ describe("project repository security rules", () => {
 
   it("fails closed when a session subject has no active app-user mapping", async () => {
     const resolver = new StrictMappedProjectActorResolver(
-      { resolveAuthUserId: async () => "better-auth-user" },
+      { resolveAuthUserId: async () => "google-oidc-user" },
       { findActiveAppUserId: async () => null },
     );
 
@@ -327,13 +330,18 @@ describe("project repository security rules", () => {
   });
 
   it.each([
-    ["owner", { kind: "authenticated", appUserId: ACTOR_ID }, { ownerId: ACTOR_ID, visibility: "private", acceptedAccess: false, blocked: false }, true],
-    ["public", { kind: "authenticated", appUserId: ACTOR_ID }, { ownerId: OTHER_ID, visibility: "public", acceptedAccess: false, blocked: false }, true],
-    ["granted", { kind: "authenticated", appUserId: ACTOR_ID }, { ownerId: OTHER_ID, visibility: "private", acceptedAccess: true, blocked: false }, true],
-    ["private", { kind: "authenticated", appUserId: ACTOR_ID }, { ownerId: OTHER_ID, visibility: "private", acceptedAccess: false, blocked: false }, false],
-    ["blocked", { kind: "authenticated", appUserId: ACTOR_ID }, { ownerId: OTHER_ID, visibility: "public", acceptedAccess: true, blocked: true }, false],
-    ["anonymous public", ANONYMOUS_PROJECT_ACTOR, { ownerId: OTHER_ID, visibility: "public", acceptedAccess: false, blocked: false }, true],
-    ["anonymous private despite bogus access", ANONYMOUS_PROJECT_ACTOR, { ownerId: OTHER_ID, visibility: "private", acceptedAccess: true, blocked: false }, false],
+    ["owner", { kind: "authenticated", appUserId: ACTOR_ID }, { ownerId: ACTOR_ID, visibility: "private", profileFollower: false, blocked: false }, true],
+    ["public", { kind: "authenticated", appUserId: ACTOR_ID }, { ownerId: OTHER_ID, visibility: "public", profileFollower: false, blocked: false }, true],
+    ["unlisted without grant", { kind: "authenticated", appUserId: ACTOR_ID }, { ownerId: OTHER_ID, visibility: "unlisted", profileFollower: false, blocked: false }, false],
+    ["unlisted with grant", { kind: "authenticated", appUserId: ACTOR_ID, shareLinkId: PROJECT_ID }, { ownerId: OTHER_ID, visibility: "unlisted", profileFollower: false, blocked: false }, true],
+    ["active profile follower", { kind: "authenticated", appUserId: ACTOR_ID }, { ownerId: OTHER_ID, visibility: "followers", profileFollower: true, blocked: false }, true],
+    ["non-follower", { kind: "authenticated", appUserId: ACTOR_ID }, { ownerId: OTHER_ID, visibility: "followers", profileFollower: false, blocked: false }, false],
+    ["private despite following", { kind: "authenticated", appUserId: ACTOR_ID }, { ownerId: OTHER_ID, visibility: "private", profileFollower: true, blocked: false }, false],
+    ["blocked", { kind: "authenticated", appUserId: ACTOR_ID }, { ownerId: OTHER_ID, visibility: "public", profileFollower: true, blocked: true }, false],
+    ["anonymous public", ANONYMOUS_PROJECT_ACTOR, { ownerId: OTHER_ID, visibility: "public", profileFollower: false, blocked: false }, true],
+    ["anonymous UUID only", ANONYMOUS_PROJECT_ACTOR, { ownerId: OTHER_ID, visibility: "unlisted", profileFollower: false, blocked: false }, false],
+    ["anonymous signed grant", { kind: "anonymous", shareLinkId: PROJECT_ID }, { ownerId: OTHER_ID, visibility: "unlisted", profileFollower: false, blocked: false }, true],
+    ["anonymous followers-only", ANONYMOUS_PROJECT_ACTOR, { ownerId: OTHER_ID, visibility: "followers", profileFollower: true, blocked: false }, false],
   ] as const)("enforces %s visibility", (_label, viewer, facts, expected) => {
     expect(canActorViewProject(viewer, { ...facts, lifecycleStatus: "active" })).toBe(expected);
   });
@@ -355,8 +363,11 @@ describe("project repository security rules", () => {
   });
 
   it("creates deterministic, actor-scoped command hashes without storing the client key", () => {
-    expect(projectRequestHash("edit", { b: 2, a: 1 })).toBe(
-      projectRequestHash("edit", { a: 1, b: 2 }),
+    expect(projectRequestHash("edit", { b: 2, a: 1 }, BLIND_INDEX)).toBe(
+      projectRequestHash("edit", { a: 1, b: 2 }, BLIND_INDEX),
+    );
+    expect(projectRequestHash("edit", { a: 1, b: 2 }, BLIND_INDEX)).not.toBe(
+      projectRequestHash("edit", { a: 1, b: 2 }, OTHER_BLIND_INDEX),
     );
     const first = scopedProjectIdempotencyKey("edit", ACTOR_ID, UPDATE_ID, "client-key-123456");
     const otherActor = scopedProjectIdempotencyKey("edit", OTHER_ID, UPDATE_ID, "client-key-123456");
@@ -421,7 +432,7 @@ describe("project service", () => {
       project: { id: PROJECT_ID, title: "Nieuwe keuken" },
       update: update({ status: "published", publishedAt: "2026-08-04T10:00:00.000Z" }),
     }];
-    const service = new ProjectService(repository, new RecordingProtector());
+    const service = new ProjectService(repository, new RecordingProtector(), BLIND_INDEX);
 
     await expect(service.following(ACTOR_ID, {
       projectLimit: "10",
@@ -436,7 +447,7 @@ describe("project service", () => {
   it("creates a private project for the injected actor and encrypts every private field", async () => {
     const repository = new FakeProjectRepository();
     const protector = new RecordingProtector();
-    const service = new ProjectService(repository, protector, () => new Date("2026-08-04T10:00:00Z"), () => PROJECT_ID);
+    const service = new ProjectService(repository, protector, BLIND_INDEX, () => new Date("2026-08-04T10:00:00Z"), () => PROJECT_ID);
 
     const result = await service.createProject(ACTOR_ID, {
       idempotencyKey: "create-project-key-0001",
@@ -469,7 +480,7 @@ describe("project service", () => {
 
   it("rejects forged ownership before calling the repository", async () => {
     const repository = new FakeProjectRepository();
-    const service = new ProjectService(repository, new RecordingProtector(), undefined, () => PROJECT_ID);
+    const service = new ProjectService(repository, new RecordingProtector(), BLIND_INDEX, undefined, () => PROJECT_ID);
 
     await expect(service.createProject(ACTOR_ID, {
       idempotencyKey: "create-project-key-0001",
@@ -486,7 +497,7 @@ describe("project service", () => {
       card({ id: UPDATE_ID, updatedAt: "2026-08-03T10:00:00.000Z" }),
       card({ id: SECOND_UPDATE_ID, updatedAt: "2026-08-02T10:00:00.000Z" }),
     ];
-    const service = new ProjectService(repository, new RecordingProtector());
+    const service = new ProjectService(repository, new RecordingProtector(), BLIND_INDEX);
 
     const page = await service.dashboard(ACTOR_ID, { limit: "2" });
 
@@ -502,7 +513,7 @@ describe("project service", () => {
   it("returns the same update for a double submit and conflicts on key reuse", async () => {
     const repository = new FakeProjectRepository();
     const ids = [UPDATE_ID, SECOND_UPDATE_ID, "66666666-6666-4666-8666-666666666666"];
-    const service = new ProjectService(repository, new RecordingProtector(), () => new Date("2026-08-04T10:00:00Z"), () => ids.shift()!);
+    const service = new ProjectService(repository, new RecordingProtector(), BLIND_INDEX, () => new Date("2026-08-04T10:00:00Z"), () => ids.shift()!);
     const input = {
       idempotencyKey: "update-submit-key-0001",
       expectedProjectVersion: 1,
@@ -528,7 +539,7 @@ describe("project service", () => {
 
   it("uses a non-enumerating not-found error for invisible project IDs", async () => {
     const repository = new FakeProjectRepository();
-    const service = new ProjectService(repository, new RecordingProtector());
+    const service = new ProjectService(repository, new RecordingProtector(), BLIND_INDEX);
 
     await expect(service.overview(
       { kind: "authenticated", appUserId: ACTOR_ID },
@@ -541,7 +552,7 @@ describe("project service", () => {
   it("preserves optimistic write conflicts as a stable typed error", async () => {
     const repository = new FakeProjectRepository();
     repository.updateProjectError = new ProjectError("VERSION_CONFLICT");
-    const service = new ProjectService(repository, new RecordingProtector());
+    const service = new ProjectService(repository, new RecordingProtector(), BLIND_INDEX);
 
     await expect(service.updateProject(ACTOR_ID, PROJECT_ID, {
       expectedVersion: 1,
@@ -555,7 +566,7 @@ describe("project service", () => {
 
   it("soft-deletes an update with a version-bound, idempotent owner command", async () => {
     const repository = new FakeProjectRepository();
-    const service = new ProjectService(repository, new RecordingProtector());
+    const service = new ProjectService(repository, new RecordingProtector(), BLIND_INDEX);
     const input = {
       idempotencyKey: "update-delete:dddddddd-dddd-4ddd-8ddd-dddddddddddd",
       expectedVersion: 1,
@@ -581,11 +592,11 @@ describe("project service", () => {
 
   it("starts project erasure with an actor-scoped key and preserves replay identity", async () => {
     const repository = new FakeProjectRepository();
-    const service = new ProjectService(repository, new RecordingProtector());
+    const service = new ProjectService(repository, new RecordingProtector(), BLIND_INDEX);
     const input = {
       idempotencyKey: "project-delete:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       expectedVersion: 1,
-      confirmation: "VERWIJDER PROJECT",
+      confirmation: "VERWIJDER VERBOUWING",
     } as const;
 
     await expect(service.requestProjectDeletion(ACTOR_ID, PROJECT_ID, input)).resolves.toMatchObject({
@@ -603,7 +614,7 @@ describe("project service", () => {
       actorId: ACTOR_ID,
       projectId: PROJECT_ID,
       retentionPolicyVersion: "project-erasure-v1",
-      input: { expectedVersion: 1, confirmation: "VERWIJDER PROJECT" },
+      input: { expectedVersion: 1, confirmation: "VERWIJDER VERBOUWING" },
     });
     expect(repository.deleteProjectCommands[0]?.idempotencyKey)
       .toMatch(/^project-command:v1:project\.delete:[0-9a-f]{64}$/);
@@ -614,12 +625,12 @@ describe("project service", () => {
   it("blocks project erasure while a physical order is active", async () => {
     const repository = new FakeProjectRepository();
     repository.projectDeletionStatus = "blocked_active_order";
-    const service = new ProjectService(repository, new RecordingProtector());
+    const service = new ProjectService(repository, new RecordingProtector(), BLIND_INDEX);
 
     await expect(service.requestProjectDeletion(ACTOR_ID, PROJECT_ID, {
       idempotencyKey: "project-delete:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
       expectedVersion: 1,
-      confirmation: "VERWIJDER PROJECT",
+      confirmation: "VERWIJDER VERBOUWING",
     })).rejects.toThrowError(expect.objectContaining({
       reason: "ACTIVE_ORDER",
       status: 409,
@@ -628,7 +639,7 @@ describe("project service", () => {
 
   it("rejects a project deletion without the exact destructive confirmation", async () => {
     const repository = new FakeProjectRepository();
-    const service = new ProjectService(repository, new RecordingProtector());
+    const service = new ProjectService(repository, new RecordingProtector(), BLIND_INDEX);
 
     await expect(service.requestProjectDeletion(ACTOR_ID, PROJECT_ID, {
       idempotencyKey: "project-delete:cccccccc-cccc-4ccc-8ccc-cccccccccccc",
@@ -643,6 +654,7 @@ describe("project service", () => {
     const service = new ProjectService(
       repository,
       new RecordingProtector(),
+      BLIND_INDEX,
       () => new Date("2026-08-04T10:00:00Z"),
       () => SECOND_UPDATE_ID,
     );

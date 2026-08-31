@@ -21,7 +21,6 @@ const NOW = new Date("2026-08-04T12:00:00.000Z");
 const currentSession: AccountAuthSession = {
   id: "session-current",
   authUserId: "auth-user-1",
-  token: "server-secret-token",
   isCurrent: true,
   createdAt: "2026-08-04T11:55:00.000Z",
   updatedAt: "2026-08-04T11:55:00.000Z",
@@ -65,7 +64,6 @@ function auth(overrides: Partial<AccountAuthGateway> = {}): AccountAuthGateway {
       revoked: sessionId === currentSession.id,
       wasCurrent: sessionId === currentSession.id,
     }),
-    verifyPassword: async () => false,
     ...overrides,
   };
 }
@@ -75,6 +73,7 @@ function storage(overrides: Partial<ObjectStorage> = {}): ObjectStorage {
     createUploadUrl: async () => { throw new Error("unused"); },
     completeUpload: async () => { throw new Error("unused"); },
     createDownloadUrl: async () => { throw new Error("signed downloads are forbidden"); },
+    streamObject: async () => { throw new Error("unused"); },
     readObject: async () => { throw new Error("unused"); },
     writeObject: async () => { throw new Error("unused"); },
     headObject: async () => null,
@@ -87,7 +86,7 @@ function storage(overrides: Partial<ObjectStorage> = {}): ObjectStorage {
 }
 
 describe("AccountService", () => {
-  it("houdt Better Auth tokens server-side bij sessielijst en intrekking", async () => {
+  it("houdt server-owned sessiegeheimen buiten de sessielijst en trekt sessies in", async () => {
     const revokeSession = vi.fn(auth().revokeSession);
     const service = new AccountService(
       repository(),
@@ -100,8 +99,16 @@ describe("AccountService", () => {
     const request = new Request("https://app.buildy.test/api/account/sessions");
 
     const sessions = await service.sessions(request);
-    expect(sessions).toEqual([{ ...currentSession, token: undefined, authUserId: undefined }]);
-    expect(JSON.stringify(sessions)).not.toContain(currentSession.token);
+    expect(sessions).toEqual([{
+      id: currentSession.id,
+      isCurrent: true,
+      createdAt: currentSession.createdAt,
+      updatedAt: currentSession.updatedAt,
+      expiresAt: currentSession.expiresAt,
+      ipAddress: currentSession.ipAddress,
+      userAgent: currentSession.userAgent,
+    }]);
+    expect(JSON.stringify(sessions)).not.toContain("authUserId");
     await expect(service.revokeSession(request, currentSession.id)).resolves.toEqual({
       revokedSessionId: currentSession.id,
       revokedCurrentSession: true,
@@ -136,14 +143,25 @@ describe("AccountService", () => {
 
   it("streamt alleen een checksummed private export en maakt geen signed URL", async () => {
     const bytes = Buffer.from("private deterministic export");
+    const objectKey = `exports/33/${JOB_ID}/buildy-export.zip`;
     const createDownloadUrl = vi.fn(async () => { throw new Error("must not be called"); });
-    const readObject = vi.fn(async () => bytes);
+    const streamObject = vi.fn(async () => ({
+      metadata: {
+        key: objectKey,
+        sizeBytes: bytes.byteLength,
+        contentType: "application/zip",
+      },
+      stream: new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(bytes); controller.close(); },
+      }),
+      contentLength: bytes.byteLength,
+    }));
     const service = new AccountService(
       repository({
         resolveExportDownload: async (actorId, jobId) => actorId === ACTOR_ID && jobId === JOB_ID
           ? {
               jobId: JOB_ID,
-              objectKey: `exports/33/${JOB_ID}/buildy-export.zip`,
+              objectKey,
               sizeBytes: bytes.byteLength,
               sha256: createHash("sha256").update(bytes).digest("hex"),
               manifestSha256: "b".repeat(64),
@@ -151,18 +169,21 @@ describe("AccountService", () => {
           : null,
       }),
       auth(),
-      storage({ createDownloadUrl, readObject }),
+      storage({ createDownloadUrl, streamObject }),
       "buildy-private-media",
       RETENTION_POLICY_VERSION,
     );
 
-    await expect(service.downloadExport(ACTOR_ID, JOB_ID)).resolves.toMatchObject({
-      bytes,
+    const download = await service.downloadExport(ACTOR_ID, JOB_ID);
+    expect(download).toMatchObject({
+      status: 200,
+      contentLength: bytes.byteLength,
       filename: "buildy-data-export-33333333.zip",
     });
+    await expect(new Response(download.body).text()).resolves.toBe(bytes.toString());
     await expect(service.downloadExport(OTHER_ID, JOB_ID))
       .rejects.toMatchObject({ reason: "EXPORT_NOT_READY" });
-    expect(readObject).toHaveBeenCalledTimes(1);
+    expect(streamObject).toHaveBeenCalledTimes(1);
     expect(createDownloadUrl).not.toHaveBeenCalled();
   });
 
@@ -179,23 +200,36 @@ describe("AccountService", () => {
         }),
       }),
       auth(),
-      storage({ readObject: async () => Buffer.from("tampered") }),
+      storage({
+        streamObject: async () => ({
+          metadata: {
+            key: `exports/33/${JOB_ID}/buildy-export.zip`,
+            sizeBytes: expected.byteLength,
+            contentType: "application/zip",
+          },
+          stream: new ReadableStream<Uint8Array>({
+            start(controller) { controller.enqueue(Buffer.from("tampered")); controller.close(); },
+          }),
+          contentLength: expected.byteLength,
+        }),
+      }),
       "buildy-private-media",
       RETENTION_POLICY_VERSION,
     );
 
-    await expect(service.downloadExport(ACTOR_ID, JOB_ID))
-      .rejects.toMatchObject({ reason: "INVALID_STATE" });
+    const download = await service.downloadExport(ACTOR_ID, JOB_ID);
+    await expect(new Response(download.body).arrayBuffer())
+      .rejects.toMatchObject({ code: "UPLOAD_MISMATCH" });
   });
 
-  it("vereist een recente sessie of een correct huidig wachtwoord voor accountverwijdering", async () => {
+  it("vereist een recente Google-sessie voor accountverwijdering", async () => {
     const requestDeletion = vi.fn(repository().requestDeletion);
     const oldSession = { ...currentSession, createdAt: "2026-08-04T10:00:00.000Z" };
     const request = new Request("https://app.buildy.test/api/account/deletion");
     const input = { confirmation: "VERWIJDEREN", idempotencyKey: CLIENT_KEY };
     const stale = new AccountService(
       repository({ requestDeletion }),
-      auth({ currentSession: async () => oldSession, verifyPassword: async () => false }),
+      auth({ currentSession: async () => oldSession }),
       storage(),
       "buildy-private-media",
       RETENTION_POLICY_VERSION,
@@ -206,15 +240,15 @@ describe("AccountService", () => {
       .rejects.toMatchObject({ reason: "REAUTH_REQUIRED", status: 403 });
     expect(requestDeletion).not.toHaveBeenCalled();
 
-    const verified = new AccountService(
+    const recentlyAuthenticated = new AccountService(
       repository({ requestDeletion }),
-      auth({ currentSession: async () => oldSession, verifyPassword: async () => true }),
+      auth(),
       storage(),
       "buildy-private-media",
       RETENTION_POLICY_VERSION,
       () => NOW,
     );
-    await verified.requestDeletion(ACTOR_ID, request, { ...input, currentPassword: "correct horse" });
+    await recentlyAuthenticated.requestDeletion(ACTOR_ID, request, input);
     expect(requestDeletion).toHaveBeenCalledWith(
       ACTOR_ID,
       expect.stringMatching(/^[0-9a-f]{64}$/),

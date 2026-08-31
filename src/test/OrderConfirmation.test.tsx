@@ -30,6 +30,7 @@ const order: PhotobookOrderDetail = {
   orderId: "22222222-2222-4222-8222-222222222222",
   orderNumber: "BLD-ABCD-1234",
   projectId: "33333333-3333-4333-8333-333333333333",
+  projectTitle: "Ons huis",
   proofRevisionId: "11111111-1111-4111-8111-111111111111",
   sku: "a4-landscape-hardcover-v1",
   format: "a4-landscape-hardcover-v1",
@@ -48,10 +49,26 @@ const order: PhotobookOrderDetail = {
   status: "checkout_open",
   paymentStatus: "processing",
   refundedMinor: 0,
-  fulfilmentStatus: "unclaimed",
+  fulfilmentStatus: "awaiting_review",
   trackingUrl: null,
   createdAt: "2026-08-04T12:00:00.000Z",
   paidAt: null,
+  statusHistory: [
+    {
+      id: "44444444-4444-4444-8444-444444444444",
+      eventType: "order.checkout_reserved.v1",
+      fromStatus: null,
+      toStatus: "awaiting_payment",
+      occurredAt: "2026-08-04T12:00:00.000Z",
+    },
+    {
+      id: "55555555-5555-4555-8555-555555555555",
+      eventType: "order.checkout_opened.v1",
+      fromStatus: "awaiting_payment",
+      toStatus: "checkout_open",
+      occurredAt: "2026-08-04T12:01:00.000Z",
+    },
+  ],
 };
 
 function query(data: PhotobookOrderDetail) {
@@ -84,7 +101,7 @@ describe("OrderConfirmation", () => {
       ...order,
       status: "paid",
       paymentStatus: "paid",
-      fulfilmentStatus: "claimed",
+      fulfilmentStatus: "reviewed",
       paidAt: "2026-08-04T12:05:00.000Z",
     });
     render(<OrderConfirmation />);
@@ -92,5 +109,14 @@ describe("OrderConfirmation", () => {
     expect(screen.getByRole("heading", { name: "Betaling bevestigd" })).toBeInTheDocument();
     expect(screen.getAllByText("Betaald")).not.toHaveLength(0);
     expect(screen.queryByText(/automatisch iedere vier seconden/i)).not.toBeInTheDocument();
+  });
+
+  it("toont de werkelijk vastgelegde ordergebeurtenissen en geen afgeleide mijlpalen", () => {
+    render(<OrderConfirmation />);
+
+    expect(screen.getByRole("heading", { name: "Vastgelegde voortgang" })).toBeInTheDocument();
+    expect(screen.getAllByText("Betaalpagina geopend")).toHaveLength(2);
+    expect(screen.getByText("Bestelling aangemaakt")).toBeInTheDocument();
+    expect(screen.queryByText("Productie", { selector: "span" })).not.toBeInTheDocument();
   });
 });

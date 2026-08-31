@@ -8,13 +8,12 @@ const TLS_DATABASE_MODES = new Set(["require", "verify-ca", "verify-full"]);
 export interface AuthConfiguration {
   appOrigin: string;
   betaMode?: boolean;
+  callbackUrl: string;
   databaseUrl: string;
-  simpleAppMode?: boolean;
-  google?: {
+  google: {
     clientId: string;
     clientSecret: string;
   };
-  secret: string;
   secureCookies: boolean;
   trustedOrigins: readonly string[];
 }
@@ -75,20 +74,10 @@ function validateDatabaseUrl(databaseUrl: string): void {
 }
 
 export function resolveAuthConfiguration(runtime: RuntimeConfig): AuthConfiguration {
-  if (!runtime.DATABASE_URL || !runtime.BETTER_AUTH_SECRET) {
+  if (!runtime.DATABASE_URL || !runtime.GOOGLE_CLIENT_ID || !runtime.GOOGLE_CLIENT_SECRET) {
     throw new AuthUnavailableError("configuration_missing");
   }
-
-  if (runtime.BETTER_AUTH_SECRET.length < 32) {
-    throw new AuthUnavailableError("configuration_invalid");
-  }
   validateDatabaseUrl(runtime.DATABASE_URL);
-
-  const hasGoogleClientId = Boolean(runtime.GOOGLE_CLIENT_ID);
-  const hasGoogleClientSecret = Boolean(runtime.GOOGLE_CLIENT_SECRET);
-  if (hasGoogleClientId !== hasGoogleClientSecret) {
-    throw new AuthUnavailableError("configuration_invalid");
-  }
 
   const requireHttps = HTTPS_ONLY_ENVIRONMENTS.has(runtime.APP_ENV);
   const appOrigin = parseExactOrigin(runtime.APP_ORIGIN, requireHttps);
@@ -113,17 +102,12 @@ export function resolveAuthConfiguration(runtime: RuntimeConfig): AuthConfigurat
   return {
     appOrigin,
     betaMode: runtime.BETA_MODE !== false,
+    callbackUrl: new URL("/api/auth/callback/google", appOrigin).toString(),
     databaseUrl: runtime.DATABASE_URL,
-    simpleAppMode: runtime.SIMPLE_APP_MODE,
-    ...(runtime.GOOGLE_CLIENT_ID && runtime.GOOGLE_CLIENT_SECRET
-      ? {
-          google: {
-            clientId: runtime.GOOGLE_CLIENT_ID,
-            clientSecret: runtime.GOOGLE_CLIENT_SECRET,
-          },
-        }
-      : {}),
-    secret: runtime.BETTER_AUTH_SECRET,
+    google: {
+      clientId: runtime.GOOGLE_CLIENT_ID,
+      clientSecret: runtime.GOOGLE_CLIENT_SECRET,
+    },
     secureCookies: new URL(appOrigin).protocol === "https:",
     trustedOrigins,
   };

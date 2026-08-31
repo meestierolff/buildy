@@ -62,7 +62,6 @@ export const createAccountExportResponseSchema = apiSuccessSchema(z.object({
 
 export const requestAccountDeletionInputSchema = z.object({
   confirmation: z.literal("VERWIJDEREN"),
-  currentPassword: z.string().min(1).max(128).optional(),
   idempotencyKey: idempotencyKeySchema,
 }).strict();
 

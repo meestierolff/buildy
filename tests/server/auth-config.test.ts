@@ -9,9 +9,9 @@ function runtime(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
   return {
     APP_ENV: "test",
     APP_ORIGIN: "https://app.buildy.test",
-    CHECKOUT_ENABLED: false,
-    BETTER_AUTH_SECRET: "s".repeat(32),
     DATABASE_URL: "postgresql://buildy:buildy@127.0.0.1:5432/buildy",
+    GOOGLE_CLIENT_ID: "google-client",
+    GOOGLE_CLIENT_SECRET: "google-secret",
     NODE_ENV: "test",
     ...overrides,
   };
@@ -32,6 +32,7 @@ describe("auth configuration", () => {
       "https://preview.buildy.test",
     ]);
     expect(config.secureCookies).toBe(true);
+    expect(config.callbackUrl).toBe("https://app.buildy.test/api/auth/callback/google");
   });
 
   it("allows insecure cookies only on a local loopback origin", () => {
@@ -70,17 +71,15 @@ describe("auth configuration", () => {
     expect(() => resolveAuthConfiguration(runtime({ DATABASE_URL: undefined }))).toThrowError(
       expect.objectContaining({ reason: "configuration_missing" }),
     );
-    expect(() => resolveAuthConfiguration(runtime({ BETTER_AUTH_SECRET: undefined }))).toThrowError(
+    expect(() => resolveAuthConfiguration(runtime({ GOOGLE_CLIENT_ID: undefined }))).toThrowError(
+      expect.objectContaining({ reason: "configuration_missing" }),
+    );
+    expect(() => resolveAuthConfiguration(runtime({ GOOGLE_CLIENT_SECRET: undefined }))).toThrowError(
       expect.objectContaining({ reason: "configuration_missing" }),
     );
   });
 
-  it("enables Google only when both credentials are configured", () => {
-    expect(resolveAuthConfiguration(runtime()).google).toBeUndefined();
-    expect(() =>
-      resolveAuthConfiguration(runtime({ GOOGLE_CLIENT_ID: "client-only" })),
-    ).toThrowError(expect.objectContaining({ reason: "configuration_invalid" }));
-
+  it("configures only the required Google client credentials", () => {
     expect(
       resolveAuthConfiguration(
         runtime({ GOOGLE_CLIENT_ID: "client", GOOGLE_CLIENT_SECRET: "secret" }),

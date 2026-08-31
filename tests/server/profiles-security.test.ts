@@ -12,6 +12,10 @@ const lifecycleMigrationUrl = new URL(
   "../../db/migrations/0006_engagement_visibility_hardening.sql",
   import.meta.url,
 );
+const requestHashPrivacyMigrationUrl = new URL(
+  "../../db/migrations/0045_request_hash_privacy.sql",
+  import.meta.url,
+);
 const repositoryUrl = new URL("../../server/profiles/repository.ts", import.meta.url);
 const socialRepositoryUrl = new URL("../../server/social/repository.ts", import.meta.url);
 const mediaRepositoryUrl = new URL("../../server/media/repository.ts", import.meta.url);
@@ -49,9 +53,9 @@ describe("profile database boundary", () => {
     expect(migration).toContain("linked avatar asset is immutable until unlinked");
     expect(repository).toContain("asset.owner_id = ${actorId}::uuid");
     expect(repository).toContain("for share of asset");
-    // Profile detail, profile search and the owner-only access-request list all
-    // resolve the one explicitly linked avatar; none may pick a "latest" asset.
-    expect(socialRepository.match(/avatar\.id = profile\.avatar_asset_id/g)).toHaveLength(3);
+    // Profile detail resolves the explicitly linked avatar directly; search uses
+    // the database helper and the retired project-access-request join is absent.
+    expect(socialRepository.match(/avatar\.id = profile\.avatar_asset_id/g)).toHaveLength(1);
     expect(socialRepository).not.toMatch(/order by asset\.updated_at desc/);
     expect(mediaRepository).toContain("profile.avatar_asset_id = parent.id");
     expect(mediaRepository).toContain("profile.user_id = parent.owner_id");
@@ -102,15 +106,17 @@ describe("profile database boundary", () => {
   });
 
   it("houdt het idempotency-ledger minimaal en profiel-PII-vrij", async () => {
-    const migration = await readFile(migrationUrl, "utf8");
+    const migration = await readFile(requestHashPrivacyMigrationUrl, "utf8");
     const policy = migration.slice(
       migration.indexOf("CREATE POLICY outbox_events_insert_profile_mutation"),
-      migration.indexOf("REVOKE ALL ON FUNCTION public.guard_profile_privileges"),
+      migration.indexOf("REVOKE ALL ON FUNCTION"),
     );
 
     expect(policy).toContain("aggregate_id = public.app_actor_id()");
     expect(policy).toContain("event_type = 'profile.updated.v1'");
-    expect(policy).toContain("ARRAY['schemaVersion', 'requestHash', 'profileVersion']");
+    expect(policy).toContain("'requestHashVersion'");
+    expect(policy).toContain("'requestHash'");
+    expect(policy).toContain("'profileVersion'");
     expect(policy).not.toMatch(/display_name|slug|bio|location|avatar_asset_id/);
   });
 });

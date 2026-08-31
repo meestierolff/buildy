@@ -2,8 +2,10 @@ import { Home, type LucideIcon } from "lucide-react";
 
 import PrivacyBadge from "@/components/app/PrivacyBadge";
 import { Link } from "@/lib/router";
+import { ResilientImage, ResilientVideo } from "@/components/ResilientMedia";
 import { PRODUCT_ROUTES } from "@/lib/productNavigation";
 import { cn } from "@/lib/utils";
+import type { ProjectVisibility } from "../../shared/contracts/projects";
 
 interface ProjectCardProps {
   id: string;
@@ -14,7 +16,7 @@ interface ProjectCardProps {
   coverMediaType?: string | null;
   profileName?: string | null;
   updateCount?: number;
-  isPublic?: boolean | null;
+  visibility?: ProjectVisibility | null;
   variant?: "standard" | "feature";
   placeholderIcon?: LucideIcon;
 }
@@ -31,17 +33,25 @@ const ProjectCard = ({
   coverMediaType,
   profileName,
   updateCount = 0,
-  isPublic,
+  visibility,
   variant = "standard",
   placeholderIcon: PlaceholderIcon = Home,
 }: ProjectCardProps) => {
   const progress = Math.max(0, Math.min(100, progressPercentage ?? 0));
   const videoCover = looksLikeVideo(coverUrl, coverMediaType);
-  const visibilityLabel = isPublic === undefined || isPublic === null
+  const visibilityLabel = visibility === undefined || visibility === null
     ? ""
-    : isPublic
-      ? " Openbaar project."
-      : " Privéproject.";
+    : ` ${{
+        private: "Alleen voor de eigenaar.",
+        followers: "Zichtbaar voor profielvolgers.",
+        unlisted: "Alleen zichtbaar met een actieve tijdelijke deellink.",
+        public: "Openbare verbouwing.",
+      }[visibility]}`;
+  const privacyLevel = visibility === "public"
+    ? "public"
+    : visibility === "private"
+      ? "private"
+      : "shared";
 
   return (
     <Link
@@ -58,7 +68,7 @@ const ProjectCard = ({
         >
           {coverUrl ? (
             videoCover ? (
-              <video
+              <ResilientVideo
                 src={coverUrl}
                 muted
                 playsInline
@@ -67,7 +77,7 @@ const ProjectCard = ({
                 className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.015] motion-reduce:transform-none"
               />
             ) : (
-              <img
+              <ResilientImage
                 src={coverUrl}
                 alt=""
                 loading="lazy"
@@ -79,13 +89,18 @@ const ProjectCard = ({
           ) : (
             <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-secondary px-6 text-center text-muted-foreground">
               <PlaceholderIcon className="h-10 w-10" strokeWidth={1.25} aria-hidden="true" />
-              <span className="font-sans text-xs font-semibold uppercase tracking-[0.16em]">Projectfoto volgt</span>
+              <span className="font-sans text-xs font-semibold uppercase tracking-[0.16em]">Foto volgt</span>
             </div>
           )}
 
-          {isPublic !== undefined && isPublic !== null ? (
+          {visibility !== undefined && visibility !== null ? (
             <PrivacyBadge
-              level={isPublic ? "public" : "private"}
+              level={privacyLevel}
+              label={visibility === "followers"
+                ? "Mijn volgers"
+                : visibility === "unlisted"
+                  ? "Deellink"
+                  : undefined}
               className="absolute left-3 top-3 bg-background/95 shadow-sm"
             />
           ) : null}
@@ -113,8 +128,8 @@ const ProjectCard = ({
           </div>
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 font-sans text-xs leading-5 text-muted-foreground">
-            <span>{profileName ? `Door ${profileName}` : "Buildy-project"}</span>
-            <span>{updateCount === 1 ? "1 update" : `${updateCount} updates`}</span>
+            <span>{profileName ? `Door ${profileName}` : "Buildy-verbouwing"}</span>
+            <span>{updateCount === 1 ? "1 Bouwmoment" : `${updateCount} Bouwmomenten`}</span>
           </div>
 
           <div

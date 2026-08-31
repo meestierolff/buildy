@@ -13,6 +13,7 @@ import {
   type ProjectBudget,
 } from "../../shared/contracts/planning.js";
 import type { ProjectActor } from "../projects/actor.js";
+import type { PrivacyBlindIndex } from "../security/dataProtection.js";
 import { PlanningError } from "./errors.js";
 import { planningRequestHash, scopedPlanningIdempotencyKey } from "./idempotency.js";
 import type { PlanningIdFactory, PlanningRepository } from "./types.js";
@@ -47,17 +48,19 @@ function commandIdentity(
   actor: string,
   projectId: string,
   clientKey: string,
+  blindIndex: PrivacyBlindIndex,
   payload: unknown,
 ): { idempotencyKey: string; requestHash: string } {
   return {
     idempotencyKey: scopedPlanningIdempotencyKey(operation, actor, projectId, clientKey),
-    requestHash: planningRequestHash(operation, payload),
+    requestHash: planningRequestHash(operation, payload, blindIndex),
   };
 }
 
 export class PlanningService {
   constructor(
     private readonly repository: PlanningRepository,
+    private readonly blindIndex: PrivacyBlindIndex,
     private readonly createId: PlanningIdFactory = () => crypto.randomUUID(),
   ) {}
 
@@ -87,6 +90,7 @@ export class PlanningService {
         actor,
         projectId,
         input.idempotencyKey,
+        this.blindIndex,
         withoutIdempotencyKey(input),
       ),
     });
@@ -108,7 +112,7 @@ export class PlanningService {
       projectId,
       floorplanId,
       input,
-      ...commandIdentity(operation, actor, projectId, input.idempotencyKey, {
+      ...commandIdentity(operation, actor, projectId, input.idempotencyKey, this.blindIndex, {
         floorplanId,
         ...withoutIdempotencyKey(input),
       }),
@@ -131,7 +135,7 @@ export class PlanningService {
       projectId,
       floorplanId,
       input,
-      ...commandIdentity(operation, actor, projectId, input.idempotencyKey, {
+      ...commandIdentity(operation, actor, projectId, input.idempotencyKey, this.blindIndex, {
         floorplanId,
         ...withoutIdempotencyKey(input),
       }),
@@ -155,7 +159,7 @@ export class PlanningService {
       floorplanId,
       pinId: this.createId(),
       input,
-      ...commandIdentity(operation, actor, projectId, input.idempotencyKey, {
+      ...commandIdentity(operation, actor, projectId, input.idempotencyKey, this.blindIndex, {
         floorplanId,
         ...withoutIdempotencyKey(input),
       }),
@@ -181,7 +185,7 @@ export class PlanningService {
       floorplanId,
       pinId,
       input,
-      ...commandIdentity(operation, actor, projectId, input.idempotencyKey, {
+      ...commandIdentity(operation, actor, projectId, input.idempotencyKey, this.blindIndex, {
         floorplanId,
         pinId,
         ...withoutIdempotencyKey(input),
@@ -208,7 +212,7 @@ export class PlanningService {
       floorplanId,
       pinId,
       input,
-      ...commandIdentity(operation, actor, projectId, input.idempotencyKey, {
+      ...commandIdentity(operation, actor, projectId, input.idempotencyKey, this.blindIndex, {
         floorplanId,
         pinId,
         ...withoutIdempotencyKey(input),
@@ -244,6 +248,7 @@ export class PlanningService {
         actor,
         projectId,
         input.idempotencyKey,
+        this.blindIndex,
         withoutIdempotencyKey(input),
       ),
     });
@@ -267,6 +272,7 @@ export class PlanningService {
         actor,
         projectId,
         input.idempotencyKey,
+        this.blindIndex,
         withoutIdempotencyKey(input),
       ),
     });
@@ -290,6 +296,7 @@ export class PlanningService {
         actor,
         projectId,
         input.idempotencyKey,
+        this.blindIndex,
         withoutIdempotencyKey(input),
       ),
     });
@@ -314,6 +321,7 @@ export class PlanningService {
         actor,
         projectId,
         input.idempotencyKey,
+        this.blindIndex,
         withoutIdempotencyKey(input),
       ),
     });
@@ -335,7 +343,7 @@ export class PlanningService {
       projectId,
       itemId,
       input,
-      ...commandIdentity(operation, actor, projectId, input.idempotencyKey, {
+      ...commandIdentity(operation, actor, projectId, input.idempotencyKey, this.blindIndex, {
         itemId,
         ...withoutIdempotencyKey(input),
       }),
@@ -358,7 +366,7 @@ export class PlanningService {
       projectId,
       itemId,
       input,
-      ...commandIdentity(operation, actor, projectId, input.idempotencyKey, {
+      ...commandIdentity(operation, actor, projectId, input.idempotencyKey, this.blindIndex, {
         itemId,
         ...withoutIdempotencyKey(input),
       }),

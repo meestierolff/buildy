@@ -1,78 +1,93 @@
 # Backup and restore
 
-**Status:** procedure gereed; er is nog geen echte restore rehearsal op een
-niet-productie Neon-branch uitgevoerd. Dit blijft een launchblokkade.
+Status: actuele procedure; een echte restore rehearsal en goedgekeurde RPO/RTO
+zijn nog launchblokkades.
 
-## Scope en beslissingen
+## Scope
 
-Het herstelplan omvat Neon-data, private R2-objecten, Vercelconfiguratie en
-providerreferenties. Stripe, Brevo en Peecho blijven bronsystemen voor hun eigen
-providerfeiten; een databasebackup vervangt geen providerreconciliatie.
+Herstel omvat:
 
-De eigenaar moet vóór productie RPO, RTO, Neon-plan/retentie, R2-versioning of
-backupstrategie en wettelijke/contractuele retentie goedkeuren. Deze waarden
-worden niet in code verzonnen.
+- Neon data, migrationledger, RLS en role grants;
+- private Vercel Blob-objecten die door het databaseassetmanifest worden
+  gerefereerd;
+- Vercel environment-/domainconfiguratie en de ene account-lifecyclecron als
+  afzonderlijke inventory;
+- server-owned order-, payment-, proof- en fulfilmentledgers;
+- reconciliatie met Stripe als bron van provider-events en met het handmatig
+  gecontroleerde drukkerrecord.
 
-## Voor iedere risicovolle wijziging
+Een Neonbackup is geen Blobbackup en vervangt geen Stripe- of handmatige
+drukkerreconciliatie. De eigenaar moet vóór productie RPO, RTO, Neon-plan/
+retentie, Blob-herstelstrategie en wettelijke/contractuele bewaartermijnen
+goedkeuren; code verzint die waarden niet.
 
-1. Registreer environment, release-SHA en migration-ledgerhashes.
-2. Maak met Neon een geïsoleerde branch/restorepoint volgens het daadwerkelijk
-   geactiveerde plan en noteer het provider-ID zonder connection string.
-3. Maak een R2-inventory met objectkeyhash, versie, bytes en SHA-256; exporteer
-   geen signed URLs.
-4. Leg Stripe/Peecho ordertellingen en totalen per valuta vast, niet de volledige
-   klant- of providerpayloads.
-5. Verifieer dat rollback eigenaar, window en stopcriterium bekend zijn.
+Er is geen R2-, Brevo- of Peecho-API-backupstap.
+
+## Voor een risicovolle wijziging
+
+1. Leg environment, release-SHA, migrationledgerhashes en change-ID vast.
+2. Maak volgens het werkelijke Neon-plan een branch/herstelpunt; noteer alleen
+   provider-ID en UTC-tijd, geen connection string.
+3. Maak een geminimaliseerde inventory van private Blob-assets: interne asset-ID,
+   purpose, gehashte objectkey, bytes en SHA-256. Exporteer geen provider-URL.
+4. Leg Stripe order-/paymenttellingen en totalen per valuta/status vast; geen
+   customer- of providerpayload.
+5. Leg locked proof-/orderaantallen en handmatige fulfilmentstatus/externe
+   referentie-aanwezigheid vast, zonder adres/tracking/notes.
+6. Bevestig write freeze, rollback/forward-fixkeuze, eigenaar en stopcriteria.
 
 ## Niet-productie restore rehearsal
 
-1. Maak een nieuwe geïsoleerde Neon-branch vanaf het gekozen herstelpunt. Herstel
-   nooit over productie heen.
-2. Maak tijdelijke rehearsalcredentials met dezelfde least-privilegerollen en
-   alleen niet-productie-providerconfig.
-3. Voer uit:
+1. Herstel naar een nieuwe, geïsoleerde Neon-branch. Schrijf nooit over
+   Production heen.
+2. Maak tijdelijke least-privilegerollen voor migrator, web, account, media,
+   payment en photobook; gebruik uitsluitend synthetische data/providerconfig.
+3. Voer check, plan, apply, role configure/verify, `db/verify`, no-op replay en
+   opnieuw `db/verify` uit.
+4. Vergelijk ledger, tellingen, constraints, ownership, canonical social,
+   projectvisibility, orders/bedragen en auditrelaties met de broninventory.
+5. Herstel of kopieer een representatieve, toegestane private Blob-steekproef
+   naar een afzonderlijke rehearsalstore/prefix. Verifieer bytes/SHA-256,
+   geautoriseerde read en anonieme/blocked denial.
+6. Reconcileer Stripe testevents met interne orders en controleer dat geen
+   browserredirect betaling bevestigt. Maak geen live payment/refund.
+7. Controleer de handmatige orderqueue en exact-PDF-hash; plaats geen externe
+   drukkerorder.
+8. Start de productiebuild tegen rehearsal en voer health/readiness, Google-
+   testidentity, private media, owner/follower/block, proof/orderread en deletion
+   smokes uit.
+9. Meet werkelijk dataverliesvenster en herstelduur. Claim RPO/RTO alleen met
+   timestamps en bewijs.
+10. Verwijder tijdelijke branch, store-assets en credentials pas na review en
+    volgens het goedgekeurde retentiebeleid.
 
-   ```sh
-   DATABASE_MIGRATION_URL='<rehearsal-migration-role-url>' bun run db:migrate
-   DATABASE_MIGRATION_URL='<rehearsal-migration-role-url>' bun run db:verify
-   DATABASE_MIGRATION_URL='<rehearsal-migration-role-url>' bun run db:migrate
-   ```
+## Production restore
 
-   De tweede migrate moet nul pending migrations tonen. Gebruik
-   `DATABASE_DIRECT_URL` uitsluitend daarna voor de expliciete rolbootstrap,
-   restore/import of andere beheerhandeling; de schemarunner leest die variabele
-   bewust niet.
-4. Vergelijk row counts, foreign keys, unique violations, ownership, sociale
-   relaties, orderaantallen/totalen en migration ledger met de broninventory.
-5. Gebruik een aparte niet-productie-R2-prefix/bucket. Herstel een representatieve
-   steekproef inclusief origineel, displayderivative en print-PDF; verifieer
-   bytes/SHA-256 en anonieme ontoegankelijkheid.
-6. Start de gebouwde applicatie tegen de rehearsalbranch en voer health,
-   readiness, auth, private-media, projectread en orderread-smokes uit. Verstuur
-   geen echte mail en maak geen live betaling/printorder.
-7. Meet herstelduur en dataverliesvenster. Vergelijk ze met de later goedgekeurde
-   RTO/RPO; claim geen resultaat zonder timestamps en exitstatus.
-8. Verwijder tijdelijke branch, bucketprefix en credentials pas na vastgelegd
-   bewijs en conform het goedgekeurde retentiebeleid.
+Een production restore vereist incidentbesluit, write freeze, snapshot van de
+beschadigde toestand en expliciete keuze tussen forward repair, point-in-time
+restore of selectief herstel. Bepaal vooraf welke geldige writes na het
+herstelpunt verloren kunnen gaan.
 
-## Productieherstel
-
-Een productieherstel vereist een SEV-1/SEV-2-besluit, write freeze en expliciete
-keuze tussen forward repair, point-in-time restore of selectief herstel. Bepaal
-eerst welke geldige writes na het herstelpunt verloren zouden gaan. Maak vóór
-restore een snapshot van de beschadigde toestand voor onderzoek. Na restore:
+Na restore:
 
 - roteer tijdelijke credentials;
-- draai migration verify/no-op;
-- reconcileer Stripe- en Peecho-events vanaf het herstelpunt;
-- reconcileer R2-objecten met het databaseassetmanifest;
-- test private access en betrokken kernflows;
-- laat queues gecontroleerd inlopen;
-- documenteer werkelijk RPO/RTO en resterende verschillen.
+- verifieer ledger/schema/RLS/rollen en no-op replay;
+- reconcileer Stripe-events idempotent vanaf het herstelpunt;
+- reconcileer private Blob-assets tegen het databaseassetmanifest;
+- reconcileer handmatige drukkerreferenties zonder tweede order te plaatsen;
+- test Google sessions, privacy/access, proof/order en cleanup;
+- hervat de ene account-lifecyclequeue gecontroleerd; laat media/proofs alleen
+  via een owner-geautoriseerde request voor exact het asset/de revisie opnieuw
+  verwerken en activeer geen verwijderde cronroute;
+- leg werkelijk RPO/RTO en alle restverschillen vast.
 
-## Vereist bewijs
+## Gatebewijs
 
-`docs/LAUNCH_READINESS.md` mag de restoregate pas groen maken met providerbranch-
-of backup-ID, UTC-tijden, bron- en doeltellingen, migrationresultaat, R2-
-checksumsteekproef, privacyprobes, gemeten RPO/RTO, uitvoerders en opruimbewijs.
-Op 4 augustus 2026 is dit bewijs niet aanwezig.
+Bewaar providerbranch/herstelpunt-ID, UTC-tijden, bron/doeltellingen,
+migrationresultaten, checksumsteekproef, privacyprobes, gemeten RPO/RTO,
+uitvoerders en opruimbewijs. Geen secret, PII, object-/Checkout-URL of volledige
+providerresponse.
+
+Deze rehearsal is voor de huidige release niet bewezen. Production blijft
+**NO-GO**; de verplichte Browser MCP-runtime was door de huidige Codex-
+gebruikslimiet geblokkeerd.

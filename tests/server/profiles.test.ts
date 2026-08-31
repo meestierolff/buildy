@@ -15,11 +15,14 @@ import {
 import { buildProfileOutboxRecord } from "../../server/profiles/repository";
 import { ProfileService } from "../../server/profiles/service";
 import type { ProfileRepository } from "../../server/profiles/types";
+import { PrivacyBlindIndex } from "../../server/security/dataProtection";
 
 const ACTOR_ID = "10000000-0000-4000-8000-000000000001";
 const OTHER_ID = "20000000-0000-4000-8000-000000000002";
 const AVATAR_ID = "30000000-0000-4000-8000-000000000003";
 const CLIENT_KEY = "profile-settings-key-0001";
+const BLIND_INDEX = new PrivacyBlindIndex(Buffer.alloc(32, 13).toString("base64"));
+const OTHER_BLIND_INDEX = new PrivacyBlindIndex(Buffer.alloc(32, 14).toString("base64"));
 
 const ownProfile: OwnProfile = {
   id: ACTOR_ID,
@@ -71,7 +74,7 @@ function repository(overrides: Partial<ProfileRepository> = {}): ProfileReposito
 describe("ProfileService reads", () => {
   it("leest het eigen profiel uitsluitend op basis van de vertrouwde actor", async () => {
     const findOwnProfile = vi.fn(async () => ownProfile);
-    const service = new ProfileService(repository({ findOwnProfile }));
+    const service = new ProfileService(repository({ findOwnProfile }), BLIND_INDEX);
 
     await expect(service.ownProfile(ACTOR_ID.toUpperCase())).resolves.toEqual(ownProfile);
     expect(findOwnProfile).toHaveBeenCalledWith(ACTOR_ID);
@@ -79,7 +82,7 @@ describe("ProfileService reads", () => {
 
   it("normaliseert een publieke slug en behoudt anonymous viewer state", async () => {
     const findPublicProfile = vi.fn(async () => publicProfile);
-    const service = new ProfileService(repository({ findPublicProfile }));
+    const service = new ProfileService(repository({ findPublicProfile }), BLIND_INDEX);
 
     await expect(service.publicProfile({ kind: "anonymous" }, " Ada-Bouwer "))
       .resolves.toEqual(publicProfile);
@@ -92,14 +95,14 @@ describe("ProfileService reads", () => {
     "geschorst of verwijderd",
     "onbekende slug",
   ])("gebruikt één niet-enumererende 404 voor %s", async () => {
-    const service = new ProfileService(repository({ findPublicProfile: async () => null }));
+    const service = new ProfileService(repository({ findPublicProfile: async () => null }), BLIND_INDEX);
 
     await expect(service.publicProfile({ kind: "anonymous" }, "onzichtbaar"))
       .rejects.toMatchObject({ reason: "PROFILE_NOT_FOUND", status: 404 });
   });
 
   it("faalt gesloten bij een ongeldige actor mapping", async () => {
-    const service = new ProfileService(repository());
+    const service = new ProfileService(repository(), BLIND_INDEX);
 
     await expect(service.ownProfile("provider-user-id"))
       .rejects.toMatchObject({ reason: "ACTOR_MAPPING_UNAVAILABLE", status: 503 });
@@ -111,7 +114,7 @@ describe("ProfileService writes", () => {
     const updateOwnProfile = vi.fn(async (
       _command: Parameters<ProfileRepository["updateOwnProfile"]>[0],
     ) => mutation);
-    const service = new ProfileService(repository({ updateOwnProfile }));
+    const service = new ProfileService(repository({ updateOwnProfile }), BLIND_INDEX);
 
     await expect(service.updateOwnProfile(ACTOR_ID, {
       idempotencyKey: CLIENT_KEY,
@@ -127,7 +130,7 @@ describe("ProfileService writes", () => {
     const updateOwnProfile = vi.fn(async (
       _command: Parameters<ProfileRepository["updateOwnProfile"]>[0],
     ) => mutation);
-    const service = new ProfileService(repository({ updateOwnProfile }));
+    const service = new ProfileService(repository({ updateOwnProfile }), BLIND_INDEX);
 
     await service.updateOwnProfile(ACTOR_ID, {
       idempotencyKey: CLIENT_KEY,
@@ -163,7 +166,7 @@ describe("ProfileService writes", () => {
     const updateOwnProfile = vi.fn(async (
       _command: Parameters<ProfileRepository["updateOwnProfile"]>[0],
     ) => mutation);
-    const service = new ProfileService(repository({ updateOwnProfile }));
+    const service = new ProfileService(repository({ updateOwnProfile }), BLIND_INDEX);
 
     await service.updateOwnProfile(ACTOR_ID, {
       idempotencyKey: CLIENT_KEY,
@@ -195,7 +198,7 @@ describe("ProfileService writes", () => {
   ] as const)("behoudt het getypeerde repositoryconflict %s", async (reason, expected) => {
     const service = new ProfileService(repository({
       updateOwnProfile: async () => { throw new ProfileError(reason); },
-    }));
+    }), BLIND_INDEX);
 
     await expect(service.updateOwnProfile(ACTOR_ID, {
       idempotencyKey: CLIENT_KEY,
@@ -208,7 +211,8 @@ describe("ProfileService writes", () => {
     const payload = { expectedVersion: 4, displayName: "Ada", isPrivate: false };
     const key = scopedProfileIdempotencyKey("profile.update", ACTOR_ID, CLIENT_KEY);
     const otherActorKey = scopedProfileIdempotencyKey("profile.update", OTHER_ID, CLIENT_KEY);
-    const requestHash = profileRequestHash("profile.update", payload);
+    const requestHash = profileRequestHash("profile.update", payload, BLIND_INDEX);
+    expect(requestHash).not.toBe(profileRequestHash("profile.update", payload, OTHER_BLIND_INDEX));
     const record = buildProfileOutboxRecord({
       actorId: ACTOR_ID,
       idempotencyKey: key,
@@ -216,7 +220,12 @@ describe("ProfileService writes", () => {
     }, 5);
 
     expect(key).not.toBe(otherActorKey);
-    expect(record.payload).toEqual({ schemaVersion: 1, requestHash, profileVersion: 5 });
+    expect(record.payload).toEqual({
+      schemaVersion: 1,
+      requestHashVersion: 2,
+      requestHash,
+      profileVersion: 5,
+    });
     expect(JSON.stringify(record.payload)).not.toMatch(/ada|display|slug|bio|location|avatar/i);
   });
 });

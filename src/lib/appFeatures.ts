@@ -1,10 +1,41 @@
-function envFlag(value: string | undefined, fallback: boolean): boolean {
-  return value === undefined ? fallback : value === "true";
+import type {
+  ProductProfile,
+  ProductProfileName,
+} from "../../shared/contracts/productProfile";
+import { useProductProfile } from "@/hooks/useProductProfile";
+
+export type AppFeatures = {
+  profile: ProductProfileName;
+  betaMode: boolean;
+  inviteRequiredForNewAccounts: boolean;
+  emailAuthEnabled: boolean;
+  googleSignInEnabled: boolean;
+  accountLifecycleEnabled: boolean;
+  mediaFeaturesEnabled: boolean;
+  photobooksEnabled: boolean;
+  checkoutEnabled: boolean;
+};
+
+export function deriveAppFeatures(profile?: ProductProfile): AppFeatures {
+  return {
+    profile: profile?.profile ?? "feedback_beta",
+    betaMode: profile?.betaMode ?? true,
+    inviteRequiredForNewAccounts: profile?.inviteRequiredForNewAccounts ?? true,
+    emailAuthEnabled: profile?.capabilities.emailAuth ?? false,
+    googleSignInEnabled: profile?.capabilities.googleSignIn ?? false,
+    accountLifecycleEnabled: profile?.capabilities.accountDeletion ?? false,
+    mediaFeaturesEnabled: profile?.capabilities.media ?? false,
+    photobooksEnabled: profile?.capabilities.photobookPreview ?? false,
+    checkoutEnabled: profile?.capabilities.checkout ?? false,
+  };
 }
 
-export const SIMPLE_APP_MODE = import.meta.env.VITE_SIMPLE_APP_MODE === "true";
-export const EMAIL_AUTH_ENABLED = envFlag(import.meta.env.VITE_EMAIL_ENABLED, !SIMPLE_APP_MODE);
-export const GOOGLE_SIGNIN_ENABLED = envFlag(import.meta.env.VITE_GOOGLE_SIGNIN_ENABLED, !SIMPLE_APP_MODE);
-export const ACCOUNT_LIFECYCLE_ENABLED = envFlag(import.meta.env.VITE_ACCOUNT_LIFECYCLE_ENABLED, !SIMPLE_APP_MODE);
-export const MEDIA_FEATURES_ENABLED = envFlag(import.meta.env.VITE_MEDIA_ENABLED, !SIMPLE_APP_MODE);
-export const PHOTOBOOKS_ENABLED = envFlag(import.meta.env.VITE_PHOTOBOOKS_ENABLED, !SIMPLE_APP_MODE);
+export function useAppFeatures() {
+  const query = useProductProfile();
+  return {
+    ...deriveAppFeatures(query.data),
+    isPending: query.isPending,
+    isError: query.isError,
+    query,
+  };
+}

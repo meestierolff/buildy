@@ -36,7 +36,7 @@ export const mediaAssets = pgTable(
     originalAssetId: uuid("original_asset_id"),
     purpose: mediaPurposeEnum("purpose").notNull(),
     status: mediaStatusEnum("status").default("pending_upload").notNull(),
-    storageProvider: text("storage_provider").default("r2").notNull(),
+    storageProvider: text("storage_provider").default("vercel_blob").notNull(),
     bucket: text("bucket").notNull(),
     objectKey: text("object_key").notNull(),
     storageVersion: text("storage_version"),

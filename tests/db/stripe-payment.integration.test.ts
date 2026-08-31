@@ -241,6 +241,8 @@ describeWithDatabase("Stripe payment PostgreSQL boundary", () => {
         event_count: string;
         inbox_count: string;
         outbox_count: string;
+        support_review_count: string;
+        retired_provider_outbox_count: string;
       }>(`
         SELECT
           orders.status,
@@ -251,7 +253,16 @@ describeWithDatabase("Stripe payment PostgreSQL boundary", () => {
           orders.stripe_charge_id,
           (SELECT count(*)::text FROM photobook_order_events event WHERE event.order_id = orders.id) AS event_count,
           (SELECT count(*)::text FROM provider_event_inbox inbox WHERE inbox.reference = orders.id::text) AS inbox_count,
-          (SELECT count(*)::text FROM outbox_events event WHERE event.aggregate_id = orders.id) AS outbox_count
+          (SELECT count(*)::text FROM outbox_events event WHERE event.aggregate_id = orders.id) AS outbox_count,
+          (SELECT count(*)::text FROM outbox_events event
+            WHERE event.aggregate_id = orders.id
+              AND event.event_type = 'order.support.review.requested.v1') AS support_review_count,
+          (SELECT count(*)::text FROM outbox_events event
+            WHERE event.aggregate_id = orders.id
+              AND (
+                event.event_type LIKE '%.email.%'
+                OR event.event_type = 'photobook_order.paid.v1'
+              )) AS retired_provider_outbox_count
         FROM photobook_orders orders
         WHERE orders.id = $1
       `, [orderId]);
@@ -265,8 +276,223 @@ describeWithDatabase("Stripe payment PostgreSQL boundary", () => {
         stripe_charge_id: chargeId,
         event_count: "5",
         inbox_count: "5",
-        outbox_count: "4",
+        outbox_count: "2",
+        support_review_count: "2",
+        retired_provider_outbox_count: "0",
       })]);
+
+      const seedCheckoutOrder = async (input: {
+        proofStatus: "approved" | "locked";
+        orderStatus: "awaiting_payment" | "checkout_open";
+        persistSession: boolean;
+      }) => {
+        const seededProjectId = randomUUID();
+        const seededPdfAssetId = randomUUID();
+        const seededDraftId = randomUUID();
+        const seededRevisionId = randomUUID();
+        const seededOrderId = randomUUID();
+        const seededOrderNumber = `BLD-20260804-${seededOrderId.slice(0, 10).replaceAll("-", "").toUpperCase()}`;
+        const seededMerchantReference = `buildy:${seededOrderId}`;
+        const seededSessionId = `cs_test_${seededOrderId.replaceAll("-", "")}`;
+        const seededDocumentHash = "b".repeat(64);
+        const seededPdfHash = "c".repeat(64);
+        await admin.query(`
+          INSERT INTO projects (
+            id, owner_id, slug, title, visibility, lifecycle_status, content_revision, published_at
+          ) VALUES ($1, $2, $3, 'Stripeproject', 'private', 'active', 1, now())
+        `, [seededProjectId, ownerId, `stripe-seeded-${seededProjectId}`]);
+        await admin.query(`
+          INSERT INTO media_assets (
+            id, owner_id, project_id, purpose, status, bucket, object_key,
+            upload_idempotency_key, claimed_content_type, detected_content_type,
+            size_bytes, sha256, exif_stripped, ready_at
+          ) VALUES (
+            $1, $2, $3, 'photobook_pdf', 'ready', 'test-assets', $4,
+            $5, 'application/pdf', 'application/pdf', 8192, $6, false, now()
+          )
+        `, [
+          seededPdfAssetId,
+          ownerId,
+          seededProjectId,
+          `photobook-pdfs/${seededPdfAssetId.slice(0, 2)}/${seededPdfAssetId}`,
+          `stripe-seeded-pdf-${seededPdfAssetId}`,
+          seededPdfHash,
+        ]);
+        await admin.query(`
+          INSERT INTO photobook_drafts (
+            id, project_id, owner_id, status, schema_version, project_revision,
+            document, document_sha256, page_count, selected_format
+          ) VALUES ($1, $2, $3, 'ready', 1, 1, $4::jsonb, $5, 24, 'a4-landscape-hardcover-v1')
+        `, [seededDraftId, seededProjectId, ownerId, JSON.stringify(document), seededDocumentHash]);
+        await admin.query(`
+          INSERT INTO photobook_revisions (
+            id, draft_id, project_id, owner_id, revision_number, status,
+            schema_version, project_revision, document, document_sha256,
+            asset_set, asset_set_sha256, pdf_asset_id, pdf_sha256, pdf_size_bytes,
+            page_count, render_engine, render_version, font_set_sha256,
+            approved_by_id, approved_at, locked_at
+          ) VALUES (
+            $1, $2, $3, $4, 1, $5::photobook_proof_status, 1, 1, $6::jsonb, $7,
+            '[]'::jsonb, $8, $9, $10, 8192, 24, 'buildy-pdfkit', 'integration-v1',
+            $11, $4, now(), CASE WHEN $5 = 'locked' THEN now() ELSE NULL END
+          )
+        `, [
+          seededRevisionId,
+          seededDraftId,
+          seededProjectId,
+          ownerId,
+          input.proofStatus,
+          JSON.stringify(document),
+          seededDocumentHash,
+          "d".repeat(64),
+          seededPdfAssetId,
+          seededPdfHash,
+          "e".repeat(64),
+        ]);
+        await admin.query(`
+          INSERT INTO photobook_orders (
+            id, order_number, merchant_reference, project_id, owner_id,
+            proof_revision_id, idempotency_key, status, payment_status,
+            fulfilment_status, currency, quantity, subtotal_minor,
+            shipping_minor, tax_minor, total_minor, shipping_country,
+            customer_email_ciphertext, shipping_details_ciphertext,
+            pii_encryption_key_version, checkout_snapshot, seller_snapshot,
+            terms_version, legal_accepted_at, stripe_checkout_session_id,
+            stripe_checkout_expires_at, delivery_estimate
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7,
+            $8::photobook_order_status, 'unpaid', 'unclaimed', 'EUR', 1, 4000, 800, 1008, $9,
+            'NL', 'v1.1.seeded-email', 'v1.1.seeded-address', 1,
+            $10::jsonb, $11::jsonb, '2026-08-01', now(), $12, $13,
+            '5–8 werkdagen na productie'
+          )
+        `, [
+          seededOrderId,
+          seededOrderNumber,
+          seededMerchantReference,
+          seededProjectId,
+          ownerId,
+          seededRevisionId,
+          `stripe-seeded-${seededOrderId}`,
+          input.orderStatus,
+          totalMinor,
+          JSON.stringify({
+            schemaVersion: 1,
+            requestHash: "f".repeat(64),
+            sku: "a4-landscape-hardcover-v1",
+            format: "a4-landscape-hardcover-v1",
+            projectTitle: "Stripeproject",
+            pageCount: 24,
+            documentSha256: seededDocumentHash,
+            pdfSha256: seededPdfHash,
+            unitAmountMinor: 4_000,
+            quoteReference: `stripe-seeded-quote-${seededOrderId}`,
+            offeringId: "legacy-integration-a4",
+            commercialApprovalId: "integration-approved-v1",
+            taxTreatment: "vat_exclusive",
+            quoteExpiresAt: new Date(now.getTime() + 30 * 60_000).toISOString(),
+            personalisedProduct: true,
+          }),
+          JSON.stringify({ legalName: "Buildy testverkoper" }),
+          input.persistSession ? seededSessionId : null,
+          input.persistSession ? new Date(now.getTime() + 30 * 60_000) : null,
+        ]);
+        return {
+          orderId: seededOrderId,
+          orderNumber: seededOrderNumber,
+          merchantReference: seededMerchantReference,
+          revisionId: seededRevisionId,
+          sessionId: seededSessionId,
+        };
+      };
+
+      const failedOrder = await seedCheckoutOrder({
+        proofStatus: "locked",
+        orderStatus: "checkout_open",
+        persistSession: true,
+      });
+      await expect(repository.apply({
+        ...baseCommand,
+        providerEventId: "evt_buildy_terminal_failure_release_1",
+        eventType: "checkout.session.async_payment_failed",
+        orderId: failedOrder.orderId,
+        orderNumber: failedOrder.orderNumber,
+        merchantReference: failedOrder.merchantReference,
+        objectId: failedOrder.sessionId,
+        checkoutSessionId: failedOrder.sessionId,
+        paymentIntentId: null,
+        paymentStatus: "unpaid",
+        payloadSha256: "1".repeat(64),
+      })).resolves.toMatchObject({ applied: true, outcome: "payment_failed" });
+
+      const expiredOrder = await seedCheckoutOrder({
+        proofStatus: "locked",
+        orderStatus: "checkout_open",
+        persistSession: true,
+      });
+      await expect(repository.apply({
+        ...baseCommand,
+        providerEventId: "evt_buildy_terminal_expiry_release_1",
+        eventType: "checkout.session.expired",
+        orderId: expiredOrder.orderId,
+        orderNumber: expiredOrder.orderNumber,
+        merchantReference: expiredOrder.merchantReference,
+        objectId: expiredOrder.sessionId,
+        checkoutSessionId: expiredOrder.sessionId,
+        paymentIntentId: null,
+        paymentStatus: "unpaid",
+        payloadSha256: "2".repeat(64),
+      })).resolves.toMatchObject({ applied: true, outcome: "expired" });
+
+      const outOfOrderPaid = await seedCheckoutOrder({
+        proofStatus: "approved",
+        orderStatus: "awaiting_payment",
+        persistSession: false,
+      });
+      await expect(repository.apply({
+        ...baseCommand,
+        providerEventId: "evt_buildy_paid_before_session_commit_1",
+        orderId: outOfOrderPaid.orderId,
+        orderNumber: outOfOrderPaid.orderNumber,
+        merchantReference: outOfOrderPaid.merchantReference,
+        objectId: outOfOrderPaid.sessionId,
+        checkoutSessionId: outOfOrderPaid.sessionId,
+        paymentIntentId: `pi_${randomUUID().replaceAll("-", "")}`,
+        paymentStatus: "paid",
+        payloadSha256: "3".repeat(64),
+      })).resolves.toMatchObject({ applied: true, outcome: "manual_review" });
+
+      const recoveryStates = await admin.query<{
+        id: string;
+        status: string;
+        payment_status: string;
+        proof_status: string;
+      }>(`
+        SELECT
+          orders.id,
+          orders.status,
+          orders.payment_status,
+          revision.status AS proof_status
+        FROM photobook_orders orders
+        JOIN photobook_revisions revision ON revision.id = orders.proof_revision_id
+        WHERE orders.id = ANY($1::uuid[])
+      `, [[failedOrder.orderId, expiredOrder.orderId, outOfOrderPaid.orderId]]);
+      const statesById = Object.fromEntries(recoveryStates.rows.map((row) => [row.id, row]));
+      expect(statesById[failedOrder.orderId]).toMatchObject({
+        status: "payment_failed",
+        payment_status: "failed",
+        proof_status: "approved",
+      });
+      expect(statesById[expiredOrder.orderId]).toMatchObject({
+        status: "expired",
+        payment_status: "unpaid",
+        proof_status: "approved",
+      });
+      expect(statesById[outOfOrderPaid.orderId]).toMatchObject({
+        status: "manual_review",
+        payment_status: "unpaid",
+        proof_status: "locked",
+      });
     } finally {
       await resources.pool.end();
       await admin.end();

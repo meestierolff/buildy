@@ -1,5 +1,7 @@
 export * from "./approvedPriceMatrix.js";
+export * from "./checkoutConfiguration.js";
 export * from "./config.js";
+export * from "./cursor.js";
 export * from "./errors.js";
 export * from "./http.js";
 export * from "./pii.js";

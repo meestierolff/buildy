@@ -35,7 +35,15 @@ export type StoredUpdateComposerDraft = {
 
 type StoredRecord = {
   key: string;
-  draft: StoredUpdateComposerDraft;
+  draft: StoredUpdateComposerDraft | PersistedUpdateComposerDraft;
+};
+
+type PersistedUpdateDraftFile = Omit<StoredUpdateDraftFile, "bytes"> & {
+  bytes: ArrayBuffer;
+};
+
+type PersistedUpdateComposerDraft = Omit<StoredUpdateComposerDraft, "files"> & {
+  files: PersistedUpdateDraftFile[];
 };
 
 function isUuid(value: unknown): value is string {
@@ -48,6 +56,10 @@ function isUploadId(value: unknown): value is string {
 
 function isDateOnly(value: unknown): value is string {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function isArrayBuffer(value: unknown): value is ArrayBuffer {
+  return Object.prototype.toString.call(value) === "[object ArrayBuffer]";
 }
 
 export function normalizeStoredUpdateDraft(value: unknown): StoredUpdateComposerDraft | null {
@@ -68,24 +80,30 @@ export function normalizeStoredUpdateDraft(value: unknown): StoredUpdateComposer
   let totalBytes = 0;
   const files: StoredUpdateDraftFile[] = [];
   for (const file of candidate.files) {
+    const rawBytes = (file as { bytes?: unknown } | null)?.bytes;
     if (
       !file || typeof file !== "object" ||
       !isUploadId(file.id) ||
       typeof file.name !== "string" || !file.name || file.name.length > 255 ||
       typeof file.contentType !== "string" || file.contentType.length > 100 ||
       !Number.isSafeInteger(file.lastModified) || file.lastModified < 0 ||
-      !(file.bytes instanceof Blob) || file.bytes.size < 1 || file.bytes.size > MAX_FILE_BYTES ||
       ![null, "before", "after"].includes(file.compareRole) ||
       (file.assetId !== undefined && !isUuid(file.assetId))
     ) return null;
-    totalBytes += file.bytes.size;
+    const bytes = rawBytes instanceof Blob
+      ? rawBytes
+      : isArrayBuffer(rawBytes)
+        ? new Blob([rawBytes], { type: file.contentType })
+        : null;
+    if (!bytes || bytes.size < 1 || bytes.size > MAX_FILE_BYTES) return null;
+    totalBytes += bytes.size;
     if (totalBytes > MAX_TOTAL_BYTES) return null;
     files.push({
       id: file.id,
       name: file.name,
       contentType: file.contentType,
       lastModified: file.lastModified,
-      bytes: file.bytes,
+      bytes,
       compareRole: file.compareRole,
       ...(file.assetId ? { assetId: file.assetId } : {}),
     });
@@ -111,7 +129,7 @@ export function normalizeStoredUpdateDraft(value: unknown): StoredUpdateComposer
 }
 
 function draftKey(userId: string, projectId: string): string {
-  if (!userId.trim() || !isUuid(projectId)) throw new Error("Ongeldige updateconceptscope.");
+  if (!userId.trim() || !isUuid(projectId)) throw new Error("Ongeldige scope voor dit Bouwmoment-concept.");
   return `${userId.trim()}:${projectId}`;
 }
 
@@ -164,13 +182,22 @@ export async function saveUpdateComposerDraft(
   draft: StoredUpdateComposerDraft,
 ): Promise<void> {
   const normalized = normalizeStoredUpdateDraft(draft);
-  if (!normalized) throw new Error("Het updateconcept is ongeldig en is niet opgeslagen.");
+  if (!normalized) throw new Error("Het Bouwmoment-concept is ongeldig en is niet opgeslagen.");
+  // Some WebKit storage contexts abort IndexedDB writes containing Blob/File.
+  // ArrayBuffer is structured-cloneable there; normalization restores the Blob on read.
+  const persisted: PersistedUpdateComposerDraft = {
+    ...normalized,
+    files: await Promise.all(normalized.files.map(async (file) => ({
+      ...file,
+      bytes: await file.bytes.arrayBuffer(),
+    }))),
+  };
   const database = await openDraftDatabase();
   try {
     const transaction = database.transaction(STORE_NAME, "readwrite");
     transaction.objectStore(STORE_NAME).put({
       key: draftKey(userId, projectId),
-      draft: normalized,
+      draft: persisted,
     } satisfies StoredRecord);
     await transactionDone(transaction);
   } finally {

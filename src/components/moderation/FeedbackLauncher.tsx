@@ -29,11 +29,12 @@ export default function FeedbackLauncher() {
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Help Buildy verbeteren</DialogTitle>
-          <DialogDescription>Deel wat goed gaat of waar je vastloopt. Voeg geen persoonsgegevens toe.</DialogDescription>
+          <DialogDescription>
+            Drie korte vragen helpen ons kiezen wat als eerste beter moet. Je waardering is optioneel.
+          </DialogDescription>
         </DialogHeader>
         <FeedbackForm />
       </DialogContent>
     </Dialog>
   );
 }
-

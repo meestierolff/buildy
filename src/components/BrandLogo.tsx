@@ -9,6 +9,7 @@ export type BrandLogoProps = {
   imageClassName?: string;
   textClassName?: string;
   href?: string | null;
+  nativeNavigation?: boolean;
   variant?: BrandLogoVariant;
   ariaLabel?: string;
 };
@@ -18,6 +19,7 @@ const BrandLogo = ({
   imageClassName,
   textClassName,
   href = "/",
+  nativeNavigation = false,
   variant = "wordmark",
   ariaLabel = "Buildy",
 }: BrandLogoProps) => {
@@ -69,14 +71,24 @@ const BrandLogo = ({
     </>
   );
 
+  const interactiveClassName = cn(
+    "inline-flex min-h-11 items-center gap-2.5 rounded-md px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+    className,
+  );
+
+  if (href && nativeNavigation) {
+    return (
+      <a href={href} aria-label={ariaLabel} className={interactiveClassName}>
+        {content}
+      </a>
+    );
+  }
+
   return href ? (
     <Link
       to={href}
       aria-label={ariaLabel}
-      className={cn(
-        "inline-flex min-h-11 items-center gap-2.5 rounded-md px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-        className,
-      )}
+      className={interactiveClassName}
     >
       {content}
     </Link>

@@ -44,6 +44,7 @@ type MutationRecord = {
 
 type PlanningOutboxPayload = {
   schemaVersion: 1;
+  requestHashVersion: 2;
   requestHash: string;
   resourceId: string;
   resourceType: ResourceType;
@@ -63,7 +64,7 @@ type RawFloorplan = Omit<Floorplan, "floorNumber" | "sortOrder" | "version" | "p
 
 type RawFloorplanBoard = {
   project_id: string;
-  viewer_access: "owner" | "granted" | "public";
+  viewer_access: "owner" | "follower" | "link" | "public";
   floorplans: RawFloorplan[] | string;
 };
 
@@ -148,8 +149,15 @@ function mapBudget(row: RawProjectBudget): ProjectBudget {
   };
 }
 
-async function setActor(transaction: DatabaseTransaction, actorId: string | null): Promise<void> {
-  await transaction.execute(sql`select set_config('app.actor_id', ${actorId ?? ""}, true)`);
+async function setActor(
+  transaction: DatabaseTransaction,
+  actorId: string | null,
+  shareLinkId?: string,
+): Promise<void> {
+  await transaction.execute(sql`select
+    set_config('app.actor_id', ${actorId ?? ""}, true),
+    set_config('app.share_link_id', ${shareLinkId ?? ""}, true)
+  `);
 }
 
 async function lockOwnedProject(
@@ -188,6 +196,7 @@ function isPlanningPayload(value: unknown): value is PlanningOutboxPayload {
   if (!value || typeof value !== "object") return false;
   const payload = value as Partial<PlanningOutboxPayload>;
   return payload.schemaVersion === 1
+    && payload.requestHashVersion === 2
     && typeof payload.requestHash === "string"
     && typeof payload.resourceId === "string"
     && typeof payload.resourceType === "string"
@@ -231,6 +240,7 @@ export function buildPlanningOutboxRecord(
 ) {
   const payload: PlanningOutboxPayload = {
     schemaVersion: 1,
+    requestHashVersion: 2,
     requestHash: command.requestHash,
     resourceId: resource.id,
     resourceType,
@@ -410,13 +420,14 @@ export class PostgresPlanningRepository implements PlanningRepository {
   async listFloorplans(viewer: ProjectActor, projectId: string): Promise<FloorplanBoard | null> {
     return this.database.transaction(async (transaction) => {
       const actorId = actorIdFor(viewer);
-      await setActor(transaction, actorId);
+      await setActor(transaction, actorId, viewer.shareLinkId);
       const result = await transaction.execute<RawFloorplanBoard>(sql`
         select
           project.id as project_id,
           case
             when project.owner_id = ${actorId}::uuid then 'owner'
-            when accepted_access.id is not null then 'granted'
+            when project.visibility = 'followers' then 'follower'
+            when project.visibility = 'unlisted' then 'link'
             else 'public'
           end as viewer_access,
           coalesce((
@@ -487,19 +498,10 @@ export class PostgresPlanningRepository implements PlanningRepository {
             ) entry
           ), '[]'::jsonb) as floorplans
         from projects project
-        left join project_access_requests accepted_access
-          on accepted_access.project_id = project.id
-         and accepted_access.requester_id = ${actorId}::uuid
-         and accepted_access.status = 'accepted'
         where project.id = ${projectId}::uuid
           and project.lifecycle_status = 'active'
           and project.deleted_at is null
-          and not app_users_are_blocked(${actorId}::uuid, project.owner_id)
-          and (
-            project.owner_id = ${actorId}::uuid
-            or project.visibility = 'public'
-            or accepted_access.id is not null
-          )
+          and app_can_view_project(project.id)
         limit 1
       `);
       const row = result.rows[0];

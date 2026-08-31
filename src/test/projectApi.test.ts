@@ -14,6 +14,7 @@ import {
   getProjectOverview,
   getProjectTimeline,
 } from "@/lib/projectApi";
+import type { ProjectVisibility } from "../../shared/contracts/projects";
 
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 const OWNER_ID = "22222222-2222-4222-8222-222222222222";
@@ -21,7 +22,7 @@ const REQUEST_ID = "33333333-3333-4333-8333-333333333333";
 const UPDATE_ID = "44444444-4444-4444-8444-444444444444";
 const CREATE_KEY = "project-create:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
-function overview(visibility: "private" | "public" = "private", version = 3) {
+function overview(visibility: ProjectVisibility = "private", version = 3) {
   return {
     id: PROJECT_ID,
     slug: "ons-huis",
@@ -32,7 +33,7 @@ function overview(visibility: "private" | "public" = "private", version = 3) {
     progressPercentage: 0,
     version,
     updatedAt: "2026-08-04T12:00:00.000Z",
-    publishedAt: visibility === "public" ? "2026-08-04T12:00:00.000Z" : null,
+    publishedAt: visibility === "private" ? null : "2026-08-04T12:00:00.000Z",
     updateCount: 0,
     lastUpdateAt: null,
     owner: { id: OWNER_ID, displayName: "Eigenaar", slug: "eigenaar" },
@@ -93,16 +94,16 @@ describe("project API write flow", () => {
     expect(JSON.parse(String(request.body))).toEqual(input);
   });
 
-  it("continues public visibility with the server version and no visibility in create", async () => {
+  it.each(["followers", "unlisted", "public"] as const)("continues %s visibility with the server version and no visibility in create", async (visibility) => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(mutation(overview("private", 3)))
-      .mockResolvedValueOnce(mutation(overview("public", 4)));
+      .mockResolvedValueOnce(mutation(overview(visibility, 4)));
     vi.stubGlobal("fetch", fetchMock);
     const input = { idempotencyKey: CREATE_KEY, title: "Ons huis" };
 
-    const result = await createProjectWithVisibility({ input, visibility: "public" });
+    const result = await createProjectWithVisibility({ input, visibility });
 
-    expect(result.project.visibility).toBe("public");
+    expect(result.project.visibility).toBe(visibility);
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "/api/projects",
       `/api/projects/${PROJECT_ID}`,
@@ -110,7 +111,7 @@ describe("project API write flow", () => {
     expect(JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body))).toEqual(input);
     expect(JSON.parse(String((fetchMock.mock.calls[1]?.[1] as RequestInit).body))).toEqual({
       expectedVersion: 3,
-      visibility: "public",
+      visibility,
     });
   });
 
@@ -239,7 +240,7 @@ describe("project API write flow", () => {
     const input = {
       idempotencyKey: "project-delete:ffffffff-ffff-4fff-8fff-ffffffffffff",
       expectedVersion: 3,
-      confirmation: "VERWIJDER PROJECT" as const,
+      confirmation: "VERWIJDER VERBOUWING" as const,
     };
 
     await expect(deleteProject(PROJECT_ID, input)).resolves.toMatchObject({

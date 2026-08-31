@@ -1,10 +1,11 @@
 # Buildy design system
 
-**Versie:** foundation 0.1
+**Versie:** foundation 0.2
 
-**Datum:** 4 augustus 2026
+**Datum:** 23 augustus 2026
 
-**Status:** nieuwe primitives beschikbaar; bestaande pagina's zijn nog niet gemigreerd
+**Status:** actieve visuele foundation; legacycomponenten worden bij aanraking
+naar het canonieke productmodel gemigreerd
 
 ## 1. Richting
 
@@ -14,7 +15,11 @@ Buildy combineert drie werelden:
 2. een persoonlijk renovatiedagboek waarin foto's en voortgang centraal staan;
 3. een tactiel fotoalbum dat geloofwaardig doorloopt naar een fysiek Bouwboek.
 
-Het systeem is rustig, volwassen en foto-gedreven. Merkdetails ondersteunen de inhoud; ze concurreren er niet mee. De publieke kernbelofte is **“Van eerste sleutel tot laatste plint.”** De ondersteunende propositie is: **“Leg je verbouwing stap voor stap vast, laat vrienden en familie meekijken en maak er later een Bouwboek van.”**
+Het systeem is rustig, volwassen en foto-gedreven. Merkdetails ondersteunen de
+inhoud; ze concurreren er niet mee. De publieke kernbelofte is **“Maak van je
+verbouwing een verhaal om te bewaren.”** De ondersteunende propositie is:
+**“Leg ieder bouwmoment vast, laat vrienden en familie meekijken en maak er
+later een persoonlijk Bouwboek van.”**
 
 ### Wel doen
 
@@ -95,7 +100,8 @@ Regels:
 
 - Status is nooit alleen kleur: combineer tekst, icoon en waar nodig vorm.
 - Oxide is schaars; gebruik het niet voor alle links, badges en decoratie tegelijk.
-- Private/public gebruikt betekenisvolle iconen en labels via `PrivacyBadge`.
+- Privacy gebruikt betekenisvolle iconen en volledige labels voor `private`,
+  `followers`, `unlisted` en `public`; status is nooit alleen kleur.
 - Controleer tekstcontrast op de werkelijke samengestelde achtergrond, ook in dark mode.
 
 ## 4. Typografie
@@ -103,7 +109,7 @@ Regels:
 ### Families
 
 - **Inter Variable:** alle navigatie, formulieren, knoppen, tabellen, metadata, appkoppen en statuscopy.
-- **Instrument Serif:** marketingmomenten, projectcovers, Bouwboekcovers en hoofdstukopeningen.
+- **Instrument Serif:** marketingmomenten, Verbouwingcovers, Bouwboekcovers en hoofdstukopeningen.
 
 Beide fonts worden lokaal geladen. Er zijn geen externe fontrequests.
 
@@ -113,7 +119,7 @@ Beide fonts worden lokaal geladen. Er zijn geen externe fontrequests.
 |---|---|
 | Display marketing | Serif, 48–72px desktop / 40–48px mobiel, korte regels |
 | Apppaginatitel | Sans semibold, 30–40px, compacte tracking |
-| Projectcover | Serif, afhankelijk van fotografie en contrast |
+| Verbouwingcover | Serif, afhankelijk van fotografie en contrast |
 | Sectiekop | Sans semibold, 20–24px |
 | Componentkop | Sans semibold, 16–18px |
 | Body | Sans, 16px, regelhoogte 1.5–1.65 |
@@ -172,15 +178,17 @@ Nieuwe componenten gebruiken `motion-reduce:*`; de bestaande globale reduced-mot
 
 De ingelogde primaire mobiele navigatie bestaat uit precies vijf taken:
 
-1. Mijn projecten;
+1. Verbouwingen;
 2. Volgend;
-3. Update — centrale primaire actie;
-4. Ontdekken;
+3. Bouwmoment — centrale primaire actie;
+4. Verhalen;
 5. Profiel.
 
 Connecties, Notificaties, Account/privacy en Feedback blijven binnen één extra tap bereikbaar. Desktop behoudt dezelfde terminologie en prioriteit.
 
-`src/lib/productNavigation.ts` is de centrale route-/labelbron. Pagina's definiëren geen alternatieve labels zoals Vrienden, Favorieten of Fotoboek.
+`src/lib/productNavigation.ts` is de centrale route-/labelbron. Pagina's
+definiëren geen alternatieve labels zoals Projecten, Updates, Vrienden,
+Favorieten, Tijdlijn of Fotoboek.
 
 ### `AppShell`
 
@@ -207,7 +215,7 @@ De shell neemt geen authbesluit. De route-/authlaag bepaalt welke navigatie en a
 ### `MobileNav`
 
 - targets zijn minimaal 44×44px; de standaardrij is 68px hoog;
-- de centrale Update-actie heeft zowel icoon als zichtbaar label;
+- de centrale Bouwmoment-actie heeft zowel icoon als zichtbaar label;
 - actieve status gebruikt positie/indicator én kleur;
 - bottom safe area wordt altijd meegenomen;
 - alleen mobiel zichtbaar; desktop krijgt een passende navigatie met dezelfde brondata;
@@ -223,11 +231,11 @@ Gebruik voor paginatitel, uitleg, metadata, visibility en acties. Standaard is d
 
 ```tsx
 <PageHeader
-  eyebrow="Mijn projecten"
+  eyebrow="Mijn verbouwingen"
   title="Keizersgracht 42"
-  description="Bekijk de laatste voortgang en voeg een update toe."
+  description="Bekijk het Verhaal en voeg een Bouwmoment toe."
   badge={<PrivacyBadge level="private" />}
-  actions={<Button>Update toevoegen</Button>}
+  actions={<Button>Bouwmoment toevoegen</Button>}
 />
 ```
 
@@ -245,7 +253,7 @@ Ondersteunt `loading`, `empty`, `error` en `success`:
 ```tsx
 <AsyncState
   status="error"
-  title="Projecten konden niet worden geladen"
+  title="Verbouwingen konden niet worden geladen"
   description="Controleer je verbinding en probeer het opnieuw."
   action={<Button onClick={retry}>Opnieuw proberen</Button>}
 />
@@ -255,16 +263,22 @@ Gebruik geen technische foutcodes als primaire gebruikerscopy. Log een correlati
 
 ### `PrivacyBadge`
 
-Beschikbare niveaus:
+Het productcontract heeft vier Verbouwingvisibilities:
 
 | Niveau | Nederlands label | Gebruik |
 |---|---|---|
-| `private` | Privé | Alleen eigenaar en expliciet toegelaten personen |
-| `public` | Openbaar | Publiek deelbaar/indexeerbaar volgens beleid |
-| `shared` | Gedeeld | Beperkte expliciete toegang |
-| `pending` | Verzoek in behandeling | Nog geen toegang |
+| `private` | Alleen ik | Alleen eigenaar |
+| `followers` | Mijn volgers | Eigenaar en actieve profielvolgers |
+| `unlisted` | Iedereen met de link | Directe link; niet opnemen in discovery |
+| `public` | Openbaar | Iedereen en discovery volgens beleid |
 
-De compacte variant toont visueel alleen het icoon, maar behoudt de volledige screenreadertekst. Gebruik nooit alleen een los slot- of wereldbolicoon voor een privacywijziging.
+`pending` is alleen een profiel-followrequeststatus en nooit een
+Verbouwingvisibility. Het bestaande `PrivacyBadge`-primitive accepteert op deze
+snapshot nog de legacy UI-levels `shared` en `pending`; gebruik die niet als
+opgeslagen projectwaarheid. Tot de primitive één-op-één is gemigreerd moeten
+projectviews expliciete, niet-misleidende labels tonen. De compacte variant
+houdt altijd de volledige screenreadertekst; gebruik nooit alleen een slot- of
+wereldbolicoon.
 
 ### `SkipLink`
 
@@ -306,20 +320,27 @@ Gebruik consequent:
 | Privéprofiel benaderen | Verzoek sturen |
 | Activiteitenfeed | Volgend |
 | Mensen en verzoeken | Connecties |
-| Eén project volgen | Project volgen |
-| Privéproject openen | Toegang vragen |
 | Fysiek fotoboek | Bouwboek |
-| Tijdlijnitem | Update |
-| Verbouwing | Project |
+| Renovatieproject | Verbouwing |
+| Tijdlijnitem / update | Bouwmoment |
+| Chronologische tijdlijn | Verhaal |
+| Profielrelatie | Volgen / Volger |
 
-Privacyverandering benoemt bereik en gevolg vóór bevestiging. Voorbeeld: “Dit project wordt zichtbaar voor iedereen met de link en kan door zoekmachines worden opgenomen.” Toon daarnaast een visitor preview. Adres, budget en uitvoerdersnotities worden nooit impliciet meegedeeld door een project openbaar te maken.
+Er is geen zichtbare actie **Project volgen** of **Toegang vragen**. Toegang komt
+uit het canonieke profiel-followmodel en de gekozen Verbouwingvisibility.
+
+Privacyverandering benoemt bereik en gevolg vóór bevestiging. Voorbeeld:
+“Iedereen met deze link kan je Verhaal bekijken. Het verschijnt niet in
+Ontdekken.” Alleen `public` mag discovery/indexeerbaarheid suggereren. Adres,
+budget en uitvoerdersnotities worden nooit impliciet meegedeeld door een
+Verbouwing openbaar te maken.
 
 ## 11. Media en Bouwboek
 
 - Feed: thumbnail/displayderivative met stabiele verhouding en dimensions.
 - Lightbox: display/original volgens behoefte; zoom, swipe, toetsen en focusmanagement.
 - Print: uitsluitend high-resolution origineel via de canonical Bouwboekrenderer.
-- Video: poster, controls waar relevant en geen automatische grote download in een projectkaart.
+- Video: poster, controls waar relevant en geen automatische grote download in een Verbouwingkaart.
 - PDF: expliciet documenticoon, bestandsnaam en download/openhandeling; nooit als afbeelding behandelen.
 - Altstrategie: functionele beelden krijgen contextuele Nederlandse alttekst; decoratieve duplicaten krijgen lege alttekst.
 
@@ -340,7 +361,9 @@ Iedere kernflow ontwerpt minimaal:
 - stale/conflict;
 - destructive pending/completed/manual review.
 
-Copy is kort, specifiek en handelbaar. Zeg wat niet lukte, wat bewaard bleef en wat de gebruiker kan doen. Voorbeeld: “De foto's zijn bewaard, maar de update kon nog niet worden gepubliceerd. Probeer opnieuw.”
+Copy is kort, specifiek en handelbaar. Zeg wat niet lukte, wat bewaard bleef en
+wat de gebruiker kan doen. Voorbeeld: “De foto's zijn bewaard, maar het
+Bouwmoment kon nog niet worden gepubliceerd. Probeer opnieuw.”
 
 ## 13. Accessibility- en kwaliteitsgate
 
@@ -357,7 +380,10 @@ WCAG 2.2 AA is het doel. Voor een component of flow “done” is:
 - axe heeft geen ernstige bevindingen;
 - relevante visuele regressies zijn beoordeeld.
 
-De twee verplichte visuele kwaliteitsrondes en artifacts staan uitgewerkt in `docs/DESIGN_AUDIT.md`.
+De geautomatiseerde visuele regressies zijn geen interactieve releaseclaim. De
+verplichte Browser MCP-audit is op deze snapshot geblokkeerd door de huidige
+Codex-gebruikslimiet. De expliciet superseded historische nulmeting staat in
+[`DESIGN_AUDIT.md`](DESIGN_AUDIT.md); zij is geen actuele releaseclaim.
 
 ## 14. Migratieregel
 

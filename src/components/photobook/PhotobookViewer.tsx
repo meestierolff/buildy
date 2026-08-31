@@ -1,13 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Minus,
-  Plus,
-} from "lucide-react";
-import type { PhotobookDocument } from "../../../shared/contracts/photobooks";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import type { PhotobookDocument, PhotobookPage } from "../../../shared/contracts/photobooks";
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
 import { normalizedPageIndex } from "@/lib/photobookPreview";
 import { CanonicalPhotobookPage } from "./CanonicalPhotobookPage";
 
@@ -26,6 +20,15 @@ function useDesktopSpread(): boolean {
   return desktop;
 }
 
+function pageName(page: PhotobookPage): string {
+  if (page.kind === "cover") return "Cover";
+  if (page.id === "digital:opening") return "Voorwoord";
+  if (page.id === "digital:closing") return "Tot slot";
+  if (page.kind === "photos") return "Foto’s";
+  if (page.kind === "update_text") return "Bouwmoment";
+  return "Verhaal";
+}
+
 interface PhotobookViewerProps {
   activePage: number;
   document: PhotobookDocument;
@@ -38,7 +41,6 @@ export const PhotobookViewer = ({
   onActivePageChange,
 }: PhotobookViewerProps) => {
   const desktopSpread = useDesktopSpread();
-  const [zoom, setZoom] = useState(100);
   const [thumbnailCount, setThumbnailCount] = useState(10);
   const loadMoreRef = useRef<HTMLButtonElement>(null);
   const touchStartX = useRef<number | null>(null);
@@ -83,14 +85,14 @@ export const PhotobookViewer = ({
   const firstNumber = current + 1;
   const lastNumber = Math.min(document.pageCount, current + visiblePages.length);
   const pageLabel = firstNumber === lastNumber
-    ? `Pagina ${firstNumber} van ${document.pageCount}`
-    : `Pagina's ${firstNumber}–${lastNumber} van ${document.pageCount}`;
+    ? `${pageName(visiblePages[0]!)} · ${firstNumber} van ${document.pageCount}`
+    : `${firstNumber}–${lastNumber} van ${document.pageCount}`;
 
   return (
     <section
       aria-keyshortcuts="ArrowLeft ArrowRight Home End"
-      aria-label="Bouwboek printweergave"
-      className="min-w-0"
+      aria-label="Bouwboekweergave"
+      className="min-w-0 rounded-2xl border border-[#D8CFC1] bg-[#E9E1D5] p-3 shadow-[0_24px_60px_rgba(38,35,31,0.10)] outline-none focus-visible:ring-2 focus-visible:ring-[#A94E36] dark:border-border dark:bg-muted/50 sm:p-5"
       onKeyDown={(event) => {
         if (event.key === "ArrowLeft") {
           event.preventDefault();
@@ -108,74 +110,41 @@ export const PhotobookViewer = ({
       }}
       tabIndex={0}
     >
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2">
-        <div className="flex items-center gap-2">
-          <Button
-            aria-label="Vorige pagina"
-            disabled={current === 0}
-            onClick={() => move(-1)}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <ChevronLeft aria-hidden="true" />
-          </Button>
-          <p aria-live="polite" className="min-w-32 text-center text-xs font-semibold tabular-nums">
-            {pageLabel}
-          </p>
-          <Button
-            aria-label="Volgende pagina"
-            disabled={current + visiblePages.length >= document.pageCount}
-            onClick={() => move(1)}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <ChevronRight aria-hidden="true" />
-          </Button>
-        </div>
-
-        <div className="flex min-w-56 items-center gap-2">
-          <Button
-            aria-label="Uitzoomen"
-            disabled={zoom <= 50}
-            onClick={() => setZoom((value) => Math.max(50, value - 10))}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <Minus aria-hidden="true" />
-          </Button>
-          <Slider
-            aria-label="Zoomniveau van het Bouwboek"
-            className="w-28"
-            max={160}
-            min={50}
-            onValueChange={([value]) => setZoom(value ?? 100)}
-            step={10}
-            value={[zoom]}
-          />
-          <Button
-            aria-label="Inzoomen"
-            disabled={zoom >= 160}
-            onClick={() => setZoom((value) => Math.min(160, value + 10))}
-            size="icon"
-            type="button"
-            variant="ghost"
-          >
-            <Plus aria-hidden="true" />
-          </Button>
-          <span className="w-10 text-right text-xs tabular-nums text-muted-foreground">{zoom}%</span>
-        </div>
+      <div className="mb-4 flex items-center justify-center gap-2">
+        <Button
+          aria-label="Vorige pagina"
+          className="rounded-full"
+          disabled={current === 0}
+          onClick={() => move(-1)}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <ChevronLeft aria-hidden="true" />
+        </Button>
+        <p aria-live="polite" className="min-w-40 text-center text-xs font-semibold tabular-nums text-[#655F57] dark:text-muted-foreground">
+          {pageLabel}
+        </p>
+        <Button
+          aria-label="Volgende pagina"
+          className="rounded-full"
+          disabled={current + visiblePages.length >= document.pageCount}
+          onClick={() => move(1)}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <ChevronRight aria-hidden="true" />
+        </Button>
       </div>
 
       <p className="sr-only">Gebruik de pijltjestoetsen om te bladeren en Home of End voor het begin of einde.</p>
       <div
-        className="overflow-auto rounded-xl border bg-muted/60 p-3 sm:p-5"
+        className="overflow-hidden rounded-lg"
         onTouchEnd={(event) => {
           const start = touchStartX.current;
           touchStartX.current = null;
-          if (desktopSpread || zoom > 100 || start === null) return;
+          if (desktopSpread || start === null) return;
           const end = event.changedTouches[0]?.clientX;
           if (end === undefined || Math.abs(start - end) < 48) return;
           move(start > end ? 1 : -1);
@@ -185,56 +154,51 @@ export const PhotobookViewer = ({
         }}
       >
         <div
-          className={`mx-auto grid items-start gap-3 ${
+          className={`mx-auto grid max-w-5xl items-start gap-px bg-[#B9AD9D] shadow-[0_22px_46px_rgba(38,35,31,0.24)] ${
             desktopSpread && visiblePages.length > 1 ? "grid-cols-2" : "grid-cols-1"
           }`}
-          style={{ width: `${desktopSpread && visiblePages.length === 1 ? zoom / 2 : zoom}%` }}
+          style={{ width: desktopSpread && visiblePages.length === 1 ? "50%" : "100%" }}
         >
           {visiblePages.map((page) => (
-            <div className="min-w-0" key={page.id}>
-              <div className="overflow-hidden rounded-sm border border-black/10 bg-white shadow-xl">
-                <CanonicalPhotobookPage document={document} page={page} />
-              </div>
-              <p className="mt-2 text-center text-[11px] font-medium tabular-nums text-muted-foreground">
-                {page.number}
-              </p>
+            <div className="min-w-0 bg-white" key={page.id}>
+              <CanonicalPhotobookPage document={document} page={page} />
             </div>
           ))}
         </div>
       </div>
 
-      <div aria-label="Paginaminiaturen" className="mt-4 flex gap-2 overflow-x-auto pb-3" role="navigation">
+      <nav aria-label="Bladzijden" className="mt-5 flex gap-2 overflow-x-auto pb-2">
         {document.pages.slice(0, thumbnailCount).map((page, index) => {
           const active = index >= current && index < current + visiblePages.length;
           return (
             <button
               aria-current={active ? "page" : undefined}
-              aria-label={`Ga naar pagina ${page.number}`}
-              className={`w-28 shrink-0 rounded-md border-2 p-1 text-left transition ${
-                active ? "border-accent bg-accent/5" : "border-transparent hover:border-border"
-              }`}
+              aria-label={`Ga naar ${pageName(page).toLowerCase()}, bladzijde ${page.number}`}
+              className="w-24 shrink-0 rounded-md border-2 border-transparent p-1 text-left transition hover:border-[#B9AD9D] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-current:border-[#A94E36] aria-current:bg-white/50"
               key={page.id}
               onClick={() => onActivePageChange(normalizedPageIndex(index, document.pageCount, desktopSpread))}
               type="button"
             >
-              <div className="overflow-hidden rounded-sm border bg-white shadow-sm">
+              <div className="overflow-hidden rounded-sm border border-black/10 bg-white shadow-sm">
                 <CanonicalPhotobookPage decorative document={document} imageSize="small" page={page} />
               </div>
-              <span className="mt-1 block text-center text-[10px] tabular-nums text-muted-foreground">{page.number}</span>
+              <span className="mt-1 block truncate text-center text-[10px] font-medium text-[#655F57] dark:text-muted-foreground">
+                {pageName(page)}
+              </span>
             </button>
           );
         })}
-        {thumbnailCount < document.pageCount && (
+        {thumbnailCount < document.pageCount ? (
           <button
-            className="w-28 shrink-0 rounded-md border border-dashed px-3 text-xs text-muted-foreground hover:border-accent hover:text-foreground"
+            className="w-24 shrink-0 rounded-md border border-dashed border-[#B9AD9D] px-2 text-xs text-[#655F57] hover:border-[#A94E36] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-muted-foreground"
             onClick={() => setThumbnailCount((count) => Math.min(document.pageCount, count + 10))}
             ref={loadMoreRef}
             type="button"
           >
-            Meer miniaturen tonen
+            Meer tonen
           </button>
-        )}
-      </div>
+        ) : null}
+      </nav>
     </section>
   );
 };

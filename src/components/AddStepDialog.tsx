@@ -11,11 +11,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import PhaseSelect, { DEFAULT_PHASES } from "./PhaseSelect";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, ImagePlus, Loader2, Star, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2, X } from "lucide-react";
 import DiscardUpdateDraftDialog from "@/components/project/DiscardUpdateDraftDialog";
+import ProjectImagePicker from "@/components/project/ProjectImagePicker";
+import { ResilientImage } from "@/components/ResilientMedia";
 import { getUpdateComposerCloseIntent } from "@/lib/updateComposerState";
 import { ApiClientError } from "@/lib/apiClient";
 import { createClientIdempotencyKey } from "@/lib/clientIdempotency";
@@ -25,8 +26,14 @@ import {
   PrivateMediaUploadError,
   type PreparedProjectImage,
 } from "@/lib/privateMediaApi";
-import { MEDIA_FEATURES_ENABLED } from "@/lib/appFeatures";
+import { useAppFeatures } from "@/lib/appFeatures";
 import { buildCreateUpdateCommand } from "@/lib/projectWriteFlow";
+import { selectUniqueLocalFiles } from "@/lib/projectImageSelection";
+import {
+  deleteLandingPhotoHandoff,
+  landingPhotoHandoffFile,
+  loadLandingPhotoHandoff,
+} from "@/lib/landingPhotoHandoffStore";
 import {
   deleteUpdateComposerDraft,
   loadUpdateComposerDraft,
@@ -37,6 +44,7 @@ import type { CreateProjectPhaseInput, CreateUpdateInput } from "../../shared/co
 
 interface AddStepDialogProps {
   projectId: string;
+  importLandingPhoto?: boolean;
   onClose: () => void;
   onAdded: () => void;
 }
@@ -57,11 +65,19 @@ interface UploadCacheEntry {
 }
 
 class UpdateDraftError extends Error {}
+class LandingPhotoCleanupError extends Error {}
 
 // Re-export so existing imports keep working.
 export const PHASES = DEFAULT_PHASES;
 
-const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
+const AddStepDialog = ({
+  projectId,
+  importLandingPhoto = false,
+  onClose,
+  onAdded,
+}: AddStepDialogProps) => {
+  const appFeatures = useAppFeatures();
+  const mediaFeaturesEnabled = appFeatures.mediaFeaturesEnabled;
   const { user } = useAuth();
   const projectQuery = useProjectOverview(projectId, Boolean(user));
   const createUpdate = useCreateProjectUpdateMutation(projectId);
@@ -75,6 +91,9 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
   const [updateDate, setUpdateDate] = useState(new Date().toISOString().split("T")[0]);
   const [files, setFiles] = useState<PendingUpload[]>([]);
   const previewUrlsRef = useRef<string[]>([]);
+  const landingHandoffUploadIdRef = useRef<string | null>(null);
+  const landingHandoffIdRef = useRef<string | null>(null);
+  const landingHandoffNeedsCleanupRef = useRef(false);
   const uploadCacheRef = useRef(new Map<string, UploadCacheEntry>());
   const pendingCommandRef = useRef<CreateUpdateInput | null>(null);
   const pendingPhaseCommandRef = useRef<{ name: string; input: CreateProjectPhaseInput } | null>(null);
@@ -82,6 +101,9 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [saveStage, setSaveStage] = useState<"idle" | "saving" | "uploading" | "processing">("idle");
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
+  const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
+  const [failedUploadId, setFailedUploadId] = useState<string | null>(null);
+  const [retryingUploadId, setRetryingUploadId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [retryLocked, setRetryLocked] = useState(false);
   const [showDiscardPrompt, setShowDiscardPrompt] = useState(false);
@@ -93,7 +115,7 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
   const initialDateRef = useRef(updateDate);
   const updateIdempotencyKeyRef = useRef(createClientIdempotencyKey("update-create"));
 
-  const formLocked = loading || retryLocked;
+  const formLocked = loading || retryLocked || retryingUploadId !== null;
   const phaseOptions = projectQuery.data?.phases.map((phase) => ({
     value: phase.id,
     label: phase.name,
@@ -105,7 +127,7 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
     if (!pending || pending.name.toLocaleLowerCase("nl-NL") !== normalizedName.toLocaleLowerCase("nl-NL")) {
       const latest = await projectQuery.refetch({ throwOnError: true });
       if (!latest.data?.canEdit) {
-        throw new UpdateDraftError("Je hebt geen bewerkingsrechten voor dit project.");
+        throw new UpdateDraftError("Je hebt geen bewerkingsrechten voor deze verbouwing.");
       }
       pending = {
         name: normalizedName,
@@ -175,64 +197,111 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
       return () => { active = false; };
     }
 
-    void loadUpdateComposerDraft(user.id, projectId)
-      .then((draft) => {
-        if (!active || !draft) return;
-        const restoredFiles = draft.files.map((stored) => {
-          const file = new File([stored.bytes], stored.name, {
-            type: stored.contentType,
-            lastModified: stored.lastModified,
-          });
-          const previewUrl = URL.createObjectURL(file);
-          previewUrlsRef.current.push(previewUrl);
-          uploadCacheRef.current.set(stored.id, stored.assetId ? { assetId: stored.assetId } : {});
-          return {
-            id: stored.id,
-            file,
-            previewUrl,
-            compareRole: stored.compareRole,
-            ...(stored.assetId ? { assetId: stored.assetId } : {}),
-          } satisfies PendingUpload;
+    const hydrateDraft = async () => {
+      let draft: StoredUpdateComposerDraft | null = null;
+      try {
+        draft = await loadUpdateComposerDraft(user.id, projectId);
+      } catch (error) {
+        console.error("Restore update draft failed", error);
+        if (active) setDraftPersistenceError("Dit apparaat kon je vorige concept niet herstellen.");
+      }
+
+      let landingPhoto = null;
+      if (importLandingPhoto && mediaFeaturesEnabled) {
+        try {
+          landingPhoto = await loadLandingPhotoHandoff();
+        } catch (error) {
+          console.error("Restore landing photo handoff failed", error);
+          if (active) {
+            setDraftPersistenceError("De lokale foto kon niet worden overgenomen. Hij is niet geüpload en blijft op dit apparaat staan.");
+          }
+        }
+      } else if (importLandingPhoto && active) {
+        setDraftPersistenceError("Foto's toevoegen is nu niet beschikbaar. De lokale foto blijft op dit apparaat staan.");
+      }
+
+      if (!active) return;
+      const restoredFiles = draft?.files.map((stored) => {
+        const file = new File([stored.bytes], stored.name, {
+          type: stored.contentType,
+          lastModified: stored.lastModified,
         });
+        const previewUrl = URL.createObjectURL(file);
+        previewUrlsRef.current.push(previewUrl);
+        uploadCacheRef.current.set(stored.id, stored.assetId ? { assetId: stored.assetId } : {});
+        return {
+          id: stored.id,
+          file,
+          previewUrl,
+          compareRole: stored.compareRole,
+          ...(stored.assetId ? { assetId: stored.assetId } : {}),
+        } satisfies PendingUpload;
+      }) ?? [];
+
+      if (draft) {
         setTitle(draft.title);
         setPhaseId(draft.phaseId);
         setIsMilestone(draft.isMilestone);
         setDescription(draft.description);
         setUpdateDate(draft.updateDate);
         initialDateRef.current = draft.updateDate;
-        setFiles(restoredFiles);
-        setHasRestoredDraft(true);
         updateIdempotencyKeyRef.current = draft.updateIdempotencyKey;
         pendingCommandRef.current = draft.pendingCommand;
         if (draft.pendingCommand) {
           setRetryLocked(true);
           setSaveError("Deze opdracht wacht nog op serverbevestiging. Probeer haar ongewijzigd opnieuw.");
         }
-      })
-      .catch((error) => {
-        console.error("Restore update draft failed", error);
-        if (active) setDraftPersistenceError("Dit apparaat kon je vorige concept niet herstellen.");
-      })
-      .finally(() => {
-        if (active) setDraftHydrated(true);
+      }
+
+      if (landingPhoto) {
+        const uploadId = `media-upload:${landingPhoto.id}`;
+        landingHandoffUploadIdRef.current = uploadId;
+        landingHandoffIdRef.current = landingPhoto.id;
+        landingHandoffNeedsCleanupRef.current = true;
+        if (!restoredFiles.some((upload) => upload.id === uploadId)) {
+          const file = landingPhotoHandoffFile(landingPhoto);
+          const previewUrl = URL.createObjectURL(file);
+          previewUrlsRef.current.push(previewUrl);
+          restoredFiles.unshift({
+            id: uploadId,
+            file,
+            previewUrl,
+            compareRole: null,
+          });
+        }
+      }
+
+      setFiles((currentFiles) => {
+        if (currentFiles.length === 0) return restoredFiles;
+        const restoredIds = new Set(restoredFiles.map((upload) => upload.id));
+        return [...restoredFiles, ...currentFiles.filter((upload) => !restoredIds.has(upload.id))];
       });
+      setHasRestoredDraft(Boolean(draft || landingPhoto));
+      setDraftHydrated(true);
+    };
+
+    void hydrateDraft();
 
     return () => { active = false; };
-  }, [projectId, user?.id]);
+  }, [importLandingPhoto, mediaFeaturesEnabled, projectId, user?.id]);
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!event.target.files || formLocked) return;
-
-    const selected = Array.from(event.target.files);
+  const addSelectedFiles = (selected: File[]) => {
+    if (formLocked) return;
     const supported = selected.filter((file) => isSupportedProjectImageType(file.type));
+    const uniqueSelection = selectUniqueLocalFiles(files.map((upload) => upload.file), supported);
     const remaining = Math.max(0, 50 - files.length);
-    const accepted = supported.slice(0, remaining);
+    const accepted = uniqueSelection.files.slice(0, remaining);
 
     if (supported.length !== selected.length) {
       toast.error("Gebruik alleen JPG-, PNG-, WebP-, AVIF-, HEIC- of HEIF-foto's.");
     }
-    if (supported.length > remaining) {
-      toast.error("Je kunt maximaal 50 foto's aan één update toevoegen.");
+    if (uniqueSelection.duplicateCount > 0) {
+      toast.error(uniqueSelection.duplicateCount === 1
+        ? "Deze foto staat al in dit Bouwmoment."
+        : `${uniqueSelection.duplicateCount} foto's stonden al in dit Bouwmoment.`);
+    }
+    if (uniqueSelection.files.length > remaining) {
+      toast.error("Je kunt maximaal 50 foto's aan één Bouwmoment toevoegen.");
     }
 
     try {
@@ -250,9 +319,73 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
     } catch (error) {
       console.error("Create secure upload identifier failed", error);
       toast.error("Deze browser kan geen veilige uploadopdracht maken.");
-    } finally {
-      event.target.value = "";
     }
+  };
+
+  const readyUpload = async (upload: PendingUpload): Promise<string> => {
+    const cache = uploadCacheRef.current.get(upload.id) ?? {};
+    if (cache.assetId) return cache.assetId;
+
+    setActiveUploadId(upload.id);
+    setFailedUploadId((current) => current === upload.id ? null : current);
+    try {
+      cache.prepared ??= await preparePrivateProjectImage(upload.file);
+      uploadCacheRef.current.set(upload.id, cache);
+      const asset = await mediaUpload.mutateAsync({
+        projectId,
+        idempotencyKey: upload.id,
+        prepared: cache.prepared,
+        onStage: (stage) => {
+          if (stage === "processing") setSaveStage("processing");
+          if (stage === "uploading") setSaveStage("uploading");
+        },
+      });
+      if (asset.projectId !== projectId || asset.status !== "ready") {
+        throw new UpdateDraftError("De server bevestigde de foto niet voor deze verbouwing.");
+      }
+      cache.assetId = asset.id;
+      setFiles((previous) => previous.map((item) => (
+        item.id === upload.id ? { ...item, assetId: asset.id } : item
+      )));
+      return asset.id;
+    } catch (error) {
+      setFailedUploadId(upload.id);
+      throw error;
+    } finally {
+      setActiveUploadId((current) => current === upload.id ? null : current);
+    }
+  };
+
+  const retryUpload = async (uploadId: string) => {
+    if (formLocked) return;
+    const upload = files.find((item) => item.id === uploadId);
+    if (!upload || upload.assetId) return;
+
+    setRetryingUploadId(uploadId);
+    setSaveError(null);
+    setSaveStage("uploading");
+    setUploadProgress({ current: 1, total: 1 });
+    try {
+      await readyUpload(upload);
+      toast.success("De foto is privé verwerkt. Plaats het Bouwmoment wanneer je klaar bent.");
+    } catch (error) {
+      const message = error instanceof PrivateMediaUploadError || error instanceof UpdateDraftError
+        ? error.message
+        : "Deze foto kon niet veilig worden verwerkt. Probeer haar opnieuw.";
+      setSaveError(message);
+      toast.error("De foto kon niet worden verwerkt.");
+    } finally {
+      setRetryingUploadId(null);
+      setSaveStage("idle");
+    }
+  };
+
+  const clearLandingPhotoHandoff = async (): Promise<void> => {
+    if (!landingHandoffNeedsCleanupRef.current) return;
+    const photoId = landingHandoffIdRef.current;
+    if (!photoId) return;
+    await deleteLandingPhotoHandoff(photoId);
+    landingHandoffNeedsCleanupRef.current = false;
   };
 
   const removeFile = (id: string) => {
@@ -263,22 +396,14 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
       previewUrlsRef.current = previewUrlsRef.current.filter((url) => url !== removed.previewUrl);
     }
     uploadCacheRef.current.delete(id);
+    setFailedUploadId((current) => current === id ? null : current);
     setFiles((previous) => previous.filter((upload) => upload.id !== id));
-  };
-
-  const setCompareRole = (id: string, role: CompareRole) => {
-    if (formLocked) return;
-    setFiles((previous) =>
-      previous.map((upload) => {
-        if (upload.id === id) {
-          return { ...upload, compareRole: upload.compareRole === role ? null : role };
-        }
-        if (upload.compareRole === role) {
-          return { ...upload, compareRole: null };
-        }
-        return upload;
-      }),
-    );
+    if (id === landingHandoffUploadIdRef.current) {
+      void clearLandingPhotoHandoff().catch((error) => {
+        console.error("Clear removed landing photo handoff failed", error);
+        setDraftPersistenceError("De verwijderde startfoto kon nog niet uit de lokale overdracht worden gewist. Probeer het opnieuw.");
+      });
+    }
   };
 
   const isDirty = Boolean(
@@ -312,6 +437,14 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
   const persistDraft = async (): Promise<void> => {
     if (!user?.id) throw new UpdateDraftError("Log opnieuw in om dit concept veilig te bewaren.");
     await saveUpdateComposerDraft(user.id, projectId, draftSnapshot());
+    try {
+      await clearLandingPhotoHandoff();
+    } catch (cause) {
+      throw new LandingPhotoCleanupError(
+        "De foto staat veilig in dit concept, maar de tijdelijke lokale overdracht kon nog niet worden gewist.",
+        { cause },
+      );
+    }
     setDraftPersistenceError(null);
   };
 
@@ -320,7 +453,9 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
     const timer = globalThis.setTimeout(() => {
       void persistDraft().catch((error) => {
         console.error("Persist update draft failed", error);
-        setDraftPersistenceError("Concept kon niet op dit apparaat worden bewaard.");
+        setDraftPersistenceError(error instanceof LandingPhotoCleanupError
+          ? error.message
+          : "Concept kon niet op dit apparaat worden bewaard.");
       });
     }, 350);
     return () => globalThis.clearTimeout(timer);
@@ -329,7 +464,10 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
   }, [description, draftHydrated, files, isDirty, isMilestone, phaseId, projectId, title, updateDate, user?.id]);
 
   const requestClose = () => {
-    const intent = getUpdateComposerCloseIntent({ isDirty, isSaving: loading });
+    const intent = getUpdateComposerCloseIntent({
+      isDirty,
+      isSaving: loading || retryingUploadId !== null,
+    });
     if (intent === "ignore") return;
     if (intent === "confirm-discard") {
       setShowDiscardPrompt(true);
@@ -340,7 +478,12 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!user || submitGuardRef.current || !title.trim()) return;
+    if (
+      !user ||
+      submitGuardRef.current ||
+      !updateDate ||
+      (!title.trim() && !description.trim() && files.length === 0)
+    ) return;
 
     submitGuardRef.current = true;
     setLoading(true);
@@ -354,7 +497,7 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
           ? projectQuery
           : await projectQuery.refetch({ throwOnError: true });
         if (!accessResult.data?.canEdit) {
-          throw new UpdateDraftError("Je hebt geen bewerkingsrechten voor dit project.");
+          throw new UpdateDraftError("Je hebt geen bewerkingsrechten voor deze verbouwing.");
         }
 
         const readyMedia: Array<{ assetId: string; compareRole: CompareRole | null }> = [];
@@ -365,35 +508,13 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
 
         for (const [index, upload] of files.entries()) {
           setUploadProgress({ current: index + 1, total: files.length });
-          const cache = uploadCacheRef.current.get(upload.id) ?? {};
-          cache.prepared ??= await preparePrivateProjectImage(upload.file);
-          uploadCacheRef.current.set(upload.id, cache);
-
-          if (!cache.assetId) {
-            const asset = await mediaUpload.mutateAsync({
-              projectId,
-              idempotencyKey: upload.id,
-              prepared: cache.prepared,
-              onStage: (stage) => {
-                if (stage === "processing") setSaveStage("processing");
-                if (stage === "uploading") setSaveStage("uploading");
-              },
-            });
-            if (asset.projectId !== projectId || asset.status !== "ready") {
-              throw new UpdateDraftError("De server bevestigde de foto niet voor dit project.");
-            }
-            cache.assetId = asset.id;
-            setFiles((previous) => previous.map((item) => (
-              item.id === upload.id ? { ...item, assetId: asset.id } : item
-            )));
-          }
-
-          readyMedia.push({ assetId: cache.assetId, compareRole: upload.compareRole });
+          const assetId = upload.assetId ?? await readyUpload(upload);
+          readyMedia.push({ assetId, compareRole: upload.compareRole });
         }
 
         const latestProject = await projectQuery.refetch({ throwOnError: true });
         if (!latestProject.data?.canEdit) {
-          throw new UpdateDraftError("Je hebt geen bewerkingsrechten voor dit project.");
+          throw new UpdateDraftError("Je hebt geen bewerkingsrechten voor deze verbouwing.");
         }
         pendingCommandRef.current = buildCreateUpdateCommand({
           title,
@@ -430,7 +551,7 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
       if (uncertainUpdateOutcome) {
         setRetryLocked(true);
         setSaveError("De serverbevestiging ontbreekt nog. Probeer exact dezelfde opdracht opnieuw; je veilige opdracht-ID blijft behouden.");
-        toast.error("We konden de update nog niet bevestigen. Probeer opnieuw.");
+        toast.error("We konden het Bouwmoment nog niet bevestigen. Probeer opnieuw.");
       } else {
         if (definitiveUpdateRejection) {
           pendingCommandRef.current = null;
@@ -444,7 +565,7 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
           ? error.message
           : "Opslaan lukte niet. Je concept staat nog hier; probeer opnieuw.";
         setSaveError(message);
-        toast.error("Kon update niet toevoegen. Je concept is bewaard.");
+        toast.error("Kon het Bouwmoment niet toevoegen. Je concept is bewaard.");
       }
     } finally {
       submitGuardRef.current = false;
@@ -456,13 +577,14 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
       if (user?.id) {
         try {
           await deleteUpdateComposerDraft(user.id, projectId);
+          await clearLandingPhotoHandoff();
         } catch (error) {
-          console.error("Clear saved update draft failed", error);
+          console.error("Clear saved update recovery data failed", error);
         }
       }
       onAdded();
       onClose();
-      toast.success("Update toegevoegd!");
+      toast.success("Bouwmoment toegevoegd!");
     }
   };
 
@@ -475,7 +597,9 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
       onClose();
     } catch (error) {
       console.error("Keep update draft failed", error);
-      setDraftPersistenceError("Concept bewaren lukte niet. Blijf in dit scherm en probeer opnieuw.");
+      setDraftPersistenceError(error instanceof LandingPhotoCleanupError
+        ? error.message
+        : "Concept bewaren lukte niet. Blijf in dit scherm en probeer opnieuw.");
       toast.error("Concept kon niet veilig worden bewaard.");
     } finally {
       setClosingDraft(false);
@@ -487,6 +611,7 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
     setClosingDraft(true);
     try {
       await deleteUpdateComposerDraft(user.id, projectId);
+      await clearLandingPhotoHandoff();
       setShowDiscardPrompt(false);
       onClose();
     } catch (error) {
@@ -503,8 +628,12 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
     : saveStage === "processing"
       ? `Foto ${uploadProgress.current} van ${uploadProgress.total} veilig verwerken…`
       : saveStage === "saving"
-        ? "Update opslaan…"
+        ? "Bouwmoment opslaan…"
         : saveError;
+  const importedLandingPhotoVisible = Boolean(
+    landingHandoffUploadIdRef.current
+    && files.some((upload) => upload.id === landingHandoffUploadIdRef.current),
+  );
 
   return (
     <>
@@ -514,26 +643,31 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
           aria-busy={loading}
         >
           <DialogHeader className="pr-8 text-left">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Nieuwe projectupdate</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Nieuw Bouwmoment</p>
             <DialogTitle className="font-sans text-2xl">Wat is er veranderd?</DialogTitle>
             <DialogDescription>Begin met beeld. De praktische details kun je daarna rustig aanvullen.</DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="mt-2 space-y-7">
-            {MEDIA_FEATURES_ENABLED ? (
+            {mediaFeaturesEnabled ? (
             <section aria-labelledby="update-media-title">
               <div className="flex items-end justify-between gap-4">
                 <div>
                   <Label id="update-media-title" className="text-base font-semibold">Foto's</Label>
                   <p className="mt-1 text-xs leading-relaxed text-muted-foreground">De eerste foto wordt het openingsbeeld. Sleep of gebruik de pijlen om te ordenen.</p>
+                  {importedLandingPhotoVisible ? (
+                    <p className="mt-2 text-xs leading-relaxed text-muted-foreground" role="status">
+                      Je startfoto is alleen vanaf dit apparaat overgenomen. Hij wordt pas privé geüpload wanneer jij dit Bouwmoment plaatst.
+                    </p>
+                  ) : null}
                 </div>
                 {files.length > 0 && <span className="text-xs tabular-nums text-muted-foreground">{files.length}/50</span>}
               </div>
-              <label className={`mt-3 flex min-h-24 items-center justify-center gap-3 border border-dashed border-border bg-secondary/25 px-4 py-5 text-center transition-colors focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 ${formLocked ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-accent"}`}>
-                <ImagePlus className="h-5 w-5 shrink-0 text-accent" aria-hidden="true" />
-                <span className="text-sm"><strong>Voeg foto's toe</strong><span className="block text-xs text-muted-foreground">JPG, PNG, WebP, AVIF, HEIC of HEIF</span></span>
-                <input type="file" multiple accept=".jpg,.jpeg,.png,.webp,.avif,.heic,.heif,image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif" className="sr-only" onChange={handleFileChange} disabled={formLocked || files.length >= 50} />
-              </label>
+              <ProjectImagePicker
+                currentCount={files.length}
+                disabled={formLocked}
+                onFiles={addSelectedFiles}
+              />
 
               {files.length > 0 && (
                 <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -551,21 +685,35 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
                         className={`border bg-background p-2 ${dragIdx === index ? "opacity-40" : ""} ${dragOverIdx === index && dragIdx !== index ? "ring-2 ring-accent" : ""}`}
                       >
                         <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-                          <img src={upload.previewUrl} alt={`Voorvertoning ${index + 1}`} draggable={false} className="h-full w-full object-cover" />
-                          {upload.compareRole && <span className="absolute left-2 top-2 bg-accent px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-accent-foreground">{upload.compareRole === "before" ? "Voor" : "Na"}</span>}
+                          <ResilientImage src={upload.previewUrl} alt={`Voorvertoning ${index + 1}`} draggable={false} className="h-full w-full object-cover" />
                           <button type="button" onClick={() => removeFile(upload.id)} className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center bg-background/90 text-foreground hover:text-destructive" aria-label={`${file.name} verwijderen`} disabled={formLocked}>
                             <X className="h-4 w-4" />
                           </button>
                         </div>
                         <p className="mt-2 truncate text-xs text-muted-foreground">{file.name}</p>
+                        {upload.assetId ? (
+                          <p className="mt-1 text-xs font-medium text-emerald-700" role="status">Privé verwerkt</p>
+                        ) : activeUploadId === upload.id ? (
+                          <p className="mt-1 text-xs text-muted-foreground" role="status">
+                            {saveStage === "processing" ? "Veilig verwerken…" : "Privé uploaden…"}
+                          </p>
+                        ) : failedUploadId === upload.id ? (
+                          <div className="mt-2 border-l-2 border-destructive pl-2">
+                            <p className="text-xs leading-5 text-destructive" role="alert">Deze foto kon niet worden bewaard. Je tekst is niet verloren.</p>
+                            <button
+                              type="button"
+                              className="mt-1 min-h-11 text-left text-xs font-semibold text-accent underline underline-offset-4"
+                              onClick={() => void retryUpload(upload.id)}
+                              disabled={formLocked}
+                              aria-label={`${file.name} opnieuw uploaden`}
+                            >
+                              Deze foto opnieuw
+                            </button>
+                          </div>
+                        ) : null}
                         <div className="mt-2 grid grid-cols-2 gap-1">
                           <button type="button" onClick={() => moveUpload(upload.id, -1)} disabled={index === 0 || formLocked} className="flex min-h-11 items-center justify-center border text-muted-foreground disabled:opacity-30" aria-label={`${file.name} naar voren`}><ArrowLeft className="h-4 w-4" /></button>
                           <button type="button" onClick={() => moveUpload(upload.id, 1)} disabled={index === files.length - 1 || formLocked} className="flex min-h-11 items-center justify-center border text-muted-foreground disabled:opacity-30" aria-label={`${file.name} naar achteren`}><ArrowRight className="h-4 w-4" /></button>
-                        </div>
-                        <div className="mt-1 grid grid-cols-2 gap-1">
-                          {(["before", "after"] as const).map((role) => (
-                            <button key={role} type="button" aria-pressed={upload.compareRole === role} onClick={() => setCompareRole(upload.id, role)} className={`min-h-11 border text-xs font-semibold ${upload.compareRole === role ? "border-accent bg-accent text-accent-foreground" : "border-border"}`} disabled={formLocked}>{role === "before" ? "Voor" : "Na"}</button>
-                          ))}
                         </div>
                       </div>
                     );
@@ -576,29 +724,29 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
             ) : null}
 
             <section className="space-y-4 border-t border-border pt-6" aria-labelledby="update-story-title">
-              <h3 id="update-story-title" className="font-sans text-base font-semibold">Het verhaal</h3>
+              <h3 id="update-story-title" className="font-sans text-base font-semibold">Het Verhaal</h3>
               <div className="space-y-2">
-                <Label htmlFor="update-title">Titel <span className="text-accent">*</span></Label>
-                <Input id="update-title" value={title} onChange={(changeEvent) => setTitle(changeEvent.target.value)} required maxLength={120} placeholder="Bijv. De oude keuken is eruit" className="min-h-11" disabled={formLocked} />
+                <Label htmlFor="update-date">Datum <span className="text-accent">*</span></Label>
+                <Input id="update-date" type="date" value={updateDate} onChange={(changeEvent) => setUpdateDate(changeEvent.target.value)} required className="min-h-11" disabled={formLocked} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="update-description">Vertel wat je wilt onthouden</Label>
+                <Label htmlFor="update-title">Korte titel of bijschrift <span className="font-normal text-muted-foreground">(optioneel)</span></Label>
+                <Input id="update-title" value={title} onChange={(changeEvent) => setTitle(changeEvent.target.value)} maxLength={120} placeholder="Bijv. De oude keuken is eruit" className="min-h-11" disabled={formLocked} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="update-description">Vertel wat je wilt onthouden <span className="font-normal text-muted-foreground">(optioneel)</span></Label>
                 <Textarea id="update-description" value={description} onChange={(changeEvent) => setDescription(changeEvent.target.value)} maxLength={10000} placeholder="Wat is er gedaan, welke keuze maakte je en wat kwam je tegen?" rows={5} className="min-h-32 resize-y" disabled={formLocked} />
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2"><Label>Fase</Label><PhaseSelect value={phaseId} onChange={setPhaseId} options={phaseOptions} onAddCustom={addCustomPhase} disabled={formLocked || projectQuery.isLoading || projectQuery.isError} /></div>
-                <div className="space-y-2"><Label htmlFor="update-date">Datum <span className="text-accent">*</span></Label><Input id="update-date" type="date" value={updateDate} onChange={(changeEvent) => setUpdateDate(changeEvent.target.value)} required className="min-h-11" disabled={formLocked} /></div>
-              </div>
-              <div className="flex min-h-11 items-center justify-between gap-4 border-y border-border py-2">
-                <Label htmlFor="milestone" className="flex cursor-pointer items-center gap-2"><Star className="h-4 w-4 text-accent" />Markeren als mijlpaal</Label>
-                <Switch id="milestone" checked={isMilestone} onCheckedChange={setIsMilestone} disabled={formLocked} />
+              <div className="space-y-2">
+                <Label>Fase <span className="font-normal text-muted-foreground">(optioneel)</span></Label>
+                <PhaseSelect value={phaseId} onChange={setPhaseId} options={phaseOptions} onAddCustom={addCustomPhase} disabled={formLocked || projectQuery.isLoading || projectQuery.isError} />
               </div>
             </section>
 
             {/* SECURITY: update-level contractor and budget fields stay hidden until typed,
                 transactional server contracts exist; there is deliberately no browser-side provider fallback. */}
 
-            {projectQuery.isError && <p role="alert" className="text-sm text-destructive">Projectgegevens konden niet veilig worden geladen. Probeer de update opnieuw te plaatsen.</p>}
+            {projectQuery.isError && <p role="alert" className="text-sm text-destructive">De verbouwing kon niet veilig worden geladen. Probeer het Bouwmoment opnieuw te plaatsen.</p>}
             {saveStatus && <p role="status" aria-live="polite" className={`text-sm ${saveError ? "text-destructive" : "text-muted-foreground"}`}>{saveStatus}</p>}
             {draftPersistenceError && <p role="alert" className="text-sm text-destructive">{draftPersistenceError}</p>}
 
@@ -609,7 +757,8 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
                 className="min-h-11 flex-[2] bg-accent text-accent-foreground hover:bg-accent/90"
                 disabled={
                   loading ||
-                  title.trim().length === 0 ||
+                  !updateDate ||
+                  (!title.trim() && !description.trim() && files.length === 0) ||
                   (!retryLocked && (projectQuery.isLoading || projectQuery.data?.canEdit === false))
                 }
               >
@@ -620,7 +769,7 @@ const AddStepDialog = ({ projectId, onClose, onAdded }: AddStepDialogProps) => {
                     : "Opslaan…"
                   : saveError
                     ? "Opnieuw proberen"
-                    : "Update plaatsen"}
+                    : "Bouwmoment plaatsen"}
               </Button>
             </div>
           </form>

@@ -1,5 +1,6 @@
 import { jsonError } from "../http/responses.js";
 import { createAccountHttpHandler, type AccountHttpDependencies } from "./http.js";
+import type { MediaProcessingWorker } from "../media/worker.js";
 import type { AccountLifecycleWorker } from "./worker.js";
 
 type AccountHandler = (request: Request, requestId: string) => Promise<Response>;
@@ -7,6 +8,7 @@ type AccountHandler = (request: Request, requestId: string) => Promise<Response>
 export interface AccountWorkerRuntime {
   cronSecret: string;
   worker: AccountLifecycleWorker;
+  orphanCleanup?: Pick<MediaProcessingWorker, "cleanupOrphans">;
 }
 
 let defaultHandler: AccountHandler | undefined;
@@ -17,7 +19,11 @@ export function configureDefaultAccountRuntime(
 ): void {
   if (defaultHandler || workerRuntime) throw new Error("De standaard accountruntime is al geconfigureerd.");
   defaultHandler = createAccountHttpHandler(dependencies);
-  workerRuntime = { cronSecret: dependencies.cronSecret, worker: dependencies.worker };
+  workerRuntime = {
+    cronSecret: dependencies.cronSecret,
+    worker: dependencies.worker,
+    ...(dependencies.orphanCleanup ? { orphanCleanup: dependencies.orphanCleanup } : {}),
+  };
 }
 
 export function handleDefaultAccountRequest(request: Request, requestId: string): Promise<Response> {

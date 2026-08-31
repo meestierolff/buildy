@@ -9,11 +9,12 @@ import {
   type AuthRateLimitStorage,
 } from "./factory.js";
 import type { AuthIdentityProvisioner } from "./identity.js";
-import type { AuthEmailOutbox } from "./outbox.js";
+import type { DataProtectionKeyring, PrivacyBlindIndex } from "../security/dataProtection.js";
 
 export interface DefaultAuthDependencies {
+  blindIndex: PrivacyBlindIndex;
   identityProvisioner: AuthIdentityProvisioner;
-  outbox: AuthEmailOutbox;
+  keyring: DataProtectionKeyring;
   rateLimitStorage: AuthRateLimitStorage;
   registrationGate: AuthRegistrationGate;
 }
@@ -21,15 +22,17 @@ export interface DefaultAuthDependencies {
 let dependencies: DefaultAuthDependencies | undefined;
 let engine: AuthEngine | undefined;
 
-/** Install the durable outbox during server composition, before the first request. */
+/** Install server-owned OIDC persistence dependencies before the first request. */
 export function configureDefaultAuthRuntime(next: DefaultAuthDependencies): void {
   if (engine || dependencies) {
     throw new Error("De standaard auth-runtime is al geconfigureerd.");
   }
-  if (!next.outbox || typeof next.outbox.enqueue !== "function") {
-    throw new AuthUnavailableError("email_outbox_unconfigured");
-  }
   if (
+    !next.blindIndex ||
+    typeof next.blindIndex.create !== "function" ||
+    !next.keyring ||
+    typeof next.keyring.encrypt !== "function" ||
+    typeof next.keyring.decrypt !== "function" ||
     !next.identityProvisioner ||
     typeof next.identityProvisioner.provisionForAuthUser !== "function" ||
     typeof next.identityProvisioner.ensureForSession !== "function" ||
@@ -46,15 +49,16 @@ export function configureDefaultAuthRuntime(next: DefaultAuthDependencies): void
 
 export function resolveDefaultAuthEngine(): AuthEngine {
   if (engine) return engine;
-  if (!dependencies) throw new AuthUnavailableError("email_outbox_unconfigured");
+  if (!dependencies) throw new AuthUnavailableError("configuration_missing");
 
   try {
     const config = resolveAuthConfiguration(getRuntimeConfig());
     engine = createBuildyAuth({
       config,
       database: getBuildyDatabase(config.databaseUrl),
+      blindIndex: dependencies.blindIndex,
       identityProvisioner: dependencies.identityProvisioner,
-      outbox: dependencies.outbox,
+      keyring: dependencies.keyring,
       rateLimitStorage: dependencies.rateLimitStorage,
       registrationGate: dependencies.registrationGate,
     });

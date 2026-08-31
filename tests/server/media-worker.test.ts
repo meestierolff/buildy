@@ -16,6 +16,8 @@ import type {
   DisplayObject,
   FinalizeMediaProcessingCommand,
   InternalUploadIntent,
+  MediaCleanupCheckpoint,
+  MediaCleanupPurpose,
   MediaProcessingJob,
   MediaRepository,
   OriginalObject,
@@ -36,7 +38,20 @@ class WorkerRepository implements MediaRepository {
     failureCode: string;
     retry: { delaySeconds: number } | null;
   }> = [];
+  readonly targetedClaims: string[] = [];
   protectedKeys = new Set<string>();
+  readonly cleanupClaims: MediaCleanupCheckpoint[] = [];
+  readonly cleanupFinalizations: Array<{
+    checkpoint: MediaCleanupCheckpoint;
+    nextCursor: string | undefined;
+    scanComplete: boolean;
+  }> = [];
+  readonly cleanupFailures: Array<{
+    checkpoint: MediaCleanupCheckpoint;
+    failureCode: string;
+    retry: { delaySeconds: number } | null;
+  }> = [];
+  cleanupAttemptCount = 1;
 
   async createUploadIntent(_command: CreateUploadIntentCommand): Promise<InternalUploadIntent> {
     throw new Error("unused");
@@ -50,6 +65,16 @@ class WorkerRepository implements MediaRepository {
     const job = this.jobs.shift();
     return job ? { ...job, workerId } : null;
   }
+  async claimProcessingJobForAsset(
+    workerId: string,
+    assetId: string,
+  ): Promise<MediaProcessingJob | null> {
+    this.targetedClaims.push(assetId);
+    const index = this.jobs.findIndex((candidate) => candidate.assetId === assetId);
+    if (index < 0) return null;
+    const [claimed] = this.jobs.splice(index, 1);
+    return claimed ? { ...claimed, workerId } : null;
+  }
   async finalizeProcessing(command: FinalizeMediaProcessingCommand): Promise<void> {
     this.finalized.push(command);
   }
@@ -59,6 +84,37 @@ class WorkerRepository implements MediaRepository {
     retry: { delaySeconds: number } | null,
   ): Promise<void> {
     this.failures.push({ job, failureCode, retry });
+  }
+  async claimOrphanCleanup(
+    workerId: string,
+    purpose: MediaCleanupPurpose,
+  ): Promise<MediaCleanupCheckpoint> {
+    const checkpoint = {
+      workerId,
+      eventId: purpose === "temporary"
+        ? "70000000-0000-4000-8000-000000000001"
+        : purpose === "originals"
+          ? "70000000-0000-4000-8000-000000000002"
+          : "70000000-0000-4000-8000-000000000003",
+      purpose,
+      attemptCount: this.cleanupAttemptCount,
+    } satisfies MediaCleanupCheckpoint;
+    this.cleanupClaims.push(checkpoint);
+    return checkpoint;
+  }
+  async finalizeOrphanCleanup(
+    checkpoint: MediaCleanupCheckpoint,
+    nextCursor: string | undefined,
+    scanComplete: boolean,
+  ): Promise<void> {
+    this.cleanupFinalizations.push({ checkpoint, nextCursor, scanComplete });
+  }
+  async failOrphanCleanup(
+    checkpoint: MediaCleanupCheckpoint,
+    failureCode: string,
+    retry: { delaySeconds: number } | null,
+  ): Promise<void> {
+    this.cleanupFailures.push({ checkpoint, failureCode, retry });
   }
   async filterProtectedObjectKeys(candidateKeys: readonly string[]): Promise<Set<string>> {
     return new Set(candidateKeys.filter((key) => this.protectedKeys.has(key)));
@@ -73,6 +129,7 @@ function storageFixture() {
     createUploadUrl: async () => { throw new Error("unused"); },
     completeUpload: async () => { throw new Error("unused"); },
     createDownloadUrl: async () => { throw new Error("unused"); },
+    streamObject: async () => { throw new Error("workers use bounded reads"); },
     readObject: async (key, maximumBytes) => {
       const object = objects.get(key);
       if (!object) throw new ObjectStorageError("OBJECT_NOT_FOUND", "missing");
@@ -145,6 +202,44 @@ function putTemporary(
 }
 
 describe("resumable private media processing", () => {
+  it("claims and processes only the explicitly requested asset", async () => {
+    const bytes = await sharp({
+      create: { width: 12, height: 8, channels: 3, background: "#315f47" },
+    }).jpeg().toBuffer();
+    const otherAssetId = "66666666-6666-4666-8666-666666666666";
+    const repository = new WorkerRepository();
+    const fixture = storageFixture();
+    const otherJob = job(bytes, {
+      assetId: otherAssetId,
+      temporaryObjectKey: `temporary/66/${otherAssetId}`,
+    });
+    const requestedJob = job(bytes);
+    repository.jobs.push(otherJob, requestedJob);
+    putTemporary(fixture, requestedJob, bytes);
+    const worker = new MediaProcessingWorker(repository, fixture.storage, "media-worker-1");
+
+    await expect(worker.processAsset(ASSET_ID)).resolves.toMatchObject({
+      status: "processed",
+      assetId: ASSET_ID,
+    });
+
+    expect(repository.targetedClaims).toEqual([ASSET_ID]);
+    expect(repository.jobs.map((candidate) => candidate.assetId)).toEqual([otherAssetId]);
+    expect(repository.finalized).toHaveLength(1);
+    expect(repository.finalized[0]?.job.assetId).toBe(ASSET_ID);
+  });
+
+  it("rejects an invalid target before asking the privileged repository to claim it", async () => {
+    const repository = new WorkerRepository();
+    const fixture = storageFixture();
+    const worker = new MediaProcessingWorker(repository, fixture.storage, "media-worker-1");
+
+    await expect(worker.processAsset("../../../ander-account")).rejects.toMatchObject({
+      reason: "MEDIA_NOT_FOUND",
+    });
+    expect(repository.targetedClaims).toEqual([]);
+  });
+
   it("sanitizes orientation/metadata and finalizes deterministic original and display objects", async () => {
     const bytes = await sharp({
       create: { width: 20, height: 10, channels: 3, background: "#a54f35" },
@@ -283,9 +378,141 @@ describe("resumable private media processing", () => {
 
     const result = await worker.cleanupOrphans();
 
-    expect(result).toEqual({ inspected: 2, deleted: 1, deleteFailures: 0 });
+    expect(result).toEqual({
+      inspected: 2,
+      pages: 3,
+      deleteAttempts: 1,
+      deleted: 1,
+      deleteFailures: 0,
+      checkpointsClaimed: 3,
+      checkpointsCompleted: 3,
+      limitedBy: "none",
+      failures: [],
+    });
+    expect(repository.cleanupFinalizations).toHaveLength(3);
+    expect(repository.cleanupFinalizations.every((entry) => entry.scanComplete)).toBe(true);
     expect(fixture.objects.has(orphanKey)).toBe(false);
     expect(fixture.objects.has(protectedKey)).toBe(true);
     expect(fixture.objects.has(recentKey)).toBe(true);
+  });
+
+  it("persists the last completed page cursor when a strict page slice is exhausted", async () => {
+    const repository = new WorkerRepository();
+    const fixture = storageFixture();
+    const listObjects = vi.spyOn(fixture.storage, "listObjects")
+      .mockImplementation(async (prefix, cursor) => ({
+        objects: [],
+        cursor: cursor ? `${cursor}-next` : `${prefix}-page-2`,
+      }));
+    const worker = new MediaProcessingWorker(repository, fixture.storage, "media-worker-1");
+
+    const result = await worker.cleanupOrphans({ maximumPagesPerPrefix: 1 });
+
+    expect(result).toMatchObject({
+      pages: 3,
+      checkpointsClaimed: 3,
+      checkpointsCompleted: 3,
+      limitedBy: "page_limit",
+    });
+    expect(repository.cleanupFinalizations.map((entry) => ({
+      purpose: entry.checkpoint.purpose,
+      cursor: entry.nextCursor,
+      complete: entry.scanComplete,
+    }))).toEqual([
+      { purpose: "temporary", cursor: "temporary-page-2", complete: false },
+      { purpose: "originals", cursor: "originals-page-2", complete: false },
+      { purpose: "display", cursor: "display-page-2", complete: false },
+    ]);
+    expect(listObjects).toHaveBeenCalledTimes(3);
+  });
+
+  it("bounds deletion attempts, keeps the current page resumable and verifies removals", async () => {
+    const repository = new WorkerRepository();
+    const fixture = storageFixture();
+    const keys = [
+      `temporary/51/51111111-1111-4111-8111-111111111111`,
+      `temporary/52/52222222-2222-4222-8222-222222222222`,
+    ];
+    for (const key of keys) {
+      fixture.objects.set(key, {
+        bytes: Buffer.from("x"),
+        metadata: {
+          key,
+          sizeBytes: 1,
+          contentType: "image/webp",
+          lastModified: new Date("2026-08-01T10:00:00Z"),
+        },
+      });
+    }
+    const worker = new MediaProcessingWorker(
+      repository,
+      fixture.storage,
+      "media-worker-1",
+      () => new Date("2026-08-04T10:00:00Z"),
+    );
+
+    const result = await worker.cleanupOrphans({ maximumDeleteAttempts: 1 });
+
+    expect(result).toMatchObject({
+      pages: 1,
+      deleteAttempts: 1,
+      deleted: 1,
+      limitedBy: "delete_limit",
+    });
+    expect(repository.cleanupFinalizations).toHaveLength(1);
+    expect(repository.cleanupFinalizations[0]).toMatchObject({
+      nextCursor: undefined,
+      scanComplete: false,
+    });
+    expect(fixture.objects.has(keys[0]!)).toBe(false);
+    expect(fixture.objects.has(keys[1]!)).toBe(true);
+  });
+
+  it("persists retry and dead-letter details without exposing object keys", async () => {
+    const repository = new WorkerRepository();
+    const fixture = storageFixture();
+    vi.spyOn(fixture.storage, "listObjects").mockRejectedValue(
+      new ObjectStorageError("PROVIDER_ERROR", "provider down"),
+    );
+    const worker = new MediaProcessingWorker(repository, fixture.storage, "media-worker-1");
+
+    const result = await worker.cleanupOrphans({ maximumPagesPerPrefix: 1 });
+
+    expect(result.failures).toEqual([
+      {
+        purpose: "temporary",
+        status: "retry_scheduled",
+        failureCode: "STORAGE_PROVIDER_ERROR",
+      },
+      {
+        purpose: "originals",
+        status: "retry_scheduled",
+        failureCode: "STORAGE_PROVIDER_ERROR",
+      },
+      {
+        purpose: "display",
+        status: "retry_scheduled",
+        failureCode: "STORAGE_PROVIDER_ERROR",
+      },
+    ]);
+    expect(repository.cleanupFailures).toHaveLength(3);
+    expect(JSON.stringify(result)).not.toContain("provider down");
+
+    const exhaustedRepository = new WorkerRepository();
+    exhaustedRepository.cleanupAttemptCount = 5;
+    const exhaustedFixture = storageFixture();
+    vi.spyOn(exhaustedFixture.storage, "listObjects").mockRejectedValue(
+      new ObjectStorageError("PROVIDER_ERROR", "provider down"),
+    );
+    const exhaustedWorker = new MediaProcessingWorker(
+      exhaustedRepository,
+      exhaustedFixture.storage,
+      "media-worker-1",
+    );
+
+    const exhausted = await exhaustedWorker.cleanupOrphans({ maximumPagesPerPrefix: 1 });
+
+    expect(exhausted.failures.every((failure) => failure.status === "dead_letter")).toBe(true);
+    expect(exhaustedRepository.cleanupFailures.every((failure) => failure.retry === null)).toBe(true);
   });
 });

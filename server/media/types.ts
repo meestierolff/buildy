@@ -6,6 +6,7 @@ import type {
 } from "../../shared/contracts/media.js";
 import type { ProjectActor } from "../projects/actor.js";
 import type { ProcessedImageVariant } from "./imageProcessing.js";
+import type { ObjectPurpose } from "../storage/objectStorage.js";
 
 export type MediaAssetStatus = MediaAssetState["status"];
 
@@ -15,6 +16,7 @@ export type CreateUploadIntentCommand = {
   projectId: string;
   purpose: MediaUploadPurpose;
   temporaryObjectKey: string;
+  storageProvider: "vercel_blob";
   bucket: string;
   contentType: ProjectImageContentType;
   sizeBytes: number;
@@ -100,6 +102,16 @@ export type FinalizeMediaProcessingCommand = {
   now: Date;
 };
 
+export type MediaCleanupPurpose = Extract<ObjectPurpose, "temporary" | "originals" | "display">;
+
+export type MediaCleanupCheckpoint = {
+  workerId: string;
+  eventId: string;
+  purpose: MediaCleanupPurpose;
+  cursor?: string;
+  attemptCount: number;
+};
+
 export interface MediaRepository {
   createUploadIntent(command: CreateUploadIntentCommand): Promise<InternalUploadIntent>;
   findUploadForCompletion(actorId: string, assetId: string): Promise<PendingUpload | null>;
@@ -112,9 +124,29 @@ export interface MediaRepository {
   ): Promise<DisplayObject | null>;
   resolveOwnedOriginal(actorId: string, assetId: string): Promise<OriginalObject | null>;
   claimProcessingJob(workerId: string, leaseSeconds: number): Promise<MediaProcessingJob | null>;
+  claimProcessingJobForAsset(
+    workerId: string,
+    assetId: string,
+    leaseSeconds: number,
+  ): Promise<MediaProcessingJob | null>;
   finalizeProcessing(command: FinalizeMediaProcessingCommand): Promise<void>;
   failProcessing(
     job: MediaProcessingJob,
+    failureCode: string,
+    retry: { delaySeconds: number } | null,
+  ): Promise<void>;
+  claimOrphanCleanup(
+    workerId: string,
+    purpose: MediaCleanupPurpose,
+    leaseSeconds: number,
+  ): Promise<MediaCleanupCheckpoint | null>;
+  finalizeOrphanCleanup(
+    checkpoint: MediaCleanupCheckpoint,
+    nextCursor: string | undefined,
+    scanComplete: boolean,
+  ): Promise<void>;
+  failOrphanCleanup(
+    checkpoint: MediaCleanupCheckpoint,
     failureCode: string,
     retry: { delaySeconds: number } | null,
   ): Promise<void>;

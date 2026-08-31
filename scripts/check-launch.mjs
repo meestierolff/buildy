@@ -2,13 +2,16 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, extname, join, normalize, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
+import {
+  launchReadinessFailures,
+  parseLaunchCliArguments,
+  requireExpectedGitSha,
+  verifyDeployedGitSha,
+  verifyPublicDemoCapabilities,
+  verifyPublicDemoProductProfile,
+} from "./release-gates.mjs";
+
 const root = process.cwd();
-const args = new Set(process.argv.slice(2));
-const optionValue = (name) => {
-  const prefix = `${name}=`;
-  const value = process.argv.slice(2).find((argument) => argument.startsWith(prefix));
-  return value?.slice(prefix.length);
-};
 
 const parseEnvFile = (file) => {
   if (!existsSync(file)) return {};
@@ -29,13 +32,19 @@ const env = {
   ...parseEnvFile(join(root, ".env.production")),
   ...process.env,
 };
-const staticOnly = args.has("--static");
-const requestedEnvironment = args.has("--production")
-  ? "production"
-  : args.has("--staging")
-    ? "staging"
-    : optionValue("--environment") || env.APP_ENV;
-const rawBaseUrl = optionValue("--base-url") || env.LAUNCH_BASE_URL || env.PRIMARY_DOMAIN || env.APP_ORIGIN;
+let launchOptions;
+try {
+  launchOptions = parseLaunchCliArguments(process.argv.slice(2), env);
+} catch (error) {
+  process.stderr.write(`${error instanceof Error ? error.message : "Ongeldige launchargumenten."}\n`);
+  process.exit(2);
+}
+const {
+  staticOnly,
+  requestedEnvironment,
+  rawBaseUrl,
+  rawExpectedGitSha,
+} = launchOptions;
 
 const checks = [];
 const addResult = (status, category, name, detail) => checks.push({ status, category, name, detail });
@@ -68,20 +77,12 @@ function filesBelow(entry, extensions = new Set([".ts", ".tsx", ".js", ".mjs", "
 }
 
 const requiredDocs = [
-  "docs/ARCHITECTURE_DECISION.md",
-  "docs/BACKUP_AND_RESTORE.md",
-  "docs/DESIGN_SYSTEM.md",
-  "docs/EXTERNAL_INPUTS_REQUIRED.md",
-  "docs/FEATURE_PARITY_MATRIX.md",
-  "docs/IMPLEMENTATION_LOG.md",
-  "docs/INCIDENT_RUNBOOK.md",
-  "docs/LAUNCH_READINESS.md",
-  "docs/MIGRATION_AND_CUTOVER.md",
-  "docs/MIGRATION_REPORT.md",
-  "docs/OPERATIONS_RUNBOOK.md",
-  "docs/ORDER_SUPPORT_RUNBOOK.md",
-  "docs/PROVIDER_SETUP.md",
-  "docs/USER_TESTING_PLAN.md",
+  ".env.example",
+  "README.md",
+  "docs/MVP_SCOPE.md",
+  "docs/MVP_SHIP_REPORT.md",
+  "docs/OPERATOR_ACTIONS_REQUIRED.md",
+  "docs/POLARSTEPS_TO_BUILDY.md",
 ];
 
 await runCheck("static", "Doelruntime bevat geen legacy-providerkoppeling", async () => {
@@ -102,7 +103,15 @@ await runCheck("static", "Doelruntime bevat geen legacy-providerkoppeling", asyn
 await runCheck("static", "Packagegraph bevat geen legacy runtimepackage", async () => {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   const packages = { ...manifest.dependencies, ...manifest.devDependencies };
-  const forbidden = Object.keys(packages).filter((name) => /supabase|lovable/i.test(name));
+  const forbidden = Object.keys(packages).filter((name) => (
+    /supabase|lovable/i.test(name)
+    || [
+      "@aws-sdk/client-s3",
+      "@aws-sdk/s3-request-presigner",
+      "@better-auth/drizzle-adapter",
+      "better-auth",
+    ].includes(name)
+  ));
   assert(forbidden.length === 0, `verwijder eerst: ${forbidden.join(", ")}`);
   const retiredTemplatePackages = ["@react-leaflet/core", "leaflet", "react-leaflet", "jspdf"]
     .filter((name) => name in packages);
@@ -113,11 +122,46 @@ await runCheck("static", "Packagegraph bevat geen legacy runtimepackage", async 
   return "package.json en canonieke Bun-lockfile zijn schoon";
 });
 
+await runCheck("static", "Actieve runtime importeert geen uitgefaseerde provider", async () => {
+  const activeFiles = [
+    ...filesBelow("api"),
+    ...filesBelow("server"),
+    ...filesBelow("shared"),
+    ...filesBelow("src"),
+    ...filesBelow("scripts"),
+    ...filesBelow("vite.config.ts"),
+    ...filesBelow("vercel.json"),
+  ].filter((path) => (
+    /[.](?:[cm]?js|tsx?|json)$/.test(path)
+    && path !== resolve(root, "scripts/check-launch.mjs")
+  ));
+  const forbiddenImport = /(?:from\s*["'][^"']*(?:r2ObjectStorage|\/email\/|\/fulfilment\/|\/print\/)|@aws-sdk|@better-auth|better-auth|BREVO_|PEECHO_|R2_)/i;
+  const forbiddenRoute = /\/api\/(?:internal\/cron\/(?:email|peecho-fulfilment)|webhooks\/(?:brevo|peecho))/i;
+  const violations = activeFiles.filter((path) => {
+    const contents = readFileSync(path, "utf8");
+    return forbiddenImport.test(contents) || forbiddenRoute.test(contents);
+  });
+  assert(
+    violations.length === 0,
+    `retired runtimekoppeling in ${violations.map((path) => relative(root, path)).join(", ")}`,
+  );
+  return `${activeFiles.length} actieve runtimebestanden schoon`;
+});
+
 await runCheck("static", "Template- en providererfenis is fysiek verwijderd", async () => {
   const retiredPaths = [
     ".lovable",
     ".team",
     "LOVABLE_PROMPT.md",
+    "artifacts/email-previews",
+    "scripts/email",
+    "scripts/peecho",
+    "server/auth/outbox.ts",
+    "server/auth/postgresOutbox.ts",
+    "server/email",
+    "server/fulfilment",
+    "server/print",
+    "server/storage/r2ObjectStorage.ts",
     "src/components/TripRouteMap.tsx",
     "src/integrations",
     "src/lib/peecho.ts",
@@ -176,24 +220,24 @@ await runCheck("static", "Vercelconfig is fail-closed", async () => {
   const config = JSON.parse(readFileSync(join(root, "vercel.json"), "utf8"));
   assert(config.framework === "vite", "Vercel framework is niet Vite");
   assert(Array.isArray(config.regions) && config.regions.includes("fra1"), "EU-functieregio fra1 ontbreekt");
-  const expectedCronPaths = [
-    "/api/internal/cron/account-lifecycle",
-    "/api/internal/cron/email",
-    "/api/internal/cron/media",
-    "/api/internal/cron/peecho-fulfilment",
-    "/api/internal/cron/photobooks",
-  ];
   const cronPaths = new Set((config.crons ?? []).map((cron) => cron.path));
   const hobbyCronWorkflowPath = join(root, ".github/workflows/hobby-worker-crons.yml");
   const hobbyCronWorkflow = existsSync(hobbyCronWorkflowPath)
     ? readFileSync(hobbyCronWorkflowPath, "utf8")
     : "";
-  const hasVercelCronSet = expectedCronPaths.every((path) => cronPaths.has(path));
-  const hasHobbyCronSet = expectedCronPaths.every((path) => hobbyCronWorkflow.includes(path))
-    && /schedule:\s*[\r\n]+\s*-\s*cron:\s*['"]\*\/5 \* \* \* \*['"]/.test(hobbyCronWorkflow)
-    && hobbyCronWorkflow.includes("HOBBY_CRON_BASE_URL")
-    && hobbyCronWorkflow.includes("HOBBY_CRON_SECRET");
-  assert(hasVercelCronSet || hasHobbyCronSet, "duurzame workertriggers ontbreken voor Vercel of Hobby");
+  const hasScheduledHobbyCronWorkflow = /\bon:\s*[\s\S]*\bschedule\s*:/.test(hobbyCronWorkflow);
+  const expectedCronPaths = new Set([
+    "/api/internal/cron/account-lifecycle",
+  ]);
+  assert(
+    cronPaths.size === expectedCronPaths.size
+      && [...expectedCronPaths].every((path) => cronPaths.has(path)),
+    "Vercel-crons wijken af van de ene dagelijkse accountonderhoudstaak",
+  );
+  for (const cron of config.crons ?? []) {
+    assert(/^\d{1,2} \d{1,2} \* \* \*$/.test(cron.schedule), `${cron.path} is niet eenmaal daags gepland`);
+  }
+  assert(!hasScheduledHobbyCronWorkflow, "feedbackbèta mag geen actieve hobby-workercrons vereisen");
   const redirects = new Map((config.redirects ?? []).map((redirect) => [redirect.source, redirect]));
   for (const [source, destination] of [
     ["/trips/new", "/project/nieuw"],
@@ -209,12 +253,50 @@ await runCheck("static", "Vercelconfig is fail-closed", async () => {
     assert(redirect?.destination === destination && redirect?.permanent === true, `permanente redirect ontbreekt: ${source}`);
   }
   const serialized = JSON.stringify(config);
+  assert(
+    config.functions?.["api/router.ts"]?.maxDuration === 300,
+    "API-router vereist expliciet 300 seconden voor hervatbare private streams",
+  );
   assert(!/supabase|lovable/i.test(serialized), "Vercelconfig verwijst naar legacyprovider");
-  assert(serialized.includes("Content-Security-Policy"), "CSP-header ontbreekt");
-  assert(serialized.includes("Strict-Transport-Security"), "HSTS-header ontbreekt");
-  return hasVercelCronSet
-    ? `${cronPaths.size} Vercel-workercrons, ${redirects.size} redirects en securityheaders aanwezig`
-    : `Hobby-workerworkflow plus ${redirects.size} redirects en securityheaders aanwezig`;
+  assert(!/cloudflarestorage|peecho|brevo/i.test(serialized), "Vercelconfig verwijst naar uitgefaseerde provider");
+  assert(serialized.includes("blob.vercel-storage.com"), "Vercel Blob upload-CSP ontbreekt");
+  const globalHeaders = config.headers?.find((rule) => rule.source === "/(.*)")?.headers ?? [];
+  const globalHeaderNames = new Set(globalHeaders.map((header) => header.key));
+  const documentCors = globalHeaders.find((header) => header.key === "Access-Control-Allow-Origin");
+  assert(
+    documentCors?.value === "https://buildy-gamma.vercel.app",
+    "document-CORS moet exact op het publieke Buildy-origin staan",
+  );
+  for (const name of [
+    "Content-Security-Policy",
+    "Cross-Origin-Opener-Policy",
+    "Cross-Origin-Resource-Policy",
+    "Permissions-Policy",
+    "Referrer-Policy",
+    "Strict-Transport-Security",
+    "X-Content-Type-Options",
+    "X-Frame-Options",
+  ]) {
+    assert(globalHeaderNames.has(name), `${name} ontbreekt op de globale /(.*)-route`);
+  }
+  return `${cronPaths.size} dagelijkse onderhoudscrons; ${redirects.size} redirects en securityheaders aanwezig`;
+});
+
+await runCheck("static", "Zichtbare provider- en bestelteksten spreken de MVP-waarheid", async () => {
+  const files = [
+    "src/pages/legal/Privacy.tsx",
+    "src/pages/legal/Terms.tsx",
+    "src/pages/legal/Withdrawal.tsx",
+    "src/pages/OrderAdmin.tsx",
+    "src/pages/OrderConfirmation.tsx",
+    "src/pages/Photobook.tsx",
+  ];
+  const combined = files.map((path) => readFileSync(join(root, path), "utf8")).join("\n");
+  assert(!/Peecho|Brevo|Cloudflare R2|cloudflarestorage/i.test(combined), "zichtbare copy noemt een uitgefaseerde provider");
+  assert(/private Vercel Blob/i.test(combined), "private Vercel Blob ontbreekt in privacycopy");
+  assert(/handmatig/i.test(combined), "handmatige druk-/fulfilmentwaarheid ontbreekt");
+  assert(/Stripe[^\n]*(?:alleen|wanneer)|(?:alleen|wanneer)[^\n]*Stripe/i.test(combined), "conditionele Stripe-copy ontbreekt");
+  return `${files.length} zichtbare juridische en besteloppervlakken gecontroleerd`;
 });
 
 await runCheck("static", "Verplichte opleverdocumenten bestaan", async () => {
@@ -235,16 +317,27 @@ await runCheck("static", "Migratiebestanden en ledger zijn statisch geldig", asy
 });
 
 let baseUrl;
+let expectedGitSha;
+const vercelAutomationBypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
 if (!staticOnly) {
   await runCheck("live", "Doelomgeving is expliciet en veilig", async () => {
-    assert(["staging", "production"].includes(requestedEnvironment), "gebruik --staging of --production");
+    assert(["preview", "staging", "production"].includes(requestedEnvironment), "gebruik --preview, --staging of --production");
     assert(rawBaseUrl, "geef --base-url=https://... of LAUNCH_BASE_URL op");
-    baseUrl = new URL(rawBaseUrl.includes("://") ? rawBaseUrl : `https://${rawBaseUrl}`);
-    assert(baseUrl.protocol === "https:", "live launchprobe vereist HTTPS");
-    assert(!baseUrl.username && !baseUrl.password && !baseUrl.search && !baseUrl.hash, "base URL mag geen credentials/query bevatten");
-    assert(baseUrl.pathname === "/", "base URL moet een origin zonder pad zijn");
-    assert(!baseUrl.hostname.endsWith(".example"), "placeholderdomein is geen launchdoel");
-    return `${requestedEnvironment} op ${baseUrl.origin}`;
+    const candidateBaseUrl = new URL(rawBaseUrl.includes("://") ? rawBaseUrl : `https://${rawBaseUrl}`);
+    assert(candidateBaseUrl.protocol === "https:", "live launchprobe vereist HTTPS");
+    assert(
+      !candidateBaseUrl.username
+        && !candidateBaseUrl.password
+        && !candidateBaseUrl.search
+        && !candidateBaseUrl.hash,
+      "base URL mag geen credentials/query bevatten",
+    );
+    assert(candidateBaseUrl.pathname === "/", "base URL moet een origin zonder pad zijn");
+    assert(!candidateBaseUrl.hostname.endsWith(".example"), "placeholderdomein is geen launchdoel");
+    const candidateExpectedGitSha = requireExpectedGitSha(rawExpectedGitSha);
+    baseUrl = candidateBaseUrl;
+    expectedGitSha = candidateExpectedGitSha;
+    return `${requestedEnvironment} op ${baseUrl.origin}; release-SHA expliciet vastgezet`;
   });
 }
 
@@ -252,12 +345,17 @@ async function fetchWithin(path, init = {}) {
   assert(baseUrl, "veilige base URL kon niet worden vastgesteld");
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
+  const headers = new Headers(init.headers);
+  headers.set("user-agent", "buildy-launch-check/2");
+  if (vercelAutomationBypassSecret) {
+    headers.set("x-vercel-protection-bypass", vercelAutomationBypassSecret);
+  }
   try {
     return await fetch(new URL(path, baseUrl), {
       cache: "no-store",
       redirect: "manual",
       ...init,
-      headers: { "user-agent": "buildy-launch-check/2", ...init.headers },
+      headers,
       signal: controller.signal,
     });
   } finally {
@@ -274,6 +372,8 @@ async function responseJson(response) {
   }
 }
 
+let liveCapabilities;
+let liveProfileName;
 if (!staticOnly && baseUrl) {
   await runCheck("live", "Publieke app en securityheaders", async () => {
     const response = await fetchWithin("/");
@@ -292,30 +392,40 @@ if (!staticOnly && baseUrl) {
     return `HTTP 200 met ${7} verplichte browserheaders`;
   });
 
+  await runCheck("live", "Server-owned launchprofiel", async () => {
+    const response = await fetchWithin("/api/product-profile");
+    const body = await responseJson(response);
+    assert(response.status === 200, `product-profile gaf HTTP ${response.status}`);
+    verifyPublicDemoProductProfile(body?.data);
+    liveProfileName = body.data.profile;
+    return "public_demo; accounts en checkout uit";
+  });
+
   await runCheck("live", "Health heeft juiste release en capabilities", async () => {
     const response = await fetchWithin("/api/health");
     const body = await responseJson(response);
     assert(response.status === 200 && body?.data?.status === "ok", `health gaf HTTP ${response.status}`);
     assert(body.data.environment === requestedEnvironment, `verwacht ${requestedEnvironment}, kreeg ${body.data.environment}`);
-    assert(body.data.release && body.data.release !== "development", "deployrelease ontbreekt");
+    assert(expectedGitSha, "verwachte release-SHA ontbreekt");
+    verifyDeployedGitSha(body.data.release, expectedGitSha);
     const capabilities = body.data.capabilities ?? {};
-    const unconfigured = Object.entries(capabilities)
-      .filter(([, state]) => state !== "ready")
-      .map(([name]) => name);
-    assert(unconfigured.length === 0, `capabilities niet ready: ${unconfigured.join(", ")}`);
+    liveCapabilities = capabilities;
+    assert(liveProfileName, "launchprofiel ontbreekt");
+    verifyPublicDemoCapabilities(capabilities);
     assert(response.headers.has("x-request-id"), "request-ID ontbreekt");
-    return `${Object.keys(capabilities).length} capabilities ready; release ${body.data.release}`;
+    return `provider-onafhankelijke demo; release ${body.data.release}`;
   });
 
   await runCheck("live", "Readiness en least-privilegerollen", async () => {
     const response = await fetchWithin("/api/readiness");
     const body = await responseJson(response);
     assert(response.status === 200 && body?.data?.ready === true, `readiness gaf HTTP ${response.status}`);
-    const failed = Object.entries(body.data.checks ?? {})
-      .filter(([, state]) => state !== "pass")
-      .map(([name, state]) => `${name}=${state}`);
+    assert(liveProfileName, "launchprofiel ontbreekt");
+    const failed = launchReadinessFailures(body.data.checks, liveProfileName);
     assert(failed.length === 0, `onbewezen checks: ${failed.join(", ")}`);
-    return `${Object.keys(body.data.checks).length} configuratie-/databasegrenzen pass`;
+    return liveProfileName === "public_demo"
+      ? "demo-configuratie pass; uitgeschakelde providerrollen niet uitgevoerd"
+      : `${Object.keys(body.data.checks).length} configuratie-/databasegrenzen pass`;
   });
 
   await runCheck("live", "Publieke legal-, robots- en sitemaproutes", async () => {
@@ -329,7 +439,8 @@ if (!staticOnly && baseUrl) {
   await runCheck("live", "Anonieme private/mutatiegrenzen", async () => {
     const randomId = crypto.randomUUID();
     const privateResponse = await fetchWithin(`/api/media/${randomId}/original`);
-    assert([401, 404].includes(privateResponse.status), `private media gaf HTTP ${privateResponse.status}`);
+    const protectedStatuses = liveProfileName === "public_demo" ? [401, 404, 503] : [401, 404];
+    assert(protectedStatuses.includes(privateResponse.status), `private media gaf HTTP ${privateResponse.status}`);
     assert(!privateResponse.headers.has("location"), "private media redirectte naar een object-URL");
 
     const mutationResponse = await fetchWithin("/api/projects", {
@@ -337,7 +448,8 @@ if (!staticOnly && baseUrl) {
       headers: { "content-type": "application/json", origin: baseUrl.origin },
       body: "{}",
     });
-    assert(mutationResponse.status === 401, `anonieme projectwrite gaf HTTP ${mutationResponse.status}`);
+    const writeStatuses = liveProfileName === "public_demo" ? [401, 503] : [401];
+    assert(writeStatuses.includes(mutationResponse.status), `anonieme projectwrite gaf HTTP ${mutationResponse.status}`);
 
     const hostileResponse = await fetchWithin("/api/projects", {
       method: "POST",
@@ -345,34 +457,51 @@ if (!staticOnly && baseUrl) {
       body: "{}",
     });
     assert(hostileResponse.status === 403, `hostile Origin gaf HTTP ${hostileResponse.status}`);
-    return "private media en writes fail-closed";
+
+    const adminResponse = await fetchWithin("/api/admin/orders");
+    assert(writeStatuses.includes(adminResponse.status), `anoniem bestellingbeheer gaf HTTP ${adminResponse.status}`);
+    return "private media, writes en bestellingbeheer fail-closed";
   });
 
-  await runCheck("live", "Interne crons vereisen het secret", async () => {
-    for (const path of [
-      "/api/internal/cron/account-lifecycle",
-      "/api/internal/cron/email",
-      "/api/internal/cron/media",
-      "/api/internal/cron/peecho-fulfilment",
-      "/api/internal/cron/photobooks",
-    ]) {
+  if (liveProfileName === "public_demo") {
+    await runCheck("live", "Bestaande publieke supportbackend", async () => {
+      const request = (pathname) => fetchWithin(pathname, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: baseUrl.origin },
+        body: "{}",
+      });
+      const support = await request("/api/support");
+      assert(support.status === 400, `supportvalidatie gaf HTTP ${support.status}`);
+      for (const pathname of ["/api/feedback", "/api/moderation/reports"]) {
+        const dormant = await request(pathname);
+        assert(dormant.status === 503, `${pathname} gaf HTTP ${dormant.status}`);
+      }
+      return "supportvalidatie actief; feedback- en meldwrites profile-gated uit";
+    });
+  }
+
+  await runCheck("live", "Alleen accountonderhoud heeft een beschermde cronroute", async () => {
+    const accountCron = await fetchWithin("/api/internal/cron/account-lifecycle");
+    const expectedAccountCronStatuses = liveProfileName === "public_demo" ? [401, 503] : [401];
+    assert(expectedAccountCronStatuses.includes(accountCron.status), `accountcron gaf HTTP ${accountCron.status}`);
+    for (const path of ["/api/internal/cron/media", "/api/internal/cron/photobooks"]) {
       const response = await fetchWithin(path);
-      assert(response.status === 401, `${path} gaf HTTP ${response.status}`);
+      assert(response.status === 404, `${path} is nog actief met HTTP ${response.status}`);
     }
-    return "5/5 crons weigeren anonieme aanroep";
+    return "accountcron beschermd; media- en Bouwboekcron afwezig";
   });
 
-  await runCheck("live", "Providerwebhooks weigeren ongeldige authenticatie", async () => {
-    const probes = [
-      ["/api/webhooks/brevo", {}, 401],
-      ["/api/webhooks/stripe", { "content-type": "application/json" }, 400],
-      ["/api/webhooks/peecho", { "content-type": "application/json" }, 401],
-    ];
-    for (const [path, headers, expected] of probes) {
-      const response = await fetchWithin(path, { method: "POST", headers, body: "{}" });
-      assert(response.status === expected, `${path} gaf HTTP ${response.status}, verwacht ${expected}`);
-    }
-    return "Brevo, Stripe en Peecho fail-closed";
+  await runCheck("live", "Stripe-webhook volgt de checkoutgrens", async () => {
+    const response = await fetchWithin("/api/webhooks/stripe", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const expected = liveCapabilities?.payments === "ready" ? 400 : 503;
+    assert(response.status === expected, `/api/webhooks/stripe gaf HTTP ${response.status}, verwacht ${expected}`);
+    return expected === 400
+      ? "actieve Stripe-webhook weigert ongeldige signature"
+      : "checkout uit; Stripe-webhook fail-closed onbeschikbaar";
   });
 }
 

@@ -147,12 +147,12 @@ describeWithDatabase("project deletion PostgreSQL saga", () => {
           proof_revision_id, idempotency_key, status, payment_status,
           fulfilment_status, currency, quantity, subtotal_minor, shipping_minor,
           tax_minor, total_minor, shipping_country, checkout_snapshot,
-          seller_snapshot, terms_version, legal_accepted_at,
+          seller_snapshot, terms_version, legal_accepted_at, stripe_payment_intent_id,
           pii_encryption_key_version, paid_at
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, 'paid', 'paid', 'in_production',
           'EUR', 1, 4000, 800, 1008, 5808, 'NL', $8::jsonb, $9::jsonb,
-          'integration-v1', now(), 1, now()
+          'integration-v1', now(), $10, 1, now()
         )
       `, [
         orderId,
@@ -161,9 +161,10 @@ describeWithDatabase("project deletion PostgreSQL saga", () => {
         projectId,
         ownerId,
         revisionId,
-        "6".repeat(64),
+        `project-delete-order:${orderId}`,
         JSON.stringify({ schemaVersion: 1, documentSha256: documentHash }),
         JSON.stringify({ legalName: "Buildy Test" }),
+        `pi_${orderId.replaceAll("-", "")}`,
       ]);
 
       await beginAsActor(admin, strangerId);

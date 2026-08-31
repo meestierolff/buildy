@@ -121,7 +121,8 @@ describe("project HTTP routes", () => {
     vi.stubEnv("APP_ENV", "test");
     vi.stubEnv("APP_ORIGIN", REQUEST_ORIGIN);
     vi.stubEnv("DATABASE_URL", "");
-    vi.stubEnv("BETTER_AUTH_SECRET", "");
+    vi.stubEnv("GOOGLE_CLIENT_ID", "");
+    vi.stubEnv("GOOGLE_CLIENT_SECRET", "");
     resetRuntimeConfigForTests();
     resetDefaultProjectRuntimeForTests();
   });
@@ -132,7 +133,7 @@ describe("project HTTP routes", () => {
     resetRuntimeConfigForTests();
   });
 
-  it("fails closed while the Better Auth app-user mapping is not composed", async () => {
+  it("fails closed while the Google OIDC app-user mapping is not composed", async () => {
     const response = await handleApiRequest(new Request(`${REQUEST_ORIGIN}/api/projects`));
 
     expect(response.status).toBe(503);

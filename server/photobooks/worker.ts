@@ -10,16 +10,16 @@ import {
   renderPhotobookPdf,
 } from "./pdfRenderer.js";
 import { loadPhotobookFontBytes, type PhotobookFontBytes } from "./typography.js";
-import type { PhotobookRenderJob, PhotobookWorkerRepository } from "./types.js";
+import type {
+  PhotobookProofProcessingResult,
+  PhotobookRenderJob,
+  PhotobookWorkerRepository,
+} from "./types.js";
 
 const DEFAULT_LEASE_SECONDS = 10 * 60;
 const MAX_ATTEMPTS = 5;
 
-export type PhotobookWorkerResult =
-  | { status: "idle" }
-  | { status: "rendered"; revisionId: string; pageCount: number; pdfSha256: string }
-  | { status: "retry_scheduled"; revisionId: string }
-  | { status: "failed"; revisionId: string };
+export type PhotobookWorkerResult = PhotobookProofProcessingResult;
 
 function retryDelay(attemptCount: number): number {
   return Math.min(60 * 60, 30 * (2 ** Math.max(0, attemptCount - 1)));
@@ -78,15 +78,17 @@ export class PhotobookProofWorker {
     }
   }
 
-  async processNext(): Promise<PhotobookWorkerResult> {
+  private leaseOwner(): string {
     const invocation = createHash("sha256")
       .update(this.workerId)
       .update("\0")
       .update(crypto.randomUUID())
       .digest("hex")
       .slice(0, 24);
-    const leaseOwner = `${this.workerId}:${invocation}`;
-    const job = await this.repository.claimRenderJob(leaseOwner, this.leaseSeconds);
+    return `${this.workerId}:${invocation}`;
+  }
+
+  private async processClaimedJob(job: PhotobookRenderJob | null): Promise<PhotobookWorkerResult> {
     if (!job) return { status: "idle" };
 
     try {
@@ -138,5 +140,23 @@ export class PhotobookProofWorker {
         ? { status: "retry_scheduled", revisionId: job.revisionId }
         : { status: "failed", revisionId: job.revisionId };
     }
+  }
+
+  async processNext(): Promise<PhotobookWorkerResult> {
+    const leaseOwner = this.leaseOwner();
+    return this.processClaimedJob(
+      await this.repository.claimRenderJob(leaseOwner, this.leaseSeconds),
+    );
+  }
+
+  async processRevision(revisionId: string): Promise<PhotobookWorkerResult> {
+    const leaseOwner = this.leaseOwner();
+    const job = await this.repository.claimRenderJobForRevision(
+      revisionId,
+      leaseOwner,
+      this.leaseSeconds,
+    );
+    if (job && job.revisionId !== revisionId) throw new PhotobookError("INVALID_STATE");
+    return this.processClaimedJob(job);
   }
 }

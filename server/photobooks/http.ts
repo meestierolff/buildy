@@ -1,8 +1,11 @@
-import { createHash } from "node:crypto";
 import type { PhotobookEditorState, PhotobookProofMutation } from "./types.js";
+import { approvePhotobookProofInputSchema } from "../../shared/contracts/photobooks.js";
 import { HttpError } from "../http/errors.js";
 import { jsonError, jsonSuccess } from "../http/responses.js";
-import type { ObjectStorage } from "../storage/objectStorage.js";
+import {
+  guardObjectStream,
+  type ObjectStorage,
+} from "../storage/objectStorage.js";
 import type { ProjectActorResolver } from "../projects/actor.js";
 import { ProjectError } from "../projects/errors.js";
 import { PhotobookError } from "./errors.js";
@@ -19,10 +22,6 @@ export interface PhotobookHttpService {
   requestProof(actorId: string, projectId: string, input: unknown): Promise<PhotobookProofMutation>;
   approveProof(actorId: string, revisionId: string, input: unknown): Promise<PhotobookProofMutation>;
   proofObject(actorId: string, revisionId: string): ReturnType<import("./service.js").PhotobookService["proofObject"]>;
-  issueProofViewReceipt(
-    actorId: string,
-    proof: Awaited<ReturnType<import("./service.js").PhotobookService["proofObject"]>>,
-  ): { token: string; expiresAt: string };
 }
 
 export type PhotobookHttpDependencies = {
@@ -117,6 +116,45 @@ function rethrowPhotobookError(error: unknown): never {
   throw error;
 }
 
+async function consumeExactProofObject(input: {
+  storage: ObjectStorage;
+  proof: Awaited<ReturnType<PhotobookHttpService["proofObject"]>>;
+}): Promise<void> {
+  try {
+    const object = await input.storage.streamObject({
+      key: input.proof.objectKey,
+      maximumBytes: input.proof.sizeBytes,
+    });
+    const metadataChecksum = object.metadata.checksumSha256Base64;
+    const expectedChecksumBase64 = Buffer.from(input.proof.sha256, "hex").toString("base64");
+    if (
+      object.metadata.key !== input.proof.objectKey
+      || object.metadata.sizeBytes !== input.proof.sizeBytes
+      || object.metadata.contentType !== input.proof.contentType
+      || (metadataChecksum !== undefined && metadataChecksum !== expectedChecksumBase64)
+      || object.contentLength !== input.proof.sizeBytes
+      || object.range !== undefined
+    ) throw new PhotobookError("INVALID_STATE");
+
+    const guarded = guardObjectStream({
+      stream: object.stream,
+      expectedBytes: input.proof.sizeBytes,
+      expectedSha256Hex: input.proof.sha256,
+    });
+    const reader = guarded.getReader();
+    try {
+      while (!(await reader.read()).done) {
+        // Intentionally consume without buffering; approval is allowed only after verified EOF.
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  } catch (error) {
+    if (error instanceof PhotobookError) throw error;
+    throw new PhotobookError("INVALID_STATE", { cause: error });
+  }
+}
+
 export function createPhotobookHttpHandler(dependencies: PhotobookHttpDependencies) {
   return async (
     request: Request,
@@ -150,11 +188,21 @@ export function createPhotobookHttpHandler(dependencies: PhotobookHttpDependenci
       }
       if (projectId && pathname.endsWith("/photobook/proofs") && request.method === "POST") {
         const result = await dependencies.service.requestProof(actorId, projectId, await jsonInput(request));
-        return jsonSuccess(result, requestId, { status: result.replayed ? 200 : 202 });
+        return jsonSuccess(result, requestId, {
+          status: result.replayed || result.status !== "rendering" ? 200 : 202,
+        });
       }
       if (revisionId && pathname.endsWith("/approve") && request.method === "POST") {
+        const input = approvePhotobookProofInputSchema.parse(await jsonInput(request));
+        const proof = await dependencies.service.proofObject(actorId, revisionId);
+        if (
+          proof.revisionId !== revisionId
+          || proof.documentSha256 !== input.documentSha256
+          || proof.sha256 !== input.pdfSha256
+        ) throw new PhotobookError("STALE_DRAFT");
+        await consumeExactProofObject({ storage: dependencies.storage, proof });
         return jsonSuccess(
-          await dependencies.service.approveProof(actorId, revisionId, await jsonInput(request)),
+          await dependencies.service.approveProof(actorId, revisionId, input),
           requestId,
         );
       }
@@ -173,21 +221,33 @@ export function createPhotobookHttpHandler(dependencies: PhotobookHttpDependenci
         const headers = proofHeaders({ sha256: proof.sha256, size: proof.sizeBytes, contentLength, range: range ?? undefined });
         if (request.method === "HEAD") return new Response(null, { status: 200, headers });
 
-        const bytes = await dependencies.storage.readObject(proof.objectKey, proof.sizeBytes);
+        const object = await dependencies.storage.streamObject({
+          key: proof.objectKey,
+          maximumBytes: proof.sizeBytes,
+          range: range ?? undefined,
+        });
         if (
-          bytes.byteLength !== proof.sizeBytes
-          || createHash("sha256").update(bytes).digest("hex") !== proof.sha256
+          object.metadata.key !== proof.objectKey
+          || object.metadata.sizeBytes !== proof.sizeBytes
+          || object.metadata.contentType !== "application/pdf"
+          || object.contentLength !== contentLength
+          || (range && (
+            !object.range
+            || object.range.start !== range.start
+            || object.range.end !== range.end
+          ))
         ) throw new PhotobookError("INVALID_STATE");
-        const body = range ? bytes.slice(range.start, range.end + 1) : bytes;
+        const body = guardObjectStream({
+          stream: object.stream,
+          expectedBytes: contentLength,
+          expectedSha256Hex: range ? undefined : proof.sha256,
+        });
         if (!range) {
-          const receipt = dependencies.service.issueProofViewReceipt(actorId, proof);
           headers.set("x-buildy-proof-revision", proof.revisionId);
           headers.set("x-buildy-proof-document-sha256", proof.documentSha256);
           headers.set("x-buildy-proof-pdf-sha256", proof.sha256);
-          headers.set("x-buildy-proof-view-receipt", receipt.token);
-          headers.set("x-buildy-proof-view-receipt-expires-at", receipt.expiresAt);
         }
-        return new Response(Uint8Array.from(body).buffer, { status: range ? 206 : 200, headers });
+        return new Response(body, { status: range ? 206 : 200, headers });
       }
 
       return jsonError(404, "NOT_FOUND", "Deze API-route bestaat niet.", requestId);

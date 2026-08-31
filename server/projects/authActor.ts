@@ -6,7 +6,7 @@ import { ProjectError } from "./errors.js";
 
 const MAX_AUTH_USER_ID_BYTES = 512;
 
-export class BetterAuthSubjectResolver implements AuthenticatedSubjectResolver {
+export class GoogleOidcSubjectResolver implements AuthenticatedSubjectResolver {
   constructor(private readonly resolveEngine: () => AuthEngine) {}
 
   async resolveAuthUserId(request: Request): Promise<string | null> {

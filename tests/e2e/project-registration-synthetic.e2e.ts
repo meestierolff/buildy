@@ -1,127 +1,226 @@
-import { test, expect, BASE } from "./helpers";
+import { BASE, expect, test } from "./helpers";
+import {
+  ONE_PIXEL_PNG,
+  SYNTHETIC_IDS,
+  fulfillJson,
+  installSyntheticApi,
+  success,
+  syntheticProjectOverview,
+} from "./syntheticApi";
 
-const ownerId = "11111111-1111-4111-8111-111111111111";
-const projectId = "22222222-2222-4222-8222-222222222222";
-
-test("preserves a draft and accepts only one synthetic update submit", async ({ page }) => {
+test("bewaart een concept en plaatst exact één Bouwmoment via private Vercel Blob", async ({ page }) => {
   let updateRequests = 0;
+  let providerUploads = 0;
   let updatePayload: Record<string, unknown> | null = null;
+  let preparedSize = 0;
+  const pathname = `temporary/${SYNTHETIC_IDS.media.slice(0, 2)}/${SYNTHETIC_IDS.media}`;
 
-  await page.route("**/*", async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    const respond = (body: unknown, status = 200) => route.fulfill({
-      status,
-      contentType: "application/json",
-      body: JSON.stringify(body),
-      headers: { "access-control-allow-origin": "*" },
-    });
-
-    if (url.pathname === "/api/auth/get-session") {
-      return respond({
-        session: {
-          id: "44444444-4444-4444-8444-444444444444",
-          userId: ownerId,
-          expiresAt: "2099-08-05T20:00:00.000Z",
-          createdAt: "2026-08-01T12:00:00.000Z",
-          updatedAt: "2026-08-04T12:00:00.000Z",
-        },
-        user: {
-          id: ownerId,
-          name: "Synthetische eigenaar",
-          email: "owner@example.invalid",
-          emailVerified: true,
-          image: null,
-          createdAt: "2026-08-01T12:00:00.000Z",
-          updatedAt: "2026-08-04T12:00:00.000Z",
-        },
-      });
-    }
-
-    if (url.pathname === `/api/projects/${projectId}` && request.method() === "GET") {
-      return respond({
-        data: {
-          id: projectId,
-          slug: "synthetisch-renovatieproject",
-          title: "Synthetisch renovatieproject",
-          description: "Veilige testdata voor de registratieflow.",
-          projectType: "Volledige renovatie",
-          visibility: "private",
-          progressPercentage: 10,
-          version: 3,
-          updatedAt: "2026-08-04T12:00:00.000Z",
-          publishedAt: null,
-          updateCount: 0,
-          lastUpdateAt: null,
-          owner: { id: ownerId, displayName: "Synthetische eigenaar", slug: "synthetische-eigenaar" },
-          cover: null,
-          startDate: "2026-02-01",
-          expectedEndDate: "2026-11-30",
-          contentRevision: 1,
-          followerCount: 0,
-          viewerAccess: "owner",
-          canEdit: true,
-          phases: [],
-        },
-        meta: { requestId: "55555555-5555-4555-8555-555555555555" },
-      });
-    }
-    if (url.pathname === `/api/projects/${projectId}/updates` && request.method() === "POST") {
-      updateRequests += 1;
-      updatePayload = JSON.parse(request.postData() ?? "{}") as Record<string, unknown>;
-      await new Promise((resolve) => setTimeout(resolve, 150));
-      return respond({
-        data: {
+  const fixture = await installSyntheticApi(page, {
+    handle: async ({ request, route, url }) => {
+      if (
+        request.method() === "GET"
+        && url.pathname === `/api/projects/${SYNTHETIC_IDS.project}`
+      ) {
+        await fulfillJson(route, success(syntheticProjectOverview()));
+        return true;
+      }
+      if (
+        request.method() === "GET"
+        && url.pathname === `/api/projects/${SYNTHETIC_IDS.project}/updates`
+      ) {
+        await fulfillJson(route, success({
+          projectId: SYNTHETIC_IDS.project,
+          items: [],
+          nextCursor: null,
+        }));
+        return true;
+      }
+      if (request.method() === "POST" && url.pathname === "/api/media/upload-intents") {
+        const body = request.postDataJSON() as { sizeBytes: number };
+        preparedSize = body.sizeBytes;
+        await fulfillJson(route, success({
+          asset: {
+            id: SYNTHETIC_IDS.media,
+            projectId: SYNTHETIC_IDS.project,
+            purpose: "project_media",
+            status: "pending_upload",
+          },
+          upload: {
+            provider: "vercel_blob",
+            method: "POST",
+            pathname,
+            handleUploadPath: `/api/media/${SYNTHETIC_IDS.media}/blob-upload`,
+            exactSizeBytes: body.sizeBytes,
+          },
+          replayed: false,
+        }), 201);
+        return true;
+      }
+      if (
+        request.method() === "POST"
+        && url.pathname === `/api/media/${SYNTHETIC_IDS.media}/blob-upload`
+      ) {
+        await fulfillJson(route, {
+          clientToken: "vercel_blob_client_synthetic_not-a-real-token",
+        });
+        return true;
+      }
+      if (url.origin === "https://vercel.com" && url.pathname === "/api/blob/") {
+        const cors = {
+          "access-control-allow-headers": "*",
+          "access-control-allow-methods": "PUT, OPTIONS",
+          "access-control-allow-origin": "*",
+        };
+        if (request.method() === "OPTIONS") {
+          await route.fulfill({ status: 204, headers: cors });
+          return true;
+        }
+        providerUploads += 1;
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          headers: cors,
+          body: JSON.stringify({
+            url: `https://synthetic.private.blob.vercel-storage.com/${pathname}`,
+            downloadUrl: `https://synthetic.private.blob.vercel-storage.com/${pathname}?download=1`,
+            pathname,
+            contentType: "image/png",
+            contentDisposition: "inline",
+            etag: "synthetic-etag",
+          }),
+        });
+        return true;
+      }
+      if (
+        request.method() === "POST"
+        && url.pathname === `/api/media/${SYNTHETIC_IDS.media}/complete`
+      ) {
+        await fulfillJson(route, success({
+          asset: {
+            id: SYNTHETIC_IDS.media,
+            projectId: SYNTHETIC_IDS.project,
+            purpose: "project_media",
+            status: "ready",
+          },
+          replayed: false,
+        }));
+        return true;
+      }
+      if (
+        request.method() === "POST"
+        && url.pathname === `/api/projects/${SYNTHETIC_IDS.project}/updates`
+      ) {
+        updateRequests += 1;
+        updatePayload = request.postDataJSON() as Record<string, unknown>;
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        await fulfillJson(route, success({
           update: {
-            id: "33333333-3333-4333-8333-333333333333",
-            projectId,
+            id: SYNTHETIC_IDS.update,
+            projectId: SYNTHETIC_IDS.project,
             phase: null,
             title: "De eerste muur is open",
             room: null,
             description: null,
-            updateDate: "2026-08-04",
+            updateDate: "2026-08-23",
             status: "published",
             isMilestone: false,
             sortOrder: 0,
             contentRevision: 1,
             version: 1,
-            publishedAt: "2026-08-04T12:00:00.000Z",
-            updatedAt: "2026-08-04T12:00:00.000Z",
-            media: [],
+            publishedAt: "2026-08-23T10:00:00.000Z",
+            updatedAt: "2026-08-23T10:00:00.000Z",
+            media: [{
+              id: SYNTHETIC_IDS.media,
+              contentType: "image/png",
+              width: 1,
+              height: 1,
+              proxyPath: `/api/media/${SYNTHETIC_IDS.media}`,
+              role: "gallery",
+              sortOrder: 0,
+              caption: null,
+            }],
           },
           replayed: false,
-        },
-        meta: { requestId: "66666666-6666-4666-8666-666666666666" },
-      }, 201);
-    }
-
-    return route.continue();
+        }), 201);
+        return true;
+      }
+      return false;
+    },
   });
 
-  await page.goto(`${BASE}/project/${projectId}`);
-  await page.getByRole("button", { name: "Update toevoegen", exact: true }).click();
-  const title = page.getByLabel("Titel *");
+  await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}`);
+  await page.getByRole("region", { name: "Synthetische verbouwing" })
+    .getByRole("button", { name: "Bouwmoment toevoegen", exact: true })
+    .click();
+  const title = page.getByLabel("Korte titel of bijschrift (optioneel)");
   await title.fill("De eerste muur is open");
 
   await page.keyboard.press("Escape");
   await expect(page.getByRole("alertdialog")).toContainText("Concept bewaren?");
-  await page.getByRole("button", { name: "Verder met update" }).click();
+  await page.getByRole("button", { name: "Verder met Bouwmoment" }).click();
   await expect(title).toHaveValue("De eerste muur is open");
 
-  await page.getByRole("button", { name: "Update plaatsen" }).evaluate((button) => {
+  await page.getByLabel("Kies foto's uit je bibliotheek").setInputFiles({
+    name: "synthetische-bouwfoto.png",
+    mimeType: "image/png",
+    buffer: ONE_PIXEL_PNG,
+  });
+  await expect(page.getByAltText("Voorvertoning 1")).toBeVisible();
+
+  const refreshedOverview = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === "GET"
+      && url.pathname === `/api/projects/${SYNTHETIC_IDS.project}`;
+  });
+  const refreshedTimeline = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return response.request().method() === "GET"
+      && url.pathname === `/api/projects/${SYNTHETIC_IDS.project}/updates`;
+  });
+  await page.getByRole("button", { name: "Bouwmoment plaatsen" }).evaluate((button) => {
     button.click();
     button.click();
   });
 
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await Promise.all([refreshedOverview, refreshedTimeline]);
+  await page.waitForLoadState("networkidle");
   expect(updateRequests).toBe(1);
+  expect(providerUploads).toBe(1);
+  expect(preparedSize).toBe(ONE_PIXEL_PNG.byteLength);
   expect(updatePayload).toMatchObject({
-    expectedProjectVersion: 3,
+    expectedProjectVersion: 7,
     title: "De eerste muur is open",
     publish: true,
-    media: [],
+    media: [{
+      assetId: SYNTHETIC_IDS.media,
+      role: "gallery",
+      sortOrder: 0,
+    }],
   });
   expect(updatePayload).not.toHaveProperty("userId");
-  expect(updatePayload).not.toHaveProperty("user_id");
   expect(updatePayload).not.toHaveProperty("storagePath");
+  expect(updatePayload).not.toHaveProperty("blobUrl");
+
+  const intent = fixture.requests.find((request) => request.pathname === "/api/media/upload-intents");
+  expect(intent?.body).toMatchObject({
+    projectId: SYNTHETIC_IDS.project,
+    purpose: "project_media",
+    contentType: "image/png",
+    sizeBytes: ONE_PIXEL_PNG.byteLength,
+  });
+  expect(intent?.body).not.toHaveProperty("providerUrl");
+
+  const tokenRequest = fixture.requests.find((request) => (
+    request.pathname === `/api/media/${SYNTHETIC_IDS.media}/blob-upload`
+  ));
+  expect(tokenRequest?.body).toEqual({
+    type: "blob.generate-client-token",
+    payload: {
+      pathname,
+      clientPayload: null,
+      multipart: false,
+    },
+  });
+  expect(fixture.unhandled).toEqual([]);
 });

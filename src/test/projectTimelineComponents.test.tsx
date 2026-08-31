@@ -2,18 +2,28 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectUpdate } from "../../shared/contracts/projects";
-import AllPhotosTab from "@/components/AllPhotosTab";
 import BlueprintTimeline from "@/components/BlueprintTimeline";
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("@/components/ReactionBar", () => ({
-  default: ({ projectId, updateId }: { projectId: string; updateId: string }) => (
-    <div data-testid="reaction-bar">{projectId}:{updateId}</div>
+  default: ({ projectId, updateId, canReact }: {
+    projectId: string;
+    updateId: string;
+    canReact?: boolean;
+  }) => (
+    <div data-testid="reaction-bar" data-can-react={String(canReact)}>{projectId}:{updateId}</div>
   ),
 }));
 vi.mock("@/components/CommentsSheet", () => ({
-  default: ({ projectId, updateId, open }: { projectId: string; updateId: string; open: boolean }) => (
-    <div data-testid="comments-sheet">{projectId}:{updateId}:{open ? "open" : "closed"}</div>
+  default: ({ projectId, updateId, open, canComment }: {
+    projectId: string;
+    updateId: string;
+    open: boolean;
+    canComment?: boolean;
+  }) => (
+    <div data-testid="comments-sheet" data-can-comment={String(canComment)}>
+      {projectId}:{updateId}:{open ? "open" : "closed"}
+    </div>
   ),
 }));
 vi.mock("@/components/MediaLightbox", () => ({
@@ -86,14 +96,12 @@ describe("BlueprintTimeline typed engagement boundary", () => {
       "src",
       `/api/media/${MEDIA_ID}`,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Keuken gestript uitklappen" }));
-
     expect(screen.getByTestId("reaction-bar")).toHaveTextContent(`${PROJECT_ID}:${UPDATE_ID}`);
     expect(screen.getByTestId("report-update")).toHaveTextContent(UPDATE_ID);
     expect(screen.getByText("Concept")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /like|bewerken|verwijderen|fotovolgorde/i })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Reacties openen" }));
+    fireEvent.click(screen.getByRole("button", { name: "Opmerkingen openen" }));
     expect(screen.getByTestId("comments-sheet")).toHaveTextContent(":open");
   });
 
@@ -102,7 +110,6 @@ describe("BlueprintTimeline typed engagement boundary", () => {
     const { rerender } = render(
       <BlueprintTimeline updates={[update]} projectId={PROJECT_ID} canEdit={false} onEdit={onEdit} />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Keuken gestript uitklappen" }));
     expect(screen.queryByRole("button", { name: "Keuken gestript bewerken" })).not.toBeInTheDocument();
 
     rerender(
@@ -111,18 +118,18 @@ describe("BlueprintTimeline typed engagement boundary", () => {
     fireEvent.click(screen.getByRole("button", { name: "Keuken gestript bewerken" }));
     expect(onEdit).toHaveBeenCalledWith(update);
   });
-});
 
-describe("AllPhotosTab typed media boundary", () => {
-  afterEach(cleanup);
-
-  it("bouwt de galerij rechtstreeks uit private proxy descriptors", () => {
-    render(<AllPhotosTab projectId={PROJECT_ID} updates={[update]} />);
-
-    expect(screen.getByRole("img", { name: "Keuken gestript" })).toHaveAttribute(
-      "src",
-      `/api/media/${MEDIA_ID}`,
+  it("houdt de engagementcontrols van een anonieme shareviewer read-only en kopieert geen kale UUID-link", () => {
+    render(
+      <BlueprintTimeline
+        updates={[update]}
+        projectId={PROJECT_ID}
+        canEngage={false}
+        canCopyUpdateLink={false}
+      />,
     );
-    expect(screen.getByRole("button", { name: "Sloopwerk" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("button", { name: "Link naar Bouwmoment kopiëren" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("reaction-bar")).toHaveAttribute("data-can-react", "false");
+    expect(screen.getByTestId("comments-sheet")).toHaveAttribute("data-can-comment", "false");
   });
 });

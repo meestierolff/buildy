@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { PrivacyBlindIndex } from "../security/dataProtection.js";
 
 function stableValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stableValue);
@@ -16,13 +17,18 @@ export function stableJson(value: unknown): string {
   return JSON.stringify(stableValue(value));
 }
 
-export function projectRequestHash(operation: string, payload: unknown): string {
-  return createHash("sha256")
-    .update("buildy-project-command:v1\0")
+export function projectRequestHash(
+  operation: string,
+  payload: unknown,
+  blindIndex: PrivacyBlindIndex,
+): string {
+  const canonicalDigest = createHash("sha256")
+    .update("buildy-project-command-payload:v2\0")
     .update(operation)
     .update("\0")
     .update(stableJson(payload))
     .digest("hex");
+  return blindIndex.create(`project-command-request-v2:${operation}`, canonicalDigest);
 }
 
 export function scopedProjectIdempotencyKey(

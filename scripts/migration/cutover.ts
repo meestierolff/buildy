@@ -94,9 +94,7 @@ export interface CutoverEvidence {
     ticket?: string;
   };
   auth: {
-    migrationEmailsRehearsed: boolean;
-    oauthRelinkRehearsed: boolean;
-    passwordSetRehearsed: boolean;
+    googleOidcReauthenticationRehearsed: boolean;
     sessionInvalidation: SessionInvalidationGate;
   };
   backup: {
@@ -106,8 +104,9 @@ export interface CutoverEvidence {
   };
   finalDelta: MigrationDelta;
   providerRoutes: {
-    brevoReady: boolean;
-    peechoCallbackReady: boolean;
+    googleOidcReady: boolean;
+    manualFulfilmentReady: boolean;
+    privateBlobReady: boolean;
     stripeWebhookReady: boolean;
   };
   reconciliation: ReconciliationReport;
@@ -166,9 +165,10 @@ export function evaluateCutoverGates(evidence: CutoverEvidence, now = new Date()
     { code: "private_media", passed: evidence.smoke.privateMediaDeniedAnonymously },
     { code: "private_projects", passed: evidence.smoke.privateProjectDeniedAnonymously },
     { code: "synthetic_smoke", passed: evidence.smoke.syntheticCoreFlowsPassed },
-    { code: "auth_password_set", passed: evidence.auth.passwordSetRehearsed },
-    { code: "auth_oauth_relink", passed: evidence.auth.oauthRelinkRehearsed },
-    { code: "auth_migration_email", passed: evidence.auth.migrationEmailsRehearsed },
+    {
+      code: "auth_google_oidc_reauthentication",
+      passed: evidence.auth.googleOidcReauthenticationRehearsed,
+    },
     { code: "rollback_plan", passed: validChecksum(evidence.rollback.planArtifactSha256) },
     { code: "rollback_owner", passed: Boolean(evidence.rollback.ownerFingerprint) },
     { code: "rollback_window", passed: Number.isFinite(rollbackEndsAt) && rollbackEndsAt > now.getTime() },
@@ -177,9 +177,10 @@ export function evaluateCutoverGates(evidence: CutoverEvidence, now = new Date()
   if (evidence.targetEnvironment === "production") {
     gates.push(
       { code: "old_sessions_invalidated", passed: evidence.auth.sessionInvalidation.complete },
+      { code: "google_oidc_route", passed: evidence.providerRoutes.googleOidcReady },
+      { code: "private_blob_route", passed: evidence.providerRoutes.privateBlobReady },
       { code: "stripe_webhook_route", passed: evidence.providerRoutes.stripeWebhookReady },
-      { code: "peecho_callback_route", passed: evidence.providerRoutes.peechoCallbackReady },
-      { code: "brevo_route", passed: evidence.providerRoutes.brevoReady },
+      { code: "manual_fulfilment", passed: evidence.providerRoutes.manualFulfilmentReady },
       {
         code: "owner_acceptance",
         passed: validDate(evidence.acceptance.acceptedAt)
@@ -225,7 +226,7 @@ export function createRollbackPlan(now = new Date()): RollbackPlan {
       "Hef de legacy freeze pas op nadat oude sessies opnieuw veilig zijn geconfigureerd.",
       "Voer de synthetische privacy-, auth- en order-smokes opnieuw uit op legacy.",
       "Reconcileer writes uit het cutovervenster handmatig; verlies of blind terugschrijven is niet toegestaan.",
-      "Bewaar Neon, R2 en source backups ongewijzigd voor incidentanalyse.",
+      "Bewaar de database-, doelopslag- en bronback-ups ongewijzigd voor incidentanalyse.",
     ],
   };
 }

@@ -1,50 +1,36 @@
 import { Link } from "@/lib/router";
 import BrandLogo from "@/components/BrandLogo";
 
-const Footer = () => (
-  <div className="mt-16 border-t border-border/80 bg-card/60 backdrop-blur-xs">
-    <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-6 px-6 pb-24 pt-10 text-xs text-muted-foreground md:flex-row md:items-center md:px-8 md:py-10">
+const Footer = ({
+  feedbackEnabled = true,
+  publicDemo = false,
+}: {
+  feedbackEnabled?: boolean;
+  publicDemo?: boolean;
+}) => (
+  <footer className="border-t border-[#D8CFC1] bg-[#F7F2E9]">
+    <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-6 px-4 pb-24 pt-10 text-xs text-[#655F57] sm:px-6 md:flex-row md:items-center md:px-8 md:py-10">
       <div className="flex items-center gap-3">
-        <BrandLogo href="/" imageClassName="h-8 w-8 rounded-lg shadow-xs" textClassName="text-base" />
-        <p className="border-l border-border/80 pl-3 leading-relaxed font-light">
-          © {new Date().getFullYear()}<br className="sm:hidden" /> Van verbouwing naar Bouwboek.
+        <BrandLogo href="/" imageClassName="h-8 w-8 rounded-lg shadow-xs" nativeNavigation={publicDemo} textClassName="text-base" />
+        <p className="border-l border-[#D8CFC1] pl-3 leading-relaxed">
+          © {new Date().getFullYear()}<br className="sm:hidden" /> Maak van je verbouwing een verhaal om te bewaren.
         </p>
       </div>
       <nav className="flex flex-wrap items-center gap-x-6 gap-y-3 font-medium" aria-label="Footer navigatie">
-        <a
-          href="https://www.instagram.com/buildy.log/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 hover:text-accent transition-colors"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect width="20" height="20" x="2" y="2" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/></svg>
-          Instagram
-          <span className="sr-only"> (opent in een nieuw venster)</span>
-        </a>
-        <Link to="/voorwaarden" className="hover:text-accent transition-colors">
-          Algemene voorwaarden
-        </Link>
-        <Link to="/privacy" className="hover:text-accent transition-colors">
+        <Link to="/privacy" className="transition-colors hover:text-[#A94E36]">
           Privacy
         </Link>
-        <Link to="/herroeping" className="hover:text-accent transition-colors">
-          Herroepingsrecht
+        <Link to="/voorwaarden" className="transition-colors hover:text-[#A94E36]">
+          Voorwaarden
         </Link>
-        <Link to="/contentbeleid" className="hover:text-accent transition-colors">
-          Contentbeleid
-        </Link>
-        <Link to="/huisregels" className="hover:text-accent transition-colors">
-          Huisregels
-        </Link>
-        <Link to="/support" className="hover:text-accent transition-colors">
-          Support
-        </Link>
-        <Link to="/melden" className="hover:text-accent transition-colors">
-          Melden
-        </Link>
+        {!publicDemo || feedbackEnabled ? (
+          <Link to="/support" className="transition-colors hover:text-[#A94E36]">
+            {publicDemo ? "Geef feedback" : "Hulp en contact"}
+          </Link>
+        ) : null}
       </nav>
     </div>
-  </div>
+  </footer>
 );
 
 export default Footer;

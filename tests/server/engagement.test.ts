@@ -32,6 +32,7 @@ import type {
   ReactionCommand,
 } from "../../server/engagement/types";
 import type { CommentCursor, NotificationCursor } from "../../server/engagement/cursor";
+import { PrivacyBlindIndex } from "../../server/security/dataProtection";
 
 const ACTOR_ID = "00000000-0000-4000-8000-000000000001";
 const OWNER_ID = "00000000-0000-4000-8000-000000000002";
@@ -43,11 +44,18 @@ const COMMENT_ID = "00000000-0000-4000-8000-000000000301";
 const SECOND_COMMENT_ID = "00000000-0000-4000-8000-000000000302";
 const THIRD_COMMENT_ID = "00000000-0000-4000-8000-000000000303";
 const NOTIFICATION_ID = "00000000-0000-4000-8000-000000000401";
+const BLIND_INDEX = new PrivacyBlindIndex(Buffer.alloc(32, 15).toString("base64"));
 const SECOND_NOTIFICATION_ID = "00000000-0000-4000-8000-000000000402";
 const THIRD_NOTIFICATION_ID = "00000000-0000-4000-8000-000000000403";
 const REACTION_ID = "00000000-0000-4000-8000-000000000501";
+const SHARE_LINK_ID = "00000000-0000-4000-8000-000000000601";
 
 const ACTOR: ProjectActor = { kind: "authenticated", appUserId: ACTOR_ID };
+const SHARE_ACTOR = {
+  kind: "authenticated" as const,
+  appUserId: ACTOR_ID,
+  shareLinkId: SHARE_LINK_ID,
+};
 const NOW = new Date("2026-08-04T12:00:00.000Z");
 
 function comment(
@@ -94,6 +102,7 @@ function notification(
     projectId: PROJECT_ID,
     updateId: UPDATE_ID,
     commentId: COMMENT_ID,
+    orderId: null,
     readAt: null,
     createdAt,
     ...overrides,
@@ -103,6 +112,7 @@ function notification(
 class TestEngagementRepository implements EngagementRepository {
   commentsResult: EngagementComment[] | null = [];
   notificationResult: EngagementNotification[] = [];
+  notificationUnreadCount = 0;
   commentCalls: Array<{
     viewer: ProjectActor;
     cursor: CommentCursor | undefined;
@@ -117,11 +127,13 @@ class TestEngagementRepository implements EngagementRepository {
   createCommands: CreateCommentCommand[] = [];
   deleteCommands: DeleteCommentCommand[] = [];
   reactionCommands: ReactionCommand[] = [];
+  reactionSummaryViewers: ProjectActor[] = [];
   notificationUpdates: Array<{
     recipientId: string;
     notificationId: string;
     action: "read" | "archive";
   }> = [];
+  notificationMarkAllCalls: Array<{ recipientId: string; now: Date }> = [];
   private readonly idempotency = new Map<string, { hash: string; id: string }>();
 
   async listComments(
@@ -157,11 +169,12 @@ class TestEngagementRepository implements EngagementRepository {
   }
 
   async reactionSummary(
-    _viewer: ProjectActor,
+    viewer: ProjectActor,
     projectId: string,
     updateId: string,
     commentId: string | null,
   ) {
+    this.reactionSummaryViewers.push(viewer);
     return {
       projectId,
       updateId,
@@ -188,7 +201,10 @@ class TestEngagementRepository implements EngagementRepository {
     status: NotificationListStatus,
   ) {
     this.notificationCalls.push({ recipientId, cursor, limit, status });
-    return this.notificationResult;
+    return {
+      items: this.notificationResult,
+      unreadCount: this.notificationUnreadCount,
+    };
   }
 
   async updateNotification(
@@ -203,6 +219,13 @@ class TestEngagementRepository implements EngagementRepository {
       replayed: false,
     };
   }
+
+  async markAllNotificationsRead(recipientId: string, now: Date) {
+    this.notificationMarkAllCalls.push({ recipientId, now });
+    const updatedCount = this.notificationUnreadCount;
+    this.notificationUnreadCount = 0;
+    return { updatedCount, unreadCount: 0 };
+  }
 }
 
 function serviceWith(repository = new TestEngagementRepository()) {
@@ -212,6 +235,7 @@ function serviceWith(repository = new TestEngagementRepository()) {
     repository,
     service: new EngagementService(
       repository,
+      BLIND_INDEX,
       () => NOW,
       () => ids[nextId++] ?? THIRD_COMMENT_ID,
     ),
@@ -220,7 +244,7 @@ function serviceWith(repository = new TestEngagementRepository()) {
 
 describe("engagement access policy", () => {
   const visiblePublic: UpdateAccessFacts = {
-    acceptedAccess: false,
+    profileFollower: false,
     blocked: false,
     lifecycleStatus: "active",
     ownerId: OWNER_ID,
@@ -231,9 +255,15 @@ describe("engagement access policy", () => {
   it.each([
     ["anonymous published public", ANONYMOUS_PROJECT_ACTOR, visiblePublic, true],
     ["anonymous draft", ANONYMOUS_PROJECT_ACTOR, { ...visiblePublic, updateStatus: "draft" }, false],
+    ["anonymous unlisted UUID only", ANONYMOUS_PROJECT_ACTOR, { ...visiblePublic, visibility: "unlisted" }, false],
+    ["anonymous unlisted grant", { kind: "anonymous", shareLinkId: UPDATE_ID }, { ...visiblePublic, visibility: "unlisted" }, true],
+    ["anonymous followers-only", ANONYMOUS_PROJECT_ACTOR, { ...visiblePublic, visibility: "followers", profileFollower: true }, false],
     ["authenticated public", ACTOR, visiblePublic, true],
-    ["accepted private", ACTOR, { ...visiblePublic, visibility: "private", acceptedAccess: true }, true],
-    ["unaccepted private", ACTOR, { ...visiblePublic, visibility: "private" }, false],
+    ["authenticated unlisted UUID only", ACTOR, { ...visiblePublic, visibility: "unlisted" }, false],
+    ["authenticated unlisted grant", { ...ACTOR, shareLinkId: UPDATE_ID }, { ...visiblePublic, visibility: "unlisted" }, true],
+    ["active profile follower", ACTOR, { ...visiblePublic, visibility: "followers", profileFollower: true }, true],
+    ["non-follower", ACTOR, { ...visiblePublic, visibility: "followers" }, false],
+    ["private despite following", ACTOR, { ...visiblePublic, visibility: "private", profileFollower: true }, false],
     ["owner draft", { kind: "authenticated", appUserId: OWNER_ID }, { ...visiblePublic, updateStatus: "draft" }, true],
     ["blocked public", ACTOR, { ...visiblePublic, blocked: true }, false],
     ["deleted update", ACTOR, { ...visiblePublic, updateStatus: "deleted" }, false],
@@ -295,6 +325,17 @@ describe("engagement contracts and service", () => {
       .rejects.toMatchObject({ reason: "CONTENT_NOT_FOUND", status: 404 });
   });
 
+  it("preserves anonymous and authenticated share grants through engagement reads", async () => {
+    const { repository, service } = serviceWith();
+    const anonymousShare = { kind: "anonymous" as const, shareLinkId: SHARE_LINK_ID };
+
+    await service.comments(anonymousShare, PROJECT_ID, UPDATE_ID, {});
+    await service.reactions(SHARE_ACTOR, PROJECT_ID, UPDATE_ID, {});
+
+    expect(repository.commentCalls[0]?.viewer).toEqual(anonymousShare);
+    expect(repository.reactionSummaryViewers).toEqual([SHARE_ACTOR]);
+  });
+
   it("scopes create idempotency to actor/update and detects a changed retry", async () => {
     const { repository, service } = serviceWith();
     const input = {
@@ -302,13 +343,13 @@ describe("engagement contracts and service", () => {
       body: "Eerste reactie",
       mentionUserIds: [OTHER_ID],
     };
-    const first = await service.createComment(ACTOR_ID, PROJECT_ID, UPDATE_ID, input);
-    const replay = await service.createComment(ACTOR_ID, PROJECT_ID, UPDATE_ID, input);
+    const first = await service.createComment(SHARE_ACTOR, PROJECT_ID, UPDATE_ID, input);
+    const replay = await service.createComment(SHARE_ACTOR, PROJECT_ID, UPDATE_ID, input);
 
     expect(first).toEqual({ commentId: COMMENT_ID, replayed: false });
     expect(replay).toEqual({ commentId: COMMENT_ID, replayed: true });
     expect(repository.createCommands[0]).toMatchObject({
-      actorId: ACTOR_ID,
+      actor: SHARE_ACTOR,
       projectId: PROJECT_ID,
       updateId: UPDATE_ID,
       now: NOW,
@@ -318,7 +359,7 @@ describe("engagement contracts and service", () => {
     expect(repository.createCommands[0]?.idempotencyKey).toMatch(
       /^engagement-command:v1:comment\.create:[0-9a-f]{64}$/,
     );
-    await expect(service.createComment(ACTOR_ID, PROJECT_ID, UPDATE_ID, {
+    await expect(service.createComment(SHARE_ACTOR, PROJECT_ID, UPDATE_ID, {
       ...input,
       body: "Gewijzigde retry",
     })).rejects.toMatchObject({ reason: "IDEMPOTENCY_CONFLICT" });
@@ -326,18 +367,18 @@ describe("engagement contracts and service", () => {
 
   it("passes no client identity or target shape outside the discriminated reaction", async () => {
     const { repository, service } = serviceWith();
-    await service.addReaction(ACTOR_ID, PROJECT_ID, UPDATE_ID, {
+    await service.addReaction(SHARE_ACTOR, PROJECT_ID, UPDATE_ID, {
       target: "comment",
       commentId: COMMENT_ID.toUpperCase(),
       emoji: "❤️",
     });
     expect(repository.reactionCommands[0]).toMatchObject({
-      actorId: ACTOR_ID,
+      actor: SHARE_ACTOR,
       projectId: PROJECT_ID,
       updateId: UPDATE_ID,
       input: { target: "comment", commentId: COMMENT_ID, emoji: "❤️" },
     });
-    await expect(service.addReaction(ACTOR_ID, PROJECT_ID, UPDATE_ID, {
+    await expect(service.addReaction(SHARE_ACTOR, PROJECT_ID, UPDATE_ID, {
       target: "update",
       commentId: COMMENT_ID,
       emoji: "❤️",
@@ -347,6 +388,7 @@ describe("engagement contracts and service", () => {
 
   it("binds notification cursors to their status filter and trusted recipient", async () => {
     const { repository, service } = serviceWith();
+    repository.notificationUnreadCount = 7;
     repository.notificationResult = [
       notification(NOTIFICATION_ID, "2026-08-04T12:03:00.000Z"),
       notification(SECOND_NOTIFICATION_ID, "2026-08-04T12:02:00.000Z"),
@@ -355,6 +397,7 @@ describe("engagement contracts and service", () => {
     const page = await service.notifications(ACTOR_ID, { limit: 2, status: "unread" });
 
     expect(page.items).toHaveLength(2);
+    expect(page.unreadCount).toBe(7);
     expect(repository.notificationCalls[0]).toMatchObject({
       recipientId: ACTOR_ID,
       limit: 3,
@@ -387,9 +430,27 @@ describe("engagement contracts and service", () => {
     }]);
   });
 
+  it("marks every canonical unread notification through the trusted recipient boundary", async () => {
+    const { repository, service } = serviceWith();
+    repository.notificationUnreadCount = 23;
+
+    await expect(service.markAllNotificationsRead(ACTOR_ID, {
+      action: "read_all",
+      recipientId: OTHER_ID,
+    })).rejects.toThrow();
+    await expect(service.markAllNotificationsRead(ACTOR_ID, {
+      action: "read_all",
+    })).resolves.toEqual({ updatedCount: 23, unreadCount: 0 });
+    expect(repository.notificationMarkAllCalls).toEqual([{
+      recipientId: ACTOR_ID,
+      now: NOW,
+    }]);
+  });
+
   it("keeps raw payloads and private project fields outside public DTOs and outbox", () => {
     const commentKeys = Object.keys(engagementCommentSchema.shape).join(" ");
     const notificationKeys = Object.keys(engagementNotificationSchema.shape).join(" ");
+    expect(notificationKeys).toContain("orderId");
     expect(`${commentKeys} ${notificationKeys}`).not.toMatch(
       /payload|address|postal|budget|contractor|signedUrl|objectKey|mentionUserIds/i,
     );

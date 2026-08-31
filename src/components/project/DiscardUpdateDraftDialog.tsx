@@ -30,12 +30,12 @@ const DiscardUpdateDraftDialog = ({
         <AlertDialogTitle>{onKeep ? "Concept bewaren?" : "Wijzigingen weggooien?"}</AlertDialogTitle>
         <AlertDialogDescription>
           {onKeep
-            ? "Je update is nog niet opgeslagen. Bewaar haar op dit apparaat, ga terug om verder te schrijven of gooi de wijzigingen bewust weg."
-            : "Je update is nog niet opgeslagen. Ga terug om verder te schrijven of gooi je wijzigingen bewust weg."}
+            ? "Je Bouwmoment is nog niet opgeslagen. Bewaar het op dit apparaat, ga terug om verder te schrijven of gooi de wijzigingen bewust weg."
+            : "Je Bouwmoment is nog niet opgeslagen. Ga terug om verder te schrijven of gooi je wijzigingen bewust weg."}
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel className="min-h-11" disabled={busy}>Verder met update</AlertDialogCancel>
+        <AlertDialogCancel className="min-h-11" disabled={busy}>Verder met Bouwmoment</AlertDialogCancel>
         <AlertDialogAction
           type="button"
           onClick={onDiscard}

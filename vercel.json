@@ -2,17 +2,24 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "installCommand": "bun install --frozen-lockfile",
-  "buildCommand": "bun run build",
+  "buildCommand": "bun run typecheck && bun run build",
   "outputDirectory": "dist",
   "regions": ["fra1"],
   "functions": {
     "api/router.ts": {
-      "includeFiles": "node_modules/@fontsource/{inter,instrument-serif}/files/*latin-ext*.woff2"
+      "includeFiles": "node_modules/@fontsource/{inter,instrument-serif}/files/*latin-ext*.woff2",
+      "maxDuration": 300
     },
     "api/page.ts": {
       "includeFiles": "dist/index.html"
     }
   },
+  "crons": [
+    {
+      "path": "/api/internal/cron/account-lifecycle",
+      "schedule": "17 2 * * *"
+    }
+  ],
   "redirects": [
     {
       "source": "/trips/new",
@@ -80,11 +87,15 @@
       ]
     },
     {
-      "source": "/:path*",
+      "source": "/(.*)",
       "headers": [
         {
+          "key": "Access-Control-Allow-Origin",
+          "value": "https://buildy-gamma.vercel.app"
+        },
+        {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self' 'sha256-tjXzmBPP3uEF096kBaBgPFNqUpv2CBtZGatXR2u8ezA='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.r2.cloudflarestorage.com; media-src 'self' blob: https://*.r2.cloudflarestorage.com; font-src 'self'; connect-src 'self' https://*.r2.cloudflarestorage.com; worker-src 'self' blob:; manifest-src 'self'; form-action 'self'; upgrade-insecure-requests"
+          "value": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self' 'sha256-lHmxzVExc4Zkuhu9B7nZO4wfoS7FAudZGMQOb1mH1qM='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self' https://blob.vercel-storage.com https://*.blob.vercel-storage.com; worker-src 'self' blob:; manifest-src 'self'; form-action 'self'; upgrade-insecure-requests"
         },
         {
           "key": "Cross-Origin-Opener-Policy",

@@ -4,6 +4,39 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("canonical product route configuration", () => {
+  it("pins Node 22 and makes Vercel typecheck the exact production build", () => {
+    const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf8")) as {
+      engines?: { node?: string };
+    };
+    const config = JSON.parse(readFileSync(resolve(process.cwd(), "vercel.json"), "utf8")) as {
+      installCommand?: string;
+      buildCommand?: string;
+    };
+    const tsconfig = JSON.parse(readFileSync(resolve(process.cwd(), "tsconfig.json"), "utf8")) as {
+      compilerOptions?: {
+        target?: string;
+        strictNullChecks?: boolean;
+        noImplicitAny?: boolean;
+      };
+    };
+
+    expect(packageJson.engines?.node).toBe("22.x");
+    expect(config.installCommand).toBe("bun install --frozen-lockfile");
+    expect(config.buildCommand).toBe("bun run typecheck && bun run build");
+    expect(tsconfig.compilerOptions).toMatchObject({
+      target: "ES2022",
+      strictNullChecks: true,
+      noImplicitAny: true,
+    });
+  });
+
+  it("documents open signup with commerce disabled for the MVP", () => {
+    const environmentExample = readFileSync(resolve(process.cwd(), ".env.example"), "utf8");
+
+    expect(environmentExample).toMatch(/^BETA_MODE="false"/m);
+    expect(environmentExample).toMatch(/^CHECKOUT_MODE="off"/m);
+  });
+
   it("keeps every legacy public URL as a permanent redirect", () => {
     const config = JSON.parse(readFileSync(resolve(process.cwd(), "vercel.json"), "utf8")) as {
       redirects?: Array<{ source: string; destination: string; permanent?: boolean }>;
@@ -47,12 +80,31 @@ describe("canonical product route configuration", () => {
     const jsonLd = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1];
     expect(jsonLd).toBeDefined();
     expect(jsonLd).not.toContain('"price"');
+    expect(html).toContain("Maak van je verbouwing een verhaal om te bewaren");
+    expect(html).toContain("persoonlijk digitaal Bouwboek");
+    expect(html).not.toMatch(/budget|mijlpalen|automatisch een gedrukt Bouwboek/i);
     expect(`${html}\n${robots}\n${sitemap}`).not.toMatch(/https:\/\/(?:www\.)?buildy\.app/i);
+    expect(sitemap).not.toContain("/ontdekken</loc>");
 
     const csp = config.headers
       ?.flatMap((entry) => entry.headers ?? [])
       .find((header) => header.key === "Content-Security-Policy")?.value;
     const digest = createHash("sha256").update(jsonLd ?? "").digest("base64");
     expect(csp).toContain(`'sha256-${digest}'`);
+  });
+
+  it("overrides Vercel's static wildcard CORS with the canonical public origin", () => {
+    const config = JSON.parse(readFileSync(resolve(process.cwd(), "vercel.json"), "utf8")) as {
+      headers?: Array<{
+        source: string;
+        headers?: Array<{ key: string; value: string }>;
+      }>;
+    };
+    const globalHeaders = config.headers?.find((rule) => rule.source === "/(.*)")?.headers ?? [];
+
+    expect(globalHeaders).toContainEqual({
+      key: "Access-Control-Allow-Origin",
+      value: "https://buildy-gamma.vercel.app",
+    });
   });
 });

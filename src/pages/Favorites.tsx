@@ -5,6 +5,7 @@ import { Flag, Heart, Home, Loader2, RefreshCw } from "lucide-react";
 import EmptyState from "@/components/EmptyState";
 import { phaseColor } from "@/components/PhaseSelect";
 import ProjectCard from "@/components/ProjectCard";
+import { ResilientImage } from "@/components/ResilientMedia";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/useAuth";
@@ -18,8 +19,8 @@ const Favorites = () => {
   const { user, loading: authLoading } = useAuth();
   const feedQuery = useFollowingFeed(Boolean(user));
   usePageMeta({
-    title: "Projecten die ik volg — Buildy",
-    description: "Bekijk updates van renovatieprojecten die je volgt.",
+    title: "Verbouwingen die ik volg — Buildy",
+    description: "Bekijk bouwmomenten van verbouwingen die je volgt.",
     path: PRODUCT_ROUTES.following,
     noIndex: true,
   });
@@ -39,13 +40,13 @@ const Favorites = () => {
 
       {feedQuery.isPending ? (
         <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Gevolgde projecten laden…
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Gevolgde verbouwingen laden…
         </p>
       ) : feedQuery.isError ? (
         <section className="rounded-lg border border-dashed p-8 text-center" role="alert">
           <h2 className="font-semibold">Je feed kon niet worden geladen</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            We tonen geen eerder geladen privéprojecten wanneer de toegangscontrole mislukt.
+            We tonen geen eerder geladen privéverbouwingen wanneer de toegangscontrole mislukt.
           </p>
           <Button className="mt-5 gap-2" variant="outline" onClick={() => void feedQuery.refetch()}>
             <RefreshCw className="h-4 w-4" aria-hidden="true" /> Opnieuw proberen
@@ -55,7 +56,7 @@ const Favorites = () => {
         <EmptyState
           icon={Heart}
           title="Je volgt nog niks"
-          description="Volg een project of bouwer om nieuwe updates hier terug te zien."
+          description="Volg een bouwer om nieuwe bouwmomenten hier terug te zien."
         />
       ) : (
         <Tabs defaultValue="feed">
@@ -64,13 +65,13 @@ const Favorites = () => {
               Recent
             </TabsTrigger>
             <TabsTrigger value="projects" className="rounded-none border-b-2 border-transparent px-0 pb-3 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60 data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none">
-              Projecten ({projects.length})
+              Verbouwingen ({projects.length})
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="feed">
             {activity.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nog geen gepubliceerde updates van projecten die je volgt.</p>
+              <p className="text-sm text-muted-foreground">Nog geen gepubliceerde bouwmomenten van verbouwingen die je volgt.</p>
             ) : (
               <div className="max-w-lg divide-y divide-border/50 overflow-hidden rounded-xl border border-border/60">
                 {activity.map(({ project, update }) => {
@@ -94,7 +95,12 @@ const Favorites = () => {
 
                       {firstPhoto ? (
                         <div className="aspect-[4/3] w-full">
-                          <img src={firstPhoto.proxyPath} alt="" loading="lazy" className="h-full w-full object-cover" />
+                          <ResilientImage
+                            src={firstPhoto.proxyPath}
+                            alt=""
+                            loading="lazy"
+                            className="h-full w-full object-cover"
+                          />
                         </div>
                       ) : null}
 
@@ -111,7 +117,7 @@ const Favorites = () => {
                             </span>
                           ) : null}
                         </div>
-                        <p className="text-sm font-bold leading-tight">{update.title ?? update.room ?? "Projectupdate"}</p>
+                        <p className="text-sm font-bold leading-tight">{update.title ?? update.room ?? "Bouwmoment"}</p>
                         {update.description ? (
                           <p className="line-clamp-2 text-xs text-muted-foreground">{update.description}</p>
                         ) : null}
@@ -136,7 +142,7 @@ const Favorites = () => {
                   coverMediaType={project.cover?.contentType}
                   profileName={project.owner.displayName}
                   updateCount={project.updateCount}
-                  isPublic={project.visibility === "public"}
+                  visibility={project.visibility}
                 />
               ))}
             </div>

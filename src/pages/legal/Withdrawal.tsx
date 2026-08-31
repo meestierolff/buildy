@@ -5,7 +5,7 @@ const Withdrawal = () => (
   <LegalLayout
     title="Herroepingsrecht Bouwboek"
     description="Waarom voor een persoonlijk samengesteld Bouwboek geen wettelijke bedenktijd geldt en welke rechten je bij een gebrek wel hebt."
-    updated="15 juli 2026"
+    updated="23 augustus 2026"
   >
     <LegalPendingNotice title="Nog niet gereed voor echte bestellingen">
       <p>
@@ -59,7 +59,7 @@ const Withdrawal = () => (
       Bij een gegronde klacht zorgt Buildy zonder kosten voor de wettelijke oplossing,
       doorgaans herstel of vervanging. Als dat onmogelijk is, niet binnen een redelijke tijd
       gebeurt of de wet daar anderszins recht op geeft, kan prijsvermindering of ontbinding
-      en terugbetaling aan de orde zijn. Je hoeft hiervoor niet zelf met Peecho of de
+      en terugbetaling aan de orde zijn. Je hoeft hiervoor niet zelf met de drukker of de
       vervoerder te onderhandelen: Buildy is jouw aanspreekpunt als verkoper.
     </p>
 

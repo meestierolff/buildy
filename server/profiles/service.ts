@@ -7,6 +7,7 @@ import {
   type UpdateOwnProfileInput,
 } from "../../shared/contracts/profiles.js";
 import type { ProjectActor } from "../projects/actor.js";
+import type { PrivacyBlindIndex } from "../security/dataProtection.js";
 import { ProfileError } from "./errors.js";
 import { profileRequestHash, scopedProfileIdempotencyKey } from "./idempotency.js";
 import type { ProfileRepository } from "./types.js";
@@ -39,7 +40,10 @@ function withoutCommandFields(input: UpdateOwnProfileInput): Omit<
 }
 
 export class ProfileService {
-  constructor(private readonly repository: ProfileRepository) {}
+  constructor(
+    private readonly repository: ProfileRepository,
+    private readonly blindIndex: PrivacyBlindIndex,
+  ) {}
 
   async ownProfile(actorIdValue: string): Promise<OwnProfile> {
     const profile = await this.repository.findOwnProfile(actorId(actorIdValue));
@@ -68,7 +72,7 @@ export class ProfileService {
       actorId: actor,
       input,
       idempotencyKey: scopedProfileIdempotencyKey(operation, actor, input.idempotencyKey),
-      requestHash: profileRequestHash(operation, payload),
+      requestHash: profileRequestHash(operation, payload, this.blindIndex),
     });
   }
 }

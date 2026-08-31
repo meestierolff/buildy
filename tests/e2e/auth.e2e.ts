@@ -1,58 +1,126 @@
-import { test, expect, BASE, trackConsoleErrors } from "./helpers";
+import type { Page, Route } from "@playwright/test";
+import { BASE, expect, test } from "./helpers";
 
-const hasExplicitBackendBaseUrl = Boolean(process.env.PLAYWRIGHT_BASE_URL);
+const requestId = "a1000000-0000-4000-8000-000000000001";
 
-test.describe("Auth flow", () => {
-  test("login form has all required controls", async ({ page }) => {
-    const errors = trackConsoleErrors(page);
+function success(data: unknown) {
+  return { data, meta: { requestId } };
+}
+
+async function json(route: Route, body: unknown, status = 200): Promise<void> {
+  await route.fulfill({
+    status,
+    contentType: "application/json; charset=utf-8",
+    headers: { "cache-control": "no-store" },
+    body: JSON.stringify(body),
+  });
+}
+
+async function installGoogleOnlyAuthFixture(page: Page) {
+  let startBody: unknown;
+  await page.route("**/*", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+
+    if (url.origin === "https://accounts.google.com") {
+      return route.fulfill({
+        status: 200,
+        contentType: "text/html; charset=utf-8",
+        body: "<!doctype html><title>Google OIDC destination captured</title><h1>Google OIDC</h1>",
+      });
+    }
+    if (url.pathname === "/api/auth/session") {
+      return json(route, success({ session: null, user: null }));
+    }
+    if (url.pathname === "/api/product-profile") {
+      return json(route, success({
+        profile: "feedback_beta",
+        checkoutMode: "off",
+        betaMode: false,
+        inviteRequiredForNewAccounts: false,
+        capabilities: {
+          accountDeletion: true,
+          checkout: false,
+          emailAuth: false,
+          feedback: true,
+          googleSignIn: true,
+          media: true,
+          photobookPreview: true,
+          renovations: true,
+          sharing: true,
+          story: true,
+          updates: true,
+        },
+      }));
+    }
+    if (url.pathname === "/api/beta/status") {
+      return json(route, success({
+        betaMode: false,
+        inviteRequiredForNewAccounts: false,
+        label: "Private bèta",
+      }));
+    }
+    if (url.pathname === "/api/product-events") {
+      return json(route, success({ accepted: true, replayed: false }));
+    }
+    if (url.pathname === "/api/auth/sign-in/google" && request.method() === "POST") {
+      startBody = request.postDataJSON();
+      return json(route, success({
+        authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth?client_id=synthetic",
+      }));
+    }
+    return route.continue();
+  });
+  return { startBody: () => startBody };
+}
+
+test.describe("Google-only auth", () => {
+  test("shows one Google action and no password, e-mail or magic-link controls", async ({ page }) => {
+    await installGoogleOnlyAuthFixture(page);
     await page.goto(`${BASE}/auth`);
-    await expect(page.getByRole("heading", { name: /welkom terug|start je dagboek/i })).toBeVisible();
-    await expect(page.getByRole("textbox", { name: /e-mailadres/i })).toBeVisible();
-    await expect(page.getByLabel("Wachtwoord", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: /^inloggen$/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /^inloggen$/i })).toHaveCount(1);
-    await expect(page.getByRole("button", { name: /magic link/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /inloggen met google/i })).toBeVisible();
-    expect(errors).toEqual([]);
+
+    await expect(page.getByRole("heading", { name: "Ga verder met je verbouwverhaal." })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Doorgaan met Google" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: /e-mailadres/i })).toHaveCount(0);
+    await expect(page.getByLabel(/wachtwoord/i)).toHaveCount(0);
+    await expect(page.getByText(/magic link/i)).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /wachtwoord vergeten/i })).toHaveCount(0);
   });
 
-  test("can switch to registration mode", async ({ page }) => {
-    await page.goto(`${BASE}/auth`);
-    await page.getByRole("button", { name: /registreer/i }).click();
-    await expect(page.getByRole("heading", { name: /start je dagboek/i })).toBeVisible();
-    await expect(page.getByLabel("Naam", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: /account aanmaken/i })).toBeVisible();
+  test("keeps historical registration links on the same single Google flow", async ({ page }) => {
+    await installGoogleOnlyAuthFixture(page);
+    await page.goto(`${BASE}/auth?mode=register&provider=google`);
+
+    await expect(page.getByRole("heading", { name: "Ga verder met je verbouwverhaal." })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Doorgaan met Google" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: /registreer|inloggen met/i })).toHaveCount(0);
+    await expect(page.getByLabel(/naam|biografie|adres|budget|aannemer/i)).toHaveCount(0);
   });
 
-  test("start-project CTA opens registration and preserves its destination", async ({ page }) => {
-    await page.goto(BASE);
-    await page.getByRole("link", { name: /start gratis je dagboek/i }).click();
-    await expect(page).toHaveURL(/\/auth\?mode=register&next=%2Fproject%2Fnieuw$/);
-    await expect(page.getByRole("heading", { name: /start je dagboek/i })).toBeVisible();
-    await expect(page.getByLabel("Naam", { exact: true })).toBeVisible();
+  test("posts a safe next path and hands navigation to Google", async ({ page }) => {
+    const fixture = await installGoogleOnlyAuthFixture(page);
+    await page.goto(`${BASE}/auth?next=${encodeURIComponent("/project/nieuw")}`);
+    await page.getByRole("button", { name: "Doorgaan met Google" }).click();
+
+    await expect(page).toHaveURL(/^https:\/\/accounts\.google\.com\/o\/oauth2\/v2\/auth/);
+    expect(fixture.startBody()).toEqual({ next: "/project/nieuw" });
   });
 
-  test("an order confirmation preserves its destination through login", async ({ page }) => {
+  test("removes historical reset routes from the visible product", async ({ page }) => {
+    await installGoogleOnlyAuthFixture(page);
+    await page.goto(`${BASE}/wachtwoord-vergeten`);
+    await expect(page.getByText(/404|niet gevonden/i).first()).toBeVisible();
+    await expect(page.getByRole("textbox", { name: /e-mailadres/i })).toHaveCount(0);
+  });
+
+  test("preserves a protected order destination through Google login", async ({ page }) => {
+    await installGoogleOnlyAuthFixture(page);
     const orderId = "11111111-1111-4111-8111-111111111111";
-    await page.goto(`${BASE}/bestelling/${orderId}`);
+    await page.goto(`${BASE}/bestellingen/${orderId}`);
+
     await expect(page).toHaveURL(
       new RegExp(`/auth\\?next=${encodeURIComponent(`/bestellingen/${orderId}`)}$`),
     );
-    await expect(page.getByRole("heading", { name: /welkom terug/i })).toBeVisible();
-  });
-
-  test("forgot-password page renders the reset form", async ({ page }) => {
-    await page.goto(`${BASE}/wachtwoord-vergeten`);
-    await expect(page.getByRole("textbox", { name: /e-mailadres/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /reset|verstuur/i })).toBeVisible();
-  });
-
-  test("invalid credentials show an error toast without crashing", async ({ page }) => {
-    test.skip(!hasExplicitBackendBaseUrl, "requires explicit backend-backed auth runtime");
-    await page.goto(`${BASE}/auth`);
-    await page.getByRole("textbox", { name: /e-mailadres/i }).fill("nobody+e2e@buildy.test");
-    await page.getByLabel("Wachtwoord", { exact: true }).fill("wrong-password");
-    await page.getByRole("button", { name: /^inloggen$/i }).click();
-    await expect(page.getByText(/ongeldige inloggegevens/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole("button", { name: "Doorgaan met Google" })).toBeVisible();
   });
 });

@@ -1,14 +1,14 @@
 import { z } from "zod";
 import {
-  projectAccessListResponseSchema,
-  projectSocialStateResponseSchema,
   profileSearchQuerySchema,
+  socialConnectionPageResponseSchema,
+  socialConnectionQuerySchema,
   socialMutationResponseSchema,
   socialProfilePageResponseSchema,
   socialProfileResponseSchema,
   type SocialMutationResult,
-  type ProjectAccessList,
-  type ProjectSocialState,
+  type SocialConnectionPage,
+  type SocialConnectionView,
   type SocialProfile,
   type SocialProfilePage,
 } from "../../shared/contracts/social";
@@ -22,6 +22,12 @@ export type SocialProfileSearch = {
   q?: string;
 };
 
+export type SocialConnectionSearch = {
+  cursor?: string;
+  limit?: number;
+  view: SocialConnectionView;
+};
+
 function encodedId(value: string): string {
   return encodeURIComponent(uuidSchema.parse(value));
 }
@@ -32,10 +38,6 @@ function socialPath(suffix: string): `/api/social/${string}` {
 
 function profilePath(profileId: string, suffix = ""): `/api/social/${string}` {
   return socialPath(`profiles/${encodedId(profileId)}${suffix}`);
-}
-
-function projectPath(projectId: string, suffix: string): `/api/social/${string}` {
-  return socialPath(`projects/${encodedId(projectId)}${suffix}`);
 }
 
 async function socialMutation(
@@ -75,6 +77,27 @@ export async function searchSocialProfiles(
   )).data;
 }
 
+export async function getSocialConnections(
+  input: SocialConnectionSearch,
+  signal?: AbortSignal,
+): Promise<SocialConnectionPage> {
+  const parsed = socialConnectionQuerySchema.parse({
+    ...(input.cursor ? { cursor: input.cursor } : {}),
+    ...(input.limit === undefined ? {} : { limit: input.limit }),
+    view: input.view,
+  });
+  const query = new URLSearchParams({
+    limit: String(parsed.limit),
+    view: parsed.view,
+  });
+  if (parsed.cursor) query.set("cursor", parsed.cursor);
+  return (await apiRequest(
+    `/api/social/connections?${query.toString()}`,
+    socialConnectionPageResponseSchema,
+    { signal },
+  )).data;
+}
+
 export function followSocialProfile(profileId: string): Promise<SocialMutationResult> {
   return socialMutation(profilePath(profileId, "/follow"), "PUT");
 }
@@ -107,74 +130,6 @@ export function rejectSocialFollowRequest(requesterId: string): Promise<SocialMu
 
 export function removeSocialFollower(followerId: string): Promise<SocialMutationResult> {
   return socialMutation(socialPath(`followers/${encodedId(followerId)}`), "DELETE");
-}
-
-export function followSocialProject(projectId: string): Promise<SocialMutationResult> {
-  return socialMutation(projectPath(projectId, "/follow"), "PUT");
-}
-
-export async function getSocialProjectState(
-  projectId: string,
-  signal?: AbortSignal,
-): Promise<ProjectSocialState> {
-  return (await apiRequest(
-    projectPath(projectId, "/state"),
-    projectSocialStateResponseSchema,
-    { signal },
-  )).data;
-}
-
-export async function getSocialProjectAccess(
-  projectId: string,
-  signal?: AbortSignal,
-): Promise<ProjectAccessList> {
-  return (await apiRequest(
-    projectPath(projectId, "/access-requests"),
-    projectAccessListResponseSchema,
-    { signal },
-  )).data;
-}
-
-export function unfollowSocialProject(projectId: string): Promise<SocialMutationResult> {
-  return socialMutation(projectPath(projectId, "/follow"), "DELETE");
-}
-
-export function requestSocialProjectAccess(projectId: string): Promise<SocialMutationResult> {
-  return socialMutation(projectPath(projectId, "/access"), "PUT");
-}
-
-export function cancelSocialProjectAccess(projectId: string): Promise<SocialMutationResult> {
-  return socialMutation(projectPath(projectId, "/access"), "DELETE");
-}
-
-export function acceptSocialProjectAccess(
-  projectId: string,
-  requesterId: string,
-): Promise<SocialMutationResult> {
-  return socialMutation(
-    projectPath(projectId, `/access-requests/${encodedId(requesterId)}/accept`),
-    "POST",
-  );
-}
-
-export function rejectSocialProjectAccess(
-  projectId: string,
-  requesterId: string,
-): Promise<SocialMutationResult> {
-  return socialMutation(
-    projectPath(projectId, `/access-requests/${encodedId(requesterId)}/reject`),
-    "POST",
-  );
-}
-
-export function revokeSocialProjectAccess(
-  projectId: string,
-  requesterId: string,
-): Promise<SocialMutationResult> {
-  return socialMutation(
-    projectPath(projectId, `/access-requests/${encodedId(requesterId)}`),
-    "DELETE",
-  );
 }
 
 export async function resolveVisibleMentionSlugs(

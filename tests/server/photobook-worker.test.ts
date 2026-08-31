@@ -9,7 +9,7 @@ import type {
   PhotobookRenderJob,
   PhotobookWorkerRepository,
 } from "../../server/photobooks/types";
-import type { ObjectStorage } from "../../server/storage/objectStorage";
+import { ObjectStorageError, type ObjectStorage } from "../../server/storage/objectStorage";
 
 const PROJECT_ID = "10000000-0000-4000-8000-000000000001";
 const REVISION_ID = "20000000-0000-4000-8000-000000000001";
@@ -30,10 +30,19 @@ function document(coverMediaAssetId?: string) {
 class WorkerRepository implements PhotobookWorkerRepository {
   finalized: FinalizePhotobookProofCommand | null = null;
   failure: { code: string; retry: { delaySeconds: number } | null } | null = null;
+  nextClaims = 0;
+  revisionClaims: string[] = [];
 
   constructor(readonly job: PhotobookRenderJob | null) {}
 
-  async claimRenderJob() { return this.job; }
+  async claimRenderJob() {
+    this.nextClaims += 1;
+    return this.job;
+  }
+  async claimRenderJobForRevision(revisionId: string) {
+    this.revisionClaims.push(revisionId);
+    return this.job?.revisionId === revisionId ? this.job : null;
+  }
   async finalizeProof(command: FinalizePhotobookProofCommand) { this.finalized = command; }
   async failProof(_job: PhotobookRenderJob, code: string, retry: { delaySeconds: number } | null) {
     this.failure = { code, retry };
@@ -45,6 +54,7 @@ function storage(writes: Array<{ key: string; bytes: Uint8Array }>): ObjectStora
     async createUploadUrl() { throw new Error("unused"); },
     async completeUpload() { throw new Error("unused"); },
     async createDownloadUrl() { throw new Error("unused"); },
+    async streamObject() { throw new Error("worker does not stream downloads"); },
     async readObject() { throw new Error("empty proof must not read photos"); },
     async writeObject(input) {
       writes.push({ key: input.key, bytes: input.bytes });
@@ -126,4 +136,55 @@ describe("PhotobookProofWorker", () => {
     );
     await expect(worker.processNext()).resolves.toEqual({ status: "idle" });
   });
+
+  it("claims and renders only the explicitly requested revision", async () => {
+    const writes: Array<{ key: string; bytes: Uint8Array }> = [];
+    const repository = new WorkerRepository(job());
+    const worker = new PhotobookProofWorker(
+      repository,
+      storage(writes),
+      "photobook-worker:request",
+    );
+
+    await expect(worker.processRevision(REVISION_ID)).resolves.toMatchObject({
+      status: "rendered",
+      revisionId: REVISION_ID,
+    });
+    expect(repository.revisionClaims).toEqual([REVISION_ID]);
+    expect(repository.nextClaims).toBe(0);
+    expect(writes).toHaveLength(1);
+
+    await expect(worker.processRevision("20000000-0000-4000-8000-000000000099"))
+      .resolves.toEqual({ status: "idle" });
+    expect(repository.revisionClaims).toEqual([
+      REVISION_ID,
+      "20000000-0000-4000-8000-000000000099",
+    ]);
+    expect(writes).toHaveLength(1);
+  }, 20_000);
+
+  it("schedules a bounded retry for a temporary provider failure on the exact revision", async () => {
+    const repository = new WorkerRepository(job());
+    const unavailableStorage: ObjectStorage = {
+      ...storage([]),
+      async writeObject() {
+        throw new ObjectStorageError("PROVIDER_ERROR", "Tijdelijke private-opslagfout.");
+      },
+    };
+    const worker = new PhotobookProofWorker(
+      repository,
+      unavailableStorage,
+      "photobook-worker:retry",
+    );
+
+    await expect(worker.processRevision(REVISION_ID)).resolves.toEqual({
+      status: "retry_scheduled",
+      revisionId: REVISION_ID,
+    });
+    expect(repository.revisionClaims).toEqual([REVISION_ID]);
+    expect(repository.failure).toEqual({
+      code: "STORAGE_PROVIDER_ERROR",
+      retry: { delaySeconds: 30 },
+    });
+  }, 20_000);
 });

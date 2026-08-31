@@ -6,6 +6,7 @@ import {
   Check,
   Hammer,
   MessageCircle,
+  PackageCheck,
   Smile,
   UserPlus,
   X,
@@ -25,11 +26,12 @@ import {
   notificationRequestKind,
 } from "./presentation";
 
-function iconFor(type: string) {
+function iconFor(type: EngagementNotification["type"]) {
   if (type === "comment.created" || type === "comment.reply") return MessageCircle;
   if (type === "comment.mention") return AtSign;
   if (type === "reaction.created") return Smile;
   if (type.startsWith("profile.follow.")) return UserPlus;
+  if (type.startsWith("order.")) return PackageCheck;
   return Hammer;
 }
 
@@ -74,15 +76,12 @@ const NotificationList = ({
   ) => {
     const kind = notificationRequestKind(notification);
     const actor = notification.actor;
-    const projectId = notification.projectId;
-    if (!kind || !actor || (kind === "project" && !projectId)) return;
+    if (!kind || !actor) return;
 
     setBusyAction(`${notification.id}:${decision}`);
     let decisionCompleted = false;
     try {
-      await decisionMutation.mutateAsync(kind === "profile"
-        ? { kind, decision, actorId: actor.id }
-        : { kind, decision, actorId: actor.id, projectId: projectId as string });
+      await decisionMutation.mutateAsync({ kind, decision, actorId: actor.id });
       decisionCompleted = true;
       await archiveMutation.mutateAsync({
         action: "archive",

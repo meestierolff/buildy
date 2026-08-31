@@ -3,6 +3,7 @@ import type {
   PhotobookDocument,
   PhotobookPage,
 } from "../../../shared/contracts/photobooks";
+import { ResilientImage } from "@/components/ResilientMedia";
 import { photobookMediaProxyPath } from "@/lib/photobookApi";
 import {
   coverCropImageStyle,
@@ -37,7 +38,7 @@ export const CanonicalPhotobookPage = ({
   return (
     <figure
       aria-hidden={decorative || undefined}
-      aria-label={decorative ? undefined : `Canonical Bouwboekpagina ${page.number}`}
+      aria-label={decorative ? undefined : `Bouwboekpagina ${page.number}`}
       className="relative m-0 w-full overflow-hidden bg-white text-black"
       data-page-number={page.number}
       role={decorative ? "presentation" : undefined}
@@ -64,7 +65,7 @@ export const CanonicalPhotobookPage = ({
             key={block.id}
             style={{ ...framePercentStyle(frame, pageSize), zIndex: 10 }}
           >
-            <img
+            <ResilientImage
               alt={decorative ? "" : block.altText}
               className="absolute max-w-none select-none"
               draggable={false}

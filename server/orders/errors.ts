@@ -10,6 +10,7 @@ export type OrderErrorReason =
   | "TERMS_MISMATCH"
   | "IDEMPOTENCY_CONFLICT"
   | "CHECKOUT_UNAVAILABLE"
+  | "INVALID_CURSOR"
   | "ORDER_STATE_CONFLICT";
 
 const DETAILS: Record<OrderErrorReason, { status: number; apiCode: ApiErrorCode; message: string }> = {
@@ -57,6 +58,11 @@ const DETAILS: Record<OrderErrorReason, { status: number; apiCode: ApiErrorCode;
     status: 503,
     apiCode: "PROVIDER_UNAVAILABLE",
     message: "De betaalpagina kon niet veilig worden gestart. Probeer het later opnieuw.",
+  },
+  INVALID_CURSOR: {
+    status: 400,
+    apiCode: "BAD_REQUEST",
+    message: "De lijstpositie voor bestellingen is ongeldig of verlopen.",
   },
   ORDER_STATE_CONFLICT: {
     status: 409,

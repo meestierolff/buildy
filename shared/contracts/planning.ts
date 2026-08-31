@@ -149,7 +149,7 @@ export const floorplanSchema = z.object({
 
 export const floorplanBoardSchema = z.object({
   projectId: uuidSchema,
-  viewerAccess: z.enum(["owner", "granted", "public"]),
+  viewerAccess: z.enum(["owner", "follower", "link", "public"]),
   canEdit: z.boolean(),
   floorplans: z.array(floorplanSchema),
 });

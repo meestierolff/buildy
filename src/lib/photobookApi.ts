@@ -12,7 +12,6 @@ import { ApiClientError, apiRequest } from "./apiClient";
 
 const uuidSchema = z.string().uuid();
 const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
-const proofViewReceiptSchema = z.string().regex(/^v1\.[1-9][0-9]{0,12}\.[A-Za-z0-9_-]{43}$/);
 const MAX_PROOF_BYTES = 150 * 1024 * 1024;
 
 export type PhotobookDraft = z.infer<typeof photobookDraftResponseSchema>["data"];
@@ -26,8 +25,6 @@ export type LoadedPhotobookProof = {
   revisionId: string;
   documentSha256: string;
   pdfSha256: string;
-  viewReceipt: string;
-  receiptExpiresAt: string;
 };
 
 function encodedId(value: string): string {
@@ -163,20 +160,13 @@ export async function loadPhotobookProofView(input: {
   const responseRevisionId = uuidSchema.safeParse(response.headers.get("x-buildy-proof-revision"));
   const responseDocumentSha256 = sha256Schema.safeParse(response.headers.get("x-buildy-proof-document-sha256"));
   const responsePdfSha256 = sha256Schema.safeParse(response.headers.get("x-buildy-proof-pdf-sha256"));
-  const viewReceipt = proofViewReceiptSchema.safeParse(response.headers.get("x-buildy-proof-view-receipt"));
-  const receiptExpiresAt = z.string().datetime({ offset: true }).safeParse(
-    response.headers.get("x-buildy-proof-view-receipt-expires-at"),
-  );
   if (
     !responseRevisionId.success
     || !responseDocumentSha256.success
     || !responsePdfSha256.success
-    || !viewReceipt.success
-    || !receiptExpiresAt.success
     || responseRevisionId.data !== revisionId
     || responseDocumentSha256.data !== documentSha256
     || responsePdfSha256.data !== pdfSha256
-    || Date.parse(receiptExpiresAt.data) <= Date.now()
   ) throw invalidProofResponse("De printproof hoort niet bij de actuele revisie.", response);
 
   const bytes = await response.arrayBuffer();
@@ -193,8 +183,6 @@ export async function loadPhotobookProofView(input: {
     revisionId,
     documentSha256,
     pdfSha256,
-    viewReceipt: viewReceipt.data,
-    receiptExpiresAt: receiptExpiresAt.data,
   };
 }
 

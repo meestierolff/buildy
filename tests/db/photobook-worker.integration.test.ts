@@ -148,11 +148,21 @@ describeWithDatabase("photobook PostgreSQL worker boundary", () => {
       }
       expect(postgresCode(tableReadError)).toBe("42501");
 
+      const unrelatedClaim = await worker.query(
+        "SELECT * FROM public.app_photobook_worker_claim_revision($1, $2, $3)",
+        [workerId, randomUUID(), 60],
+      );
+      expect(unrelatedClaim.rows).toEqual([]);
+
       const claim = await worker.query<{
         event_id: string;
         revision_id: string;
         attempt_count: number;
-      }>("SELECT * FROM public.app_photobook_worker_claim($1, $2)", [workerId, 60]);
+      }>("SELECT * FROM public.app_photobook_worker_claim_revision($1, $2, $3)", [
+        workerId,
+        revisionId,
+        60,
+      ]);
       expect(claim.rows).toMatchObject([{ event_id: eventId, revision_id: revisionId, attempt_count: 1 }]);
 
       expect((await worker.query(
@@ -173,6 +183,36 @@ describeWithDatabase("photobook PostgreSQL worker boundary", () => {
         pdf_object_key: `photobook-pdfs/${pdfAssetId.slice(0, 2)}/${pdfAssetId}`,
         source_assets: [{ id: sourceAssetId, sha256: sourceHash }],
       }]);
+
+      const retry = await worker.query<{ failed: boolean }>(`
+        SELECT public.app_fail_photobook_render($1, $2, $3, $4, $5, false) AS failed
+      `, [workerId, eventId, revisionId, "TRANSIENT_RENDER_FAILURE", 1]);
+      expect(retry.rows).toEqual([{ failed: true }]);
+      expect((await admin.query(`
+        SELECT revision.status AS revision_status, event.status AS event_status,
+          revision.failure_code, event.last_error_code
+        FROM photobook_revisions revision
+        JOIN outbox_events event ON event.aggregate_id = revision.id
+        WHERE revision.id = $1
+      `, [revisionId])).rows).toEqual([{
+        revision_status: "rendering",
+        event_status: "retry",
+        failure_code: "TRANSIENT_RENDER_FAILURE",
+        last_error_code: "TRANSIENT_RENDER_FAILURE",
+      }]);
+      await admin.query(
+        "UPDATE outbox_events SET available_at = clock_timestamp() - interval '1 second' WHERE id = $1",
+        [eventId],
+      );
+      const retryClaim = await worker.query<{ attempt_count: number }>(
+        "SELECT * FROM public.app_photobook_worker_claim_revision($1, $2, $3)",
+        [workerId, revisionId, 60],
+      );
+      expect(retryClaim.rows).toMatchObject([{ attempt_count: 2 }]);
+      expect((await worker.query(
+        "SELECT * FROM public.app_begin_photobook_render($1, $2)",
+        [workerId, eventId],
+      )).rowCount).toBe(1);
 
       const wrongAssetSet = await worker.query<{ finalized: boolean }>(`
         SELECT public.app_finalize_photobook_render(
@@ -245,6 +285,7 @@ describeWithDatabase("photobook PostgreSQL worker boundary", () => {
       await admin.query("DELETE FROM photobook_drafts WHERE id = $1", [draftId]);
       await admin.query("DELETE FROM media_assets WHERE id = ANY($1::uuid[])", [[sourceAssetId, pdfAssetId]]);
       await admin.query("DELETE FROM projects WHERE id = $1", [projectId]);
+      await admin.query("UPDATE app_users SET status = 'deleted', deleted_at = now() WHERE id = $1", [ownerId]);
       await admin.query("DELETE FROM app_users WHERE id = $1", [ownerId]);
       await worker.end();
       await admin.end();

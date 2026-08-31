@@ -61,8 +61,6 @@ export const readinessResponseSchema = z.object({
       configuration: z.enum(["pass", "fail"]),
       database: z.enum(["pass", "fail", "not_checked"]),
       accountWorker: z.enum(["pass", "fail", "not_checked"]),
-      emailWorker: z.enum(["pass", "fail", "not_checked"]),
-      fulfilmentWorker: z.enum(["pass", "fail", "not_checked"]),
       mediaWorker: z.enum(["pass", "fail", "not_checked"]),
       paymentWorker: z.enum(["pass", "fail", "not_checked"]),
       photobookWorker: z.enum(["pass", "fail", "not_checked"]),

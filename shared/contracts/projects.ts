@@ -16,6 +16,13 @@ const trimmedOptionalText = (maximum: number) => z.string().trim().min(1).max(ma
 const nullableTrimmedText = (maximum: number) =>
   z.string().trim().min(1).max(maximum).nullable().optional();
 
+export const projectVisibilitySchema = z.enum([
+  "private",
+  "followers",
+  "unlisted",
+  "public",
+]);
+
 export const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
   const [year, month, day] = value.split("-").map(Number);
   const parsed = new Date(Date.UTC(year, month - 1, day));
@@ -75,7 +82,7 @@ export const updateProjectInputSchema = z.object({
   projectType: nullableTrimmedText(80),
   startDate: isoDateSchema.nullable().optional(),
   expectedEndDate: isoDateSchema.nullable().optional(),
-  visibility: z.enum(["private", "public"]).optional(),
+  visibility: projectVisibilitySchema.optional(),
   progressPercentage: z.number().int().min(0).max(100).optional(),
 }).strict().refine(
   (input) => Object.keys(input).some((key) => key !== "expectedVersion"),
@@ -185,7 +192,7 @@ export const deleteUpdateInputSchema = z.object({
 export const deleteProjectInputSchema = z.object({
   idempotencyKey: idempotencyKeySchema,
   expectedVersion: z.number().int().positive(),
-  confirmation: z.literal("VERWIJDER PROJECT"),
+  confirmation: z.literal("VERWIJDER VERBOUWING"),
 }).strict();
 
 export const projectDeletionStatusSchema = z.enum([
@@ -233,7 +240,7 @@ export const projectCardSchema = z.object({
   title: z.string(),
   description: z.string().nullable(),
   projectType: z.string().nullable(),
-  visibility: z.enum(["private", "public"]),
+  visibility: projectVisibilitySchema,
   progressPercentage: z.number().int().min(0).max(100),
   version: z.number().int().positive(),
   updatedAt: z.string().datetime(),
@@ -256,7 +263,7 @@ export const projectOverviewSchema = projectCardSchema.extend({
   expectedEndDate: isoDateSchema.nullable(),
   contentRevision: z.number().int().positive(),
   followerCount: z.number().int().nonnegative(),
-  viewerAccess: z.enum(["owner", "granted", "public"]),
+  viewerAccess: z.enum(["owner", "follower", "link", "public"]),
   canEdit: z.boolean(),
   phases: z.array(projectPhaseSchema),
 });
@@ -340,6 +347,7 @@ export const projectPhaseMutationResponseSchema = apiSuccessSchema(z.object({
 export type ProjectPageQuery = z.infer<typeof projectPageQuerySchema>;
 export type FollowingFeedQuery = z.infer<typeof followingFeedQuerySchema>;
 export type ProjectPrivateDetailsInput = z.infer<typeof projectPrivateDetailsInputSchema>;
+export type ProjectVisibility = z.infer<typeof projectVisibilitySchema>;
 export type CreateProjectInput = z.infer<typeof createProjectInputSchema>;
 export type UpdateProjectInput = z.infer<typeof updateProjectInputSchema>;
 export type CreateUpdateInput = z.infer<typeof createUpdateInputSchema>;

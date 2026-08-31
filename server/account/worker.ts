@@ -150,6 +150,42 @@ export function decryptAccountExportPayload(
     delete order.shipping_details_ciphertext;
     delete order.pii_encryption_key_version;
   }
+
+  const feedback = payload.feedback ?? [];
+  if (!Array.isArray(feedback)) throw new Error("EXPORT_PAYLOAD_INVALID");
+  payload.feedback = feedback;
+  for (const item of feedback) {
+    const submission = objectRecord(item);
+    const submissionId = submission.id;
+    if (typeof submissionId !== "string") throw new Error("EXPORT_PAYLOAD_INVALID");
+
+    const messageCiphertext = submission.message_ciphertext;
+    if (typeof messageCiphertext === "string") {
+      submission.message = keyring.decrypt(
+        messageCiphertext,
+        `feedback-submission:${submissionId}:message`,
+      );
+    } else if (
+      messageCiphertext !== null
+      && messageCiphertext !== undefined
+    ) {
+      throw new Error("EXPORT_PAYLOAD_INVALID");
+    }
+    delete submission.message_ciphertext;
+
+    decryptOptional(
+      keyring,
+      submission,
+      "contact_ciphertext",
+      "contact_email",
+      `feedback-submission:${submissionId}:contact`,
+    );
+    delete submission.contact_hash;
+    delete submission.idempotency_key;
+    delete submission.request_hash;
+    delete submission.source_fingerprint_hash;
+    delete submission.assigned_to_id;
+  }
   return payload;
 }
 
@@ -212,7 +248,7 @@ async function buildArchive(
   const paths = new Set<string>();
 
   for (const asset of job.sourceAssets) {
-    if (asset.storageProvider !== "r2" || asset.bucket !== bucket) {
+    if (asset.storageProvider !== "vercel_blob" || asset.bucket !== bucket) {
       throw new Error("EXPORT_SOURCE_UNAVAILABLE");
     }
     const path = archivePath(asset);
@@ -315,7 +351,7 @@ export class AccountLifecycleWorker {
           ? { status: "deletion_completed", jobId: job.jobId }
           : { status: "deletion_blocked", jobId: job.jobId };
       }
-      if (job.storageProvider !== "r2" || job.bucket !== this.bucket || !job.objectKey) {
+      if (job.storageProvider !== "vercel_blob" || job.bucket !== this.bucket || !job.objectKey) {
         throw new Error("DELETION_SOURCE_UNAVAILABLE");
       }
       await this.storage.deleteObject(job.objectKey);

@@ -1,6 +1,5 @@
 import type {
-  ProjectAccessList,
-  ProjectSocialState,
+  SocialConnectionPage,
   SocialMutationResult,
   SocialProfile,
   SocialProfilePage,
@@ -15,10 +14,9 @@ export interface SocialActorResolver {
 }
 
 export interface SocialHttpService {
+  connections(actorId: string, query: unknown): Promise<SocialConnectionPage>;
   profile(viewerId: string | null, profileId: string): Promise<SocialProfile>;
   search(viewerId: string | null, query: unknown): Promise<SocialProfilePage>;
-  projectState(actorId: string, projectId: string): Promise<ProjectSocialState>;
-  projectAccess(actorId: string, projectId: string): Promise<ProjectAccessList>;
   followProfile(actorId: string, profileId: string): Promise<SocialMutationResult>;
   removeProfileFollow(actorId: string, profileId: string): Promise<SocialMutationResult>;
   acceptProfileFollow(actorId: string, requesterId: string): Promise<SocialMutationResult>;
@@ -26,25 +24,6 @@ export interface SocialHttpService {
   revokeProfileFollower(actorId: string, followerId: string): Promise<SocialMutationResult>;
   blockProfile(actorId: string, profileId: string): Promise<SocialMutationResult>;
   unblockProfile(actorId: string, profileId: string): Promise<SocialMutationResult>;
-  followProject(actorId: string, projectId: string): Promise<SocialMutationResult>;
-  unfollowProject(actorId: string, projectId: string): Promise<SocialMutationResult>;
-  requestProjectAccess(actorId: string, projectId: string): Promise<SocialMutationResult>;
-  cancelProjectAccess(actorId: string, projectId: string): Promise<SocialMutationResult>;
-  acceptProjectAccess(
-    actorId: string,
-    projectId: string,
-    requesterId: string,
-  ): Promise<SocialMutationResult>;
-  rejectProjectAccess(
-    actorId: string,
-    projectId: string,
-    requesterId: string,
-  ): Promise<SocialMutationResult>;
-  revokeProjectAccess(
-    actorId: string,
-    projectId: string,
-    requesterId: string,
-  ): Promise<SocialMutationResult>;
 }
 
 export interface SocialHttpDependencies {
@@ -67,14 +46,6 @@ function oneParameter(pathname: string, expression: RegExp): string | undefined 
   return expression.exec(pathname)?.[1];
 }
 
-function twoParameters(
-  pathname: string,
-  expression: RegExp,
-): [string, string] | undefined {
-  const match = expression.exec(pathname);
-  return match?.[1] && match[2] ? [match[1], match[2]] : undefined;
-}
-
 function rethrowSocialError(error: unknown): never {
   if (error instanceof SocialError) {
     throw new HttpError(error.status, error.apiCode, error.message);
@@ -92,6 +63,13 @@ export function createSocialHttpHandler(dependencies: SocialHttpDependencies) {
       };
       const url = new URL(request.url);
       const pathname = url.pathname.replace(/\/$/, "") || "/";
+
+      if (request.method === "GET" && pathname === "/api/social/connections") {
+        return jsonSuccess(
+          await dependencies.service.connections(authenticatedActor(), queryInput(url)),
+          requestId,
+        );
+      }
 
       if (request.method === "GET" && pathname === "/api/social/profiles") {
         return jsonSuccess(
@@ -182,108 +160,6 @@ export function createSocialHttpHandler(dependencies: SocialHttpDependencies) {
           await dependencies.service.revokeProfileFollower(
             authenticatedActor(),
             followerId,
-          ),
-          requestId,
-        );
-      }
-
-      const projectFollowId = oneParameter(
-        pathname,
-        /^\/api\/social\/projects\/([^/]+)\/follow$/,
-      );
-      if (projectFollowId && request.method === "PUT") {
-        return jsonSuccess(
-          await dependencies.service.followProject(authenticatedActor(), projectFollowId),
-          requestId,
-        );
-      }
-      if (projectFollowId && request.method === "DELETE") {
-        return jsonSuccess(
-          await dependencies.service.unfollowProject(
-            authenticatedActor(),
-            projectFollowId,
-          ),
-          requestId,
-        );
-      }
-
-      const projectStateId = oneParameter(
-        pathname,
-        /^\/api\/social\/projects\/([^/]+)\/state$/,
-      );
-      if (projectStateId && request.method === "GET") {
-        return jsonSuccess(
-          await dependencies.service.projectState(authenticatedActor(), projectStateId),
-          requestId,
-        );
-      }
-
-      const projectAccessListId = oneParameter(
-        pathname,
-        /^\/api\/social\/projects\/([^/]+)\/access-requests$/,
-      );
-      if (projectAccessListId && request.method === "GET") {
-        return jsonSuccess(
-          await dependencies.service.projectAccess(authenticatedActor(), projectAccessListId),
-          requestId,
-        );
-      }
-
-      const projectAccessDecision = twoParameters(
-        pathname,
-        /^\/api\/social\/projects\/([^/]+)\/access-requests\/([^/]+)\/(accept|reject)$/,
-      );
-      const decision = /\/(accept|reject)$/.exec(pathname)?.[1];
-      if (projectAccessDecision && decision && request.method === "POST") {
-        const [projectId, requesterId] = projectAccessDecision;
-        const result =
-          decision === "accept"
-            ? await dependencies.service.acceptProjectAccess(
-                authenticatedActor(),
-                projectId,
-                requesterId,
-              )
-            : await dependencies.service.rejectProjectAccess(
-                authenticatedActor(),
-                projectId,
-                requesterId,
-              );
-        return jsonSuccess(result, requestId);
-      }
-
-      const projectAccessRevoke = twoParameters(
-        pathname,
-        /^\/api\/social\/projects\/([^/]+)\/access-requests\/([^/]+)$/,
-      );
-      if (projectAccessRevoke && request.method === "DELETE") {
-        return jsonSuccess(
-          await dependencies.service.revokeProjectAccess(
-            authenticatedActor(),
-            projectAccessRevoke[0],
-            projectAccessRevoke[1],
-          ),
-          requestId,
-        );
-      }
-
-      const projectAccessId = oneParameter(
-        pathname,
-        /^\/api\/social\/projects\/([^/]+)\/access$/,
-      );
-      if (projectAccessId && request.method === "PUT") {
-        return jsonSuccess(
-          await dependencies.service.requestProjectAccess(
-            authenticatedActor(),
-            projectAccessId,
-          ),
-          requestId,
-        );
-      }
-      if (projectAccessId && request.method === "DELETE") {
-        return jsonSuccess(
-          await dependencies.service.cancelProjectAccess(
-            authenticatedActor(),
-            projectAccessId,
           ),
           requestId,
         );

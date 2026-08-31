@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   ObjectStorageError,
@@ -7,8 +8,8 @@ import {
   assertSafeContentDispositionFilename,
   assertUploadPolicy,
   createObjectKey,
+  guardObjectStream,
 } from "../../server/storage/objectStorage";
-import { R2ObjectStorage } from "../../server/storage/r2ObjectStorage";
 
 const assetId = "9d061f28-8a45-4e3b-a57c-a036d3799957";
 
@@ -51,28 +52,39 @@ describe("private object storage policy", () => {
     expect(() => assertUploadPolicy(originalKey, "image/jpeg", 51 * 1024 * 1024)).toThrow(ObjectStorageError);
   });
 
-  it("allows seven-day provider grants while keeping interactive downloads short-lived", async () => {
-    const storage = new R2ObjectStorage({
-      accountId: "test-account",
-      accessKeyId: "test-access-key",
-      secretAccessKey: "test-secret-key",
-      bucketName: "buildy-private",
+  it("fails a response stream closed on overflow or a checksum mismatch", async () => {
+    const bytes = Buffer.from("exact-stream");
+    const source = () => new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(bytes); controller.close(); },
     });
-    const key = createObjectKey("photobook-pdfs", assetId);
 
-    await expect(storage.createDownloadUrl({
-      key,
-      grantPurpose: "provider_fulfilment",
-      expiresInSeconds: 604_800,
-    })).resolves.toMatchObject({ method: "GET", key });
-    await expect(storage.createDownloadUrl({
-      key,
-      grantPurpose: "provider_fulfilment",
-      expiresInSeconds: 604_801,
-    })).rejects.toBeInstanceOf(ObjectStorageError);
-    await expect(storage.createDownloadUrl({
-      key,
-      expiresInSeconds: 901,
-    })).rejects.toBeInstanceOf(ObjectStorageError);
+    await expect(new Response(guardObjectStream({
+      stream: source(),
+      expectedBytes: bytes.byteLength - 1,
+    })).arrayBuffer()).rejects.toMatchObject({ code: "UPLOAD_MISMATCH" });
+
+    await expect(new Response(guardObjectStream({
+      stream: source(),
+      expectedBytes: bytes.byteLength,
+      expectedSha256Hex: createHash("sha256").update("different").digest("hex"),
+    })).arrayBuffer()).rejects.toMatchObject({ code: "UPLOAD_MISMATCH" });
   });
+
+  it("propagates downstream cancellation to the private provider stream", async () => {
+    let cancelled = false;
+    const guarded = guardObjectStream({
+      stream: new ReadableStream<Uint8Array>({
+        pull(controller) { controller.enqueue(Uint8Array.of(1)); },
+        cancel() { cancelled = true; },
+      }),
+      expectedBytes: 10,
+    });
+    const reader = guarded.getReader();
+
+    await reader.read();
+    await reader.cancel("client disconnected");
+
+    expect(cancelled).toBe(true);
+  });
+
 });

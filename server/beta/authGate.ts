@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { APIError } from "better-auth";
 import type { BetaProvider } from "../../shared/contracts/beta.js";
+import { AuthRegistrationRejectedError } from "../auth/errors.js";
 import type { AuthRegistrationGate } from "../auth/factory.js";
 import type { AuthIdentityUser, BuildyAuthTransaction } from "../auth/identity.js";
 import { BETA_OPAQUE_TOKEN } from "./crypto.js";
@@ -82,10 +82,7 @@ export class BetaRegistrationGate implements AuthRegistrationGate {
       );
     } catch (error) {
       if (error instanceof BetaError) {
-        throw new APIError("FORBIDDEN", {
-          code: "BETA_INVITE_REQUIRED",
-          message: "Voor een nieuw account is een geldige bèta-uitnodiging nodig.",
-        });
+        throw new AuthRegistrationRejectedError({ cause: error });
       }
       throw error;
     }

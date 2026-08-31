@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createPhotobookCheckout,
+  getCustomerOrders,
   getPhotobookOrder,
   requestPhotobookQuote,
   safeTrackingUrl,
@@ -32,10 +33,10 @@ const address = {
 
 const amounts = {
   currency: "EUR" as const,
-  subtotalMinor: 10_000,
-  shippingMinor: 1_000,
-  taxMinor: 2_310,
-  totalMinor: 13_310,
+  subtotalMinor: 8_264,
+  shippingMinor: 826,
+  taxMinor: 1_910,
+  totalMinor: 11_000,
 };
 
 const quote = {
@@ -81,7 +82,7 @@ describe("order API client", () => {
       shippingAddress: address,
     });
 
-    expect(result.amounts.totalMinor).toBe(13_310);
+    expect(result.amounts.totalMinor).toBe(11_000);
     expect(fetchMock).toHaveBeenCalledWith(
       `/api/photobooks/proofs/${REVISION_ID}/quote`,
       expect.objectContaining({ credentials: "include", method: "POST" }),
@@ -123,17 +124,21 @@ describe("order API client", () => {
       shippingAddress: address,
       idempotencyKey: COMMAND_ID,
       expectedQuoteReference: quote.quoteReference,
-      expectedTotalMinor: quote.amounts.totalMinor,
+      expectedQuoteExpiresAt: quote.expiresAt,
+      expectedAmounts: quote.amounts,
       termsVersion: quote.termsVersion,
+      termsAccepted: true,
       personalisedProductAccepted: true,
     });
 
     expect(JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body))).toMatchObject({
       idempotencyKey: COMMAND_ID,
       expectedQuoteReference: "quote-exact-1",
-      expectedTotalMinor: 13_310,
+      expectedQuoteExpiresAt: quote.expiresAt,
+      expectedAmounts: amounts,
       documentSha256: DOCUMENT_SHA,
       pdfSha256: PDF_SHA,
+      termsAccepted: true,
       personalisedProductAccepted: true,
     });
   });
@@ -143,6 +148,7 @@ describe("order API client", () => {
       orderId: ORDER_ID,
       orderNumber: "BLD-ABCD-1234",
       projectId: PROJECT_ID,
+      projectTitle: "Ons huis",
       proofRevisionId: REVISION_ID,
       sku: "a4-landscape-hardcover-v1",
       format: "a4-landscape-hardcover-v1",
@@ -155,10 +161,17 @@ describe("order API client", () => {
       status: "checkout_open",
       paymentStatus: "processing",
       refundedMinor: 0,
-      fulfilmentStatus: "unclaimed",
+      fulfilmentStatus: "awaiting_review",
       trackingUrl: null,
       createdAt: "2026-08-04T12:00:00.000Z",
       paidAt: null,
+      statusHistory: [{
+        id: "66666666-6666-4666-8666-666666666666",
+        eventType: "order.checkout_opened.v1",
+        fromStatus: "awaiting_payment",
+        toStatus: "checkout_open",
+        occurredAt: "2026-08-04T12:01:00.000Z",
+      }],
     };
     const fetchMock = vi.fn().mockResolvedValue(success(detail));
     vi.stubGlobal("fetch", fetchMock);
@@ -166,6 +179,33 @@ describe("order API client", () => {
     expect((await getPhotobookOrder(ORDER_ID)).paymentStatus).toBe("processing");
     expect(fetchMock).toHaveBeenCalledWith(
       `/api/orders/${ORDER_ID}`,
+      expect.objectContaining({ credentials: "include", method: "GET" }),
+    );
+  });
+
+  it("laadt de gepagineerde lijst van de ingelogde klant via dezelfde origin", async () => {
+    const item = {
+      orderId: ORDER_ID,
+      orderNumber: "BLD-ABCD-1234",
+      projectId: PROJECT_ID,
+      projectTitle: "Ons huis",
+      pageCount: 24,
+      quantity: 1,
+      amounts,
+      status: "paid",
+      paymentStatus: "paid",
+      fulfilmentStatus: "awaiting_review",
+      createdAt: "2026-08-04T12:00:00.000Z",
+      paidAt: "2026-08-04T12:05:00.000Z",
+    };
+    const fetchMock = vi.fn().mockResolvedValue(success({ items: [item], nextCursor: "next-page" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getCustomerOrders({ cursor: "current-page", limit: 12 });
+
+    expect(result).toEqual({ items: [item], nextCursor: "next-page" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/orders?limit=12&cursor=current-page",
       expect.objectContaining({ credentials: "include", method: "GET" }),
     );
   });
@@ -191,7 +231,7 @@ describe("oude bestelbrowser verwijderd", () => {
     const source = readFileSync(resolve(process.cwd(), "src/pages/OrderConfirmation.tsx"), "utf8").toLowerCase();
     expect(source).not.toContain("supabase");
     expect(source).not.toContain(".from(");
-    expect(source).not.toContain("peecho_id");
+    expect(source).not.toContain("provider_order_id");
     expect(source).toContain("terug van stripe");
     expect(source).toContain("webhookbevestiging");
   });

@@ -7,6 +7,8 @@ import {
   engagementPageQuerySchema,
   notificationMutationInputSchema,
   notificationMutationResponseSchema,
+  notificationMarkAllReadInputSchema,
+  notificationMarkAllReadResponseSchema,
   notificationPageQuerySchema,
   notificationPageResponseSchema,
   reactionQuerySchema,
@@ -18,6 +20,7 @@ import {
   type CreateCommentInput,
   type DeleteCommentInput,
   type NotificationMutationResult,
+  type NotificationMarkAllReadResult,
   type NotificationPage,
   type NotificationPageQuery,
   type ReactionMutationResult,
@@ -168,6 +171,15 @@ export async function updateEngagementNotification(
   return (await apiRequest(
     `/api/notifications/${encodedId(notificationId)}`,
     notificationMutationResponseSchema,
+    { method: "PATCH", body: input },
+  )).data;
+}
+
+export async function markAllEngagementNotificationsRead(): Promise<NotificationMarkAllReadResult> {
+  const input = notificationMarkAllReadInputSchema.parse({ action: "read_all" });
+  return (await apiRequest(
+    "/api/notifications",
+    notificationMarkAllReadResponseSchema,
     { method: "PATCH", body: input },
   )).data;
 }

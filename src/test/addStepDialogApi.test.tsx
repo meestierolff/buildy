@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   loadDraft: vi.fn(),
   saveDraft: vi.fn(),
   deleteDraft: vi.fn(),
+  loadLandingPhoto: vi.fn(),
+  deleteLandingPhoto: vi.fn(),
 }));
 
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
@@ -41,6 +43,10 @@ vi.mock("@/hooks/usePrivateMediaUpload", () => ({
   usePrivateMediaUpload: () => ({ mutateAsync: mocks.mediaUpload }),
 }));
 
+vi.mock("@/lib/appFeatures", () => ({
+  useAppFeatures: () => ({ mediaFeaturesEnabled: true }),
+}));
+
 vi.mock("@/lib/updateComposerDraftStore", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/updateComposerDraftStore")>()),
   loadUpdateComposerDraft: mocks.loadDraft,
@@ -48,20 +54,43 @@ vi.mock("@/lib/updateComposerDraftStore", async (importOriginal) => ({
   deleteUpdateComposerDraft: mocks.deleteDraft,
 }));
 
+vi.mock("@/lib/landingPhotoHandoffStore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/landingPhotoHandoffStore")>()),
+  loadLandingPhotoHandoff: mocks.loadLandingPhoto,
+  deleteLandingPhotoHandoff: mocks.deleteLandingPhoto,
+}));
+
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
 describe("AddStepDialog typed API retry", () => {
+  const originalCreateObjectUrl = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
+  const originalRevokeObjectUrl = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
+
   beforeAll(() => {
     vi.stubGlobal("ResizeObserver", class {
       observe() {}
       unobserve() {}
       disconnect() {}
     });
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:buildy-composer-preview"),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
   });
 
-  afterAll(() => vi.unstubAllGlobals());
+  afterAll(() => {
+    vi.unstubAllGlobals();
+    if (originalCreateObjectUrl) Object.defineProperty(URL, "createObjectURL", originalCreateObjectUrl);
+    else Reflect.deleteProperty(URL, "createObjectURL");
+    if (originalRevokeObjectUrl) Object.defineProperty(URL, "revokeObjectURL", originalRevokeObjectUrl);
+    else Reflect.deleteProperty(URL, "revokeObjectURL");
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -69,6 +98,8 @@ describe("AddStepDialog typed API retry", () => {
     mocks.loadDraft.mockResolvedValue(null);
     mocks.saveDraft.mockResolvedValue(undefined);
     mocks.deleteDraft.mockResolvedValue(undefined);
+    mocks.loadLandingPhoto.mockResolvedValue(null);
+    mocks.deleteLandingPhoto.mockResolvedValue(undefined);
     mocks.createUpdate
       .mockRejectedValueOnce(new TypeError("response lost"))
       .mockResolvedValueOnce({
@@ -80,9 +111,9 @@ describe("AddStepDialog typed API retry", () => {
   it("locks the draft after an ambiguous response and retries the exact command once", async () => {
     render(<AddStepDialog projectId={PROJECT_ID} onClose={mocks.onClose} onAdded={mocks.onAdded} />);
 
-    const title = screen.getByLabelText("Titel *");
+    const title = screen.getByLabelText(/Korte titel of bijschrift/);
     fireEvent.change(title, { target: { value: "De eerste muur is open" } });
-    fireEvent.click(screen.getByRole("button", { name: "Update plaatsen" }));
+    fireEvent.click(screen.getByRole("button", { name: "Bouwmoment plaatsen" }));
 
     await screen.findByText(/serverbevestiging ontbreekt nog/i);
     expect(title).toBeDisabled();
@@ -131,5 +162,97 @@ describe("AddStepDialog typed API retry", () => {
         updateIdempotencyKey: "update-create:cccccccc-cccc-4ccc-8ccc-cccccccccccc",
       }),
     );
+  });
+
+  it("neemt de lokale startfoto over zonder upload en wist de overdracht na conceptimport", async () => {
+    mocks.loadLandingPhoto.mockResolvedValue({
+      version: 1,
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      contentType: "image/png",
+      bytes: new Blob(["synthetic-photo"], { type: "image/png" }),
+      savedAt: "2026-08-23T10:00:00.000Z",
+    });
+
+    render(
+      <AddStepDialog
+        projectId={PROJECT_ID}
+        importLandingPhoto
+        onClose={mocks.onClose}
+        onAdded={mocks.onAdded}
+      />,
+    );
+
+    expect(await screen.findByAltText("Voorvertoning 1")).toBeInTheDocument();
+    expect(screen.getByText(/alleen vanaf dit apparaat overgenomen/i)).toBeInTheDocument();
+    expect(screen.getByText("eerste-bouwmoment.png")).toBeInTheDocument();
+    expect(mocks.mediaUpload).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(mocks.saveDraft).toHaveBeenCalledWith(
+      "browser-session-user",
+      PROJECT_ID,
+      expect.objectContaining({
+        files: [expect.objectContaining({
+          id: "media-upload:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          name: "eerste-bouwmoment.png",
+          contentType: "image/png",
+        })],
+      }),
+    ));
+    await waitFor(() => expect(mocks.deleteLandingPhoto).toHaveBeenCalledWith(
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    ));
+  });
+
+  it("biedt mobiel een camera en bibliotheek en accepteert desktop-drop", async () => {
+    render(<AddStepDialog projectId={PROJECT_ID} onClose={mocks.onClose} onAdded={mocks.onAdded} />);
+
+    const cameraInput = screen.getByLabelText("Maak een foto");
+    const libraryInput = screen.getByLabelText("Kies foto's uit je bibliotheek");
+    expect(cameraInput).toHaveAttribute("capture", "environment");
+    expect(cameraInput).not.toHaveAttribute("multiple");
+    expect(libraryInput).toHaveAttribute("multiple");
+
+    const droppedPhoto = new File(["photo"], "keuken-drop.jpg", { type: "image/jpeg" });
+    fireEvent.drop(screen.getByRole("group", { name: "Foto's toevoegen" }), {
+      dataTransfer: { files: [droppedPhoto] },
+    });
+
+    expect(await screen.findByText("keuken-drop.jpg")).toBeInTheDocument();
+    expect(screen.getByAltText("Voorvertoning 1")).toHaveAttribute("src", "blob:buildy-composer-preview");
+
+    fireEvent.drop(screen.getByRole("group", { name: "Foto's toevoegen" }), {
+      dataTransfer: { files: [droppedPhoto] },
+    });
+    expect(screen.getAllByAltText(/Voorvertoning/)).toHaveLength(1);
+  });
+
+  it("laat alleen de mislukte foto afzonderlijk opnieuw verwerken", async () => {
+    mocks.mediaUpload
+      .mockRejectedValueOnce(new TypeError("blob response lost"))
+      .mockResolvedValueOnce({
+        id: "77777777-7777-4777-8777-777777777777",
+        projectId: PROJECT_ID,
+        status: "ready",
+      });
+    render(<AddStepDialog projectId={PROJECT_ID} onClose={mocks.onClose} onAdded={mocks.onAdded} />);
+
+    const photo = new File(["photo"], "keuken-retry.jpg", {
+      type: "image/jpeg",
+      lastModified: 1_777_000_000_000,
+    });
+    fireEvent.drop(screen.getByRole("group", { name: "Foto's toevoegen" }), {
+      dataTransfer: { files: [photo] },
+    });
+    await screen.findByText("keuken-retry.jpg");
+    fireEvent.click(screen.getByRole("button", { name: "Bouwmoment plaatsen" }));
+
+    const retry = await screen.findByRole("button", { name: "keuken-retry.jpg opnieuw uploaden" });
+    expect(mocks.createUpdate).not.toHaveBeenCalled();
+    fireEvent.click(retry);
+
+    expect(await screen.findByText("Privé verwerkt")).toBeInTheDocument();
+    expect(mocks.mediaUpload).toHaveBeenCalledTimes(2);
+    expect(mocks.createUpdate).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Bouwmoment plaatsen" })).toBeEnabled();
   });
 });

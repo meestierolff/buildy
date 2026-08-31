@@ -6,6 +6,8 @@ import {
   createProjectPageHandler,
   renderProjectPageHtml,
 } from "../../server/pages/projectPage";
+import { readAnonymousPublicProject } from "../../api/page";
+import type { RuntimeConfig } from "../../server/config/runtime";
 
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 const ASSET_ID = "22222222-2222-4222-8222-222222222222";
@@ -21,6 +23,15 @@ const SHELL = `<!doctype html><html lang="nl"><head>
 </head><body><div id="root"></div></body></html>`;
 
 describe("server-generated public project metadata", () => {
+  it("does not query or expose live project metadata in public_demo", async () => {
+    const config = {
+      PRODUCT_PROFILE: "public_demo",
+      DATABASE_URL: "postgresql://must-not-connect.invalid/buildy",
+    } as RuntimeConfig;
+
+    await expect(readAnonymousPublicProject(PROJECT_ID, config)).resolves.toBeNull();
+  });
+
   it("renders one escaped public metadata set and preserves the built SPA shell", async () => {
     const reader = vi.fn().mockResolvedValue({
       id: PROJECT_ID,

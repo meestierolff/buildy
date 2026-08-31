@@ -2,9 +2,8 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const clientMocks = vi.hoisted(() => ({
-  refetch: vi.fn<() => Promise<void>>(),
+  getSession: vi.fn(),
   signOut: vi.fn(),
-  useSession: vi.fn(),
 }));
 
 vi.mock("@/lib/authClient", async (importOriginal) => {
@@ -12,8 +11,8 @@ vi.mock("@/lib/authClient", async (importOriginal) => {
   return {
     ...original,
     authClient: {
+      getSession: clientMocks.getSession,
       signOut: clientMocks.signOut,
-      useSession: clientMocks.useSession,
     },
   };
 });
@@ -41,26 +40,18 @@ const user = {
 const session = {
   createdAt: new Date("2026-08-01T10:00:00.000Z"),
   expiresAt: new Date("2026-08-08T10:00:00.000Z"),
-  id: "session-1",
-  token: "must-not-reach-context",
+  id: "11111111-1111-4111-8111-111111111111",
   updatedAt: new Date("2026-08-01T10:00:00.000Z"),
   userId: user.id,
 } satisfies AuthClientSession;
 
 describe("AuthProvider", () => {
   beforeEach(() => {
-    clientMocks.refetch.mockReset().mockResolvedValue(undefined);
-    clientMocks.signOut.mockReset().mockResolvedValue({ data: { success: true }, error: null });
-    clientMocks.useSession.mockReset().mockReturnValue({
-      data: { session, user },
-      error: null,
-      isPending: false,
-      isRefetching: false,
-      refetch: clientMocks.refetch,
-    });
+    clientMocks.getSession.mockReset().mockResolvedValue({ session, user });
+    clientMocks.signOut.mockReset().mockResolvedValue(undefined);
   });
 
-  it("maps Better Auth users to the temporary legacy metadata contract", () => {
+  it("maps the Google user to the temporary legacy metadata contract", () => {
     expect(mapAuthUser(user)).toMatchObject({
       email: "bewoner@example.com",
       user_metadata: {
@@ -71,11 +62,12 @@ describe("AuthProvider", () => {
     });
   });
 
-  it("removes the bearer-equivalent session token from context", () => {
+  it("exposes only non-secret session metadata", () => {
+    expect(mapAuthSession(session)).toEqual(session);
     expect(mapAuthSession(session)).not.toHaveProperty("token");
   });
 
-  it("exposes the cookie session and refetches after sign-out", async () => {
+  it("loads the cookie session and checks it again after sign-out", async () => {
     let context: AuthContextValue | undefined;
     const Probe = () => {
       context = useAuth();
@@ -87,31 +79,50 @@ describe("AuthProvider", () => {
     };
 
     render(<AuthProvider><Probe /></AuthProvider>);
-    expect(screen.getByRole("button", { name: "bewoner@example.com" })).toBeInTheDocument();
+    await screen.findByRole("button", { name: "bewoner@example.com" });
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button"));
     });
     await waitFor(() => expect(clientMocks.signOut).toHaveBeenCalledTimes(1));
-    expect(clientMocks.refetch).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(clientMocks.getSession).toHaveBeenCalledTimes(2));
   });
 
-  it("clears cached DTOs when the authenticated identity changes", async () => {
-    const clear = vi.spyOn(queryClient, "clear");
-    const { rerender } = render(<AuthProvider><span>inhoud</span></AuthProvider>);
+  it("slaat iedere authrequest over wanneer de server de openbare demo activeert", async () => {
+    const Probe = () => {
+      const auth = useAuth();
+      return <p>{auth.loading ? "laden" : auth.user ? "ingelogd" : "demo"}</p>;
+    };
 
-    clientMocks.useSession.mockReturnValue({
-      data: {
+    render(<AuthProvider enabled={false}><Probe /></AuthProvider>);
+
+    expect(await screen.findByText("demo")).toBeInTheDocument();
+    expect(clientMocks.getSession).not.toHaveBeenCalled();
+    expect(clientMocks.signOut).not.toHaveBeenCalled();
+  });
+
+  it("clears cached DTOs when a refreshed identity changes", async () => {
+    clientMocks.getSession
+      .mockResolvedValueOnce({ session, user })
+      .mockResolvedValueOnce({
         session: { ...session, userId: "auth-user-2" },
         user: { ...user, id: "auth-user-2", email: "ander@example.com" },
-      },
-      error: null,
-      isPending: false,
-      isRefetching: false,
-      refetch: clientMocks.refetch,
-    });
-    rerender(<AuthProvider><span>inhoud</span></AuthProvider>);
+      });
+    const clear = vi.spyOn(queryClient, "clear");
+    const Probe = () => {
+      const auth = useAuth();
+      return (
+        <button type="button" onClick={() => void auth.refetchSession()}>
+          {auth.user?.email ?? "laden"}
+        </button>
+      );
+    };
 
+    render(<AuthProvider><Probe /></AuthProvider>);
+    await screen.findByRole("button", { name: "bewoner@example.com" });
+    fireEvent.click(screen.getByRole("button"));
+
+    await screen.findByRole("button", { name: "ander@example.com" });
     await waitFor(() => expect(clear).toHaveBeenCalledOnce());
   });
 });

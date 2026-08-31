@@ -5,7 +5,7 @@ type ProfileHandler = (request: Request, requestId: string) => Promise<Response>
 
 let defaultHandler: ProfileHandler | undefined;
 
-/** Compose only after the trusted Better Auth actor resolver is available. */
+/** Compose only after the trusted server-owned actor resolver is available. */
 export function configureDefaultProfileRuntime(dependencies: ProfileHttpDependencies): void {
   if (defaultHandler) throw new Error("De standaard profielruntime is al geconfigureerd.");
   defaultHandler = createProfileHttpHandler(dependencies);

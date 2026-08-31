@@ -24,7 +24,6 @@ const moderationReceiptRowSchema = z.object({
   status: z.literal("received"),
   submitted_at: z.coerce.date(),
   replayed: z.boolean(),
-  email_confirmation_queued: z.boolean(),
 });
 
 const feedbackReceiptRowSchema = moderationReceiptRowSchema.extend({
@@ -36,7 +35,10 @@ function actorId(actor: ProjectActor): string | null {
 }
 
 async function setActor(transaction: DatabaseTransaction, actor: ProjectActor): Promise<void> {
-  await transaction.execute(sql`select set_config('app.actor_id', ${actorId(actor) ?? ""}, true)`);
+  await transaction.execute(sql`select
+    set_config('app.actor_id', ${actorId(actor) ?? ""}, true),
+    set_config('app.share_link_id', ${actor.shareLinkId ?? ""}, true)
+  `);
 }
 
 function mapModerationReceipt(row: unknown): ModerationReportReceipt {
@@ -47,7 +49,6 @@ function mapModerationReceipt(row: unknown): ModerationReportReceipt {
     status: parsed.status,
     submittedAt: parsed.submitted_at.toISOString(),
     replayed: parsed.replayed,
-    emailConfirmationQueued: parsed.email_confirmation_queued,
   };
 }
 
@@ -60,7 +61,6 @@ function mapFeedbackReceipt(row: unknown): FeedbackSubmissionReceipt {
     status: parsed.status,
     submittedAt: parsed.submitted_at.toISOString(),
     replayed: parsed.replayed,
-    emailConfirmationQueued: parsed.email_confirmation_queued,
   };
 }
 
@@ -331,4 +331,3 @@ export class PostgresModerationRepository implements ModerationRepository {
     }
   }
 }
-

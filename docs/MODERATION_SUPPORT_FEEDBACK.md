@@ -1,171 +1,112 @@
-# Moderation, support and feedback
+# Moderatie, support en feedback
 
-## Status and scope
+Status: actieve typed intake en server-side beheergrens.
 
-Buildy has a typed, server-owned intake path for content reports, product feedback,
-support questions, third-party privacy requests and content appeals. The browser no
-longer writes directly to the intake tables.
+## Gebruikersflows
 
-This slice deliberately does **not** expose a moderator queue or moderation actions.
-The repository has no trustworthy server-side moderator/admin role or claim model.
-Inventing one in the browser or inferring it from profile data would create a privilege
-escalation path. Those capabilities stay fail-closed until an explicit RBAC design,
-separation-of-duties review and database authorization tests exist.
+- zichtbare profielen, Verbouwingen, Bouwmomenten, media en reacties hebben een
+  contextuele **Melden**-actie;
+- `/melden` biedt uitleg en een publiek pad voor derden;
+- `/support` accepteert support, privacyverzoeken van derden en bezwaar;
+- `/feedback` accepteert productfeedback van een ingelogde gebruiker;
+- `/contentbeleid` en `/huisregels` leggen de gedrags- en fotoprivacygrenzen uit;
+- `/beheer/moderatie` en `/beheer/moderatie/:reportId` bieden een
+  server-geautoriseerde beheerqueue.
+- `/beheer/feedback` en `/beheer/feedback/:submissionId` bieden uitsluitend
+  aan `admin` een feedback-/supportqueue en expliciet PII-detail.
 
-Private-beta access is implemented separately by migration 0021 and
-`server/beta`. New e-mail and Google accounts require an atomic invite redemption
-when `BETA_MODE=true`; existing users can still sign in. See
-`docs/PRIVATE_BETA.md` for operations and remaining environment gates.
+Na intake toont Buildy een niet-geheime ontvangstcode `MELD-…` of `HELP-…` in de
+UI. Er wordt geen responstijd, verwijdertermijn of uitkomst beloofd. Het formulier
+is geen noodkanaal.
 
-## User journeys
+Er is geen e-mailprovider. De actieve runtime verstuurt dus geen ontvangst-,
+support- of moderatiemail; historische outbox/e-mailmigrations zijn geen
+deliveryclaim. Een opgegeven replyadres wordt alleen versleuteld opgeslagen
+zodat een bevoegde operator buiten deze automatische runtime kan reageren.
 
-- A visible profile, project, update, media item or comment has a **Melden** action.
-- `/melden` explains contextual reporting and offers a no-account third-party request.
-- `/support` accepts support, third-party and appeal requests without requiring an account.
-- `/feedback` and the authenticated feedback launcher accept product feedback.
-- `/contentbeleid` and `/huisregels` explain the rules and photo/privacy expectations.
+## HTTP- en trustgrenzen
 
-The confirmation screen returns a non-secret receipt code (`MELD-…` or `HELP-…`).
-No response-time, removal-time or legal-outcome promise is made. Direct danger is
-explicitly routed to 112 because the support form is not an emergency channel.
+| Route | Authenticatie | Doel |
+| --- | --- | --- |
+| `POST /api/moderation/reports` | optioneel | alleen content melden die deze actor mag zien |
+| `POST /api/feedback` | vereist | productfeedback van de ingelogde actor |
+| `POST /api/support` | optioneel, replyadres vereist | support, derdenverzoek of bezwaar |
+| `GET /api/moderation/admin/session` | moderator/admin | server-owned rol teruggeven |
+| `GET /api/moderation/admin/reports` | moderator/admin | begrensde cursorqueue |
+| `GET /api/moderation/admin/reports/:id` | moderator/admin | ontsleuteld detail en audit |
+| `POST /api/moderation/admin/reports/:id/actions` | volgens rol/actie | geversioneerde beheeractie |
+| `GET /api/admin/feedback/session` | admin | server-owned beheerrol bevestigen |
+| `GET /api/admin/feedback` | admin | gepagineerde metadatawachtrij |
+| `GET /api/admin/feedback/:id` | admin | bericht/contact contextgebonden ontsleutelen |
+| `POST /api/admin/feedback/:id/status` | admin | geversioneerde, idempotente statusovergang |
 
-## HTTP and trust boundaries
+De intake accepteert uitsluitend JSON zonder queryparameters en begrenst de body
+op 32 KiB; moderatie-adminmutaties op 16 KiB en feedback-adminmutaties op 8 KiB.
+De server leidt de actor af uit de
+Google/server-session en hercontroleert targetvisibility in de database. Een
+anonieme actor kan alleen publieke content melden. Support en bezwaar blijven
+bereikbaar na accountschorsing; andere routes falen gesloten.
 
-| Route | Authentication | Purpose |
-|---|---|---|
-| `POST /api/moderation/reports` | Optional | Report content that is visible to the current viewer |
-| `POST /api/feedback` | Required | Product feedback from an authenticated beta user |
-| `POST /api/support` | Optional; reply email required | Support, third-party request or appeal |
+Origin/CSRF, veilige methoden en request-ID worden centraal door de API-router
+afgedwongen. Alleen een geldig eerste `x-vercel-forwarded-for`-IP kan als
+kortstondige rate-limitbron dienen; willekeurige forwarded headers worden niet
+vertrouwd.
 
-All routes require JSON, reject query parameters and cap the body at 32 KiB. Browser
-origin/CSRF enforcement remains centralized in the API router. The intake handler uses
-only the platform-normalized `x-vercel-forwarded-for` header as a possible network
-identifier; arbitrary forwarded headers are ignored. Raw IP addresses and user agents
-are never persisted by this slice.
+## Dataminimalisatie
 
-The service resolves the actor from the server session boundary. It never accepts a
-reporter/user ID from the request. Anonymous reporters can only report public content;
-an authenticated reporter can report private content only when the existing project
-visibility rules grant access. The database revalidates target visibility inside the
-write transaction to close time-of-check/time-of-use gaps.
+Meldingstekst, replyadres, minimale targetsnapshot en support-/feedbacktekst
+worden als contextgebonden AES-GCM-envelopes opgeslagen. Replyadressen krijgen
+een keyed blind index. Plaintext, targets, berichttekst, IP, adres of e-mail hoort
+niet in logs, idempotencykeys, URL's of auditmetadata.
 
-## Data minimization and encryption
+Auditmetadata gebruikt alleen begrensde operationele labels zoals targettype,
+reason/urgency, categorie, anonymous/contact booleans, actor-ID, actie en
+request-ID. De UI-ontvangstcode is geen authenticatiemiddel en geeft geen
+toegang tot meldingstekst.
 
-Free text, reply addresses and the minimal target snapshot are AES-256-GCM envelopes:
+Exacte replay wordt vóór rate limiting herkend. Clientkeys worden aan actor of
+anonieme sourcefingerprint en requestinhoud gebonden; dezelfde key met andere
+inhoud faalt met conflict. Honeypot, strikte enums en maximumlengtes zijn extra
+abusegrenzen.
 
-| Value | Additional authenticated data (AAD) |
-|---|---|
-| Report details | `moderation-report:{reportId}:details` |
-| Report reply address | `moderation-report:{reportId}:contact` |
-| Report target snapshot | `moderation-report:{reportId}:target-snapshot` |
-| Feedback/support message | `feedback-submission:{submissionId}:message` |
-| Support reply address | `feedback-submission:{submissionId}:contact` |
+## Beheer en RBAC
 
-Reply addresses also get a keyed blind index in the `email-recipient` namespace. The
-email worker must decrypt with the exact AAD and recompute that blind index before use.
-Neither plaintext nor reversible contact data belongs in logs, audit metadata,
-idempotency hashes or outbox payloads.
+De actuele rollen zijn `moderator` en `admin`, als tijdelijke/actieve
+databasegrants die server-side aan de ingelogde app-user worden opgelost. Een
+clientclaim, header of profielveld verleent geen beheerrecht. Beheerrechten
+worden alleen met de gecontroleerde migration-owner-CLI verleend of ingetrokken;
+de laatste actieve admin kan niet worden ingetrokken.
 
-Audit events contain only allow-listed operational labels: schema version, target type,
-reason/urgency or support kind/category, whether the submission is anonymous, and
-whether contact information exists. Target content and reporter messages are excluded.
+Rapportstatus is `open`, `triaged`, `investigating`, `resolved` of `dismissed`.
+Acties zijn `hide`, `restore`, `warn`, `suspend`, `block`, `dismiss` en
+`resolve`. `suspend` en `block` zijn admin-only. Iedere actie vereist reden,
+idempotencykey en verwachte rapportversie. `restore` verwijst exact naar één
+eerder niet-teruggedraaide actie.
 
-## Database authorization and integrity
+Verborgen targets verdwijnen ook voor eigenaar en bestaande volgers. Schorsing
+trekt server-owned sessies in en blokkeert writes. Een blokkade heeft voorrang
+op profiel- en projectvisibility. Beheeractie en reverse-relatie blijven
+append-only auditbaar.
 
-Migration `0018_moderation_support_feedback.sql`:
+Feedbackstatus gebruikt de bestaande enum `new`, `triaged`, `planned`,
+`resolved` en `closed`; de UI noemt `triaged` **In behandeling**. Alleen admin
+mag deze PII-bevattende supportstroom openen. Wachtrijresultaten bevatten geen
+bericht, contact, ciphertext, actor-ID, route of hashes; het detail ontsleutelt
+bericht/contact pas nadat HTTP, service én SQL de adminrol hebben bevestigd.
 
-- removes direct `INSERT` RLS policies for browser roles;
-- stores new intake free text in ciphertext columns;
-- adds scoped idempotency/request hashes and receipt constraints;
-- rechecks active actors and target visibility in fixed-search-path,
-  `SECURITY DEFINER` functions;
-- revokes every privileged function from `PUBLIC`;
-- uses advisory transaction locks plus unique partial indexes for exact replay;
-- derives report urgency on the server (`violence` urgent; privacy, sexual or illegal
-  content high; other reasons normal);
-- records PII-free audit and outbox metadata atomically with the intake row.
+## Operationele gates
 
-Only replay/submission functions are part of the web-role allow-list. The community
-receipt loader is intended solely for the dedicated email-worker role and requires the
-exact claimed, unexpired lease owner and exact versioned event payload.
+Vóór brede publieke posting zijn minimaal nodig:
 
-## Receipt email event contracts
+1. benoemde moderatie-, support-, privacy- en escalatie-eigenaars;
+2. goedgekeurd content-/minderjarigen-/privacy-/bezwaar-/evidencebeleid;
+3. geteste rolgrants, ordinary-user denial, queuefilters/cursors en iedere actie;
+4. complete targetvisibility-, block-, restore- en session-revocationprobes;
+5. abuse-, lange/random-input-, keyboard-, mobile- en screenreaderreizen;
+6. een handmatig supportproces dat geen automatische e-mail belooft;
+7. alerting voor urgente open meldingen zonder meldingstekst te loggen.
 
-Report receipt:
-
-```text
-aggregate_type: moderation_report
-event_type: moderation.report.received.requested.v1
-idempotency_key: moderation-report:{reportId}:email:received:v1
-payload: {"schemaVersion":1,"reportId":"…","receiptCode":"MELD-…"}
-```
-
-Support/appeal receipt:
-
-```text
-aggregate_type: feedback_submission
-event_type: support.confirmation.requested.v1
-idempotency_key: feedback-submission:{submissionId}:email:confirmation:v1
-payload: {"schemaVersion":1,"submissionId":"…","kind":"support|third_party_request|appeal","receiptCode":"HELP-…"}
-```
-
-The payloads intentionally contain no email address, message, target content or other
-reporter PII. `app_email_worker_load_community_receipt(eventId, leaseOwner)` returns one
-uniform lease-bound row with aggregate identity, recipient ciphertext, contact hash,
-receipt code, nullable kind, creation time and safe target/category labels.
-
-## Abuse controls and idempotency
-
-Exact idempotent replay is checked before consuming rate limits. Client keys are scoped
-to the authenticated app-user ID or a keyed anonymous source fingerprint, then hashed
-before persistence. Reusing a key with a different request hash fails with a conflict.
-
-Current intake limits are deliberately conservative:
-
-| Intake | Hour | 24 hours |
-|---|---:|---:|
-| Anonymous reports | 3 | 8 |
-| Authenticated reports | 10 | 30 |
-| Authenticated feedback | 10 | 30 |
-| Support / third-party / appeal | 3 | 10 |
-
-The forms also include a honeypot, strict allow-listed enums and maximum lengths. Rate
-limits reduce automated abuse; they are not a substitute for a staffed moderation
-process.
-
-## Production gates
-
-Before enabling broad public posting, Buildy still needs:
-
-1. a named moderation/support owner and coverage schedule;
-2. approved escalation, evidence-retention and law-enforcement procedures;
-3. monitored delivery of receipt events through the dedicated email worker;
-4. a real moderator/admin authorization model before any queue or enforcement action;
-5. age/minor policy, privacy/legal review and launch-approved policy versions;
-6. abuse and accessibility testing with synthetic data;
-7. target-environment proof of the private-beta role grants and registration matrix.
-
-Do not place real personal data in local fixtures, screenshots or test databases.
-
-## Verification
-
-Static and unit coverage lives in:
-
-- `tests/server/moderation.test.ts`
-- `tests/server/moderation-http.test.ts`
-- `tests/db/moderation-migration.test.ts`
-- `tests/db/moderation.integration.test.ts` (alleen met een tijdelijke lokale PostgreSQL-database)
-- `src/test/moderationApi.test.ts`
-- `src/test/moderationComponents.test.tsx`
-
-Run:
-
-```bash
-node --import tsx db/migrate.ts --check
-bun run typecheck
-bunx vitest run tests/server/moderation.test.ts tests/server/moderation-http.test.ts tests/db/moderation-migration.test.ts tests/db/moderation.integration.test.ts src/test/moderationApi.test.ts src/test/moderationComponents.test.tsx
-```
-
-Database integration tests remain conditional on a disposable local PostgreSQL
-database. Static migration validation is useful but does not replace applying all
-migrations and running the authorization probes against that database.
+Gebruik alleen synthetische data. Op deze release-snapshot ontbreekt Preview- en
+role-journeybewijs en was de verplichte Browser MCP-runtime door de huidige
+Codex-gebruikslimiet geblokkeerd. De publieke bèta en productie blijven daarom
+**NO-GO**.

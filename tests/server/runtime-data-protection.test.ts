@@ -11,7 +11,6 @@ function runtime(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
   return {
     APP_ENV: "test",
     APP_ORIGIN: "https://app.buildy.test",
-    CHECKOUT_ENABLED: false,
     NODE_ENV: "test",
     PII_BLIND_INDEX_KEY: randomBytes(32).toString("base64"),
     PII_ENCRYPTION_CURRENT_VERSION: 2,

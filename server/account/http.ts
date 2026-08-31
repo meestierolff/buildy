@@ -17,7 +17,12 @@ export interface AccountHttpService {
   }>;
   exports(actorId: string): Promise<AccountExport[]>;
   createExport(actorId: string, input: unknown): Promise<{ export: AccountExport; replayed: boolean }>;
-  downloadExport(actorId: string, jobId: string): Promise<AccountExportDownload>;
+  downloadExport(
+    actorId: string,
+    jobId: string,
+    rangeHeader?: string | null,
+    headOnly?: boolean,
+  ): Promise<AccountExportDownload>;
   requestDeletion(actorId: string, request: Request, input: unknown): Promise<DeletionMutation>;
 }
 
@@ -69,16 +74,24 @@ function decodedExportId(value: string): string {
 }
 
 function exportHeaders(download: AccountExportDownload): Headers {
-  return new Headers({
+  const headers = new Headers({
+    "accept-ranges": "bytes",
     "cache-control": "private, no-store, max-age=0",
     "content-disposition": `attachment; filename="${download.filename}"`,
-    "content-length": String(download.bytes.byteLength),
+    "content-length": String(download.contentLength),
     "content-type": "application/zip",
     "cross-origin-resource-policy": "same-origin",
     etag: `"sha256-${download.object.sha256}"`,
     "x-buildy-manifest-sha256": download.object.manifestSha256,
     "x-content-type-options": "nosniff",
   });
+  if (download.range) {
+    headers.set(
+      "content-range",
+      `bytes ${download.range.start}-${download.range.end}/${download.object.sizeBytes}`,
+    );
+  }
+  return headers;
 }
 
 function rethrowAccountError(error: unknown): never {
@@ -120,10 +133,12 @@ export function createAccountHttpHandler(dependencies: AccountHttpDependencies) 
         const download = await dependencies.service.downloadExport(
           actorId,
           decodedExportId(downloadMatch[1]),
+          request.headers.get("range"),
+          request.method === "HEAD",
         );
         const headers = exportHeaders(download);
         if (request.method === "HEAD") return new Response(null, { status: 200, headers });
-        return new Response(Uint8Array.from(download.bytes).buffer, { status: 200, headers });
+        return new Response(download.body, { status: download.status, headers });
       }
       if (pathname === "/api/account/deletion" && request.method === "POST") {
         const deletion = await dependencies.service.requestDeletion(

@@ -581,16 +581,17 @@ describeWithDatabase("private beta PostgreSQL boundaries", () => {
       );
 
       const stored = await admin.query<{
+        client_event_id: string;
         event_name: string;
         id: string;
         properties: Record<string, unknown>;
         subject_hash: string;
       }>(`
-        SELECT id, event_name, subject_hash, properties
+        SELECT id, client_event_id, event_name, subject_hash, properties
         FROM public.product_events
-        WHERE event_key = ANY($1::text[])
+        WHERE client_event_id = ANY($1::uuid[])
         ORDER BY event_name
-      `, [validEventIds.map((id) => `product-event:client:${id}`)]);
+      `, [validEventIds]);
       expect(stored.rows).toHaveLength(4);
       expect(stored.rows.map((row) => row.event_name).sort()).toEqual([
         "error_encountered",

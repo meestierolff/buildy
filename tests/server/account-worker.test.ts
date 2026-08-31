@@ -24,6 +24,7 @@ const SOURCE_ASSET_ID = "44444444-4444-4444-8444-444444444444";
 const DELETION_ASSET_ID = "55555555-5555-4555-8555-555555555555";
 const PROJECT_ID = "66666666-6666-4666-8666-666666666666";
 const ORDER_ID = "77777777-7777-4777-8777-777777777777";
+const FEEDBACK_ID = "88888888-8888-4888-8888-888888888888";
 const BUCKET = "buildy-private-media";
 
 const keyring = new DataProtectionKeyring({
@@ -121,6 +122,7 @@ function storageFixture() {
     createUploadUrl: async () => { throw new Error("unused"); },
     completeUpload: async () => { throw new Error("unused"); },
     createDownloadUrl: async () => { throw new Error("workers never create public downloads"); },
+    streamObject: async () => { throw new Error("workers use bounded reads"); },
     readObject: async (key, maximumBytes) => {
       const object = objects.get(key);
       if (!object) throw new ObjectStorageError("OBJECT_NOT_FOUND", "missing");
@@ -179,6 +181,23 @@ function encryptedPayload() {
       ),
       pii_encryption_key_version: 1,
     }],
+    feedback: [{
+      id: FEEDBACK_ID,
+      message: null,
+      message_ciphertext: keyring.encrypt(
+        "De fotoknop reageert niet.",
+        `feedback-submission:${FEEDBACK_ID}:message`,
+      ),
+      contact_ciphertext: keyring.encrypt(
+        "ada@example.com",
+        `feedback-submission:${FEEDBACK_ID}:contact`,
+      ),
+      contact_hash: "a".repeat(64),
+      idempotency_key: "internal-command-key",
+      request_hash: "b".repeat(64),
+      source_fingerprint_hash: "c".repeat(64),
+      assigned_to_id: "99999999-9999-4999-8999-999999999999",
+    }],
   };
 }
 
@@ -195,7 +214,7 @@ function exportJob(sourceBytes: Uint8Array, overrides: Partial<AccountExportJob>
     payload: encryptedPayload(),
     sourceAssets: [{
       id: SOURCE_ASSET_ID,
-      storageProvider: "r2",
+      storageProvider: "vercel_blob",
       bucket: BUCKET,
       objectKey: `originals/44/${SOURCE_ASSET_ID}/original.jpg`,
       contentType: "image/jpeg",
@@ -214,7 +233,7 @@ function deletionJob(overrides: Partial<AccountDeletionAssetJob> = {}): AccountD
     targetId: USER_ID,
     deletionAssetId: DELETION_ASSET_ID,
     mediaAssetId: SOURCE_ASSET_ID,
-    storageProvider: "r2",
+    storageProvider: "vercel_blob",
     bucket: BUCKET,
     objectKey: `originals/44/${SOURCE_ASSET_ID}/original.jpg`,
     expectedSha256: "a".repeat(64),
@@ -279,6 +298,7 @@ describe("AccountLifecycleWorker", () => {
     const data = JSON.parse(new TextDecoder().decode(entries.get("data.json"))) as {
       projectPrivateDetails: Array<Record<string, unknown>>;
       photobookOrders: Array<Record<string, unknown>>;
+      feedback: Array<Record<string, unknown>>;
     };
     expect(data.projectPrivateDetails[0]).toMatchObject({
       address_line_1: "Bouwstraat 12",
@@ -289,6 +309,16 @@ describe("AccountLifecycleWorker", () => {
       customer_email: "ada@example.com",
       shipping_address: { city: "Utrecht", countryCode: "NL" },
     });
+    expect(data.feedback[0]).toMatchObject({
+      id: FEEDBACK_ID,
+      message: "De fotoknop reageert niet.",
+      contact_email: "ada@example.com",
+    });
+    expect(data.feedback[0]).not.toHaveProperty("contact_hash");
+    expect(data.feedback[0]).not.toHaveProperty("idempotency_key");
+    expect(data.feedback[0]).not.toHaveProperty("request_hash");
+    expect(data.feedback[0]).not.toHaveProperty("source_fingerprint_hash");
+    expect(data.feedback[0]).not.toHaveProperty("assigned_to_id");
     expect(JSON.stringify(data)).not.toContain("_ciphertext");
     const manifestBytes = entries.get("manifest.json");
     if (!manifestBytes) throw new Error("Exportmanifest ontbreekt in de test.");

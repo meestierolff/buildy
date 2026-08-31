@@ -1,26 +1,36 @@
-import { Smile } from "lucide-react";
+import { LogIn, Smile } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuth } from "@/hooks/useAuth";
 import { useReactionMutation, useReactionSummary } from "@/hooks/useEngagement";
+import { authPagePath } from "@/lib/authClient";
+import { Link } from "@/lib/router";
 import type { SupportedReactionEmoji } from "../../shared/contracts/engagement";
 import { toast } from "sonner";
 
 const EMOJIS: readonly SupportedReactionEmoji[] = ["👍", "❤️", "🔥", "👏", "🔨"];
 
+function currentPagePath(): string {
+  if (typeof window === "undefined") return "/";
+  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
 interface ReactionBarProps {
   projectId?: string;
   updateId: string;
+  canReact?: boolean;
 }
 
-const ReactionBar = ({ projectId, updateId }: ReactionBarProps) => {
+const ReactionBar = ({ projectId, updateId, canReact = true }: ReactionBarProps) => {
   const { user } = useAuth();
   const available = Boolean(projectId && updateId);
+  const canMutate = canReact && Boolean(user);
+  const signInPath = authPagePath(currentPagePath());
   const reactions = useReactionSummary(projectId ?? "", updateId, available);
   const mutation = useReactionMutation(projectId ?? "", updateId);
 
   const toggle = async (emoji: SupportedReactionEmoji, viewerReacted: boolean) => {
     if (!user) {
-      toast.error("Log in om te reageren");
+      toast.error("Log in met Google om te reageren");
       return;
     }
     if (!projectId || mutation.isPending) return;
@@ -64,7 +74,7 @@ const ReactionBar = ({ projectId, updateId }: ReactionBarProps) => {
 
   return (
     <div className="flex items-center gap-1.5 flex-wrap">
-      {items.map((item) => (
+      {items.map((item) => canMutate ? (
         <button
           key={item.emoji}
           type="button"
@@ -81,8 +91,17 @@ const ReactionBar = ({ projectId, updateId }: ReactionBarProps) => {
           <span aria-hidden="true">{item.emoji}</span>
           <span className="font-medium">{item.count}</span>
         </button>
+      ) : (
+        <span
+          key={item.emoji}
+          className="flex items-center gap-1 rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs"
+          aria-label={`Reactie ${item.emoji}, ${item.count}`}
+        >
+          <span aria-hidden="true">{item.emoji}</span>
+          <span className="font-medium">{item.count}</span>
+        </span>
       ))}
-      <Popover>
+      {canMutate ? <Popover>
         <PopoverTrigger asChild>
           <button
             type="button"
@@ -109,7 +128,16 @@ const ReactionBar = ({ projectId, updateId }: ReactionBarProps) => {
             ))}
           </div>
         </PopoverContent>
-      </Popover>
+      </Popover> : !user ? (
+        <Link
+          to={signInPath}
+          aria-label="Inloggen met Google om te reageren"
+          className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-dashed border-accent/45 px-3 text-xs font-semibold text-accent transition-colors hover:border-accent hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          <LogIn className="h-3.5 w-3.5" aria-hidden="true" />
+          Inloggen met Google
+        </Link>
+      ) : null}
     </div>
   );
 };

@@ -1,12 +1,17 @@
 import {
   profileSearchQuerySchema,
-  type ProjectAccessList,
-  type ProjectSocialState,
+  socialConnectionQuerySchema,
+  type SocialConnectionPage,
   type SocialMutationResult,
   type SocialProfile,
   type SocialProfilePage,
 } from "../../shared/contracts/social.js";
-import { decodeProfileCursor, encodeProfileCursor } from "./cursor.js";
+import {
+  decodeConnectionCursor,
+  decodeProfileCursor,
+  encodeConnectionCursor,
+  encodeProfileCursor,
+} from "./cursor.js";
 import { SocialError } from "./errors.js";
 import type { SocialClock, SocialRepository, SocialViewerId } from "./types.js";
 
@@ -66,16 +71,36 @@ export class SocialService {
     };
   }
 
-  async projectState(actor: string, project: string): Promise<ProjectSocialState> {
-    const state = await this.repository.getProjectState(actorId(actor), targetId(project));
-    if (!state) throw new SocialError("TARGET_NOT_FOUND");
-    return state;
-  }
-
-  async projectAccess(actor: string, project: string): Promise<ProjectAccessList> {
-    const access = await this.repository.listProjectAccess(actorId(actor), targetId(project));
-    if (!access) throw new SocialError("TARGET_NOT_FOUND");
-    return access;
+  async connections(actor: string, rawQuery: unknown): Promise<SocialConnectionPage> {
+    const source = actorId(actor);
+    const query = socialConnectionQuerySchema.parse(rawQuery);
+    const cursor = decodeConnectionCursor(query.cursor, query.view);
+    const rows = await this.repository.listConnections(source, {
+      cursor,
+      limit: query.limit + 1,
+      view: query.view,
+    });
+    const selected = rows.slice(0, query.limit);
+    const last = selected.at(-1);
+    return {
+      items: selected.map(({
+        cursorTimestamp: _cursorTimestamp,
+        totalCount: _totalCount,
+        ...connection
+      }) => connection),
+      nextCursor:
+        rows.length > query.limit && last
+          ? encodeConnectionCursor({
+              id: last.id,
+              kind: "connections",
+              timestamp: last.cursorTimestamp,
+              version: 1,
+              view: query.view,
+            })
+          : null,
+      total: rows[0]?.totalCount ?? 0,
+      view: query.view,
+    };
   }
 
   async followProfile(actor: string, profile: string): Promise<SocialMutationResult> {
@@ -127,52 +152,4 @@ export class SocialService {
     return this.repository.unblockProfile(source, target, this.clock());
   }
 
-  async followProject(actor: string, project: string): Promise<SocialMutationResult> {
-    return this.repository.followProject(actorId(actor), targetId(project), this.clock());
-  }
-
-  async unfollowProject(actor: string, project: string): Promise<SocialMutationResult> {
-    return this.repository.unfollowProject(actorId(actor), targetId(project), this.clock());
-  }
-
-  async requestProjectAccess(actor: string, project: string): Promise<SocialMutationResult> {
-    return this.repository.requestProjectAccess(actorId(actor), targetId(project), this.clock());
-  }
-
-  async cancelProjectAccess(actor: string, project: string): Promise<SocialMutationResult> {
-    return this.repository.cancelProjectAccess(actorId(actor), targetId(project), this.clock());
-  }
-
-  async acceptProjectAccess(
-    actor: string,
-    project: string,
-    requester: string,
-  ): Promise<SocialMutationResult> {
-    const owner = actorId(actor);
-    const source = targetId(requester);
-    differentUsers(owner, source);
-    return this.repository.acceptProjectAccess(owner, targetId(project), source, this.clock());
-  }
-
-  async rejectProjectAccess(
-    actor: string,
-    project: string,
-    requester: string,
-  ): Promise<SocialMutationResult> {
-    const owner = actorId(actor);
-    const source = targetId(requester);
-    differentUsers(owner, source);
-    return this.repository.rejectProjectAccess(owner, targetId(project), source, this.clock());
-  }
-
-  async revokeProjectAccess(
-    actor: string,
-    project: string,
-    requester: string,
-  ): Promise<SocialMutationResult> {
-    const owner = actorId(actor);
-    const source = targetId(requester);
-    differentUsers(owner, source);
-    return this.repository.revokeProjectAccess(owner, targetId(project), source, this.clock());
-  }
 }

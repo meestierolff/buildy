@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 
 import { pathToFileURL } from "node:url";
-import { enqueueMigrationAccountEmail } from "../../server/email/migrationAccountProducer";
-import { DataProtectionKeyring, PrivacyBlindIndex } from "../../server/security/dataProtection";
+import { DataProtectionKeyring } from "../../server/security/dataProtection";
 import {
   applyTargetImport,
   createPool,
@@ -16,7 +15,6 @@ import {
 } from "./database";
 import {
   assertNetworkReadAuthorized,
-  assertStorageWriteAuthorized,
   assertTargetReadAuthorized,
   assertTargetWriteAuthorized,
   assertTrustedEndpoint,
@@ -37,8 +35,6 @@ import {
 } from "./cutover";
 import { buildTargetImportBundle, planLegacyStorage } from "./mapping";
 import {
-  copyStoragePlan,
-  S3MigrationObjectStore,
   type StorageCopyCheckpoint,
   type StorageMigrationPlan,
 } from "./storage";
@@ -236,82 +232,6 @@ interface StoragePlanArtifact {
   plan: StorageMigrationPlan;
 }
 
-async function copyStorageCommand(flags: Arguments): Promise<void> {
-  const planArtifact = await readPayload<StoragePlanArtifact>(required(flag(flags, "plan"), "--plan"));
-  if (planArtifact.kind !== "storage-plan") throw new Error("--plan is geen storage-planartifact.");
-  const id = planArtifact.runId;
-  const previousPath = flag(flags, "checkpoint");
-  const previous = previousPath
-    ? (await readPayload<{ checkpoints: StorageCopyCheckpoint[] }>(previousPath)).payload.checkpoints
-    : [];
-
-  if (!enabled(flags, "execute")) {
-    const result = await copyStoragePlan({
-      execute: false,
-      plan: planArtifact.payload.plan,
-      previous,
-      sourceByBucket: new Map(),
-      target: {} as S3MigrationObjectStore,
-    });
-    const artifact = await writePayload({ flags, kind: "storage-checkpoint", payload: result, runId: id });
-    log({ artifactSha256: artifact.sha256, dryRun: true, output: artifact.path, runId: id, summary: result.summary });
-    return;
-  }
-
-  const sourceEndpoint = required(process.env.LEGACY_STORAGE_S3_ENDPOINT, "LEGACY_STORAGE_S3_ENDPOINT");
-  sourceReadGate(flags, id, sourceEndpoint, {
-    confirmation: process.env.MIGRATION_STORAGE_SOURCE_READ_CONFIRM,
-    expectedHost: required(process.env.MIGRATION_EXPECTED_STORAGE_SOURCE_HOST, "MIGRATION_EXPECTED_STORAGE_SOURCE_HOST"),
-  });
-  const targetEndpoint = required(process.env.R2_MIGRATION_ENDPOINT, "R2_MIGRATION_ENDPOINT");
-  assertStorageWriteAuthorized(targetWriteInput(flags, id, targetEndpoint, {
-    expectedHost: required(process.env.MIGRATION_EXPECTED_STORAGE_TARGET_HOST, "MIGRATION_EXPECTED_STORAGE_TARGET_HOST"),
-    productionConfirmation: process.env.MIGRATION_STORAGE_PRODUCTION_CONFIRM,
-    writeConfirmation: process.env.MIGRATION_STORAGE_WRITE_CONFIRM,
-  }));
-  const sourceConfig = {
-    accessKeyId: required(process.env.LEGACY_STORAGE_ACCESS_KEY_ID, "LEGACY_STORAGE_ACCESS_KEY_ID"),
-    endpoint: sourceEndpoint,
-    region: process.env.LEGACY_STORAGE_REGION ?? "eu-west-1",
-    secretAccessKey: required(process.env.LEGACY_STORAGE_SECRET_ACCESS_KEY, "LEGACY_STORAGE_SECRET_ACCESS_KEY"),
-  };
-  const sourceByBucket = new Map([...new Set(planArtifact.payload.plan.entries.map((entry) => entry.bucket))].map((bucket) => [
-    bucket,
-    new S3MigrationObjectStore({ ...sourceConfig, bucket }),
-  ]));
-  const target = new S3MigrationObjectStore({
-    accessKeyId: required(
-      process.env.R2_MIGRATION_ACCESS_KEY_ID,
-      "R2_MIGRATION_ACCESS_KEY_ID",
-    ),
-    bucket: required(process.env.R2_BUCKET_NAME, "R2_BUCKET_NAME"),
-    endpoint: targetEndpoint,
-    region: "auto",
-    secretAccessKey: required(
-      process.env.R2_MIGRATION_SECRET_ACCESS_KEY,
-      "R2_MIGRATION_SECRET_ACCESS_KEY",
-    ),
-  });
-  const completed: StorageCopyCheckpoint[] = [];
-  const output = flag(flags, "output") ?? defaultArtifactPath(id, "storage-checkpoint");
-  const result = await copyStoragePlan({
-    execute: true,
-    plan: planArtifact.payload.plan,
-    previous,
-    sourceByBucket,
-    target,
-    onCheckpoint: async (checkpoint) => {
-      completed.push(checkpoint);
-      const sealed = sealArtifact({
-        artifactKeyBase64: artifactKey(), kind: "storage-checkpoint", payload: { checkpoints: completed }, runId: id,
-      });
-      await writeSealedArtifact(output, sealed);
-    },
-  });
-  const artifact = await writePayload({ flags: { ...flags, output }, kind: "storage-checkpoint", payload: result, runId: id });
-  log({ artifactSha256: artifact.sha256, output: artifact.path, runId: id, summary: result.summary });
-}
-
 function dataProtection(): { keyring: DataProtectionKeyring; version: number } {
   const raw = required(process.env.PII_ENCRYPTION_KEYS, "PII_ENCRYPTION_KEYS");
   const version = Number(required(process.env.PII_ENCRYPTION_CURRENT_VERSION, "PII_ENCRYPTION_CURRENT_VERSION"));
@@ -321,10 +241,6 @@ function dataProtection(): { keyring: DataProtectionKeyring; version: number } {
     return [Number(key), value];
   }));
   return { keyring: new DataProtectionKeyring({ currentVersion: version, keys }), version };
-}
-
-function recipientBlindIndex(): PrivacyBlindIndex {
-  return new PrivacyBlindIndex(required(process.env.PII_BLIND_INDEX_KEY, "PII_BLIND_INDEX_KEY"));
 }
 
 async function buildImportCommand(flags: Arguments): Promise<void> {
@@ -340,7 +256,10 @@ async function buildImportCommand(flags: Arguments): Promise<void> {
     dataProtectionKeyVersion: protection.version,
     storageCheckpoints: checkpoint.payload.checkpoints,
     storagePlan: plan.payload.plan,
-    targetBucket: required(process.env.R2_BUCKET_NAME, "R2_BUCKET_NAME"),
+    targetStorageNamespace: required(
+      process.env.MIGRATION_TARGET_STORAGE_NAMESPACE,
+      "MIGRATION_TARGET_STORAGE_NAMESPACE",
+    ),
   });
   const artifact = await writePayload({ flags, kind: "target-import", payload: bundle, runId: source.runId });
   log({ artifactSha256: artifact.sha256, output: artifact.path, runId: source.runId, summary: {
@@ -376,80 +295,6 @@ async function applyImportCommand(flags: Arguments): Promise<void> {
   } finally {
     await pool.end();
   }
-}
-
-async function enqueueMigrationAccountMailsCommand(flags: Arguments): Promise<void> {
-  const source = await readPayload<LegacyExportBundle>(required(flag(flags, "source"), "--source"));
-  if (source.kind !== "source-export") throw new Error("--source is geen source-exportartifact.");
-  const eligible = source.payload.auth.records.filter((record) => record.status === "pending");
-  if (!enabled(flags, "execute")) {
-    log({
-      command: "enqueue-migration-account-mails",
-      dryRun: true,
-      eligibleAccounts: eligible.length,
-      recipientAddressesLogged: false,
-      runId: source.runId,
-      writes: false,
-    });
-    return;
-  }
-
-  const targetUrl = required(process.env.DATABASE_DIRECT_URL, "DATABASE_DIRECT_URL");
-  assertTargetWriteAuthorized(targetWriteInput(flags, source.runId, targetUrl));
-  const protection = dataProtection();
-  const blindIndex = recipientBlindIndex();
-  const pool = createPool(targetUrl);
-  const client = await pool.connect();
-  let queued = 0;
-  let replayed = 0;
-  try {
-    await client.query("BEGIN");
-    await client.query("SET LOCAL statement_timeout = '120s'");
-    await client.query("SET LOCAL lock_timeout = '5s'");
-    await client.query("SELECT pg_advisory_xact_lock(hashtextextended('buildy-migration-account-email-v1', 0))");
-    const database = {
-      query: async (queryText: string, values: readonly unknown[]) => {
-        const result = await client.query<Record<string, unknown>>(queryText, [...values]);
-        return { rows: result.rows };
-      },
-    };
-    for (const record of eligible) {
-      const result = await enqueueMigrationAccountEmail(
-        database,
-        protection.keyring,
-        blindIndex,
-        { appUserId: record.appUserId, email: record.email },
-      );
-      if (result.queued) queued += 1;
-      if (result.replayed) replayed += 1;
-    }
-    await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw error;
-  } finally {
-    client.release();
-    await pool.end();
-  }
-
-  const receipt = await writePayload({
-    flags,
-    kind: "migration-account-email-receipt",
-    payload: {
-      eligibleAccounts: eligible.length,
-      queued,
-      replayed,
-      sourceExportSha256: source.sha256,
-    },
-    runId: source.runId,
-  });
-  log({
-    artifactSha256: receipt.sha256,
-    output: receipt.path,
-    recipientAddressesLogged: false,
-    runId: source.runId,
-    summary: { eligibleAccounts: eligible.length, queued, replayed },
-  });
 }
 
 async function deltaCommand(flags: Arguments): Promise<void> {
@@ -551,27 +396,13 @@ function preflightCommand(flags: Arguments): void {
   const id = runId(flags);
   const sourceUrl = process.env.LEGACY_DATABASE_URL;
   const targetUrl = process.env.DATABASE_DIRECT_URL;
-  const storageSourceUrl = process.env.LEGACY_STORAGE_S3_ENDPOINT;
-  const storageTargetUrl = process.env.R2_MIGRATION_ENDPOINT;
   const sourceHost = sourceUrl ? new URL(sourceUrl).hostname : "<MIGRATION_EXPECTED_SOURCE_HOST>";
   const targetHost = targetUrl ? new URL(targetUrl).hostname : "<MIGRATION_EXPECTED_TARGET_HOST>";
-  const storageSourceHost = storageSourceUrl
-    ? new URL(storageSourceUrl).hostname
-    : "<MIGRATION_EXPECTED_STORAGE_SOURCE_HOST>";
-  const storageTargetHost = storageTargetUrl
-    ? new URL(storageTargetUrl).hostname
-    : "<MIGRATION_EXPECTED_STORAGE_TARGET_HOST>";
   if (sourceUrl && process.env.MIGRATION_EXPECTED_SOURCE_HOST) {
     assertTrustedEndpoint(sourceUrl, { allowLocal: true, allowedHostSuffixes: [process.env.MIGRATION_EXPECTED_SOURCE_HOST, "localhost"], expectedHost: process.env.MIGRATION_EXPECTED_SOURCE_HOST, label: "Legacy bron" });
   }
-  if (storageSourceUrl && process.env.MIGRATION_EXPECTED_STORAGE_SOURCE_HOST) {
-    assertTrustedEndpoint(storageSourceUrl, { allowLocal: true, allowedHostSuffixes: [process.env.MIGRATION_EXPECTED_STORAGE_SOURCE_HOST, "localhost"], expectedHost: process.env.MIGRATION_EXPECTED_STORAGE_SOURCE_HOST, label: "Legacy storagebron" });
-  }
   if (targetUrl && process.env.MIGRATION_EXPECTED_TARGET_HOST) {
     assertTrustedEndpoint(targetUrl, { allowLocal: true, allowedHostSuffixes: ["neon.tech", "localhost"], expectedHost: process.env.MIGRATION_EXPECTED_TARGET_HOST, label: "Doeldatabase" });
-  }
-  if (storageTargetUrl && process.env.MIGRATION_EXPECTED_STORAGE_TARGET_HOST) {
-    assertTrustedEndpoint(storageTargetUrl, { allowLocal: true, allowedHostSuffixes: ["r2.cloudflarestorage.com", "localhost"], expectedHost: process.env.MIGRATION_EXPECTED_STORAGE_TARGET_HOST, label: "Doelstorage" });
   }
   if (sourceUrl && targetUrl && new URL(sourceUrl).hostname === new URL(targetUrl).hostname && new URL(sourceUrl).pathname === new URL(targetUrl).pathname) {
     throw new Error("Bron- en doeldatabase mogen niet dezelfde database zijn.");
@@ -583,18 +414,14 @@ function preflightCommand(flags: Arguments): void {
     requiredConfirmations: {
       production: `PRODUCTION-CUTOVER:${id}:${targetHost}`,
       sourceRead: `READ:${id}:${sourceHost}`,
-      storageProduction: `PRODUCTION-CUTOVER:${id}:${storageTargetHost}`,
-      storageSourceRead: `READ:${id}:${storageSourceHost}`,
-      storageTargetWrite: `APPLY:${id}:${environment()}:${storageTargetHost}`,
       targetWrite: `APPLY:${id}:${environment()}:${targetHost}`,
     },
     runId: id,
     configurationPresent: {
       artifactKey: Boolean(process.env.MIGRATION_ARTIFACT_KEY),
       sourceDatabase: Boolean(sourceUrl),
-      sourceStorage: Boolean(storageSourceUrl),
       targetDatabase: Boolean(targetUrl),
-      targetStorage: Boolean(storageTargetUrl),
+      targetStorageNamespace: Boolean(process.env.MIGRATION_TARGET_STORAGE_NAMESPACE),
     },
     writes: false,
   });
@@ -602,9 +429,9 @@ function preflightCommand(flags: Arguments): void {
 
 function help(): void {
   process.stdout.write(`Buildy migratie- en cutovertool\n\n`);
-  process.stdout.write(`Alle providerwrites zijn standaard dry-run. Commando's:\n`);
-  process.stdout.write(`  preflight | inventory | export | plan-storage | copy-storage\n`);
-  process.stdout.write(`  build-import | apply-import | enqueue-migration-account-mails | delta\n`);
+  process.stdout.write(`Alle databasewrites zijn standaard dry-run. Commando's:\n`);
+  process.stdout.write(`  preflight | inventory | export | plan-storage\n`);
+  process.stdout.write(`  build-import | apply-import | delta\n`);
   process.stdout.write(`  reconcile | reconcile-target | rollback-plan\n`);
   process.stdout.write(`  evaluate-cutover | mark-cleanup | verify-artifact\n`);
 }
@@ -616,10 +443,8 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     case "inventory": await inventoryCommand(flags); break;
     case "export": await exportCommand(flags); break;
     case "plan-storage": await planStorageCommand(flags); break;
-    case "copy-storage": await copyStorageCommand(flags); break;
     case "build-import": await buildImportCommand(flags); break;
     case "apply-import": await applyImportCommand(flags); break;
-    case "enqueue-migration-account-mails": await enqueueMigrationAccountMailsCommand(flags); break;
     case "delta": await deltaCommand(flags); break;
     case "reconcile": await reconcileCommand(flags); break;
     case "reconcile-target": await reconcileTargetCommand(flags); break;

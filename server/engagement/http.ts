@@ -1,6 +1,7 @@
 import type {
   CommentMutationResult,
   CommentPage,
+  NotificationMarkAllReadResult,
   NotificationMutationResult,
   NotificationPage,
   ReactionMutationResult,
@@ -8,7 +9,11 @@ import type {
 } from "../../shared/contracts/engagement.js";
 import { HttpError } from "../http/errors.js";
 import { jsonError, jsonSuccess } from "../http/responses.js";
-import type { ProjectActor, ProjectActorResolver } from "../projects/actor.js";
+import type {
+  AuthenticatedProjectActor,
+  ProjectActor,
+  ProjectActorResolver,
+} from "../projects/actor.js";
 import { ProjectError } from "../projects/errors.js";
 import { EngagementError } from "./errors.js";
 
@@ -25,13 +30,13 @@ export interface EngagementHttpService {
     query: unknown,
   ): Promise<CommentPage>;
   createComment(
-    actorId: string,
+    actor: AuthenticatedProjectActor,
     projectId: string,
     updateId: string,
     input: unknown,
   ): Promise<CommentMutationResult>;
   deleteComment(
-    actorId: string,
+    actor: AuthenticatedProjectActor,
     projectId: string,
     updateId: string,
     commentId: string,
@@ -44,18 +49,22 @@ export interface EngagementHttpService {
     query: unknown,
   ): Promise<ReactionSummary>;
   addReaction(
-    actorId: string,
+    actor: AuthenticatedProjectActor,
     projectId: string,
     updateId: string,
     input: unknown,
   ): Promise<ReactionMutationResult>;
   removeReaction(
-    actorId: string,
+    actor: AuthenticatedProjectActor,
     projectId: string,
     updateId: string,
     input: unknown,
   ): Promise<ReactionMutationResult>;
   notifications(actorId: string, query: unknown): Promise<NotificationPage>;
+  markAllNotificationsRead(
+    actorId: string,
+    input: unknown,
+  ): Promise<NotificationMarkAllReadResult>;
   updateNotification(
     actorId: string,
     notificationId: string,
@@ -154,10 +163,16 @@ export function createEngagementHttpHandler(dependencies: EngagementHttpDependen
       const resolvedActorId = actor.kind === "authenticated"
         ? actor.appUserId.toLowerCase()
         : null;
-      const authenticatedActorId = (): string => {
-        if (!resolvedActorId) throw new EngagementError("ACTOR_REQUIRED");
-        return resolvedActorId;
+      const authenticatedActor = (): AuthenticatedProjectActor => {
+        if (actor.kind !== "authenticated" || !resolvedActorId) {
+          throw new EngagementError("ACTOR_REQUIRED");
+        }
+        return {
+          ...actor,
+          appUserId: resolvedActorId,
+        };
       };
+      const authenticatedActorId = (): string => authenticatedActor().appUserId;
       const url = new URL(request.url);
       const pathname = url.pathname.replace(/\/$/, "") || "/";
 
@@ -167,6 +182,15 @@ export function createEngagementHttpHandler(dependencies: EngagementHttpDependen
             await dependencies.service.notifications(
               authenticatedActorId(),
               queryInput(url),
+            ),
+            requestId,
+          );
+        }
+        if (request.method === "PATCH") {
+          return jsonSuccess(
+            await dependencies.service.markAllNotificationsRead(
+              authenticatedActorId(),
+              await jsonInput(request),
             ),
             requestId,
           );
@@ -200,7 +224,7 @@ export function createEngagementHttpHandler(dependencies: EngagementHttpDependen
         }
         if (request.method === "POST") {
           const result = await dependencies.service.createComment(
-            authenticatedActorId(),
+            authenticatedActor(),
             comment.projectId,
             comment.updateId,
             await jsonInput(request),
@@ -211,7 +235,7 @@ export function createEngagementHttpHandler(dependencies: EngagementHttpDependen
       if (comment?.commentId && request.method === "DELETE") {
         return jsonSuccess(
           await dependencies.service.deleteComment(
-            authenticatedActorId(),
+            authenticatedActor(),
             comment.projectId,
             comment.updateId,
             comment.commentId,
@@ -237,7 +261,7 @@ export function createEngagementHttpHandler(dependencies: EngagementHttpDependen
         if (request.method === "PUT") {
           return jsonSuccess(
             await dependencies.service.addReaction(
-              authenticatedActorId(),
+              authenticatedActor(),
               reaction.projectId,
               reaction.updateId,
               await jsonInput(request),
@@ -248,7 +272,7 @@ export function createEngagementHttpHandler(dependencies: EngagementHttpDependen
         if (request.method === "DELETE") {
           return jsonSuccess(
             await dependencies.service.removeReaction(
-              authenticatedActorId(),
+              authenticatedActor(),
               reaction.projectId,
               reaction.updateId,
               await jsonInput(request),

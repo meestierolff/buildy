@@ -7,9 +7,9 @@ export type PhotobookErrorReason =
   | "STALE_DRAFT"
   | "IDEMPOTENCY_CONFLICT"
   | "PROOF_BLOCKED"
+  | "PROOF_UNAVAILABLE"
   | "PROOF_NOT_READY"
   | "PROOF_NOT_APPROVABLE"
-  | "PROOF_NOT_VIEWED"
   | "INVALID_STATE"
   | "WORKER_LEASE_LOST";
 
@@ -48,6 +48,11 @@ const ERROR_DETAILS: Record<PhotobookErrorReason, {
     apiCode: "VALIDATION_FAILED",
     message: "Los eerst de blokkerende printwaarschuwingen op.",
   },
+  PROOF_UNAVAILABLE: {
+    status: 503,
+    apiCode: "PROVIDER_UNAVAILABLE",
+    message: "Printvoorbereiding is niet beschikbaar in deze versie van Buildy.",
+  },
   PROOF_NOT_READY: {
     status: 409,
     apiCode: "CONFLICT",
@@ -57,11 +62,6 @@ const ERROR_DETAILS: Record<PhotobookErrorReason, {
     status: 409,
     apiCode: "CONFLICT",
     message: "Deze printproof kan niet meer worden goedgekeurd.",
-  },
-  PROOF_NOT_VIEWED: {
-    status: 409,
-    apiCode: "CONFLICT",
-    message: "Bekijk eerst de actuele printproof volledig voordat je deze goedkeurt.",
   },
   INVALID_STATE: {
     status: 409,

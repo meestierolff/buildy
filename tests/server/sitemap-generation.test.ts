@@ -44,7 +44,7 @@ describe("provider-neutral sitemap generation", () => {
     const robots = readFileSync(join(output, "robots.txt"), "utf8");
 
     expect(sitemap).toContain("https://buildy.invalid/");
-    expect(sitemap).toContain("https://buildy.invalid/ontdekken");
+    expect(sitemap).not.toContain("/ontdekken</loc>");
     expect(sitemap).not.toContain("/projecten</loc>");
     expect(sitemap).not.toContain("/notificaties</loc>");
     expect(robots).toContain("Disallow: /notificaties");

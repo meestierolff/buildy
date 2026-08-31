@@ -7,6 +7,7 @@ export type AccountErrorReason =
   | "EXPORT_NOT_FOUND"
   | "EXPORT_NOT_READY"
   | "IDEMPOTENCY_CONFLICT"
+  | "INVALID_RANGE"
   | "INVALID_STATE"
   | "REAUTH_REQUIRED"
   | "SESSION_NOT_FOUND"
@@ -48,9 +49,14 @@ const details: Record<AccountErrorReason, { code: ApiErrorCode; message: string;
     message: "De accountactie botst met de huidige accountstatus.",
     status: 409,
   },
+  INVALID_RANGE: {
+    code: "BAD_REQUEST",
+    message: "Dit bytebereik is niet beschikbaar voor de data-export.",
+    status: 416,
+  },
   REAUTH_REQUIRED: {
     code: "FORBIDDEN",
-    message: "Bevestig je wachtwoord of log opnieuw in voordat je je account verwijdert.",
+    message: "Log opnieuw in met Google voordat je je account verwijdert.",
     status: 403,
   },
   SESSION_NOT_FOUND: {
