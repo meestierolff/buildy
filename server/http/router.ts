@@ -1,7 +1,13 @@
 import { ZodError } from "zod";
 import { sql } from "drizzle-orm";
 import { handleDefaultAuthRequest } from "../auth/index.js";
-import { getCapabilities, getProductProfile, getRuntimeConfig, getTrustedOrigins } from "../config/runtime.js";
+import {
+  getCapabilities,
+  getProductProfile,
+  getRuntimeConfig,
+  getTrustedOrigins,
+  publicDemoSupportConfigured,
+} from "../config/runtime.js";
 import { getBuildyDatabase, getBuildyWorkerDatabase, type BuildyDatabase } from "../db/client.js";
 import { HttpError } from "./errors.js";
 import { assertTrustedMutationOrigin } from "./origin.js";
@@ -115,6 +121,40 @@ function findPrefixHandler(pathname: string): RouteHandler | undefined {
   return [...prefixRoutes.entries()]
     .sort(([left], [right]) => right.length - left.length)
     .find(([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`))?.[1];
+}
+
+function handleProfileBoundedModerationRequest(
+  request: Request,
+  requestId: string,
+): Response | Promise<Response> {
+  const pathname = new URL(request.url).pathname.replace(/\/$/, "") || "/";
+  if (
+    getRuntimeConfig().PRODUCT_PROFILE === "public_demo"
+    && pathname !== "/api/support"
+  ) {
+    return jsonError(
+      503,
+      "AUTH_UNAVAILABLE",
+      "Deze functie is niet beschikbaar in de openbare demo.",
+      requestId,
+    );
+  }
+  return handleDefaultModerationRequest(request, requestId);
+}
+
+function handleProfileBoundedAccountCronRequest(
+  request: Request,
+  requestId: string,
+): Response | Promise<Response> {
+  if (getRuntimeConfig().PRODUCT_PROFILE === "public_demo") {
+    return jsonError(
+      503,
+      "AUTH_UNAVAILABLE",
+      "Accountonderhoud is niet actief in de openbare demo.",
+      requestId,
+    );
+  }
+  return handleDefaultAccountCronRequest(request, requestId);
 }
 
 async function workerHasNoTableDml(database: BuildyDatabase): Promise<boolean> {
@@ -237,17 +277,23 @@ registerRoute("GET", "/api/product-profile", (_request, requestId) => {
 registerRoute("GET", "/api/readiness", async (_request, requestId) => {
   const config = getRuntimeConfig();
   const capabilities = getCapabilities(config);
-  const configurationReady =
+  const publicDemo = config.PRODUCT_PROFILE === "public_demo";
+  const publicDemoSupport = publicDemoSupportConfigured(config);
+  const authenticatedConfigurationReady = !publicDemo &&
     capabilities.database === "ready" &&
     capabilities.authentication === "ready" &&
     getServerCompositionStatus() === "ready";
+  const configurationReady = publicDemo
+    ? !publicDemoSupport || getServerCompositionStatus() === "ready"
+    : authenticatedConfigurationReady;
   let database: "pass" | "fail" | "not_checked" = "not_checked";
   let accountWorker: "pass" | "fail" | "not_checked" = "not_checked";
   let mediaWorker: "pass" | "fail" | "not_checked" = "not_checked";
   let paymentWorker: "pass" | "fail" | "not_checked" = "not_checked";
   let photobookWorker: "pass" | "fail" | "not_checked" = "not_checked";
 
-  if (configurationReady && config.DATABASE_URL) {
+  const databaseRequired = !publicDemo || publicDemoSupport;
+  if (databaseRequired && configurationReady && config.DATABASE_URL) {
     try {
       const result = await getBuildyDatabase(config.DATABASE_URL).execute<{ ready: boolean }>(sql`
         select
@@ -385,7 +431,7 @@ registerRoute("GET", "/api/readiness", async (_request, requestId) => {
   }
 
   const ready = configurationReady
-    && database === "pass"
+    && (!databaseRequired || database === "pass")
     && accountWorker !== "fail"
     && mediaWorker !== "fail"
     && paymentWorker !== "fail"
@@ -411,7 +457,7 @@ registerPrefixRoute("/api/auth", handleDefaultAuthRequest);
 registerRoute("GET", "/api/beta/status", handleDefaultBetaRequest);
 registerRoute("POST", "/api/beta/reservations", handleDefaultBetaRequest);
 registerRoute("POST", "/api/product-events", handleDefaultBetaRequest);
-registerRoute("GET", "/api/internal/cron/account-lifecycle", handleDefaultAccountCronRequest);
+registerRoute("GET", "/api/internal/cron/account-lifecycle", handleProfileBoundedAccountCronRequest);
 registerExternalRoute("POST", "/api/webhooks/stripe", handleDefaultStripePaymentWebhook);
 registerRoute("POST", "/api/project-share-links/redeem", handleDefaultProjectShareRequest);
 registerRoute("GET", "/api/projects", handleDefaultProjectRequest);
@@ -501,12 +547,12 @@ registerPatternRoute("POST", "/api/photobooks/proofs/:revisionId/quote", handleD
 registerPatternRoute("POST", "/api/photobooks/proofs/:revisionId/checkout", handleDefaultOrderRequest);
 registerRoute("GET", "/api/orders", handleDefaultOrderRequest);
 registerPatternRoute("GET", "/api/orders/:orderId", handleDefaultOrderRequest);
-registerRoute("POST", "/api/moderation/reports", handleDefaultModerationRequest);
+registerRoute("POST", "/api/moderation/reports", handleProfileBoundedModerationRequest);
 registerPrefixRoute("/api/moderation/admin", handleDefaultModerationAdminRequest);
 registerPrefixRoute("/api/admin/feedback", handleDefaultFeedbackAdminRequest);
 registerPrefixRoute("/api/admin/orders", handleDefaultOrderAdminRequest);
-registerRoute("POST", "/api/feedback", handleDefaultModerationRequest);
-registerRoute("POST", "/api/support", handleDefaultModerationRequest);
+registerRoute("POST", "/api/feedback", handleProfileBoundedModerationRequest);
+registerRoute("POST", "/api/support", handleProfileBoundedModerationRequest);
 
 export async function handleApiRequest(request: Request): Promise<Response> {
   const incomingRequestId = request.headers.get("x-request-id");

@@ -8,7 +8,11 @@ import { BetaRegistrationGate } from "./beta/authGate.js";
 import { PostgresBetaRepository } from "./beta/repository.js";
 import { configureDefaultBetaRuntime, resetDefaultBetaRuntimeForTests } from "./beta/runtime.js";
 import { BetaService } from "./beta/service.js";
-import { getRuntimeConfig, type RuntimeConfig } from "./config/runtime.js";
+import {
+  getRuntimeConfig,
+  publicDemoSupportConfigured,
+  type RuntimeConfig,
+} from "./config/runtime.js";
 import { getBuildyDatabase, getBuildyWorkerDatabase } from "./db/client.js";
 import { HmacOriginalMediaPurposeGrants } from "./media/purposeGrant.js";
 import { StorageBackedMediaUploadRateLimiter } from "./media/rateLimit.js";
@@ -41,7 +45,10 @@ import { KeyringProjectPrivateDetailsProtector } from "./projects/protector.js";
 import { PostgresProjectRepository } from "./projects/repository.js";
 import { configureDefaultProjectRuntime, resetDefaultProjectRuntimeForTests } from "./projects/runtime.js";
 import { ProjectService } from "./projects/service.js";
-import { StrictMappedProjectActorResolver } from "./projects/actor.js";
+import {
+  FailClosedProjectActorResolver,
+  StrictMappedProjectActorResolver,
+} from "./projects/actor.js";
 import { resolveRuntimeDataProtection } from "./security/runtimeDataProtection.js";
 import { StrictMappedSocialActorResolver } from "./social/actor.js";
 import { PostgresSocialRepository } from "./social/repository.js";
@@ -208,6 +215,31 @@ export function ensureServerComposition(): ServerCompositionStatus {
   if (status) return status;
 
   const runtime = getRuntimeConfig();
+  if (runtime.PRODUCT_PROFILE === "public_demo") {
+    if (!publicDemoSupportConfigured(runtime)) {
+      status = "unconfigured";
+      return status;
+    }
+    try {
+      const protection = resolveRuntimeDataProtection(runtime);
+      const database = getBuildyDatabase(runtime.DATABASE_URL!);
+      const rateLimits = new PostgresAuthRateLimitStorage(database, protection.blindIndex);
+      configureDefaultModerationRuntime({
+        actors: new FailClosedProjectActorResolver(),
+        service: new ModerationService(
+          new PostgresModerationRepository(database),
+          rateLimits,
+          protection.keyring,
+          protection.blindIndex,
+        ),
+      });
+      status = "ready";
+    } catch (error) {
+      status = "failed";
+      logEvent("error", "server.composition_failed", safeErrorFields(error));
+    }
+    return status;
+  }
   if (!hasCompleteAuthRuntime(runtime)) {
     status = "unconfigured";
     return status;

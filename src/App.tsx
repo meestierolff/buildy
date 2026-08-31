@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -11,6 +11,11 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { AppShell, LegacyRedirect, MobileNav } from "@/components/app";
 import { getMobileNavigationItems, PRODUCT_ROUTES } from "@/lib/productNavigation";
+import { useProductProfile } from "@/hooks/useProductProfile";
+import {
+  PUBLIC_DEMO_EXAMPLE_BOOK_PATH,
+  PUBLIC_DEMO_EXAMPLE_PROJECT_PATH,
+} from "@/lib/publicDemo";
 
 const Index = lazy(() => import("./pages/Index"));
 const OnboardingDialog = lazy(() => import("@/components/app/OnboardingDialog"));
@@ -43,6 +48,13 @@ const NewUpdate = lazy(() => import("./pages/NewUpdate"));
 const Notifications = lazy(() => import("./pages/Notifications"));
 const ShareLinkRedeem = lazy(() => import("./pages/ShareLinkRedeem"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+const PublicDemoDeferred = lazy(() => import("./pages/PublicDemoDeferred"));
+const PublicExampleRenovation = lazy(() => import("./pages/PublicDemoExample").then((module) => ({
+  default: module.PublicExampleRenovation,
+})));
+const PublicExampleBook = lazy(() => import("./pages/PublicDemoExample").then((module) => ({
+  default: module.PublicExampleBook,
+})));
 
 const RouteFallback = () => (
   <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-live="polite">
@@ -56,10 +68,21 @@ const routeParam = (
   key: string,
 ): string | null => params[key]?.trim() || null;
 
-const ApplicationFrame = () => {
+const ApplicationFrame = ({
+  publicDemo,
+  publicFeedbackEnabled,
+}: {
+  publicDemo: boolean;
+  publicFeedbackEnabled: boolean;
+}) => {
   const { user } = useAuth();
-  const dashboardQuery = useProjectDashboard(Boolean(user));
-  const { pathname } = useLocation();
+  const dashboardQuery = useProjectDashboard(!publicDemo && Boolean(user));
+  const { hash, pathname } = useLocation();
+  useEffect(() => {
+    if (!publicDemo || hash) return undefined;
+    const frame = window.requestAnimationFrame(() => window.scrollTo({ left: 0, top: 0 }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [hash, pathname, publicDemo]);
   const hidesMobileNavigation = pathname === "/auth";
   const activeProjectId = dashboardQuery.data?.pages
     .flatMap((page) => page.items)
@@ -82,8 +105,8 @@ const ApplicationFrame = () => {
   return (
     <>
       <AppShell
-        header={<Header activeProjectId={activeProjectId} />}
-        footer={<Footer />}
+        header={<Header activeProjectId={activeProjectId} publicDemo={publicDemo} />}
+        footer={<Footer feedbackEnabled={publicFeedbackEnabled} publicDemo={publicDemo} />}
         mobileNavigation={!user || hidesMobileNavigation ? undefined : (
           <MobileNav items={navigationItems} label="Mobiele navigatie" />
         )}
@@ -91,62 +114,65 @@ const ApplicationFrame = () => {
         <ErrorBoundary>
           <Suspense fallback={<RouteFallback />}>
             <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/ontdekken" element={<Index />} />
-              <Route path="/projecten" element={<Index />} />
-              <Route path="/auth" element={<Auth />} />
-              <Route path="/account" element={<Navigate to={PRODUCT_ROUTES.ownProfile} replace />} />
-              <Route path="/project/nieuw" element={<NewTrip />} />
-              <Route path="/update/nieuw" element={<NewUpdate />} />
-              <Route path="/project/:id/bouwboek" element={<Photobook />} />
-              <Route path="/project/:id/budget" element={<Budget />} />
-              <Route path="/project/:id" element={<TripDetail />} />
-              <Route path="/volgend" element={<Favorites />} />
-              <Route path="/connecties" element={<Friends />} />
-              <Route path="/profiel" element={<AccountSettings />} />
-              <Route path="/profiel/:profileKey" element={<Profile />} />
-              <Route path="/notificaties" element={<Notifications />} />
-              <Route path="/delen" element={<ShareLinkRedeem />} />
-              <Route path="/trips/new" element={<LegacyRedirect resolve={() => PRODUCT_ROUTES.newProject} />} />
-              <Route path="/trip/:id/photobook" element={<LegacyRedirect resolve={(params) => {
+              <Route path="/" element={<Index feedbackEnabled={publicFeedbackEnabled} publicDemo={publicDemo} />} />
+              <Route path={PUBLIC_DEMO_EXAMPLE_PROJECT_PATH} element={publicDemo ? <PublicExampleRenovation /> : <NotFound />} />
+              <Route path={PUBLIC_DEMO_EXAMPLE_BOOK_PATH} element={publicDemo ? <PublicExampleBook /> : <NotFound />} />
+              <Route path="/ontdekken" element={publicDemo ? <Navigate to={PUBLIC_DEMO_EXAMPLE_PROJECT_PATH} replace /> : <Index />} />
+              <Route path="/projecten" element={publicDemo ? <PublicDemoDeferred /> : <Index />} />
+              <Route path="/auth" element={publicDemo ? <PublicDemoDeferred /> : <Auth />} />
+              <Route path="/account" element={publicDemo ? <PublicDemoDeferred /> : <Navigate to={PRODUCT_ROUTES.ownProfile} replace />} />
+              <Route path="/project/nieuw" element={publicDemo ? <PublicDemoDeferred /> : <NewTrip />} />
+              <Route path="/update/nieuw" element={publicDemo ? <PublicDemoDeferred /> : <NewUpdate />} />
+              <Route path="/project/:id/bouwboek" element={publicDemo ? <PublicDemoDeferred /> : <Photobook />} />
+              <Route path="/project/:id/budget" element={publicDemo ? <PublicDemoDeferred /> : <Budget />} />
+              <Route path="/project/:id" element={publicDemo ? <PublicDemoDeferred /> : <TripDetail />} />
+              <Route path="/volgend" element={publicDemo ? <PublicDemoDeferred /> : <Favorites />} />
+              <Route path="/connecties" element={publicDemo ? <PublicDemoDeferred /> : <Friends />} />
+              <Route path="/profiel" element={publicDemo ? <PublicDemoDeferred /> : <AccountSettings />} />
+              <Route path="/profiel/:profileKey" element={publicDemo ? <PublicDemoDeferred /> : <Profile />} />
+              <Route path="/notificaties" element={publicDemo ? <PublicDemoDeferred /> : <Notifications />} />
+              <Route path="/meldingen" element={publicDemo ? <PublicDemoDeferred /> : <NotFound />} />
+              <Route path="/delen" element={publicDemo ? <PublicDemoDeferred /> : <ShareLinkRedeem />} />
+              <Route path="/trips/new" element={publicDemo ? <PublicDemoDeferred /> : <LegacyRedirect resolve={() => PRODUCT_ROUTES.newProject} />} />
+              <Route path="/trip/:id/photobook" element={publicDemo ? <PublicDemoDeferred /> : <LegacyRedirect resolve={(params) => {
                 const id = routeParam(params, "id");
                 return id ? PRODUCT_ROUTES.projectPhotobook(id) : null;
               }} />} />
-              <Route path="/projecten/:id/bouwboek" element={<LegacyRedirect resolve={(params) => {
+              <Route path="/projecten/:id/bouwboek" element={publicDemo ? <PublicDemoDeferred /> : <LegacyRedirect resolve={(params) => {
                 const id = routeParam(params, "id");
                 return id ? PRODUCT_ROUTES.projectPhotobook(id) : null;
               }} />} />
-              <Route path="/trip/:id/budget" element={<LegacyRedirect resolve={(params) => {
+              <Route path="/trip/:id/budget" element={publicDemo ? <PublicDemoDeferred /> : <LegacyRedirect resolve={(params) => {
                 const id = routeParam(params, "id");
                 return id ? PRODUCT_ROUTES.projectBudget(id) : null;
               }} />} />
-              <Route path="/trip/:id" element={<LegacyRedirect resolve={(params) => {
+              <Route path="/trip/:id" element={publicDemo ? <PublicDemoDeferred /> : <LegacyRedirect resolve={(params) => {
                 const id = routeParam(params, "id");
                 return id ? PRODUCT_ROUTES.project(id) : null;
               }} />} />
-              <Route path="/favorieten" element={<LegacyRedirect resolve={() => PRODUCT_ROUTES.following} />} />
-              <Route path="/vrienden" element={<LegacyRedirect resolve={() => PRODUCT_ROUTES.connections} />} />
-              <Route path="/profile/:profileKey" element={<LegacyRedirect resolve={(params) => {
+              <Route path="/favorieten" element={publicDemo ? <PublicDemoDeferred /> : <LegacyRedirect resolve={() => PRODUCT_ROUTES.following} />} />
+              <Route path="/vrienden" element={publicDemo ? <PublicDemoDeferred /> : <LegacyRedirect resolve={() => PRODUCT_ROUTES.connections} />} />
+              <Route path="/profile/:profileKey" element={publicDemo ? <PublicDemoDeferred /> : <LegacyRedirect resolve={(params) => {
                 const profileKey = routeParam(params, "profileKey");
                 return profileKey ? PRODUCT_ROUTES.profile(profileKey) : null;
               }} />} />
-              <Route path="/bestelling/:orderId" element={<OrderConfirmation />} />
-              <Route path="/bestellingen" element={<Orders />} />
-              <Route path="/bestellingen/:orderId" element={<OrderConfirmation />} />
+              <Route path="/bestelling/:orderId" element={publicDemo ? <PublicDemoDeferred /> : <OrderConfirmation />} />
+              <Route path="/bestellingen" element={publicDemo ? <PublicDemoDeferred /> : <Orders />} />
+              <Route path="/bestellingen/:orderId" element={publicDemo ? <PublicDemoDeferred /> : <OrderConfirmation />} />
               <Route path="/voorwaarden" element={<Terms />} />
               <Route path="/privacy" element={<Privacy />} />
               <Route path="/herroeping" element={<Withdrawal />} />
               <Route path="/contentbeleid" element={<ContentPolicy />} />
               <Route path="/huisregels" element={<HouseRules />} />
-              <Route path="/support" element={<Support />} />
-              <Route path="/feedback" element={<Feedback />} />
-              <Route path="/melden" element={<Report />} />
-              <Route path="/beheer/moderatie" element={<ModerationAdmin />} />
-              <Route path="/beheer/moderatie/:reportId" element={<ModerationAdmin />} />
-              <Route path="/beheer/bestellingen" element={<OrderAdmin />} />
-              <Route path="/beheer/bestellingen/:orderId" element={<OrderAdmin />} />
-              <Route path="/beheer/feedback" element={<FeedbackAdmin />} />
-              <Route path="/beheer/feedback/:submissionId" element={<FeedbackAdmin />} />
+              <Route path="/support" element={publicDemo && !publicFeedbackEnabled ? <Navigate to="/" replace /> : <Support publicDemo={publicDemo} />} />
+              <Route path="/feedback" element={publicDemo ? <Navigate to={publicFeedbackEnabled ? "/support" : "/"} replace /> : <Feedback />} />
+              <Route path="/melden" element={publicDemo ? <PublicDemoDeferred /> : <Report />} />
+              <Route path="/beheer/moderatie" element={publicDemo ? <PublicDemoDeferred /> : <ModerationAdmin />} />
+              <Route path="/beheer/moderatie/:reportId" element={publicDemo ? <PublicDemoDeferred /> : <ModerationAdmin />} />
+              <Route path="/beheer/bestellingen" element={publicDemo ? <PublicDemoDeferred /> : <OrderAdmin />} />
+              <Route path="/beheer/bestellingen/:orderId" element={publicDemo ? <PublicDemoDeferred /> : <OrderAdmin />} />
+              <Route path="/beheer/feedback" element={publicDemo ? <PublicDemoDeferred /> : <FeedbackAdmin />} />
+              <Route path="/beheer/feedback/:submissionId" element={publicDemo ? <PublicDemoDeferred /> : <FeedbackAdmin />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
@@ -169,14 +195,47 @@ const ApplicationFrame = () => {
   );
 };
 
+const ProductProfileApplication = () => {
+  const profileQuery = useProductProfile();
+
+  if (profileQuery.isPending) return <RouteFallback />;
+  if (profileQuery.isError || !profileQuery.data) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#F7F2E9] px-6 text-center">
+        <div className="max-w-lg">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#A94E36]">Buildy</p>
+          <h1 className="mt-3 font-serif text-4xl text-[#26231F]">De demo kon niet veilig worden geladen.</h1>
+          <p className="mt-4 text-sm leading-6 text-[#655F57]">Vernieuw de productstatus en probeer het opnieuw.</p>
+          <button
+            type="button"
+            onClick={() => void profileQuery.refetch()}
+            className="mt-6 min-h-11 rounded-md bg-[#A94E36] px-5 text-sm font-semibold text-white hover:bg-[#8F3F2C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          >
+            Opnieuw proberen
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const publicDemo = profileQuery.data.profile === "public_demo";
+  const publicFeedbackEnabled = publicDemo && profileQuery.data.capabilities.feedback;
+  return (
+    <AuthProvider enabled={!publicDemo}>
+      <ApplicationFrame
+        publicDemo={publicDemo}
+        publicFeedbackEnabled={publicFeedbackEnabled}
+      />
+    </AuthProvider>
+  );
+};
+
 const App = () => (
   <TooltipProvider>
     <Toaster />
     <Sonner />
     <BrowserRouter>
-      <AuthProvider>
-        <ApplicationFrame />
-      </AuthProvider>
+      <ProductProfileApplication />
     </BrowserRouter>
   </TooltipProvider>
 );

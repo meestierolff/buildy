@@ -1,8 +1,13 @@
 // @vitest-environment node
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeConfig } from "../../server/config/runtime";
-import { getCapabilities, getProductProfile } from "../../server/config/runtime";
+import {
+  getCapabilities,
+  getProductProfile,
+  getRuntimeConfig,
+  resetRuntimeConfigForTests,
+} from "../../server/config/runtime";
 
 const priceMatrix = JSON.stringify({
   version: 1,
@@ -76,6 +81,18 @@ function configured(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
 }
 
 describe("product profile", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    resetRuntimeConfigForTests();
+  });
+
+  it("accepts public_demo as the single unauthenticated runtime profile", () => {
+    vi.stubEnv("PRODUCT_PROFILE", "public_demo");
+    resetRuntimeConfigForTests();
+
+    expect(getRuntimeConfig().PRODUCT_PROFILE).toBe("public_demo");
+  });
+
   it("publishes the server-owned feedback-beta profile", () => {
     const profile = getProductProfile(configured());
 
@@ -94,6 +111,80 @@ describe("product profile", () => {
 
     expect(profile.capabilities.media).toBe(false);
     expect(profile.capabilities.photobookPreview).toBe(true);
+  });
+
+  it("publishes a provider-independent public demo without account or social promises", () => {
+    const runtime = configured({
+      PRODUCT_PROFILE: "public_demo",
+      BETA_MODE: true,
+      CHECKOUT_MODE: "test",
+    });
+    const capabilities = getCapabilities(runtime);
+    const profile = getProductProfile(runtime);
+
+    expect(capabilities).toMatchObject({
+      database: "ready",
+      authentication: "disabled",
+      accountLifecycle: "disabled",
+      media: "disabled",
+      photobooks: "disabled",
+      email: "disabled",
+      payments: "disabled",
+      printFulfilment: "disabled",
+      privateBeta: "disabled",
+    });
+    expect(profile).toEqual({
+      profile: "public_demo",
+      checkoutMode: "off",
+      betaMode: false,
+      inviteRequiredForNewAccounts: false,
+      capabilities: {
+        googleSignIn: false,
+        emailAuth: false,
+        renovations: false,
+        updates: false,
+        story: false,
+        media: false,
+        photobookPreview: true,
+        sharing: false,
+        feedback: true,
+        accountDeletion: false,
+        checkout: false,
+      },
+    });
+  });
+
+  it("keeps the static demo available when every account provider is absent", () => {
+    const runtime = configured({
+      PRODUCT_PROFILE: "public_demo",
+      DATABASE_URL: undefined,
+      DATABASE_ACCOUNT_WORKER_URL: undefined,
+      DATABASE_MEDIA_WORKER_URL: undefined,
+      DATABASE_PHOTOBOOK_WORKER_URL: undefined,
+      GOOGLE_CLIENT_ID: undefined,
+      GOOGLE_CLIENT_SECRET: undefined,
+      BLOB_READ_WRITE_TOKEN: undefined,
+    });
+
+    expect(getCapabilities(runtime)).toMatchObject({
+      database: "unconfigured",
+      authentication: "disabled",
+      accountLifecycle: "disabled",
+      media: "disabled",
+      photobooks: "disabled",
+    });
+    expect(getProductProfile(runtime).capabilities).toMatchObject({
+      googleSignIn: false,
+      renovations: false,
+      updates: false,
+      story: false,
+      media: false,
+      photobookPreview: true,
+      sharing: false,
+      feedback: false,
+      accountDeletion: false,
+      checkout: false,
+    });
   });
 
   it("publishes approved Stripe Checkout while automated fulfilment remains disabled", () => {

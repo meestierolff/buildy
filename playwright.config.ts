@@ -14,6 +14,7 @@ const useRealStaging = playwrightMode === "staging-real";
 const configuredBaseURL = process.env.PLAYWRIGHT_BASE_URL?.trim();
 const configuredStorageState = process.env.PLAYWRIGHT_STORAGE_STATE?.trim();
 const configuredStagingProjectId = process.env.PLAYWRIGHT_STAGING_PROJECT_ID?.trim();
+const vercelAutomationBypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
 
 if (useRealStaging) {
   if (!configuredBaseURL) throw new Error("PLAYWRIGHT_BASE_URL is verplicht voor staging-real.");
@@ -41,6 +42,8 @@ const devCommand = "bun run dev:web -- --host 127.0.0.1 --port 8090";
 const previewCommand = "bunx vite preview --host 127.0.0.1 --port 8090 --strictPort";
 const crossBrowserCoreTestMatch =
   /(?:canonical-routes|discovery|friends-follow|landing-photo-handoff|photobook|project-detail|project-registration-synthetic|project-share-link|public-accessibility)\.e2e\.ts/;
+const mobileChromiumTestMatch =
+  /(?:canonical-routes|discovery|friends-follow|landing-photo-handoff|photobook|project-detail|project-registration-synthetic|project-share-link|public-accessibility|public-demo)\.e2e\.ts/;
 
 const desktopViewport = { width: 1440, height: 1000 } as const;
 const tabletViewport = { width: 768, height: 1024 } as const;
@@ -60,6 +63,9 @@ export default defineConfig({
   use: {
     baseURL,
     storageState: process.env.PLAYWRIGHT_STORAGE_STATE || undefined,
+    extraHTTPHeaders: vercelAutomationBypassSecret
+      ? { "x-vercel-protection-bypass": vercelAutomationBypassSecret }
+      : undefined,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
@@ -97,7 +103,7 @@ export default defineConfig({
     },
     {
       name: "mobile-chromium",
-      testMatch: crossBrowserCoreTestMatch,
+      testMatch: mobileChromiumTestMatch,
       use: { ...devices["Pixel 5"], viewport: mobileViewport },
     },
     {

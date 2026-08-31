@@ -4,12 +4,17 @@ import { describe, expect, it } from "vitest";
 
 import {
   freeMvpReadinessFailures,
+  launchReadinessFailures,
   parseLaunchCliArguments,
   requireExpectedGitSha,
   requireSyntheticStagingEmail,
   verifyDeployedGitSha,
   verifyFreeMvpCapabilities,
   verifyFreeMvpProductProfile,
+  verifyLaunchCapabilities,
+  verifyLaunchProductProfile,
+  verifyPublicDemoCapabilities,
+  verifyPublicDemoProductProfile,
   verifySyntheticSessionEmail,
 } from "../../scripts/release-gates.mjs";
 
@@ -129,6 +134,56 @@ describe("deployment release identity gates", () => {
       .toThrow("CHECKOUT_MODE moet off");
   });
 
+  it("requires the exact provider-independent public demo profile", () => {
+    const capabilities = {
+      database: "unconfigured",
+      authentication: "disabled",
+      accountLifecycle: "disabled",
+      media: "disabled",
+      photobooks: "disabled",
+      email: "disabled",
+      payments: "disabled",
+      printFulfilment: "disabled",
+      privateBeta: "disabled",
+    };
+    const profile = {
+      profile: "public_demo",
+      checkoutMode: "off",
+      betaMode: false,
+      inviteRequiredForNewAccounts: false,
+      capabilities: {
+        googleSignIn: false,
+        emailAuth: false,
+        renovations: false,
+        updates: false,
+        story: false,
+        media: false,
+        photobookPreview: true,
+        sharing: false,
+        feedback: true,
+        accountDeletion: false,
+        checkout: false,
+      },
+    };
+
+    expect(() => verifyPublicDemoCapabilities(capabilities)).not.toThrow();
+    expect(() => verifyLaunchCapabilities(capabilities, "public_demo")).not.toThrow();
+    expect(() => verifyPublicDemoProductProfile(profile)).not.toThrow();
+    expect(() => verifyLaunchProductProfile(profile)).not.toThrow();
+    expect(() => verifyPublicDemoCapabilities({ ...capabilities, authentication: "ready" }))
+      .toThrow("authentication moet disabled");
+    expect(() => verifyPublicDemoProductProfile({
+      ...profile,
+      capabilities: { ...profile.capabilities, checkout: true },
+    })).toThrow("checkout moet uit staan");
+    expect(() => verifyPublicDemoProductProfile({
+      ...profile,
+      capabilities: { ...profile.capabilities, feedback: false },
+    })).toThrow("veilige supportroute");
+    expect(() => verifyPublicDemoProductProfile({ ...profile, profile: "feedback_beta" }))
+      .toThrow("PRODUCT_PROFILE moet public_demo");
+  });
+
   it("requires active runtime workers but allows dormant commerce and print workers", () => {
     const checks = {
       configuration: "pass",
@@ -144,6 +199,18 @@ describe("deployment release identity gates", () => {
       .toEqual(["mediaWorker=not_checked"]);
     expect(freeMvpReadinessFailures({ ...checks, paymentWorker: "fail" }))
       .toEqual(["paymentWorker=fail"]);
+    expect(launchReadinessFailures({
+      configuration: "pass",
+      database: "not_checked",
+      accountWorker: "not_checked",
+      mediaWorker: "not_checked",
+      paymentWorker: "not_checked",
+      photobookWorker: "not_checked",
+    }, "public_demo")).toEqual([]);
+    expect(launchReadinessFailures({
+      configuration: "pass",
+      database: "fail",
+    }, "public_demo")).toEqual(["database=fail"]);
   });
 
   it("accepts only a dedicated non-personal staging account and binds the live session to it", () => {

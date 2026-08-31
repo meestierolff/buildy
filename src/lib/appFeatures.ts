@@ -1,8 +1,11 @@
-import type { ProductProfile } from "../../shared/contracts/productProfile";
+import type {
+  ProductProfile,
+  ProductProfileName,
+} from "../../shared/contracts/productProfile";
 import { useProductProfile } from "@/hooks/useProductProfile";
 
 export type AppFeatures = {
-  profile: "feedback_beta";
+  profile: ProductProfileName;
   betaMode: boolean;
   inviteRequiredForNewAccounts: boolean;
   emailAuthEnabled: boolean;

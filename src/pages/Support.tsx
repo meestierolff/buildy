@@ -3,22 +3,24 @@ import SupportForm from "@/components/moderation/SupportForm";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { Link } from "@/lib/router";
 
-const Support = () => {
+const Support = ({ publicDemo = false }: { publicDemo?: boolean }) => {
   usePageMeta({
-    title: "Support en verzoeken — Buildy",
-    description: "Stel een supportvraag, doe een privacyverzoek als derde of maak bezwaar tegen een contentbesluit.",
+    title: publicDemo ? "Geef feedback — Buildy" : "Support en verzoeken — Buildy",
+    description: publicDemo
+      ? "Deel feedback over de openbare Buildy-demo of vraag vroege toegang."
+      : "Stel een supportvraag, doe een privacyverzoek als derde of maak bezwaar tegen een contentbesluit.",
     path: "/support",
     noIndex: true,
   });
   return (
     <main className="mx-auto grid max-w-6xl gap-10 px-4 py-10 sm:px-6 md:grid-cols-[0.8fr_1.2fr] md:px-8 md:py-16">
       <section>
-        <p className="eyebrow flex items-center gap-2"><LifeBuoy className="h-4 w-4" aria-hidden="true" /> Support</p>
-        <h1 className="mt-3 font-serif text-4xl leading-tight sm:text-5xl">Waar kunnen we naar kijken?</h1>
+        <p className="eyebrow flex items-center gap-2"><LifeBuoy className="h-4 w-4" aria-hidden="true" /> {publicDemo ? "Buildy bètafeedback" : "Support"}</p>
+        <h1 className="mt-3 font-serif text-4xl leading-tight sm:text-5xl">{publicDemo ? "Wat vind je van de demo?" : "Waar kunnen we naar kijken?"}</h1>
         <p className="mt-5 max-w-xl leading-7 text-muted-foreground">
-          Dit formulier is er voor account- en productvragen, verzoeken van mensen die op
-          een foto of in tekst voorkomen, en bezwaar tegen een contentbesluit. Je hebt geen
-          account nodig.
+          {publicDemo
+            ? "Deel wat goed werkt, wat nog onduidelijk is of vraag vroege toegang. Je contactadres wordt alleen gebruikt om op dit bericht te reageren."
+            : "Dit formulier is er voor account- en productvragen, verzoeken van mensen die op een foto of in tekst voorkomen, en bezwaar tegen een contentbesluit. Je hebt geen account nodig."}
         </p>
         <div className="mt-8 border-l-2 border-amber-600 bg-amber-500/5 p-4 text-sm leading-6">
           <p className="flex gap-2 font-semibold"><ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /> Geen noodkanaal</p>
@@ -30,7 +32,7 @@ const Support = () => {
         </nav>
       </section>
       <section className="border-y border-border bg-card/50 p-5 sm:p-8" aria-label="Supportformulier">
-        <SupportForm />
+        <SupportForm publicDemo={publicDemo} />
       </section>
     </main>
   );

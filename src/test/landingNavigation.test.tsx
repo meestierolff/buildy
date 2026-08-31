@@ -38,6 +38,16 @@ describe("landing- en productnavigatie", () => {
     expect(screen.queryByRole("link", { name: /ontdek/i })).not.toBeInTheDocument();
   });
 
+  it("toont in de openbare demo alleen de twee ankers en lokale foto-CTA", () => {
+    render(<BrowserRouter><Header publicDemo /></BrowserRouter>);
+
+    expect(screen.getByRole("link", { name: "Buildy" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "Hoe werkt het?" })).toHaveAttribute("href", "/#zo-werkt-het");
+    expect(screen.getByRole("link", { name: "Bekijk voorbeeld" })).toHaveAttribute("href", "/#voorbeeld");
+    expect(screen.getByRole("link", { name: "Probeer met je bouwfoto" })).toHaveAttribute("href", "/#probeer-buildy");
+    expect(screen.queryByRole("link", { name: /inloggen|registreren|start je account|mijn verbouwing/i })).not.toBeInTheDocument();
+  });
+
   it("toont ingelogd alleen de vier primaire desktopbestemmingen", () => {
     vi.mocked(useAuth).mockReturnValue({
       user: {

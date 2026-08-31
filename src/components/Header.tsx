@@ -6,9 +6,10 @@ import { Link, NavLink } from "@/lib/router";
 
 type HeaderProps = {
   activeProjectId?: string;
+  publicDemo?: boolean;
 };
 
-const Header = ({ activeProjectId }: HeaderProps) => {
+const Header = ({ activeProjectId, publicDemo = false }: HeaderProps) => {
   const { user } = useAuth();
   const storyHref = activeProjectId
     ? PRODUCT_ROUTES.project(activeProjectId)
@@ -33,10 +34,19 @@ const Header = ({ activeProjectId }: HeaderProps) => {
     <div className="mx-auto flex min-h-[4.5rem] max-w-7xl flex-wrap items-center justify-between gap-x-3 px-4 text-foreground sm:px-6 md:px-8">
       <BrandLogo
         imageClassName="h-8 w-8 rounded-md shadow-none"
+        nativeNavigation={publicDemo}
         textClassName="hidden min-[360px]:inline"
       />
 
-      {user ? (
+      {publicDemo ? (
+        <nav
+          className="order-3 flex w-full items-center justify-center gap-3 border-t border-border/60 py-1 sm:order-none sm:w-auto sm:border-0 sm:py-0"
+          aria-label="Hoofdnavigatie"
+        >
+          <a href="/#zo-werkt-het" className={quietLinkClass}>Hoe werkt het?</a>
+          <a href="/#voorbeeld" className={quietLinkClass}>Bekijk voorbeeld</a>
+        </nav>
+      ) : user ? (
         <nav className="hidden items-center gap-2 lg:flex" aria-label="Hoofdnavigatie">
           <NavLink to={storyHref} end className={navLinkClass}>Mijn verbouwing</NavLink>
           <Link to={updateHref} className={quietLinkClass}>Bouwmoment toevoegen</Link>
@@ -53,7 +63,11 @@ const Header = ({ activeProjectId }: HeaderProps) => {
         </nav>
       )}
 
-      {!user ? (
+      {publicDemo ? (
+        <Button asChild className="min-h-11 bg-[#A94E36] px-3 text-xs text-white hover:bg-[#8F3F2C] sm:px-4 sm:text-sm">
+          <a href="/#probeer-buildy">Probeer met je bouwfoto</a>
+        </Button>
+      ) : !user ? (
         <div className="flex items-center gap-1 sm:gap-2">
           <Link
             to="/auth"

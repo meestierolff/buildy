@@ -77,9 +77,44 @@ describe("lokale foto-demo", () => {
       target: { files: [documentFile] },
     });
 
-    expect(screen.getByRole("alert")).toHaveTextContent(/Kies een JPG-, PNG-, WebP-, AVIF-, HEIC- of HEIF-foto/i);
+    expect(screen.getByRole("alert")).toHaveTextContent(/bestandstype wordt niet ondersteund/i);
     expect(createObjectUrl).not.toHaveBeenCalled();
     expect(screen.queryByRole("link", { name: /doorgaan met google/i })).not.toBeInTheDocument();
+  });
+
+  it("houdt de public-demo foto volledig lokaal zonder accountvervolg", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<BrowserRouter><LocalPhotoDemo feedbackEnabled publicDemo /></BrowserRouter>);
+    const photo = new File(["lokale foto"], "privenaam-en-adres.png", { type: "image/png" });
+
+    fireEvent.change(screen.getByLabelText("Kies een verbouwfoto van dit apparaat"), {
+      target: { files: [photo] },
+    });
+
+    expect(screen.getByText("Je foto blijft op dit apparaat en wordt niet geüpload.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Probeer een andere foto" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Geef feedback" })).toHaveAttribute("href", "/support");
+    expect(screen.queryByRole("link", { name: /google|bewaar dit/i })).not.toBeInTheDocument();
+    expect(mocks.saveLandingPhoto).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(document.body.textContent).not.toContain(photo.name);
+
+    fireEvent.click(screen.getByRole("button", { name: "Verwijder foto" }));
+    expect(screen.queryByAltText("Jouw gekozen verbouwfoto in de lokale voorbeeldweergave")).not.toBeInTheDocument();
+  });
+
+  it("geeft een afzonderlijke fout voor een foto groter dan 50 MB", () => {
+    render(<BrowserRouter><LocalPhotoDemo publicDemo /></BrowserRouter>);
+    const photo = new File(["x"], "te-groot.jpg", { type: "image/jpeg" });
+    Object.defineProperty(photo, "size", { configurable: true, value: 50 * 1024 * 1024 + 1 });
+
+    fireEvent.change(screen.getByLabelText("Kies een verbouwfoto van dit apparaat"), {
+      target: { files: [photo] },
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Deze foto is groter dan 50 MB. Kies een kleinere foto.");
+    expect(createObjectUrl).not.toHaveBeenCalled();
   });
 
   it("blijft staan en toont richting als lokale opslag faalt", async () => {

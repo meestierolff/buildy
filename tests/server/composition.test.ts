@@ -7,8 +7,11 @@ import {
   resetServerCompositionForTests,
 } from "../../server/composition";
 import { resolveDefaultAccountWorker } from "../../server/account/runtime";
+import { handleDefaultAuthRequest } from "../../server/auth";
 import { resetRuntimeConfigForTests } from "../../server/config/runtime";
 import { closeBuildyDatabaseForTests } from "../../server/db/client";
+import { handleDefaultModerationRequest } from "../../server/moderation/runtime";
+import { handleDefaultProjectRequest } from "../../server/projects/runtime";
 
 const { capturedBlobConfigurations } = vi.hoisted(() => ({
   capturedBlobConfigurations: [] as Array<{
@@ -74,6 +77,35 @@ describe("server composition", () => {
     expect(ensureServerComposition()).toBe("ready");
     expect(ensureServerComposition()).toBe("ready");
     expect(capturedBlobConfigurations).toHaveLength(0);
+  });
+
+  it("composes only anonymous support while authenticated runtimes remain dormant", async () => {
+    stubAuthEnvironment();
+    vi.stubEnv("PRODUCT_PROFILE", "public_demo");
+    vi.stubEnv("BLOB_READ_WRITE_TOKEN", `vercel_blob_rw_${"b".repeat(48)}`);
+    resetRuntimeConfigForTests();
+
+    expect(ensureServerComposition()).toBe("ready");
+    expect(ensureServerComposition()).toBe("ready");
+    expect(capturedBlobConfigurations).toHaveLength(0);
+
+    const requestId = "00000000-0000-4000-8000-000000000000";
+    const support = await handleDefaultModerationRequest(
+      new Request("https://app.buildy.test/api/support"),
+      requestId,
+    );
+    const auth = await handleDefaultAuthRequest(
+      new Request("https://app.buildy.test/api/auth/session"),
+      requestId,
+    );
+    const projects = await handleDefaultProjectRequest(
+      new Request("https://app.buildy.test/api/projects"),
+      requestId,
+    );
+
+    expect(support.status).toBe(404);
+    expect(auth.status).toBe(503);
+    expect(projects.status).toBe(503);
   });
 
   it("remembers malformed key configuration as failed without retrying initialization", () => {

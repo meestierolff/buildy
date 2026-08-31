@@ -49,6 +49,104 @@ describe("API router", () => {
     await expect(response.json()).resolves.toMatchObject({ data: { release: releaseSha } });
   });
 
+  it("reports the provider-independent public demo ready without database or Google auth", async () => {
+    vi.stubEnv("PRODUCT_PROFILE", "public_demo");
+    resetRuntimeConfigForTests();
+    resetServerCompositionForTests();
+
+    const response = await handleApiRequest(
+      new Request("https://test.buildy.example/api/readiness"),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        ready: true,
+        checks: {
+          configuration: "pass",
+          database: "not_checked",
+          accountWorker: "not_checked",
+          mediaWorker: "not_checked",
+          paymentWorker: "not_checked",
+          photobookWorker: "not_checked",
+        },
+      },
+    });
+  });
+
+  it("exposes only anonymous support from the composed moderation surface in public_demo", async () => {
+    vi.stubEnv("PRODUCT_PROFILE", "public_demo");
+    resetRuntimeConfigForTests();
+    resetServerCompositionForTests();
+
+    for (const path of ["/api/moderation/reports", "/api/feedback"]) {
+      const response = await handleApiRequest(new Request(`https://test.buildy.example${path}`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "https://test.buildy.example",
+        },
+        body: "{}",
+      }));
+
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          code: "AUTH_UNAVAILABLE",
+          message: "Deze functie is niet beschikbaar in de openbare demo.",
+        },
+      });
+    }
+
+    const support = await handleApiRequest(new Request("https://test.buildy.example/api/support", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        origin: "https://test.buildy.example",
+      },
+      body: "{}",
+    }));
+    await expect(support.json()).resolves.toMatchObject({
+      error: { code: "AUTH_UNAVAILABLE" },
+    });
+  });
+
+  it("keeps scheduled account maintenance deliberately dormant in public_demo", async () => {
+    vi.stubEnv("PRODUCT_PROFILE", "public_demo");
+    resetRuntimeConfigForTests();
+    resetServerCompositionForTests();
+
+    const response = await handleApiRequest(new Request(
+      "https://test.buildy.example/api/internal/cron/account-lifecycle",
+    ));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "AUTH_UNAVAILABLE",
+        message: "Accountonderhoud is niet actief in de openbare demo.",
+      },
+    });
+  });
+
+  it("keeps feedback_beta readiness closed without its authenticated runtime", async () => {
+    vi.stubEnv("PRODUCT_PROFILE", "feedback_beta");
+    resetRuntimeConfigForTests();
+    resetServerCompositionForTests();
+
+    const response = await handleApiRequest(
+      new Request("https://test.buildy.example/api/readiness"),
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        ready: false,
+        checks: { configuration: "fail", database: "not_checked" },
+      },
+    });
+  });
+
   it("returns a stable Dutch not-found error with a request id", async () => {
     const response = await handleApiRequest(new Request("https://test.buildy.example/api/nope"));
     const body = await response.json() as { error: { code: string; requestId: string } };

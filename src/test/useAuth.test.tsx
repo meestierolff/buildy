@@ -88,6 +88,19 @@ describe("AuthProvider", () => {
     await waitFor(() => expect(clientMocks.getSession).toHaveBeenCalledTimes(2));
   });
 
+  it("slaat iedere authrequest over wanneer de server de openbare demo activeert", async () => {
+    const Probe = () => {
+      const auth = useAuth();
+      return <p>{auth.loading ? "laden" : auth.user ? "ingelogd" : "demo"}</p>;
+    };
+
+    render(<AuthProvider enabled={false}><Probe /></AuthProvider>);
+
+    expect(await screen.findByText("demo")).toBeInTheDocument();
+    expect(clientMocks.getSession).not.toHaveBeenCalled();
+    expect(clientMocks.signOut).not.toHaveBeenCalled();
+  });
+
   it("clears cached DTOs when a refreshed identity changes", async () => {
     clientMocks.getSession
       .mockResolvedValueOnce({ session, user })

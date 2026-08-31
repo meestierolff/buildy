@@ -92,4 +92,19 @@ describe("canonical product route configuration", () => {
     const digest = createHash("sha256").update(jsonLd ?? "").digest("base64");
     expect(csp).toContain(`'sha256-${digest}'`);
   });
+
+  it("overrides Vercel's static wildcard CORS with the canonical public origin", () => {
+    const config = JSON.parse(readFileSync(resolve(process.cwd(), "vercel.json"), "utf8")) as {
+      headers?: Array<{
+        source: string;
+        headers?: Array<{ key: string; value: string }>;
+      }>;
+    };
+    const globalHeaders = config.headers?.find((rule) => rule.source === "/(.*)")?.headers ?? [];
+
+    expect(globalHeaders).toContainEqual({
+      key: "Access-Control-Allow-Origin",
+      value: "https://buildy-gamma.vercel.app",
+    });
+  });
 });

@@ -115,6 +115,25 @@ describe("typed discovery browser states", () => {
     expect(vi.mocked(useProjectDashboard)).toHaveBeenCalledWith(false);
   });
 
+  it("renders the exact public-demo outcome without discovery or account promises", () => {
+    render(<BrowserRouter><Index feedbackEnabled publicDemo /></BrowserRouter>);
+
+    expect(screen.getByText("Het dagboek voor je verbouwing")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Maak van je verbouwing een verhaal om te bewaren." })).toBeInTheDocument();
+    expect(screen.getByText("Zie hoe losse bouwfoto’s veranderen in een rustig verbouwverhaal en een persoonlijk Bouwboek.")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Probeer met je bouwfoto" })).toHaveLength(2);
+    expect(screen.getAllByRole("link", { name: "Probeer met je bouwfoto" })[0]).toHaveAttribute("href", "#probeer-buildy");
+    expect(screen.getByRole("link", { name: "Bekijk een voorbeeld" })).toHaveAttribute("href", "#voorbeeld");
+    expect(screen.getByText("Voorbeeldverbouwing", { selector: "figcaption span" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /voorbeeld-Bouwboek/i })).toHaveAttribute(
+      "href",
+      "/project/voorbeeldverbouwing/bouwboek",
+    );
+    expect(screen.queryByText(/Google-login|start je account|inloggen/i)).not.toBeInTheDocument();
+    expect(vi.mocked(useProjectDiscovery)).toHaveBeenCalledWith(false);
+    expect(vi.mocked(useProjectDashboard)).toHaveBeenCalledWith(false);
+  });
+
   it("shows only the authenticated dashboard on the projects route", () => {
     vi.mocked(useAuth).mockReturnValue(auth(true));
     vi.mocked(useProjectDashboard).mockReturnValue(

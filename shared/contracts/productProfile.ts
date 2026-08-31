@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { apiSuccessSchema } from "./api.js";
 
-export const productProfileNameSchema = z.literal("feedback_beta");
+export const productProfileNameSchema = z.enum(["feedback_beta", "public_demo"]);
 export type ProductProfileName = z.infer<typeof productProfileNameSchema>;
 
 export const checkoutModeSchema = z.enum(["off", "test", "live"]);

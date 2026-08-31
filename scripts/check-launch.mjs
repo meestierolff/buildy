@@ -3,12 +3,12 @@ import { dirname, extname, join, normalize, relative, resolve } from "node:path"
 import { spawnSync } from "node:child_process";
 
 import {
-  freeMvpReadinessFailures,
+  launchReadinessFailures,
   parseLaunchCliArguments,
   requireExpectedGitSha,
   verifyDeployedGitSha,
-  verifyFreeMvpCapabilities,
-  verifyFreeMvpProductProfile,
+  verifyPublicDemoCapabilities,
+  verifyPublicDemoProductProfile,
 } from "./release-gates.mjs";
 
 const root = process.cwd();
@@ -262,6 +262,11 @@ await runCheck("static", "Vercelconfig is fail-closed", async () => {
   assert(serialized.includes("blob.vercel-storage.com"), "Vercel Blob upload-CSP ontbreekt");
   const globalHeaders = config.headers?.find((rule) => rule.source === "/(.*)")?.headers ?? [];
   const globalHeaderNames = new Set(globalHeaders.map((header) => header.key));
+  const documentCors = globalHeaders.find((header) => header.key === "Access-Control-Allow-Origin");
+  assert(
+    documentCors?.value === "https://buildy-gamma.vercel.app",
+    "document-CORS moet exact op het publieke Buildy-origin staan",
+  );
   for (const name of [
     "Content-Security-Policy",
     "Cross-Origin-Opener-Policy",
@@ -313,6 +318,7 @@ await runCheck("static", "Migratiebestanden en ledger zijn statisch geldig", asy
 
 let baseUrl;
 let expectedGitSha;
+const vercelAutomationBypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
 if (!staticOnly) {
   await runCheck("live", "Doelomgeving is expliciet en veilig", async () => {
     assert(["preview", "staging", "production"].includes(requestedEnvironment), "gebruik --preview, --staging of --production");
@@ -339,12 +345,17 @@ async function fetchWithin(path, init = {}) {
   assert(baseUrl, "veilige base URL kon niet worden vastgesteld");
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
+  const headers = new Headers(init.headers);
+  headers.set("user-agent", "buildy-launch-check/2");
+  if (vercelAutomationBypassSecret) {
+    headers.set("x-vercel-protection-bypass", vercelAutomationBypassSecret);
+  }
   try {
     return await fetch(new URL(path, baseUrl), {
       cache: "no-store",
       redirect: "manual",
       ...init,
-      headers: { "user-agent": "buildy-launch-check/2", ...init.headers },
+      headers,
       signal: controller.signal,
     });
   } finally {
@@ -362,6 +373,7 @@ async function responseJson(response) {
 }
 
 let liveCapabilities;
+let liveProfileName;
 if (!staticOnly && baseUrl) {
   await runCheck("live", "Publieke app en securityheaders", async () => {
     const response = await fetchWithin("/");
@@ -380,6 +392,15 @@ if (!staticOnly && baseUrl) {
     return `HTTP 200 met ${7} verplichte browserheaders`;
   });
 
+  await runCheck("live", "Server-owned launchprofiel", async () => {
+    const response = await fetchWithin("/api/product-profile");
+    const body = await responseJson(response);
+    assert(response.status === 200, `product-profile gaf HTTP ${response.status}`);
+    verifyPublicDemoProductProfile(body?.data);
+    liveProfileName = body.data.profile;
+    return "public_demo; accounts en checkout uit";
+  });
+
   await runCheck("live", "Health heeft juiste release en capabilities", async () => {
     const response = await fetchWithin("/api/health");
     const body = await responseJson(response);
@@ -389,26 +410,22 @@ if (!staticOnly && baseUrl) {
     verifyDeployedGitSha(body.data.release, expectedGitSha);
     const capabilities = body.data.capabilities ?? {};
     liveCapabilities = capabilities;
-    verifyFreeMvpCapabilities(capabilities);
+    assert(liveProfileName, "launchprofiel ontbreekt");
+    verifyPublicDemoCapabilities(capabilities);
     assert(response.headers.has("x-request-id"), "request-ID ontbreekt");
-    return `kern ready; invite en checkout uit; release ${body.data.release}`;
-  });
-
-  await runCheck("live", "Server-owned gratis MVP-profiel", async () => {
-    const response = await fetchWithin("/api/product-profile");
-    const body = await responseJson(response);
-    assert(response.status === 200, `product-profile gaf HTTP ${response.status}`);
-    verifyFreeMvpProductProfile(body?.data);
-    return "feedback_beta; open Google-signup; checkout uit";
+    return `provider-onafhankelijke demo; release ${body.data.release}`;
   });
 
   await runCheck("live", "Readiness en least-privilegerollen", async () => {
     const response = await fetchWithin("/api/readiness");
     const body = await responseJson(response);
     assert(response.status === 200 && body?.data?.ready === true, `readiness gaf HTTP ${response.status}`);
-    const failed = freeMvpReadinessFailures(body.data.checks);
+    assert(liveProfileName, "launchprofiel ontbreekt");
+    const failed = launchReadinessFailures(body.data.checks, liveProfileName);
     assert(failed.length === 0, `onbewezen checks: ${failed.join(", ")}`);
-    return `${Object.keys(body.data.checks).length} configuratie-/databasegrenzen pass`;
+    return liveProfileName === "public_demo"
+      ? "demo-configuratie pass; uitgeschakelde providerrollen niet uitgevoerd"
+      : `${Object.keys(body.data.checks).length} configuratie-/databasegrenzen pass`;
   });
 
   await runCheck("live", "Publieke legal-, robots- en sitemaproutes", async () => {
@@ -422,7 +439,8 @@ if (!staticOnly && baseUrl) {
   await runCheck("live", "Anonieme private/mutatiegrenzen", async () => {
     const randomId = crypto.randomUUID();
     const privateResponse = await fetchWithin(`/api/media/${randomId}/original`);
-    assert([401, 404].includes(privateResponse.status), `private media gaf HTTP ${privateResponse.status}`);
+    const protectedStatuses = liveProfileName === "public_demo" ? [401, 404, 503] : [401, 404];
+    assert(protectedStatuses.includes(privateResponse.status), `private media gaf HTTP ${privateResponse.status}`);
     assert(!privateResponse.headers.has("location"), "private media redirectte naar een object-URL");
 
     const mutationResponse = await fetchWithin("/api/projects", {
@@ -430,7 +448,8 @@ if (!staticOnly && baseUrl) {
       headers: { "content-type": "application/json", origin: baseUrl.origin },
       body: "{}",
     });
-    assert(mutationResponse.status === 401, `anonieme projectwrite gaf HTTP ${mutationResponse.status}`);
+    const writeStatuses = liveProfileName === "public_demo" ? [401, 503] : [401];
+    assert(writeStatuses.includes(mutationResponse.status), `anonieme projectwrite gaf HTTP ${mutationResponse.status}`);
 
     const hostileResponse = await fetchWithin("/api/projects", {
       method: "POST",
@@ -440,13 +459,31 @@ if (!staticOnly && baseUrl) {
     assert(hostileResponse.status === 403, `hostile Origin gaf HTTP ${hostileResponse.status}`);
 
     const adminResponse = await fetchWithin("/api/admin/orders");
-    assert(adminResponse.status === 401, `anoniem bestellingbeheer gaf HTTP ${adminResponse.status}`);
+    assert(writeStatuses.includes(adminResponse.status), `anoniem bestellingbeheer gaf HTTP ${adminResponse.status}`);
     return "private media, writes en bestellingbeheer fail-closed";
   });
 
+  if (liveProfileName === "public_demo") {
+    await runCheck("live", "Bestaande publieke supportbackend", async () => {
+      const request = (pathname) => fetchWithin(pathname, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: baseUrl.origin },
+        body: "{}",
+      });
+      const support = await request("/api/support");
+      assert(support.status === 400, `supportvalidatie gaf HTTP ${support.status}`);
+      for (const pathname of ["/api/feedback", "/api/moderation/reports"]) {
+        const dormant = await request(pathname);
+        assert(dormant.status === 503, `${pathname} gaf HTTP ${dormant.status}`);
+      }
+      return "supportvalidatie actief; feedback- en meldwrites profile-gated uit";
+    });
+  }
+
   await runCheck("live", "Alleen accountonderhoud heeft een beschermde cronroute", async () => {
     const accountCron = await fetchWithin("/api/internal/cron/account-lifecycle");
-    assert(accountCron.status === 401, `accountcron gaf HTTP ${accountCron.status}`);
+    const expectedAccountCronStatuses = liveProfileName === "public_demo" ? [401, 503] : [401];
+    assert(expectedAccountCronStatuses.includes(accountCron.status), `accountcron gaf HTTP ${accountCron.status}`);
     for (const path of ["/api/internal/cron/media", "/api/internal/cron/photobooks"]) {
       const response = await fetchWithin(path);
       assert(response.status === 404, `${path} is nog actief met HTTP ${response.status}`);

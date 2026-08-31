@@ -60,15 +60,28 @@ export function mapAuthSession(session: AuthClientSession): AuthSession {
   return { ...session };
 }
 
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
+export const AuthProvider = ({
+  children,
+  enabled = true,
+}: {
+  children: ReactNode;
+  enabled?: boolean;
+}) => {
   const [data, setData] = useState<AuthSessionData>({ session: null, user: null });
   const [error, setError] = useState<Error | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const [refreshing, setRefreshing] = useState(false);
   const requestSequence = useRef(0);
   const previousIdentity = useRef<string | null | undefined>(undefined);
 
   const refetchSession = useCallback(async () => {
+    if (!enabled) {
+      setData({ session: null, user: null });
+      setError(null);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     const sequence = ++requestSequence.current;
     setRefreshing(true);
     try {
@@ -86,9 +99,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setRefreshing(false);
       }
     }
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
+    if (!enabled) {
+      requestSequence.current += 1;
+      setData({ session: null, user: null });
+      setError(null);
+      setLoading(false);
+      setRefreshing(false);
+      return undefined;
+    }
     void refetchSession();
     const interval = window.setInterval(() => void refetchSession(), 5 * 60 * 1_000);
     const onFocus = () => void refetchSession();
@@ -98,7 +119,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       window.removeEventListener("focus", onFocus);
       requestSequence.current += 1;
     };
-  }, [refetchSession]);
+  }, [enabled, refetchSession]);
 
   useEffect(() => {
     if (loading) return;
@@ -116,6 +137,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     [data.session],
   );
   const signOut = useCallback(async () => {
+    if (!enabled) return;
     try {
       await authClient.signOut();
       setData({ session: null, user: null });
@@ -127,7 +149,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       await refetchSession();
     }
-  }, [refetchSession]);
+  }, [enabled, refetchSession]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

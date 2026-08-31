@@ -1,6 +1,9 @@
 import { z } from "zod";
 import type { HealthResponse } from "../../shared/contracts/api.js";
-import type { ProductProfile } from "../../shared/contracts/productProfile.js";
+import type {
+  ProductProfile,
+  ProductProfileName,
+} from "../../shared/contracts/productProfile.js";
 import {
   activeCheckoutMode,
   checkoutConfigurationReady,
@@ -28,7 +31,7 @@ const betaModeFlag = z.preprocess(
 );
 const productProfileFlag = z.preprocess(
   emptyStringToUndefined,
-  z.enum(["feedback_beta"]).default("feedback_beta"),
+  z.enum(["feedback_beta", "public_demo"]).default("feedback_beta"),
 );
 const checkoutModeFlag = z.preprocess(
   emptyStringToUndefined,
@@ -78,7 +81,7 @@ type ParsedRuntimeConfig = z.infer<typeof runtimeSchema>;
 // configuration always receives explicit defaults from zod.
 export type RuntimeConfig = Omit<ParsedRuntimeConfig, "BETA_MODE" | "PRODUCT_PROFILE" | "CHECKOUT_MODE"> & {
   BETA_MODE?: boolean;
-  PRODUCT_PROFILE?: "feedback_beta";
+  PRODUCT_PROFILE?: ProductProfileName;
   CHECKOUT_MODE?: "off" | "test" | "live";
 };
 
@@ -104,7 +107,7 @@ function optionalCapability(
   return enabled ? readyWhen(...values) : "disabled";
 }
 
-function productProfile(config: RuntimeConfig): "feedback_beta" {
+function productProfile(config: RuntimeConfig): ProductProfileName {
   return config.PRODUCT_PROFILE ?? "feedback_beta";
 }
 
@@ -112,24 +115,36 @@ function checkoutMode(config: RuntimeConfig): "off" | "test" | "live" {
   return config.CHECKOUT_MODE ?? "off";
 }
 
+export function publicDemoSupportConfigured(config = getRuntimeConfig()): boolean {
+  return productProfile(config) === "public_demo" && Boolean(
+    config.DATABASE_URL
+    && config.PII_ENCRYPTION_KEYS
+    && config.PII_ENCRYPTION_CURRENT_VERSION
+    && config.PII_BLIND_INDEX_KEY,
+  );
+}
+
 export function getCapabilities(config = getRuntimeConfig()): HealthResponse["data"]["capabilities"] {
   const activeProfile = productProfile(config);
-  const enableCoreExtras = activeProfile === "feedback_beta";
+  const publicDemo = activeProfile === "public_demo";
+  const enableAuthenticatedProduct = !publicDemo;
   const requestedCheckoutMode = activeCheckoutMode(config);
   const checkoutReady = checkoutConfigurationReady(config);
   return {
     database: readyWhen(config.DATABASE_URL),
-    authentication: readyWhen(
-      config.DATABASE_URL,
-      config.APP_ENV === "production" ? config.PRIMARY_DOMAIN : "non-production",
-      config.GOOGLE_CLIENT_ID,
-      config.GOOGLE_CLIENT_SECRET,
-      config.PII_ENCRYPTION_KEYS,
-      config.PII_ENCRYPTION_CURRENT_VERSION ? String(config.PII_ENCRYPTION_CURRENT_VERSION) : undefined,
-      config.PII_BLIND_INDEX_KEY,
-    ),
+    authentication: publicDemo
+      ? "disabled"
+      : readyWhen(
+        config.DATABASE_URL,
+        config.APP_ENV === "production" ? config.PRIMARY_DOMAIN : "non-production",
+        config.GOOGLE_CLIENT_ID,
+        config.GOOGLE_CLIENT_SECRET,
+        config.PII_ENCRYPTION_KEYS,
+        config.PII_ENCRYPTION_CURRENT_VERSION ? String(config.PII_ENCRYPTION_CURRENT_VERSION) : undefined,
+        config.PII_BLIND_INDEX_KEY,
+      ),
     accountLifecycle: optionalCapability(
-      enableCoreExtras,
+      enableAuthenticatedProduct,
       config.DATABASE_URL,
       config.DATABASE_ACCOUNT_WORKER_URL,
       config.GOOGLE_CLIENT_ID,
@@ -143,23 +158,23 @@ export function getCapabilities(config = getRuntimeConfig()): HealthResponse["da
       config.BLOB_READ_WRITE_TOKEN,
     ),
     media: optionalCapability(
-      enableCoreExtras,
+      enableAuthenticatedProduct,
       config.DATABASE_MEDIA_WORKER_URL,
       config.BLOB_READ_WRITE_TOKEN,
     ),
     photobooks: optionalCapability(
-      enableCoreExtras,
+      enableAuthenticatedProduct,
       config.DATABASE_URL,
       config.BLOB_READ_WRITE_TOKEN,
     ),
     email: "disabled",
-    payments: !requestedCheckoutMode
+    payments: publicDemo || !requestedCheckoutMode
       ? "disabled"
       : checkoutReady ? "ready" : "unconfigured",
     // Betaalde bestellingen worden uitsluitend handmatig afgehandeld.
     printFulfilment: "disabled",
     privateBeta: optionalCapability(
-      config.BETA_MODE !== false,
+      enableAuthenticatedProduct && config.BETA_MODE !== false,
       config.DATABASE_URL,
       config.PII_BLIND_INDEX_KEY,
     ),
@@ -167,27 +182,31 @@ export function getCapabilities(config = getRuntimeConfig()): HealthResponse["da
 }
 
 export function getProductProfile(config = getRuntimeConfig()): ProductProfile {
+  const activeProfile = productProfile(config);
+  const publicDemo = activeProfile === "public_demo";
   const capabilities = getCapabilities(config);
   const databaseReady = capabilities.database === "ready";
   const googleConfigured = Boolean(config.GOOGLE_CLIENT_ID && config.GOOGLE_CLIENT_SECRET);
 
   return {
-    profile: productProfile(config),
-    checkoutMode: checkoutMode(config),
-    betaMode: config.BETA_MODE !== false,
-    inviteRequiredForNewAccounts: config.BETA_MODE !== false,
+    profile: activeProfile,
+    checkoutMode: publicDemo ? "off" : checkoutMode(config),
+    betaMode: publicDemo ? false : config.BETA_MODE !== false,
+    inviteRequiredForNewAccounts: publicDemo ? false : config.BETA_MODE !== false,
     capabilities: {
-      googleSignIn: capabilities.authentication === "ready" && googleConfigured,
+      googleSignIn: !publicDemo && capabilities.authentication === "ready" && googleConfigured,
       emailAuth: false,
-      renovations: databaseReady,
-      updates: databaseReady,
-      story: databaseReady,
-      media: capabilities.media === "ready",
-      photobookPreview: capabilities.photobooks === "ready",
-      sharing: databaseReady,
-      feedback: databaseReady,
-      accountDeletion: capabilities.accountLifecycle === "ready",
-      checkout: capabilities.payments === "ready",
+      renovations: !publicDemo && databaseReady,
+      updates: !publicDemo && databaseReady,
+      story: !publicDemo && databaseReady,
+      media: !publicDemo && capabilities.media === "ready",
+      photobookPreview: publicDemo || capabilities.photobooks === "ready",
+      sharing: !publicDemo && databaseReady,
+      // Authenticated product feedback stays dormant; public_demo reuses only
+      // the existing encrypted, rate-limited anonymous support path.
+      feedback: publicDemo ? publicDemoSupportConfigured(config) : databaseReady,
+      accountDeletion: !publicDemo && capabilities.accountLifecycle === "ready",
+      checkout: !publicDemo && capabilities.payments === "ready",
     },
   };
 }

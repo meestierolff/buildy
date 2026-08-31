@@ -169,7 +169,8 @@ describe("migration artifact and endpoint safety", () => {
     expect(JSON.stringify(sealed)).not.toContain("private.jpg");
     expect(unsealArtifact(sealed, ARTIFACT_KEY)).toEqual(payload);
     expect(artifactEnvelopeSha256(sealed)).toMatch(/^[0-9a-f]{64}$/);
-    expect(() => unsealArtifact({ ...sealed, ciphertext: `${sealed.ciphertext.slice(0, -1)}A` }, ARTIFACT_KEY)).toThrow();
+    const tamperedCiphertext = `${sealed.ciphertext[0] === "A" ? "B" : "A"}${sealed.ciphertext.slice(1)}`;
+    expect(() => unsealArtifact({ ...sealed, ciphertext: tamperedCiphertext }, ARTIFACT_KEY)).toThrow();
 
     const directory = await mkdtemp(join(tmpdir(), "buildy-migration-test-"));
     await mkdir(join(directory, "nested"));
