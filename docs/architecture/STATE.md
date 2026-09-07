@@ -25,7 +25,7 @@ All hosted-user statuses below concern the target `feedback_beta`, not the stati
 
 | Flow | Source anchor exists | Fresh targeted test in this task | Real hosted user proof |
 | --- | --- | --- | --- |
-| F0 Profile/configuration | Yes | NOT_RUN | PASS only for the read-only production snapshot above |
+| F0 Profile/configuration | Yes | NOT_RUN | NOT_RUN for target Preview; production metadata only was checked |
 | F1 Account/session | Yes | NOT_RUN | BLOCKED: no active production auth; Preview/config unknown |
 | F2 Save photo/moment | Yes | NOT_RUN | NOT_RUN |
 | F3 Share/revoke | Yes | NOT_RUN | NOT_RUN |
