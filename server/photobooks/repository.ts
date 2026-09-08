@@ -429,7 +429,7 @@ export class PostgresPhotobookRepository implements PhotobookRepository {
             from public.updates update
             where update.project_id = ${projectId}::uuid
               and update.project_owner_id = ${actorId}::uuid
-              and update.id = any(${updateIds}::uuid[])
+              and update.id = any(${sql.param(updateIds)}::uuid[])
               and update.status <> 'deleted'
           `);
           if (numberValue(valid.rows[0]?.count ?? 0) !== new Set(updateIds).size) {
@@ -442,7 +442,7 @@ export class PostgresPhotobookRepository implements PhotobookRepository {
             from public.media_assets asset
             where asset.project_id = ${projectId}::uuid
               and asset.owner_id = ${actorId}::uuid
-              and asset.id = any(${mediaIds}::uuid[])
+              and asset.id = any(${sql.param(mediaIds)}::uuid[])
               and asset.original_asset_id is null
               and asset.status = 'ready'
               and asset.purpose in ('project_media', 'project_cover')
@@ -457,7 +457,7 @@ export class PostgresPhotobookRepository implements PhotobookRepository {
             select count(*) as count
             from public.project_phases phase
             where phase.project_id = ${projectId}::uuid
-              and phase.id = any(${phaseIds}::uuid[])
+              and phase.id = any(${sql.param(phaseIds)}::uuid[])
           `);
           if (numberValue(valid.rows[0]?.count ?? 0) !== new Set(phaseIds).size) {
             throw new PhotobookError("PHOTOBOOK_NOT_FOUND");
