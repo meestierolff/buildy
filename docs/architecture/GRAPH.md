@@ -90,8 +90,8 @@ Current coupling to watch, not an instruction to rewrite:
 
 ## Allowed dependency rules
 
-1. UI → typed API → actor/access check → existing service/repository → database/storage.
-2. UI may upload directly to private Blob only with server-authorized scope; validate/finalize before publishing.
+1. UI → typed API → actor/access check → existing service/repository → database/storage. The hosted API wildcard reuses `__buildy_api_path`; H removes that reserved routing parameter before strict query validation, without accepting extra client query fields.
+2. UI may upload directly to private Blob only with server-authorized scope; validate/finalize before publishing. Document CSP permits the installed SDK's `https://vercel.com/api/blob` API paths and Blob storage hosts; unrelated Vercel API paths remain blocked.
 3. Every read/write rechecks its relevant ownership, visibility, link and block rules. Invalidate private client state when access changes.
 4. Core flows must not require payment, printer, email or discovery. Dormant code is not automatically safe; keep its endpoints gated.
 5. Keep secrets and migration credentials out of browsers, ordinary runtime fallback, diagrams and evidence.

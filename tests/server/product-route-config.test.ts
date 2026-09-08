@@ -80,7 +80,7 @@ describe("canonical product route configuration", () => {
 
     expect(config.rewrites?.slice(0, 2)).toEqual([
       { source: "/project/:id", destination: "/api/page?__buildy_project_id=:id" },
-      { source: "/api/:path*", destination: "/api/router?__buildy_api_path=:path*" },
+      { source: "/api/:__buildy_api_path*", destination: "/api/router?__buildy_api_path=:__buildy_api_path*" },
     ]);
     expect(config.rewrites?.at(-1)).toEqual({ source: "/:path*", destination: "/index.html" });
   });

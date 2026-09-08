@@ -144,7 +144,7 @@ const Auth = () => {
                       {showPassword ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
                     </button>
                   </div>
-                  {registering ? <p id="auth-password-help" className="text-xs leading-relaxed text-muted-foreground">Minimaal 15 tekens. Een paar woorden samen zijn makkelijk te onthouden. Bewaar je wachtwoord op een veilige plek.</p> : null}
+                  {registering ? <p id="auth-password-help" className="text-xs leading-relaxed text-muted-foreground">Minimaal 15 tekens. Wachtwoordherstel is niet beschikbaar. Bewaar je wachtwoord in een wachtwoordmanager.</p> : null}
                 </div>
                 <Button type="submit" disabled={submitting || authLoading} className="h-12 w-full rounded-full text-sm font-semibold">
                   {submitting ? <><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Even wachten…</> : registering ? "Account maken" : "Inloggen"}
