@@ -412,7 +412,7 @@ if (!staticOnly && baseUrl) {
     const capabilities = body.data.capabilities ?? {};
     verifyTargetCapabilities(capabilities);
     assert(response.headers.has("x-request-id"), "request-ID ontbreekt");
-    return `auth, media, Bouwboek en betalingen ready; release ${body.data.release}`;
+    return `auth, media en digitaal Bouwboek ready; checkout uit; release ${body.data.release}`;
   });
 
   await runCheck("live", "Readiness en least-privilegerollen", async () => {
@@ -476,9 +476,9 @@ if (!staticOnly && baseUrl) {
       headers: { "content-type": "application/json" },
       body: "{}",
     });
-    const expected = 400;
+    const expected = 503;
     assert(response.status === expected, `/api/webhooks/stripe gaf HTTP ${response.status}, verwacht ${expected}`);
-    return "actieve Stripe-webhook weigert ongeldige signature";
+    return "checkout uit; Stripe-webhook fail-closed onbeschikbaar";
   });
 }
 

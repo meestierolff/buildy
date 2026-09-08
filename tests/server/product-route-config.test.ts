@@ -30,23 +30,24 @@ describe("canonical product route configuration", () => {
     });
   });
 
-  it("documents the canonical profile and complete fail-closed commerce configuration", () => {
+  it("documents the free account profile and core provider configuration", () => {
     const environmentExample = readFileSync(resolve(process.cwd(), ".env.example"), "utf8");
 
     expect(environmentExample).toMatch(/^PRODUCT_PROFILE="feedback_beta"/m);
     expect(environmentExample).toMatch(/^BETA_MODE="false"/m);
     expect(environmentExample).toMatch(/^CHECKOUT_MODE="off"/m);
-    expect(environmentExample).toMatch(/Preview\/staging gebruikt uitsluitend test\/test/);
     for (const name of [
-      "DATABASE_PHOTOBOOK_WORKER_URL",
-      "DATABASE_PAYMENT_WORKER_URL",
-      "STRIPE_ENVIRONMENT",
-      "STRIPE_SECRET_KEY",
-      "STRIPE_WEBHOOK_SECRET",
-      "STRIPE_EXPECTED_ACCOUNT_ID",
-      "ORDER_PRICE_MATRIX_JSON",
-      "ORDER_SELLER_JSON",
-      "ORDER_TERMS_VERSION",
+      "DATABASE_URL",
+      "DATABASE_ACCOUNT_WORKER_URL",
+      "DATABASE_MEDIA_WORKER_URL",
+      "GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET",
+      "BLOB_READ_WRITE_TOKEN",
+      "PII_ENCRYPTION_KEYS",
+      "PII_BLIND_INDEX_KEY",
+      "CRON_SECRET",
+      "ACCOUNT_RETENTION_POLICY_VERSION",
+      "ACCOUNT_RETENTION_POLICY_APPROVED_AT",
     ]) {
       expect(environmentExample, name).toMatch(new RegExp(`^${name}=`, "m"));
     }

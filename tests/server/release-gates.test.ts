@@ -80,23 +80,23 @@ describe("deployment release identity gates", () => {
     expect(() => verifyDeployedGitSha(RELEASE_SHA.slice(0, 12), RELEASE_SHA)).toThrow("geen volledige geldige git-SHA");
   });
 
-  it("maps Preview/staging to test checkout and Production to live checkout", () => {
+  it("keeps checkout off in every free MVP release environment", () => {
     expect(releaseContractFor("preview")).toEqual({
       profile: "feedback_beta",
-      checkoutMode: "test",
+      checkoutMode: "off",
     });
     expect(releaseContractFor("staging")).toEqual({
       profile: "feedback_beta",
-      checkoutMode: "test",
+      checkoutMode: "off",
     });
     expect(releaseContractFor("production")).toEqual({
       profile: "feedback_beta",
-      checkoutMode: "live",
+      checkoutMode: "off",
     });
     expect(() => releaseContractFor("local" as never)).toThrow("onbekende releaseomgeving");
   });
 
-  it("requires the production-MVP core including payments", () => {
+  it("requires accounts and storage while rejecting active payments", () => {
     const capabilities = {
       database: "ready",
       authentication: "ready",
@@ -104,7 +104,7 @@ describe("deployment release identity gates", () => {
       media: "ready",
       photobooks: "ready",
       email: "disabled",
-      payments: "ready",
+      payments: "disabled",
       printFulfilment: "disabled",
       privateBeta: "disabled",
     };
@@ -114,14 +114,14 @@ describe("deployment release identity gates", () => {
       .toThrow("kerncapabilities niet ready: media");
     expect(() => verifyTargetCapabilities({ ...capabilities, privateBeta: "ready" }))
       .toThrow("privateBeta moet disabled");
-    expect(() => verifyTargetCapabilities({ ...capabilities, payments: "disabled" }))
-      .toThrow("kerncapabilities niet ready: payments");
+    expect(() => verifyTargetCapabilities({ ...capabilities, payments: "ready" }))
+      .toThrow("payments moet disabled");
   });
 
-  it("requires the exact target checkout mode and active checkout capability", () => {
+  it("requires the account product and rejects checkout activation or a demo", () => {
     const profile = {
       profile: "feedback_beta",
-      checkoutMode: "test",
+      checkoutMode: "off",
       betaMode: false,
       inviteRequiredForNewAccounts: false,
       capabilities: {
@@ -135,35 +135,36 @@ describe("deployment release identity gates", () => {
         sharing: true,
         feedback: true,
         accountDeletion: true,
-        checkout: true,
+        checkout: false,
       },
     };
     const previewContract = releaseContractFor("preview");
     const productionContract = releaseContractFor("production");
 
     expect(() => verifyTargetProductProfile(profile, previewContract)).not.toThrow();
+    expect(() => verifyTargetProductProfile(profile, productionContract)).not.toThrow();
     expect(() => verifyTargetProductProfile({ ...profile, checkoutMode: "live" }, productionContract))
-      .not.toThrow();
+      .toThrow("CHECKOUT_MODE moet off");
     expect(() => verifyTargetProductProfile({ ...profile, betaMode: true }, previewContract))
       .toThrow("BETA_MODE moet false");
     expect(() => verifyTargetProductProfile({ ...profile, profile: "public_demo" }, previewContract))
       .toThrow("PRODUCT_PROFILE moet feedback_beta");
-    expect(() => verifyTargetProductProfile({ ...profile, checkoutMode: "off" }, previewContract))
-      .toThrow("CHECKOUT_MODE moet test");
+    expect(() => verifyTargetProductProfile({ ...profile, checkoutMode: "test" }, previewContract))
+      .toThrow("CHECKOUT_MODE moet off");
     expect(() => verifyTargetProductProfile({
       ...profile,
-      capabilities: { ...profile.capabilities, checkout: false },
-    }, previewContract)).toThrow("productcapabilities niet beschikbaar: checkout");
+      capabilities: { ...profile.capabilities, checkout: true },
+    }, previewContract)).toThrow("checkout moeten uit staan");
   });
 
-  it("requires all five database boundaries and both active worker checks", () => {
+  it("requires core database boundaries and permits explicitly idle commerce workers", () => {
     const checks = {
       configuration: "pass",
       database: "pass",
       accountWorker: "pass",
       mediaWorker: "pass",
-      paymentWorker: "pass",
-      photobookWorker: "pass",
+      paymentWorker: "not_checked",
+      photobookWorker: "not_checked",
     };
 
     expect(targetReadinessFailures(checks)).toEqual([]);
@@ -171,8 +172,8 @@ describe("deployment release identity gates", () => {
       .toEqual(["mediaWorker=not_checked"]);
     expect(targetReadinessFailures({ ...checks, paymentWorker: "fail" }))
       .toEqual(["paymentWorker=fail"]);
-    expect(targetReadinessFailures({ ...checks, photobookWorker: "not_checked" }))
-      .toEqual(["photobookWorker=not_checked"]);
+    expect(targetReadinessFailures({ ...checks, photobookWorker: "fail" }))
+      .toEqual(["photobookWorker=fail"]);
     expect(targetReadinessFailures({ configuration: "pass" })).toEqual([
       "database=missing",
       "accountWorker=missing",

@@ -11,7 +11,7 @@ const fetchFixture = `
 const target = process.env.BUILDY_LAUNCH_FIXTURE_TARGET;
 const checkoutMode = process.env.BUILDY_LAUNCH_FIXTURE_CHECKOUT_MODE;
 const profileName = process.env.BUILDY_LAUNCH_FIXTURE_PROFILE ?? "feedback_beta";
-const paymentWorker = process.env.BUILDY_LAUNCH_FIXTURE_PAYMENT_WORKER ?? "pass";
+const mediaWorker = process.env.BUILDY_LAUNCH_FIXTURE_MEDIA_WORKER ?? "pass";
 const release = process.env.BUILDY_LAUNCH_FIXTURE_SHA;
 const origin = process.env.BUILDY_LAUNCH_FIXTURE_ORIGIN;
 
@@ -30,7 +30,7 @@ const productCapabilities = {
   sharing: true,
   feedback: true,
   accountDeletion: true,
-  checkout: true,
+  checkout: false,
 };
 const healthCapabilities = {
   database: "ready",
@@ -39,7 +39,7 @@ const healthCapabilities = {
   media: "ready",
   photobooks: "ready",
   email: "disabled",
-  payments: "ready",
+  payments: "disabled",
   printFulfilment: "disabled",
   privateBeta: "disabled",
 };
@@ -47,9 +47,9 @@ const readinessChecks = {
   configuration: "pass",
   database: "pass",
   accountWorker: "pass",
-  mediaWorker: "pass",
-  paymentWorker,
-  photobookWorker: "pass",
+  mediaWorker,
+  paymentWorker: "not_checked",
+  photobookWorker: "not_checked",
 };
 
 globalThis.fetch = async (input, init = {}) => {
@@ -100,7 +100,7 @@ globalThis.fetch = async (input, init = {}) => {
   if (["/api/internal/cron/media", "/api/internal/cron/photobooks"].includes(url.pathname)) {
     return json({}, 404);
   }
-  if (url.pathname === "/api/webhooks/stripe") return json({}, 400);
+  if (url.pathname === "/api/webhooks/stripe") return json({}, 503);
   return json({}, 404);
 };
 `;
@@ -108,9 +108,9 @@ const preload = `data:text/javascript,${encodeURIComponent(fetchFixture)}`;
 
 function runLaunchCheck(
   target: "preview" | "staging" | "production",
-  checkoutMode: "test" | "live",
+  checkoutMode: "off" | "test" | "live",
   profile = "feedback_beta",
-  paymentWorker = "pass",
+  mediaWorker = "pass",
 ) {
   const origin = `https://${target}.buildy.test`;
   return spawnSync(process.execPath, [
@@ -128,7 +128,7 @@ function runLaunchCheck(
       BUILDY_LAUNCH_FIXTURE_TARGET: target,
       BUILDY_LAUNCH_FIXTURE_CHECKOUT_MODE: checkoutMode,
       BUILDY_LAUNCH_FIXTURE_PROFILE: profile,
-      BUILDY_LAUNCH_FIXTURE_PAYMENT_WORKER: paymentWorker,
+      BUILDY_LAUNCH_FIXTURE_MEDIA_WORKER: mediaWorker,
       BUILDY_LAUNCH_FIXTURE_SHA: RELEASE_SHA,
       BUILDY_LAUNCH_FIXTURE_ORIGIN: origin,
     },
@@ -137,35 +137,35 @@ function runLaunchCheck(
 
 describe("target-aware launch check", () => {
   it.each(["preview", "staging"] as const)(
-    "requires feedback_beta with Stripe test mode for %s",
+    "requires feedback_beta with checkout off for %s",
     (target) => {
-      const result = runLaunchCheck(target, "test");
+      const result = runLaunchCheck(target, "off");
 
       expect(result.status, result.stderr || result.stdout).toBe(0);
-      expect(result.stdout).toContain(`${target} op https://${target}.buildy.test; feedback_beta/test`);
-      expect(result.stdout).toContain("checkout test; volledige productcapabilities actief");
+      expect(result.stdout).toContain(`${target} op https://${target}.buildy.test; feedback_beta/off`);
+      expect(result.stdout).toContain("checkout off; volledige productcapabilities actief");
       expect(result.stdout).toContain("configuratie-/database- en workergrenzen pass");
     },
   );
 
-  it("requires feedback_beta with Stripe live mode for production", () => {
-    const result = runLaunchCheck("production", "live");
+  it("requires the free account MVP for production", () => {
+    const result = runLaunchCheck("production", "off");
 
     expect(result.status, result.stderr || result.stdout).toBe(0);
-    expect(result.stdout).toContain("production op https://production.buildy.test; feedback_beta/live");
-    expect(result.stdout).toContain("checkout live; volledige productcapabilities actief");
+    expect(result.stdout).toContain("production op https://production.buildy.test; feedback_beta/off");
+    expect(result.stdout).toContain("checkout off; volledige productcapabilities actief");
   });
 
   it("fails closed on a checkout mode or product-profile mismatch", () => {
     const wrongMode = runLaunchCheck("production", "test");
-    const wrongProfile = runLaunchCheck("preview", "test", "public_demo");
-    const uncheckedPaymentWorker = runLaunchCheck("preview", "test", "feedback_beta", "not_checked");
+    const wrongProfile = runLaunchCheck("preview", "off", "public_demo");
+    const uncheckedMediaWorker = runLaunchCheck("preview", "off", "feedback_beta", "not_checked");
 
     expect(wrongMode.status).toBe(1);
-    expect(wrongMode.stdout).toContain("CHECKOUT_MODE moet live zijn voor dit releasedoel");
+    expect(wrongMode.stdout).toContain("CHECKOUT_MODE moet off zijn voor dit releasedoel");
     expect(wrongProfile.status).toBe(1);
     expect(wrongProfile.stdout).toContain("PRODUCT_PROFILE moet feedback_beta zijn");
-    expect(uncheckedPaymentWorker.status).toBe(1);
-    expect(uncheckedPaymentWorker.stdout).toContain("paymentWorker=not_checked");
+    expect(uncheckedMediaWorker.status).toBe(1);
+    expect(uncheckedMediaWorker.stdout).toContain("mediaWorker=not_checked");
   });
 });

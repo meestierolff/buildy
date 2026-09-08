@@ -80,11 +80,8 @@ export function verifyDeployedGitSha(actualValue, expectedSha) {
 }
 
 export function releaseContractFor(environment) {
-  if (environment === "preview" || environment === "staging") {
-    return { profile: "feedback_beta", checkoutMode: "test" };
-  }
-  if (environment === "production") {
-    return { profile: "feedback_beta", checkoutMode: "live" };
+  if (["preview", "staging", "production"].includes(environment)) {
+    return { profile: "feedback_beta", checkoutMode: "off" };
   }
   throw new Error("onbekende releaseomgeving");
 }
@@ -94,13 +91,13 @@ export function verifyTargetCapabilities(capabilities) {
     throw new Error("health bevat geen capabilities");
   }
 
-  const required = ["database", "authentication", "accountLifecycle", "media", "photobooks", "payments"];
+  const required = ["database", "authentication", "accountLifecycle", "media", "photobooks"];
   const unavailable = required.filter((name) => capabilities[name] !== "ready");
   if (unavailable.length > 0) {
     throw new Error(`kerncapabilities niet ready: ${unavailable.join(", ")}`);
   }
 
-  for (const name of ["email", "printFulfilment", "privateBeta"]) {
+  for (const name of ["email", "payments", "printFulfilment", "privateBeta"]) {
     if (capabilities[name] !== "disabled") {
       throw new Error(`${name} moet disabled zijn`);
     }
@@ -136,14 +133,13 @@ export function verifyTargetProductProfile(profile, contract) {
     "sharing",
     "feedback",
     "accountDeletion",
-    "checkout",
   ];
   const unavailable = required.filter((name) => capabilities[name] !== true);
   if (unavailable.length > 0) {
     throw new Error(`productcapabilities niet beschikbaar: ${unavailable.join(", ")}`);
   }
-  if (capabilities.emailAuth !== false) {
-    throw new Error("e-mailauth moet uit staan");
+  if (capabilities.emailAuth !== false || capabilities.checkout !== false) {
+    throw new Error("e-mailauth en checkout moeten uit staan voor de gratis MVP");
   }
 }
 
@@ -154,14 +150,22 @@ export function targetReadinessFailures(checks) {
     "database",
     "accountWorker",
     "mediaWorker",
-    "paymentWorker",
-    "photobookWorker",
   ];
   const failures = required
     .filter((name) => checks[name] !== "pass")
     .map((name) => `${name}=${checks[name] ?? "missing"}`);
+  // Off disables both printproof and payment workers; absent/failed checks
+  // still fail closed, while explicitly idle workers need no credentials.
+  const idleWorkers = ["paymentWorker", "photobookWorker"];
+  for (const name of idleWorkers) {
+    if (!["pass", "not_checked"].includes(checks[name])) {
+      failures.push(`${name}=${checks[name] ?? "missing"}`);
+    }
+  }
   for (const [name, state] of Object.entries(checks)) {
-    if (!required.includes(name) && state !== "pass") failures.push(`${name}=${state}`);
+    if (![...required, ...idleWorkers].includes(name) && state !== "pass") {
+      failures.push(`${name}=${state}`);
+    }
   }
   return failures;
 }

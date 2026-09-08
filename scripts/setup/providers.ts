@@ -5,7 +5,6 @@ import pg from "pg";
 
 import { resolveAuthConfiguration } from "../../server/auth/config";
 import { getCapabilities, getProductProfile, getRuntimeConfig } from "../../server/config/runtime";
-import { checkoutConfigurationIssues } from "../../server/orders/checkoutConfiguration";
 import { resolveRuntimeDataProtection } from "../../server/security/runtimeDataProtection";
 import {
   releaseContractFor,
@@ -31,8 +30,6 @@ const databaseRoleNames = [
   "DATABASE_URL",
   "DATABASE_ACCOUNT_WORKER_URL",
   "DATABASE_MEDIA_WORKER_URL",
-  "DATABASE_PHOTOBOOK_WORKER_URL",
-  "DATABASE_PAYMENT_WORKER_URL",
 ] as const;
 
 class SafeCheckError extends Error {}
@@ -172,7 +169,7 @@ await check("Google OpenID Connect", () => {
 await check("Database- en workercredentials", () => {
   if (!runtime) throw new SafeCheckError("runtimeconfig niet beschikbaar");
   const roles = configuredDatabaseRoles();
-  return `${roles.length} unieke Neon TLS-loginrollen voor web, account, media, Bouwboek en betaling`;
+  return `${roles.length} unieke Neon TLS-loginrollen voor web, account en media`;
 });
 
 await check("Encryptie, retentie en private Blob", () => {
@@ -188,22 +185,18 @@ await check("Encryptie, retentie en private Blob", () => {
 
 await check("Productprofiel en checkoutconfig", () => {
   if (!runtime || !releaseContract) throw new SafeCheckError("runtimeconfig niet beschikbaar");
-  const issues = checkoutConfigurationIssues(runtime);
-  if (issues.length > 0) {
-    throw new SafeCheckError(`checkoutconfig faalt gesloten: ${issues.join(", ")}`);
-  }
   runSafeGate(
     () => verifyTargetProductProfile(getProductProfile(runtime!), releaseContract!),
     "productprofiel ongeldig",
   );
-  return `${releaseContract.profile}; checkout ${releaseContract.checkoutMode}; Stripe-, prijs-, seller- en termsconfig actueel`;
+  return `${releaseContract.profile}; checkout ${releaseContract.checkoutMode}; geen betaal- of printconfig vereist`;
 });
 
 await check("Capabilityconfig", () => {
   if (!runtime) throw new SafeCheckError("runtimeconfig niet beschikbaar");
   const capabilities = getCapabilities(runtime);
   runSafeGate(() => verifyTargetCapabilities(capabilities), "capabilityconfig ongeldig");
-  return "auth, media, Bouwboek en betalingen ready; invite, e-mail en automatische fulfilment uit";
+  return "auth, media en digitaal Bouwboek ready; invite, e-mail, checkout en printfulfilment uit";
 });
 
 if (remote) {
@@ -301,7 +294,7 @@ if (remote) {
     if (failures.length > 0) {
       throw new SafeCheckError(`remote readiness faalt gesloten: ${failures.join(", ")}`);
     }
-    return "health, doelprofiel en zes least-privilege readinesschecks pass";
+    return "health, doelprofiel en kernrollen pass; betaal- en printworkers mogen idle zijn";
   });
 }
 
@@ -309,8 +302,6 @@ record("manual", "Dashboard- en contractchecks", [
   "DNS/HTTPS en apex-www redirect",
   "Neon plan/regio/DPA/backupretentie",
   "Google consent/origins/callback",
-  "Stripe-account, webhookendpoint en eventdelivery",
-  "actuele price-, seller- en termsapprovals",
   "Vercel Blob-store PRIVATE, regio/DPA en tokenrotatie",
   "juridische identiteit, vestigingsadres en rechtstreeks privacy-/supportcontact",
   "retentie-, support- en herstelprocedure",

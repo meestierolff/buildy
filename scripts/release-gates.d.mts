@@ -13,7 +13,7 @@ export function requireExpectedGitSha(value: string | undefined): string;
 export function verifyDeployedGitSha(actualValue: unknown, expectedSha: string): void;
 export type ReleaseContract = {
   profile: "feedback_beta";
-  checkoutMode: "test" | "live";
+  checkoutMode: "off";
 };
 export function releaseContractFor(
   environment: "preview" | "staging" | "production",
