@@ -26,7 +26,7 @@ if (useRealStaging) {
     || target.password
   ) throw new Error("staging-real accepteert uitsluitend één exacte HTTPS-origin.");
   if (!configuredStorageState || !existsSync(configuredStorageState)) {
-    throw new Error("PLAYWRIGHT_STORAGE_STATE moet naar de beschermde statefile van een eigenaar na Google-login wijzen.");
+    throw new Error("PLAYWRIGHT_STORAGE_STATE moet naar de beschermde statefile van een eigenaar na inloggen met gebruikersnaam en wachtwoord wijzen.");
   }
   if (
     !configuredStagingProjectId

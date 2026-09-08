@@ -14,7 +14,11 @@ Current code describes implementation; fresh runtime evidence describes deployme
 Finish: account → private renovation → saved photo/update → shared story → like/comment → digital Bouwboek.
 Preserve the existing design and implementation. Stripe, Peecho, physical ordering, budget, floorplans and broad discovery are later.
 Keep `CHECKOUT_MODE=off`. A running `public_demo` is not a working account-based MVP.
-Google OIDC is the existing identity implementation, not permission to configure it or replace it without owner approval.
+The owner authorized replacing Google OIDC with username/password signup and login.
+New username accounts collect no email. Use Node crypto scrypt password hashes,
+hashed server-owned sessions, HttpOnly cookies, same-origin CSRF checks and rate limiting.
+Do not reintroduce OAuth configuration or silently link retained Google accounts.
+Password recovery is not implemented; do not promise it.
 Do not turn authentication off, create a shared account or add guest identity to claim the target journey works.
 No Computer Use. Use CLI/API and Playwright; owner performs personal sign-in or secret entry.
 Do not purchase plans, publish private data or change production settings without task authorization.
@@ -34,7 +38,8 @@ Do not purchase plans, publish private data or change production settings withou
 - Browser uses typed same-origin API clients, never database credentials. Direct Blob upload requires server-issued scoped authorization.
 - Derive identity, ownership and access server-side. Keep RLS and least-privilege roles; a hidden button is not security.
 - Keep private media private. Recheck access on reads and after link revocation, follower removal, blocking and deletion.
-- Preserve state/nonce/PKCE, secure hashed sessions, mutation origin/CSRF checks and safe redirects.
+- Preserve salted password hashing, secure hashed sessions, mutation origin/CSRF checks,
+  rate limiting and safe redirects. Never log passwords or store them in browser persistence.
 - Do not leak secrets, session cookies, bypass tokens, private URLs or personal content into commits, logs or evidence.
 - Keep mutations retry-safe. Use append-only migrations only when necessary; never rewrite applied migrations or drop customer data to simplify.
 - Reuse request-driven media processing. Digital Bouwboek must not depend on printproof, payment or a print worker.

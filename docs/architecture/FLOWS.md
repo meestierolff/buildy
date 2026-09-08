@@ -25,8 +25,8 @@ Do not open a new product workstream while the current slice has an unresolved d
 
 | ID / nodes | Observable success | Required negative check |
 | --- | --- | --- |
-| F0 / C,H,D | Identify source SHA, deployed SHA/profile, safe isolated Preview and required config names. Distinguish `disabled`, `unconfigured` and proven functionality. | Missing identity configuration never opens writes or creates fake sessions. No production data used for Preview fixtures. |
-| F1 / U,H,A,D | Owner logs in through the existing OIDC flow, receives one account, reloads, logs out and returns to the same identity. | Invalid callback/state is rejected; logged-out session cannot edit. Mocked sign-in is not a real Google test. |
+| F0 / C,H,D | Identify source SHA, deployed SHA/profile, safe isolated Preview and required DB/PII/core config names. Password auth has no OAuth-secret or callback dependency. Distinguish `disabled`, `unconfigured` and proven functionality. | Missing identity configuration never opens writes or creates fake sessions. No production data used for Preview fixtures. |
+| F1 / U,H,A,D | Owner registers with username/password without an email field, receives one account, reloads, logs out and logs back into the same identity. | Reject invalid input, wrong passwords, duplicate usernames and cross-origin mutations; limit repeated attempts. Logged-out sessions cannot edit. Mocked sign-in is not a real hosted account test; existing external identities are not silently linked. |
 | F2 / U,H,A,P,M,D | Owner creates a private renovation, saves photo/date/text, reloads, edits and sees the same persisted moment. | Outsider cannot write/read private data; corrupt image is rejected; upload retry preserves text and does not duplicate the moment. |
 | F3 / U,H,A,S,P,M,D | Owner creates a link; isolated visitor reads the story and permitted media without editor controls; owner revokes it. | Old link no longer authorizes page/API/media reads. Revocation cannot erase bytes already downloaded; do not promise that. |
 | F4 / U,H,A,S,E,D | A separately authenticated permitted viewer likes/unlikes and comments; counts/content survive reload; author/owner can remove allowed comments. | Viewer cannot edit the project or another user's comments. Recheck current visibility/block/link rules on every write; reject duplicate or unauthorized mutations safely. |
@@ -52,7 +52,7 @@ For auth/access/database changes, include real PostgreSQL tests. For a product r
 
 ## Two-user acceptance journey
 
-**Owner:** authenticate → private renovation → three test photos over two moments → reload → edit → share → personal digital Bouwboek → feedback → logout/login.
+**Owner:** register with username/password → private renovation → three test photos over two moments → reload → edit → share → personal digital Bouwboek → feedback → logout/login into the same account.
 **Viewer:** redeem link → read without edit rights → separately authenticate → like/comment → reload. Owner revokes the link; verify link-derived API and media access are denied.
 Keep test accounts isolated and clean only records created by the test. A viewer with another valid access path may still have access: prove which authorization path was revoked.
 Profile following uses the existing profile graph only. Verify relevant follower-removal/block rules when this access path is exposed; do not add a second social system or broad feed to complete the journey.
@@ -64,4 +64,7 @@ Use `PASS`, `FAIL`, `BLOCKED` or `NOT_RUN`. Tests may be PASS while hosted statu
 Any source/config/access change affecting a recorded result requires rechecking that result. Mark old evidence stale rather than silently copying green checkmarks.
 Use Playwright CLI/API and owner-performed personal login. No Computer Use and no test-auth bypass in production. A tool name is not proof.
 
-If blocked externally, record the exact missing setting and one owner action. Continue independent checks, not a new auth implementation or a rewrite.
+If blocked externally, record the exact missing setting and one owner action.
+The owner has authorized username/password auth; absent Google secrets are no
+longer a blocker. Preserve the remaining database, private Blob and hosted
+verification boundaries. Password recovery is not part of this implementation.

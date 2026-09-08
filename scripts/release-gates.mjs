@@ -124,7 +124,7 @@ export function verifyTargetProductProfile(profile, contract) {
     throw new Error("product-profile bevat geen capabilitydata");
   }
   const required = [
-    "googleSignIn",
+    "passwordSignIn",
     "renovations",
     "updates",
     "story",

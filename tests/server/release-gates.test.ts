@@ -125,7 +125,7 @@ describe("deployment release identity gates", () => {
       betaMode: false,
       inviteRequiredForNewAccounts: false,
       capabilities: {
-        googleSignIn: true,
+        passwordSignIn: true,
         emailAuth: false,
         renovations: true,
         updates: true,
@@ -143,6 +143,10 @@ describe("deployment release identity gates", () => {
 
     expect(() => verifyTargetProductProfile(profile, previewContract)).not.toThrow();
     expect(() => verifyTargetProductProfile(profile, productionContract)).not.toThrow();
+    expect(() => verifyTargetProductProfile({
+      ...profile,
+      capabilities: { ...profile.capabilities, passwordSignIn: false, googleSignIn: true },
+    }, previewContract)).toThrow("passwordSignIn");
     expect(() => verifyTargetProductProfile({ ...profile, checkoutMode: "live" }, productionContract))
       .toThrow("CHECKOUT_MODE moet off");
     expect(() => verifyTargetProductProfile({ ...profile, betaMode: true }, previewContract))

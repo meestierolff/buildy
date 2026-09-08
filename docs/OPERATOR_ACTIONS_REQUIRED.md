@@ -5,7 +5,8 @@ Deze checklist geldt voor de gratis Buildy-MVP uit
 één volledige release-SHA en zet nooit secrets of persoonsgegevens in de
 repository, logs of screenshots. Leg actueel bewijs en één volgende actie vast
 in [STATE](architecture/STATE.md). Deze checklist verleent geen toestemming om
-Google-configuratie of productie-instellingen te wijzigen.
+productie-instellingen te wijzigen. De eigenaar heeft de vervanging van Google
+door gebruikersnaam/wachtwoord wel expliciet geautoriseerd.
 
 ## 1. Releasekandidaat en Vercel
 
@@ -36,20 +37,23 @@ Google-configuratie of productie-instellingen te wijzigen.
   configuratie; roteer bestaande encryptiesleutels niet stilzwijgend. Bewaar
   rotatie- en recoveryinformatie buiten de repository.
 
-## 3. Google OpenID Connect
+## 3. Gebruikersnaam, wachtwoord en sessies
 
-- [ ] Controleer de bestaande Google-webclients voor de stabiele Preview en
-  Production; vraag eigenaartoestemming als configuratie ontbreekt of moet wijzigen.
-- [ ] Registreer alleen exacte HTTPS-origins en de callback
-  `/api/auth/callback/google`; gebruik geen wildcards.
-- [ ] Plaats `GOOGLE_CLIENT_ID` en `GOOGLE_CLIENT_SECRET` uitsluitend in de
-  juiste Vercel-environment.
-- [ ] Test nieuwe en bestaande gebruiker, veilige callback, logout, verlopen
-  sessie en accountverwijdering.
+- [ ] Controleer de exacte HTTPS-origin, database en PII-configuratie; er is
+  geen OAuth-providersecret of callbackregistratie nodig.
+- [ ] Verifieer de append-only accountcredentialsmigration en bestaande RLS-
+  grenzen op een tijdelijke PostgreSQL-database vóór toepassing op Preview.
+- [ ] Test registreren met gebruikersnaam/wachtwoord, herladen, uitloggen en
+  opnieuw inloggen op hetzelfde account; nieuwe accounts vragen geen e-mailadres.
+- [ ] Controleer verkeerde wachtwoorden, ongeldige invoer, begrensde loginpogingen,
+  same-origin CSRF, veilige redirects, verlopen sessies en accountverwijdering.
+- [ ] Controleer dat wachtwoorden uitsluitend als scrypt-hash zijn opgeslagen
+  en dat cookie- en wachtwoordwaarden buiten logs, artifacts en browseropslag blijven.
 
-Google is de enige loginmethode. Configureer geen wachtwoord-, magic-link- of
-e-mailauthenticatie. De eigenaar doet persoonlijke login en secretinvoer; gebruik
-CLI/API en Playwright voor controle, geen Computer Use of vervangende identiteit.
+Gebruikersnaam/wachtwoord is de loginmethode; configureer geen OAuth, magic links
+of e-maillogin. Wachtwoordherstel is niet beschikbaar en oude externe accounts
+worden niet stilzwijgend gekoppeld. De eigenaar doet persoonlijke login en
+secretinvoer; gebruik CLI/API en Playwright, geen Computer Use.
 
 ## 4. Private Vercel Blob
 
@@ -80,7 +84,7 @@ Er zijn geen media-, Bouwboek-, e-mail- of providercrons.
 ## 6. Previewbewijs
 
 - [ ] Deploy exact de vastgezette SHA naar een stabiele Preview-origin.
-- [ ] Doorloop landing, lokaal fotovoorbeeld en Google-login.
+- [ ] Doorloop landing, lokaal fotovoorbeeld, registratie en login.
 - [ ] Maak een verbouwing aan en bevestig dat die standaard privé is.
 - [ ] Upload een foto, publiceer een Bouwmoment en controleer het Verhaal.
 - [ ] Maak en trek een deellink in; controleer anonieme alleen-lezen toegang en

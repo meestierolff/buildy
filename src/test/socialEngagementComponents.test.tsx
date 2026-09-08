@@ -40,6 +40,7 @@ function authValue(authenticated: boolean): ReturnType<typeof useAuth> {
           id: "provider-user",
           name: "Noor",
           email: "noor@example.com",
+          username: "test-eigenaar",
           emailVerified: true,
           image: null,
           createdAt: new Date(),
@@ -98,7 +99,7 @@ describe("ReactionBar via engagement-API", () => {
 
     expect(screen.getByLabelText("Reactie 🔨, 2")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /reactie/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Inloggen met Google om te reageren" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Inloggen om te reageren" })).toHaveAttribute(
       "href",
       `/auth?next=${encodeURIComponent(`/project/${PROJECT_ID}?update=${UPDATE_ID}`)}`,
     );

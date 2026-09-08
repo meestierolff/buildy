@@ -81,7 +81,7 @@ async function accountRoutes(route: Route, pathname: string, method: string): Pr
 }
 
 test.describe("Accountinstellingen", () => {
-  test("laadt server-owned accountdata en toont uitsluitend Google-login", async ({ page }) => {
+  test("laadt server-owned accountdata en toont de gebruikersnaamlogin", async ({ page }) => {
     const fixture = await installSyntheticApi(page, {
       handle: ({ request, route, url }) => accountRoutes(route, url.pathname, request.method()),
     });
@@ -90,7 +90,7 @@ test.describe("Accountinstellingen", () => {
 
     await expect(page.getByRole("heading", { level: 1, name: "Jouw Buildy" })).toBeVisible();
     await expect(page.getByLabel("Weergavenaam")).toHaveValue("Synthetische eigenaar");
-    await expect(page.getByText(/uitsluitend in met Google/i)).toBeVisible();
+    await expect(page.getByText(/logt in met je gebruikersnaam en wachtwoord/i)).toBeVisible();
     await expect(page.getByRole("heading", { name: "Actieve sessies" })).toBeVisible();
     await expect(page.getByText("Dit apparaat")).toBeVisible();
     await expect(page.getByRole("button", { name: "Account verwijderen" })).toBeVisible();

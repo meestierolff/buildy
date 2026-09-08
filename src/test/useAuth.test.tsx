@@ -30,6 +30,7 @@ import { queryClient } from "@/lib/queryClient";
 const user = {
   createdAt: new Date("2026-08-01T10:00:00.000Z"),
   email: "bewoner@example.com",
+  username: "test-eigenaar",
   emailVerified: true,
   id: "auth-user-1",
   image: "https://cdn.buildy.test/avatar.webp",
@@ -56,7 +57,7 @@ describe("AuthProvider", () => {
     vi.restoreAllMocks();
   });
 
-  it("maps the Google user to the temporary legacy metadata contract", () => {
+  it("maps the username account to the temporary legacy metadata contract", () => {
     expect(mapAuthUser(user)).toMatchObject({
       email: "bewoner@example.com",
       user_metadata: {

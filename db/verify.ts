@@ -53,6 +53,8 @@ export const EXPECTED_PUBLIC_TABLES = [
   "moderation_target_states",
   "notifications",
   "outbox_events",
+  "password_credentials",
+  "password_sessions",
   "photobook_drafts",
   "photobook_exclusions",
   "photobook_order_events",
@@ -86,6 +88,8 @@ const SERVER_AUTH_CORE_TABLES = new Set([
   "google_oidc_identities",
   "google_oidc_login_attempts",
   "google_oidc_sessions",
+  "password_credentials",
+  "password_sessions",
 ]);
 
 export const EXPECTED_RLS_TABLES = EXPECTED_PUBLIC_TABLES.filter(
@@ -131,6 +135,8 @@ const REQUIRED_FUNCTIONS = [
   "app_finalize_photobook_render",
   "app_fail_photobook_render",
   "app_provision_auth_identity",
+  "app_lock_password_auth_identity",
+  "app_revoke_password_sessions_on_account_restriction",
   "app_retry_outbox_event",
   "app_resolve_active_user",
   "app_can_view_profile",
@@ -207,6 +213,7 @@ const REQUIRED_FUNCTIONS = [
 
 const REQUIRED_TRIGGERS = [
   "audit_events_append_only",
+  "app_users_revoke_password_sessions",
   "product_events_append_only",
   "beta_signup_product_event",
   "onboarding_product_event",

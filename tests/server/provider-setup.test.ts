@@ -32,14 +32,13 @@ function environmentFor(
     PII_ENCRYPTION_KEYS: JSON.stringify({ 1: Buffer.alloc(32, 1).toString("base64") }),
     PII_ENCRYPTION_CURRENT_VERSION: "1",
     PII_BLIND_INDEX_KEY: Buffer.alloc(32, 2).toString("base64"),
-    GOOGLE_CLIENT_ID: "provider-check-google-client",
-    GOOGLE_CLIENT_SECRET: "provider-check-google-secret",
     BLOB_READ_WRITE_TOKEN: "provider-check-blob-secret",
     CRON_SECRET: "provider-check-cron-secret-at-least-32-characters",
     ACCOUNT_RETENTION_POLICY_VERSION: "provider-check-v1",
     ACCOUNT_RETENTION_POLICY_APPROVED_AT: "2026-01-01T00:00:00.000Z",
-
   };
+  delete environment.GOOGLE_CLIENT_ID;
+  delete environment.GOOGLE_CLIENT_SECRET;
   for (const [name, value] of Object.entries(overrides)) {
     if (value === undefined) delete environment[name];
     else environment[name] = value;
@@ -61,13 +60,14 @@ function runProviderCheck(
 
 describe("provider setup release contract", () => {
   it.each(["preview", "staging", "production"] as const)(
-    "accepts %s with real core configuration and no commerce credentials",
+    "accepts %s with core configuration and no OAuth or commerce credentials",
     (target) => {
       const result = runProviderCheck(target);
       expect(result.status, result.stderr || result.stdout).toBe(0);
       expect(result.stdout).toContain("verwacht feedback_beta/off");
       expect(result.stdout).toContain("3 unieke Neon TLS-loginrollen");
       expect(result.stdout).toContain("geen betaal- of printconfig vereist");
+      expect(result.stdout).toContain("geen OAuth-provider nodig");
       expect(result.stdout).toContain("6/6 automatische checks zonder fout");
     },
   );
@@ -102,14 +102,13 @@ describe("provider setup release contract", () => {
     expect(noTls.stdout).toContain("TLS ontbreekt");
   });
 
-  it("fails closed without Google or Blob and never prints configured secrets", () => {
-    for (const name of ["GOOGLE_CLIENT_SECRET", "BLOB_READ_WRITE_TOKEN"]) {
+  it("fails closed without database, data protection or Blob and never prints configured secrets", () => {
+    for (const name of ["DATABASE_URL", "PII_BLIND_INDEX_KEY", "BLOB_READ_WRITE_TOKEN"]) {
       const result = runProviderCheck("preview", { [name]: undefined });
       expect(result.status).toBe(1);
       const output = `${result.stdout}\n${result.stderr}`;
       for (const secret of [
         "database-password-value",
-        "provider-check-google-secret",
         "provider-check-blob-secret",
       ]) expect(output).not.toContain(secret);
     }

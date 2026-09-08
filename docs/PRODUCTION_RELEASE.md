@@ -12,7 +12,8 @@ Peecho, fysieke bestellingen en printproofs vallen buiten deze release.
 
 ## Onveranderlijke releasegrenzen
 
-- Google OpenID Connect is de enige loginmethode.
+- Accounts gebruiken gebruikersnaam/wachtwoord zonder e-mailvraag; de server
+  bewaart gezouten scrypt-hashes en opaque, gehashte HttpOnly-sessies.
 - Customer-media staat in een private Vercel Blob-store en wordt
   uitsluitend na serverautorisatie gelezen.
 - Een `unlisted` share-token leeft alleen in het URL-fragment tot body-only
@@ -31,8 +32,9 @@ Peecho, fysieke bestellingen en printproofs vallen buiten deze release.
 - Productie wordt niet als testomgeving gebruikt en krijgt geen synthetische
   mutaties vóór expliciete toestemming.
 - Gebruik CLI/API en Playwright; geen Computer Use. De eigenaar doet persoonlijke
-  login en secretinvoer. Wijzig de bestaande Google-configuratie alleen met
-  eigenaartoestemming; schakel auth nooit uit om een reis groen te maken.
+  login en secretinvoer. De vervanging van Google is door de eigenaar toegestaan;
+  schakel auth nooit uit om een reis groen te maken. Behoud same-origin CSRF,
+  rate limiting en veilige redirects; koppel oudere accounts niet stilzwijgend.
 
 ## Fase 0 — release-identiteit vastzetten
 
@@ -42,7 +44,7 @@ Leg in het releasebewijs vast:
 2. het exacte Vercel-project en team;
 3. de exacte Preview- en uiteindelijke Production-origin;
 4. doel-Neon-project, branch, regio en database zonder credentials te tonen;
-5. private Blob-store en Google-client zonder secrets;
+5. private Blob-store en de accountcredentialsmigration zonder secrets;
 6. migrationledger vóór/na en het goedgekeurde rollback-/incidentvenster;
 7. verantwoordelijke releaseoperator en eigenaar voor hosting, privacy en
    toepasselijke voorwaarden.
@@ -61,10 +63,10 @@ Alle volgende punten moeten vóór productie als groen zijn afgetekend:
   en contentbeleid voor de gratis dienst zijn door de bevoegde eigenaar bevestigd;
 - Neon backup/recovery, retentie, DPA/regio en least-privilege rollen zijn
   bevestigd;
-- bestaande Google consent/origins/callbacks en private Blob zijn bevestigd;
+- accountregistratie, wachtwoordlogin, server-owned sessies en private Blob zijn bevestigd;
 - monitoring, alerting, budgets en incident-eigenaarschap zijn geregeld;
 - echte hosted owner- en kijkersessies kunnen de kernreis uitvoeren; persoonlijke
-  Google-login blijft bij de betrokken eigenaar/kijker.
+  login blijft bij de betrokken eigenaar/kijker.
 
 Browser-toolnaam of MCP-enumeratie is geen gate. Noteer een werkelijk ontbrekende
 provider, toestemming of sessie als blokkade in STATE; oude toolblokkades zijn
@@ -90,8 +92,8 @@ te kopiëren.
    Preview/stagingdoel. Gebruik `PRODUCT_PROFILE=feedback_beta`, `BETA_MODE=false`
    en `CHECKOUT_MODE=off`. `CRON_SECRET` beschermt alleen account lifecycle;
    bevestig dat `vercel.json` geen media-/photobookschedule bevat.
-5. Controleer de exacte HTTPS-origin en Google-callback
-   `/api/auth/callback/google`; wijzig deze alleen met eigenaartoestemming.
+5. Controleer de exacte HTTPS-origin en same-origin authmutaties. Google-
+   providersecrets en OAuth-callbacks zijn geen releaseafhankelijkheid.
 6. Bevestig in het Vercel-dashboard dat de Blob-store private is. Bewaar geen
    provider-URL als customer-mediareferentie.
 7. Deploy uitsluitend een nieuwe Vercel Preview van de vastgezette commit. Maak
@@ -140,8 +142,10 @@ zijn dormant; hun uitgeschakelde status blokkeert de gratis release niet.
 
 Bewijs op de exacte Previewcommit:
 
-- real Google redirect/callback, nieuwe accountkoppeling, bestaande login,
-  logout en sessierevocation;
+- echte registratie met gebruikersnaam/wachtwoord zonder e-mailvraag, herladen,
+  logout, sessierevocation en opnieuw inloggen op hetzelfde account;
+- verkeerde wachtwoorden, dubbele gebruikersnaam, begrensde loginpogingen en
+  geweigerde cross-origin authmutaties; geen wachtwoord in logs of artifacts;
 - private Blob upload, voltooiing, checksum/size, geautoriseerde read,
   directe verwerking van exact het asset, owner-poll retry, ongeautoriseerde
   denial, delete en cleanup;
@@ -162,10 +166,11 @@ Bewijs op de exacte Previewcommit:
 
 Voer F1–F6 uit met echte geautoriseerde owner- en kijkersessies via de bestaande
 login, hosted API, database en private Blob. Gebruik Playwright en CLI/API en
-laat de betrokken gebruikers hun persoonlijke Google-login uitvoeren. Registreer
+laat de betrokken gebruikers hun persoonlijke login uitvoeren. Registreer
 per actie origin, rol, verwacht/werkelijk resultaat, console/page errors,
 relevante requeststatus en veilige artifacts. Geautomatiseerde Playwright-tests
-mogen dit bewijzen; mocks en synthetische sessies bewijzen geen echte OIDC-login.
+mogen dit bewijzen; mocks en vooraf gemaakte sessies bewijzen geen echte
+registratie of wachtwoordlogin. Beloof geen nog ontbrekend wachtwoordherstel.
 Bewaar geen persoonlijke inhoud, sessiecookies of ruwe deellinks in bewijs.
 
 ## Fase 4 — production readiness review
@@ -227,7 +232,7 @@ migrationafwijking, brede 5xx-toename of ontbrekende core-readiness.
 
 Productie blijft **NO-GO** bij één rood, onbekend of niet vastgelegd punt,
 waaronder: toepasselijke hostingvoorwaarden/privacy, Preview-isolatie,
-Google-/Blob-kernreis, een aan de release-SHA gebonden clean-room DB-herhaling,
+account-/Blob-kernreis, een aan de release-SHA gebonden clean-room DB-herhaling,
 vereiste GitHub CI en de echte hosted owner-/kijkerreis. Een toolmerk, Stripe,
 printproof of fulfilment is geen gate voor deze gratis MVP. Er is geen
 uitzondering op basis van deadline of het feit dat er al een openbaar

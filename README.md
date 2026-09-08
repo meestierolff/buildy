@@ -12,7 +12,7 @@ De gratis MVP-flow is:
 ## MVP van vandaag
 
 - een rustige publieke landing met een lokale fotodemo;
-- Google OpenID Connect als enige loginmethode;
+- een account met gebruikersnaam en wachtwoord, zonder e-mailadres;
 - korte onboarding met een naam en optioneel type verbouwing;
 - een nieuwe verbouwing die standaard privé is;
 - foto-first Bouwmomenten in één chronologisch Verhaal;
@@ -30,7 +30,7 @@ blijven bestaan, maar vormen geen tweede zichtbaar productmodel.
 - React 18, TypeScript en Vite;
 - typed same-origin Vercel Functions API;
 - Neon PostgreSQL, Drizzle en append-only migrations;
-- Google OIDC met opaque, server-owned sessies;
+- scrypt-wachtwoordhashes en opaque, server-owned sessies;
 - private Vercel Blob met autorisatie per mediaread;
 - request-driven mediaverwerking onder een eigen workerrol;
 - TanStack Query v5 en een Wouter-compatibiliteitsrouter;
@@ -92,7 +92,7 @@ DATABASE_MIGRATION_URL='<tijdelijke-directe-url>' bun run db:verify
 - [Vereiste operatoracties](docs/OPERATOR_ACTIONS_REQUIRED.md)
 - [Productmodel](docs/PRODUCT_MODEL.md)
 - [Sociaal toegangsmodel](docs/SOCIAL_STATE_MACHINE.md)
-- [Google-authconfiguratie](docs/GOOGLE_AUTH_SETUP.md)
+- [Account- en sessiereis](docs/architecture/FLOWS.md)
 - [Private Blob-configuratie](docs/VERCEL_BLOB_SETUP.md)
 - [Stripe Checkout-configuratie — dormant, buiten deze release](docs/STRIPE_SETUP.md)
 - [Production-releaseprocedure](docs/PRODUCTION_RELEASE.md)

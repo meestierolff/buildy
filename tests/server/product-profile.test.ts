@@ -74,8 +74,6 @@ function configured(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
     ACCOUNT_RETENTION_POLICY_APPROVED_AT: "2026-08-14T10:00:00.000Z",
     CRON_SECRET: "b".repeat(32),
     BLOB_READ_WRITE_TOKEN: `vercel_blob_rw_${"b".repeat(48)}`,
-    GOOGLE_CLIENT_ID: "google-client",
-    GOOGLE_CLIENT_SECRET: "google-secret",
     ...overrides,
   };
 }
@@ -100,7 +98,7 @@ describe("product profile", () => {
     expect(profile.checkoutMode).toBe("off");
     expect(profile.capabilities.emailAuth).toBe(false);
     expect(profile.capabilities.checkout).toBe(false);
-    expect(profile.capabilities.googleSignIn).toBe(true);
+    expect(profile.capabilities.passwordSignIn).toBe(true);
   });
 
   it("keeps the digital photobook available without the isolated media worker", () => {
@@ -139,7 +137,7 @@ describe("product profile", () => {
       betaMode: false,
       inviteRequiredForNewAccounts: false,
       capabilities: {
-        googleSignIn: false,
+        passwordSignIn: false,
         emailAuth: false,
         renovations: false,
         updates: false,
@@ -161,8 +159,6 @@ describe("product profile", () => {
       DATABASE_ACCOUNT_WORKER_URL: undefined,
       DATABASE_MEDIA_WORKER_URL: undefined,
       DATABASE_PHOTOBOOK_WORKER_URL: undefined,
-      GOOGLE_CLIENT_ID: undefined,
-      GOOGLE_CLIENT_SECRET: undefined,
       BLOB_READ_WRITE_TOKEN: undefined,
     });
 
@@ -174,7 +170,7 @@ describe("product profile", () => {
       photobooks: "disabled",
     });
     expect(getProductProfile(runtime).capabilities).toMatchObject({
-      googleSignIn: false,
+      passwordSignIn: false,
       renovations: false,
       updates: false,
       story: false,

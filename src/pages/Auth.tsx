@@ -1,67 +1,83 @@
-import { useMemo, useState } from "react";
-import { BookOpen, Images, Users } from "lucide-react";
-import { toast } from "sonner";
+import { useMemo, useState, type FormEvent } from "react";
+import { BookOpen, Eye, EyeOff, Images, Loader2, Users } from "lucide-react";
+import { usernameSignInInputSchema, usernameSignUpInputSchema } from "../../shared/contracts/auth";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import {
   authClient,
-  authErrorDetails,
   authErrorMessage,
   safeNextPath,
 } from "@/lib/authClient";
 import { useAppFeatures } from "@/lib/appFeatures";
 import { Link, Navigate, useSearchParams } from "@/lib/router";
 
-const GoogleIcon = () => (
-  <svg className="h-5 w-5" viewBox="0 0 48 48" aria-hidden="true">
-    <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8a12 12 0 1 1 0-24c3 0 5.8 1.1 7.9 3l5.7-5.7A20 20 0 1 0 24 44a20 20 0 0 0 19.6-16c.3-1.2.4-2.5.4-3.8 0-1.2-.1-2.5-.4-3.7z" />
-    <path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 16 19 13 24 13c3 0 5.8 1.1 7.9 3l5.7-5.7A20 20 0 0 0 6.3 14.7z" />
-    <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2A12 12 0 0 1 12.7 28l-6.5 5A20 20 0 0 0 24 44z" />
-    <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3a12 12 0 0 1-4.1 5.6l6.2 5.2c-.4.4 6.6-4.8 6.6-14.8 0-1.2-.1-2.5-.4-3.5z" />
-  </svg>
-);
-
 const Auth = () => {
   usePageMeta({
-    title: "Doorgaan met Google — Buildy",
-    description: "Log veilig in met Google om je verbouwing en Bouwboek bij te houden.",
+    title: "Inloggen — Buildy",
+    description: "Log in of maak een account om je verbouwing en Bouwboek bij te houden.",
     path: "/auth",
     noIndex: true,
   });
 
-  const { user, loading: authLoading, error: sessionError } = useAuth();
-  const [searchParams] = useSearchParams();
+  const { user, loading: authLoading, error: sessionError, refetchSession } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const nextPath = useMemo(() => safeNextPath(searchParams.get("next")), [searchParams]);
-  const [googleLoading, setGoogleLoading] = useState(false);
-  const { googleSignInEnabled } = useAppFeatures();
-  const callbackError = searchParams.get("error");
-  const feedback = callbackError
-    ? authErrorMessage({ code: callbackError }, "google")
-    : sessionError
+  const registering = searchParams.get("mode") === "register";
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [destination, setDestination] = useState<string | null>(null);
+  const { passwordSignInEnabled } = useAppFeatures();
+  const feedback = formError ?? (sessionError
       ? authErrorMessage(sessionError, "session")
-      : null;
+      : null);
 
-  const handleGoogle = async () => {
-    if (!googleSignInEnabled) {
-      toast.error("Google-login is nu niet beschikbaar.");
+  const switchMode = () => {
+    const next = new URLSearchParams(searchParams);
+    if (registering) next.delete("mode");
+    else next.set("mode", "register");
+    setSearchParams(next, { replace: true });
+    setPassword("");
+    setShowPassword(false);
+    setFormError(null);
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!passwordSignInEnabled || submitting) return;
+    setFormError(null);
+    const schema = registering ? usernameSignUpInputSchema : usernameSignInInputSchema;
+    const parsed = schema.safeParse({ username, password, next: nextPath });
+    if (!parsed.success) {
+      setFormError(parsed.error.issues.some((issue) => issue.path[0] === "username")
+        ? "Gebruik 3 tot 32 letters, cijfers, punten, streepjes of underscores voor je gebruikersnaam."
+        : registering ? "Kies een wachtwoord van 15 tot 128 tekens." : "Vul je wachtwoord in (maximaal 128 tekens).");
       return;
     }
-
-    setGoogleLoading(true);
+    setSubmitting(true);
     try {
-      const authorizationUrl = await authClient.beginGoogleSignIn(nextPath);
-      window.location.assign(authorizationUrl);
+      const credentials = { username, password, next: nextPath };
+      const next = await (registering ? authClient.signUp(credentials) : authClient.signIn(credentials));
+      setDestination(safeNextPath(next));
+      setPassword("");
+      const refreshed = await refetchSession();
+      if (!refreshed?.user || !refreshed.session) {
+        setFormError("Je sessie kon niet worden bevestigd. Probeer opnieuw in te loggen.");
+      }
     } catch (error) {
-      console.error("Google sign-in failed", authErrorDetails(error));
-      toast.error(authErrorMessage(error, "google"));
+      setFormError(authErrorMessage(error, registering ? "sign-up" : "sign-in"));
     } finally {
-      setGoogleLoading(false);
+      setSubmitting(false);
     }
   };
 
-  if (!authLoading && user) return <Navigate to={nextPath} replace />;
+  if (!authLoading && user) return <Navigate to={destination ?? nextPath} replace />;
 
   return (
     <main className="bg-background px-5 py-8 sm:px-6 md:py-14">
@@ -103,29 +119,44 @@ const Auth = () => {
             ) : null}
 
             <div className="mb-8">
-              <p className="eyebrow">Inloggen of beginnen</p>
+              <p className="eyebrow">{registering ? "Een plek voor jouw verhaal" : "Welkom terug"}</p>
               <h1 id="auth-title" className="mt-3 font-serif text-4xl leading-tight sm:text-5xl">
-                Ga verder met je verbouwverhaal.
+                {registering ? "Je verhaal begint hier." : "Ga verder met je verbouwverhaal."}
               </h1>
               <p className="mt-4 text-sm font-light leading-relaxed text-muted-foreground">
-                Kies je Google-account. We herkennen vanzelf of je al een Buildy-account hebt.
+                {registering
+                  ? "Kies een gebruikersnaam en wachtwoord. Je verbouwing begint privé."
+                  : "Log in met je gebruikersnaam en wachtwoord. Je verhaal wacht op je."}
               </p>
             </div>
 
-            {googleSignInEnabled ? (
-              <Button
-                type="button"
-                variant="outline"
-                disabled={googleLoading || authLoading}
-                onClick={() => void handleGoogle()}
-                className="h-12 w-full rounded-full border-border text-sm font-semibold hover:border-foreground hover:bg-background hover:text-foreground"
-              >
-                <GoogleIcon />
-                {googleLoading ? "Even wachten…" : "Doorgaan met Google"}
-              </Button>
+            {passwordSignInEnabled ? (
+              <form method="post" onSubmit={(event) => void handleSubmit(event)} className="space-y-5" aria-label={registering ? "Account maken" : "Inloggen"} aria-busy={submitting} noValidate>
+                <div className="space-y-2">
+                  <Label htmlFor="auth-username">Gebruikersnaam</Label>
+                  <Input id="auth-username" name="username" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={username} onChange={(event) => setUsername(event.target.value)} disabled={submitting} maxLength={32} required className="h-12" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="auth-password">Wachtwoord</Label>
+                  <div className="relative">
+                    <Input id="auth-password" name="password" type={showPassword ? "text" : "password"} autoComplete={registering ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} disabled={submitting} minLength={registering ? 15 : 1} maxLength={256} required aria-describedby={registering ? "auth-password-help" : undefined} className="h-12 pr-12" />
+                    <button type="button" onClick={() => setShowPassword((shown) => !shown)} aria-label={showPassword ? "Wachtwoord verbergen" : "Wachtwoord tonen"} aria-pressed={showPassword} className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-md text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" disabled={submitting}>
+                      {showPassword ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+                    </button>
+                  </div>
+                  {registering ? <p id="auth-password-help" className="text-xs leading-relaxed text-muted-foreground">Minimaal 15 tekens. Een paar woorden samen zijn makkelijk te onthouden. Bewaar je wachtwoord op een veilige plek.</p> : null}
+                </div>
+                <Button type="submit" disabled={submitting || authLoading} className="h-12 w-full rounded-full text-sm font-semibold">
+                  {submitting ? <><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Even wachten…</> : registering ? "Account maken" : "Inloggen"}
+                </Button>
+                <p className="text-center text-sm text-muted-foreground">
+                  {registering ? "Al een account?" : "Voor het eerst hier?"}{" "}
+                  <button type="button" onClick={switchMode} disabled={submitting} className="font-semibold text-foreground underline underline-offset-4 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{registering ? "Inloggen" : "Account maken"}</button>
+                </p>
+              </form>
             ) : (
               <div className="border-l-2 border-border bg-muted/20 p-4 text-sm text-muted-foreground" role="status">
-                Google-login is in deze omgeving nog niet beschikbaar.
+                Inloggen is in deze omgeving nog niet beschikbaar.
               </div>
             )}
 

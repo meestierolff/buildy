@@ -46,7 +46,8 @@ met de twee openbare supportartikelen.
 
 1. Landing: beeldvullende renovatie, belofte, lokale foto-demo, de reeks
    `foto -> Bouwmoment -> Verhaal -> Bouwboek`, deelweergave en privacy.
-2. Auth: 50/50 fotografie en één rustige `Doorgaan met Google`-actie.
+2. Auth: de bestaande rustige vormgeving met gebruikersnaam, wachtwoord en een
+   duidelijke keuze tussen account maken en inloggen; geen OAuth-link.
 3. Onboarding: naam, optioneel type, privé aanmaken en direct composer openen.
 4. Verbouwing: cover, naam/privacy/delen, verticale bouwlijn en Bouwmomenten.
 5. Bouwmoment: grote media, datum/fase, korte tekst en ondergeschikte reacties.

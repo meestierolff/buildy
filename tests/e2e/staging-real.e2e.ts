@@ -44,7 +44,7 @@ function fingerprint(value: unknown): string {
 }
 
 // F0/F7 smoke over owner-prepared F1/F2/F5 fixtures, never a replacement for F1–F6.
-// The owner must sign in through Google and prepare a private test renovation with
+// The owner must sign in with their username and password and prepare a private test renovation with
 // at least two moments, three photos and an included digital Bouwboek beforehand.
 // No browser is opened, so reports cannot capture the owner's DOM or screenshots.
 // GET /photobook refreshes the existing server draft cache; no content is edited,
@@ -60,7 +60,7 @@ test.describe("@staging-real bestaande private MVP-fixture zonder API-mocks", ()
 
     test.info().annotations.push({
       type: "evidence-boundary",
-      description: "Real hosted API persistence smoke only. Google login/logout, UI reload/edit, two-user sharing/revocation and engagement, feedback and disposable-account deletion still require separate F1–F6 evidence.",
+      description: "Real hosted API persistence smoke only. Username/password login/logout, UI reload/edit, two-user sharing/revocation and engagement, feedback and disposable-account deletion still require separate F1–F6 evidence.",
     });
 
     const health = (await read(request, "/api/health", healthResponseSchema)).data;
@@ -78,7 +78,7 @@ test.describe("@staging-real bestaande private MVP-fixture zonder API-mocks", ()
     expect(profile.profile).toBe("feedback_beta");
     expect(profile.checkoutMode).toBe("off");
     expect(profile.capabilities).toMatchObject({
-      googleSignIn: true, renovations: true, updates: true, media: true,
+      passwordSignIn: true, renovations: true, updates: true, media: true,
       story: true, sharing: true, photobookPreview: true, feedback: true,
       accountDeletion: true, checkout: false,
     });
@@ -86,7 +86,7 @@ test.describe("@staging-real bestaande private MVP-fixture zonder API-mocks", ()
     const storageState = await request.storageState();
     expect(storageState.cookies.filter((cookie) => cookie.name === "buildy_session").length).toBe(1);
     const session = (await read(request, "/api/auth/session", authSessionResponseSchema)).data;
-    if (!session.session || !session.user) throw new Error("De beschermde statefile bevat geen actieve Google-geauthenticeerde Buildy-sessie.");
+    if (!session.session || !session.user) throw new Error("De beschermde statefile bevat geen actieve geauthenticeerde Buildy-sessie.");
     expect(new Date(session.session.expiresAt).getTime()).toBeGreaterThan(Date.now());
 
     const project = (await read(request, projectPath, projectOverviewResponseSchema)).data;

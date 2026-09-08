@@ -1,7 +1,9 @@
 import {
   authLogoutResponseSchema,
   authSessionResponseSchema,
-  googleAuthStartResponseSchema,
+  passwordAuthResponseSchema,
+  usernameSignInInputSchema,
+  usernameSignUpInputSchema,
   safeAuthNextPath,
 } from "../../shared/contracts/auth";
 import { apiErrorSchema } from "../../shared/contracts/api";
@@ -9,8 +11,9 @@ import { apiErrorSchema } from "../../shared/contracts/api";
 export interface AuthClientUser {
   id: string;
   name: string;
-  email: string;
-  emailVerified: true;
+  username: string | null;
+  email: string | null;
+  emailVerified: boolean;
   image: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -28,7 +31,13 @@ export type AuthSessionData =
   | { session: AuthClientSession; user: AuthClientUser }
   | { session: null; user: null };
 
-export type AuthFlow = "session" | "google" | "sign-out";
+export type AuthFlow = "session" | "sign-in" | "sign-up" | "sign-out";
+
+export interface PasswordCredentials {
+  username: string;
+  password: string;
+  next?: string;
+}
 
 export interface AuthErrorDetails {
   code?: string;
@@ -104,18 +113,16 @@ export function authErrorMessage(error: unknown, flow: AuthFlow): string {
   if (code === "BETA_INVITE_REQUIRED" || code === "BETA_INVITE_INVALID") {
     return "Voor een nieuw account is een geldige bèta-uitnodiging nodig.";
   }
-  if (code === "GOOGLE_CALLBACK_INVALID") {
-    return "Deze Google-login is verlopen of al gebruikt. Start opnieuw.";
+  if (code === "INVALID_CREDENTIALS" || (flow === "sign-in" && status === 401)) {
+    return "Je gebruikersnaam of wachtwoord klopt niet. Probeer het opnieuw.";
   }
-  if (code === "GOOGLE_EMAIL_NOT_VERIFIED") {
-    return "Google heeft geen bevestigd e-mailadres gedeeld. Kies een ander Google-account.";
-  }
-  if (code === "GOOGLE_LOGIN_FAILED") {
-    return "Google-login is niet afgerond. Probeer het opnieuw.";
-  }
+  if (code === "USERNAME_UNAVAILABLE") return "Deze gebruikersnaam is niet beschikbaar. Kies een andere.";
+  if (code === "WEAK_PASSWORD") return "Kies een langer, uniek wachtwoord van minimaal 15 tekens.";
+  if (code === "BAD_REQUEST" || code === "VALIDATION_FAILED") return "Controleer je gebruikersnaam en wachtwoord.";
   const fallback: Record<AuthFlow, string> = {
     session: "Je sessie kon niet worden gecontroleerd. Probeer het opnieuw.",
-    google: "Google-login is nu niet bereikbaar. Probeer het later opnieuw.",
+    "sign-in": "Inloggen is niet gelukt. Probeer het opnieuw.",
+    "sign-up": "Je account kon niet worden aangemaakt. Probeer het opnieuw.",
     "sign-out": "Uitloggen is niet gelukt. Probeer het opnieuw.",
   };
   return fallback[flow];
@@ -169,8 +176,9 @@ export const authClient = {
     } as AuthSessionData;
   },
 
-  async beginGoogleSignIn(next: string): Promise<string> {
-    const response = await fetch("/api/auth/sign-in/google", {
+  async signIn(input: PasswordCredentials): Promise<string> {
+    const parsed = usernameSignInInputSchema.parse({ ...input, next: safeNextPath(input.next) });
+    const response = await fetch("/api/auth/sign-in", {
       method: "POST",
       credentials: "include",
       cache: "no-store",
@@ -178,9 +186,21 @@ export const authClient = {
         accept: "application/json",
         "content-type": "application/json",
       },
-      body: JSON.stringify({ next: safeNextPath(next) }),
+      body: JSON.stringify(parsed),
     });
-    return googleAuthStartResponseSchema.parse(await checkedResponse(response)).data.authorizationUrl;
+    return safeNextPath(passwordAuthResponseSchema.parse(await checkedResponse(response)).data.next);
+  },
+
+  async signUp(input: PasswordCredentials): Promise<string> {
+    const parsed = usernameSignUpInputSchema.parse({ ...input, next: safeNextPath(input.next) });
+    const response = await fetch("/api/auth/sign-up", {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify(parsed),
+    });
+    return safeNextPath(passwordAuthResponseSchema.parse(await checkedResponse(response)).data.next);
   },
 
   async signOut(): Promise<void> {

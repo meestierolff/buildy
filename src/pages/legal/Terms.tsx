@@ -6,7 +6,7 @@ const Terms = () => (
   <LegalLayout
     title="Algemene voorwaarden"
     description="De voorwaarden voor het gratis gebruik van Buildy en je digitale Bouwboek."
-    updated="29 augustus 2026"
+    updated="8 september 2026"
   >
     <LegalPendingNotice title="Exploitantgegevens nog vereist">
       <p>
@@ -31,10 +31,11 @@ const Terms = () => (
       productonderzoek: je reactie legt jou of Buildy nergens op vast.
     </p>
 
-    <h2>2. Account en Google-login</h2>
+    <h2>2. Account en inloggen</h2>
     <ul>
-      <li>Je logt uitsluitend in met Google. Buildy beheert geen eigen wachtwoord voor je.</li>
-      <li>Je verstrekt juiste profielinformatie en beveiligt de toegang tot je Google-account.</li>
+      <li>Je maakt een account met een gebruikersnaam en wachtwoord. We vragen daarvoor geen e-mailadres.</li>
+      <li>Je verstrekt juiste profielinformatie en bewaart je wachtwoord veilig. Deel je inloggegevens niet.</li>
+      <li>Wachtwoordherstel is in deze versie niet beschikbaar. Bewaar je inloggegevens zorgvuldig.</li>
       <li>Je gebruikt geen account van een ander en probeert toegangscontroles niet te omzeilen.</li>
       <li>Je kunt via <em>Profiel &rsaquo; Account verwijderen</em> de verwijdering van je account aanvragen.</li>
     </ul>

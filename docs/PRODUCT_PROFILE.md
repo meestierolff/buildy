@@ -18,7 +18,7 @@ accountgebaseerde MVP. De actuele scope en bewijsstatus staan in
   "betaMode": false,
   "inviteRequiredForNewAccounts": false,
   "capabilities": {
-    "googleSignIn": false,
+    "passwordSignIn": false,
     "emailAuth": false,
     "renovations": false,
     "updates": false,
@@ -43,9 +43,9 @@ wanneer de bijbehorende servercapability waar is. Er is geen
 
 - database maakt Verbouwingen, Bouwmomenten, Verhaal, sharing en feedback
   beschikbaar;
-- Google plus database, PII-keyring/blind index en productionorigin maken
-  `googleSignIn` ready;
-- account lifecycle vereist database, accountworker, Google, PII, retentie,
+- database, PII-keyring/blind index en productionorigin maken
+  `passwordSignIn` ready; er zijn geen OAuth-secrets of callbacks vereist;
+- account lifecycle vereist database, accountworker, PII, retentie,
   private Blob én `CRON_SECRET`;
 - media vereist de geïsoleerde mediaworker-DB-URL plus private Blob; het
   digitale Bouwboek vereist de webdatabase en private Blob, geen printworker;
@@ -54,6 +54,13 @@ wanneer de bijbehorende servercapability waar is. Er is geen
 - `off` maakt payments disabled. De bestaande beveiliging van dormant commerce
   blijft intact: `test|live` vereist volledige geldige Stripe-, paymentworker-,
   PII-, price-, seller- en termsconfig, maar valt buiten deze release.
+
+Nieuwe accounts gebruiken een gebruikersnaam van 3–32 tekens en een wachtwoord
+van 15–128 tekens; registratie vraagt geen e-mailadres. De server slaat een
+gezouten scrypt-hash op en geeft de bestaande opaque HttpOnly-sessie af. Alleen
+de sessiehash staat in de database. Herhaalde loginpogingen zijn begrensd en
+mutaties controleren origin/CSRF. Wachtwoordherstel is niet geïmplementeerd;
+bestaande Google-identiteiten worden niet automatisch aan nieuwe accounts gekoppeld.
 
 `GET /api/health` toont de veilig samengevatte runtimecapabilities en
 `GET /api/readiness` controleert database- en actieve workergrenzen. De health-

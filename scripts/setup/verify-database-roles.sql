@@ -39,6 +39,7 @@ CREATE TEMP TABLE buildy_expected_function_grants (
 INSERT INTO buildy_expected_function_grants (signature, role_kind) VALUES
   ('public.app_resolve_active_user(text)', 'web'),
   ('public.app_provision_auth_identity(text,uuid,boolean)', 'web'),
+  ('public.app_lock_password_auth_identity(text)', 'web'),
   ('public.app_users_are_blocked(uuid,uuid)', 'web'),
   ('public.app_can_view_profile(uuid)', 'web'),
   ('public.app_owns_project(uuid)', 'web'),
@@ -149,6 +150,7 @@ INSERT INTO buildy_retired_provider_functions (signature) VALUES
 
 CREATE TEMP TABLE buildy_owner_internal_functions (signature text PRIMARY KEY);
 INSERT INTO buildy_owner_internal_functions (signature) VALUES
+  ('public.app_revoke_password_sessions_on_account_restriction()'),
   ('public.app_share_link_id()'),
   ('public.invalidate_project_share_links_from_project()'),
   ('public.invalidate_project_share_links_from_account()'),

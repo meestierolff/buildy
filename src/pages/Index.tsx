@@ -547,7 +547,7 @@ const Index = ({
                 <p className="max-w-xl text-base leading-7 text-white/70 lg:col-span-4 lg:col-start-9 lg:pt-7">
                   {publicDemo
                     ? "Bekijk een volledig verzonnen verbouwing met meerdere Bouwmomenten in chronologische volgorde. Er worden geen klantgegevens geladen."
-                    : "Een vriend ziet de foto’s, datum en het korte verhaal—zonder editknoppen. Met Google kan diegene reageren of een opmerking plaatsen."}
+                    : "Een vriend ziet de foto’s, datum en het korte verhaal—zonder editknoppen. Ingelogd kan diegene reageren of een opmerking plaatsen."}
                 </p>
               </div>
               <ExampleRenovation publicDemo={publicDemo} />

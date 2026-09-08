@@ -387,8 +387,9 @@ async function installSyntheticNetwork(
         user: {
           id: OWNER_ID,
           name: OWNER.displayName,
-          email: "quality-owner@example.invalid",
-          emailVerified: true,
+          email: null,
+          username: "test-eigenaar",
+          emailVerified: false,
           image: null,
           createdAt: "2026-08-01T12:00:00.000Z",
           updatedAt: "2026-08-05T09:00:00.000Z",
@@ -409,7 +410,7 @@ async function installSyntheticNetwork(
           checkout: checkoutMode !== "off",
           emailAuth: false,
           feedback: true,
-          googleSignIn: true,
+          passwordSignIn: true,
           media: true,
           photobookPreview: true,
           renovations: true,
@@ -620,14 +621,27 @@ const SCENARIOS: readonly VisualScenario[] = [
     },
   },
   {
-    name: "auth-google",
+    name: "auth-password",
     path: "/auth?next=%2Fproject%2Fnieuw",
     authenticated: false,
     fullPage: true,
     assertReady: async (page) => {
       await expect(page.getByRole("heading", { level: 1, name: "Ga verder met je verbouwverhaal." })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Doorgaan met Google" })).toBeVisible();
-      await expect(page.getByLabel(/wachtwoord|e-mailadres/i)).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Inloggen", exact: true })).toBeVisible();
+      await expect(page.getByLabel("Wachtwoord", { exact: true })).toBeVisible();
+      await expect(page.getByLabel(/e-mailadres/i)).toHaveCount(0);
+    },
+  },
+  {
+    name: "auth-register",
+    path: "/auth?mode=register&next=%2Fproject%2Fnieuw",
+    authenticated: false,
+    fullPage: true,
+    assertReady: async (page) => {
+      await expect(page.getByRole("heading", { level: 1, name: "Je verhaal begint hier." })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Account maken", exact: true })).toBeVisible();
+      await expect(page.getByLabel("Wachtwoord", { exact: true })).toHaveAttribute("autocomplete", "new-password");
+      await expect(page.getByText(/Minimaal 15 tekens/)).toBeVisible();
     },
   },
   {
@@ -697,6 +711,7 @@ const SCENARIOS: readonly VisualScenario[] = [
 ];
 
 const VIEWPORTS = [
+  { name: "mobile-320x844", width: 320, height: 844 },
   { name: "mobile-390x844", width: 390, height: 844 },
   { name: "desktop-1440x1000", width: 1440, height: 1000 },
 ] as const;
@@ -712,7 +727,7 @@ for (const viewport of VIEWPORTS) {
   test.describe(`synthetische visuele kwaliteit · ${viewport.name}`, () => {
     test.use({ viewport: { width: viewport.width, height: viewport.height } });
 
-    for (const scenario of SCENARIOS) {
+    for (const scenario of SCENARIOS.filter((candidate) => viewport.width !== 320 || candidate.name.startsWith("auth-"))) {
       test(`${scenario.name} is deterministisch en past horizontaal`, async ({ page }, testInfo) => {
         await page.clock.setFixedTime(new Date(FIXED_NOW));
         await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });

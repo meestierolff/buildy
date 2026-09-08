@@ -155,15 +155,12 @@ await check("Runtimeconfig", () => {
   return `${target}; verwacht ${releaseContract.profile}/${releaseContract.checkoutMode}; exacte HTTPS-origin; secrets niet getoond`;
 });
 
-await check("Google OpenID Connect", () => {
+await check("Gebruikersnaam en wachtwoord", () => {
   if (!runtime) throw new SafeCheckError("runtimeconfig niet beschikbaar");
   const auth = resolveAuthConfiguration(runtime);
-  if (!auth.google.clientId || !auth.google.clientSecret) throw new SafeCheckError("Google-client ontbreekt");
-  const callback = new URL("/api/auth/callback/google", auth.appOrigin);
-  if (callback.origin !== new URL(auth.appOrigin).origin) {
-    throw new SafeCheckError("Google-callbackorigin wijkt af");
-  }
-  return `Google OIDC geconfigureerd; callback ${callback.pathname}`;
+  resolveRuntimeDataProtection(runtime);
+  if (!auth.secureCookies) throw new SafeCheckError("HTTPS-sessiecookies ontbreken");
+  return "database, gegevensbescherming en veilige server-owned sessies geconfigureerd; geen OAuth-provider nodig";
 });
 
 await check("Database- en workercredentials", () => {
@@ -215,21 +212,6 @@ if (remote) {
       }
     }
     return `${roles.length} runtime- en workerrollen read-only bereikbaar`;
-  });
-
-  await check("Google discovery", async () => {
-    let response: Response;
-    try {
-      response = await fetchWithTimeout(new URL("https://accounts.google.com/.well-known/openid-configuration"));
-    } catch {
-      throw new SafeCheckError("Google discovery niet bereikbaar");
-    }
-    if (response.status !== 200) throw new SafeCheckError(`Google discovery HTTP ${response.status}`);
-    const body = await response.json() as { issuer?: unknown };
-    if (body.issuer !== "https://accounts.google.com") {
-      throw new SafeCheckError("Google issuer wijkt af");
-    }
-    return "Google issuer en discovery bereikbaar";
   });
 
   await check("Private Vercel Blob", async () => {
@@ -301,7 +283,7 @@ if (remote) {
 record("manual", "Dashboard- en contractchecks", [
   "DNS/HTTPS en apex-www redirect",
   "Neon plan/regio/DPA/backupretentie",
-  "Google consent/origins/callback",
+  "registreren, inloggen, uitloggen en opnieuw inloggen met twee afzonderlijke testaccounts",
   "Vercel Blob-store PRIVATE, regio/DPA en tokenrotatie",
   "juridische identiteit, vestigingsadres en rechtstreeks privacy-/supportcontact",
   "retentie-, support- en herstelprocedure",

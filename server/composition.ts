@@ -133,8 +133,6 @@ let status: ServerCompositionStatus | undefined;
 type ConfiguredAuthRuntime = RuntimeConfig & Required<Pick<
   RuntimeConfig,
   | "DATABASE_URL"
-  | "GOOGLE_CLIENT_ID"
-  | "GOOGLE_CLIENT_SECRET"
   | "PII_ENCRYPTION_KEYS"
   | "PII_ENCRYPTION_CURRENT_VERSION"
   | "PII_BLIND_INDEX_KEY"
@@ -143,8 +141,6 @@ type ConfiguredAuthRuntime = RuntimeConfig & Required<Pick<
 function hasCompleteAuthRuntime(config: RuntimeConfig): config is ConfiguredAuthRuntime {
   return Boolean(
     config.DATABASE_URL &&
-    config.GOOGLE_CLIENT_ID &&
-    config.GOOGLE_CLIENT_SECRET &&
     config.PII_ENCRYPTION_KEYS &&
     config.PII_ENCRYPTION_CURRENT_VERSION &&
     config.PII_BLIND_INDEX_KEY

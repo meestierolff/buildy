@@ -380,7 +380,7 @@ const Friends = () => {
           description="Je volgers, verzoeken en blokkades zijn alleen voor jou zichtbaar."
           action={(
             <Button asChild className="rounded-full">
-              <Link to={authPagePath("/connecties")}>Inloggen met Google</Link>
+              <Link to={authPagePath("/connecties")}>Inloggen</Link>
             </Button>
           )}
         />

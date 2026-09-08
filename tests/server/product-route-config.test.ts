@@ -40,8 +40,6 @@ describe("canonical product route configuration", () => {
       "DATABASE_URL",
       "DATABASE_ACCOUNT_WORKER_URL",
       "DATABASE_MEDIA_WORKER_URL",
-      "GOOGLE_CLIENT_ID",
-      "GOOGLE_CLIENT_SECRET",
       "BLOB_READ_WRITE_TOKEN",
       "PII_ENCRYPTION_KEYS",
       "PII_BLIND_INDEX_KEY",
@@ -51,6 +49,7 @@ describe("canonical product route configuration", () => {
     ]) {
       expect(environmentExample, name).toMatch(new RegExp(`^${name}=`, "m"));
     }
+    expect(environmentExample).not.toMatch(/^GOOGLE_CLIENT_(?:ID|SECRET)=/m);
   });
 
   it("keeps every legacy public URL as a permanent redirect", () => {

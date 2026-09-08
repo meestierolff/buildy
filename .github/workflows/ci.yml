@@ -356,6 +356,7 @@ jobs:
         run: |
           bunx vitest run \
             tests/db/private-beta.integration.test.ts \
+            tests/db/password-auth.integration.test.ts \
             tests/db/engagement-rls.integration.test.ts \
             tests/db/social-connections.integration.test.ts \
             tests/db/project-visibility.integration.test.ts \

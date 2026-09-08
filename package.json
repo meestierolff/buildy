@@ -64,7 +64,6 @@
     "drizzle-orm": "^0.45.2",
     "lucide-react": "^0.462.0",
     "next-themes": "^0.3.0",
-    "openid-client": "6.8.4",
     "pdfkit": "^0.19.1",
     "pg": "^8.22.0",
     "react": "^18.3.1",

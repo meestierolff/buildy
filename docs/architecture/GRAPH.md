@@ -2,7 +2,8 @@
 
 **Purpose:** keep the small MVP understandable, not introduce a graph platform.
 Read [STATE](STATE.md) for deployment truth and [FLOWS](FLOWS.md) for behavior/evidence.
-Implementation baseline inspected: `162be48ee3c494c821d3ffe0cb19e9cbda0a4af4`.
+Implementation baseline before the authorized password-auth slice:
+`fb839114630efb5a7afb129a011e3b731edb972c`. See STATE for verification of changes.
 
 ## Product boundary
 
@@ -27,7 +28,6 @@ An arrow means calls/depends on. The dotted arrow is the only direct browser-to-
 flowchart LR
   U["U - React UI"] --> H["H - Same-origin API"]
   H --> A["A - Identity and access"]
-  A --> G["Google OIDC"]
   A --> D["D - Neon repositories and RLS"]
   H --> P["P - Renovations and Bouwmomenten"]
   H --> M["M - Private media"]
@@ -57,7 +57,7 @@ This diagram does not instruct a refactor into new folders or classes.
 | U | Screen, local draft, typed request, loading/error state | [App](../../src/App.tsx), [LocalPhotoDemo](../../src/components/landing/LocalPhotoDemo.tsx), [API clients](../../src/lib) |
 | H | Route dispatch, input/origin checks, safe response | [api/router.ts](../../api/router.ts), [HTTP router](../../server/http/router.ts), [contracts](../../shared/contracts) |
 | C | Profile/capability selection and service wiring | [runtime config](../../server/config/runtime.ts), [composition](../../server/composition.ts) |
-| A | OIDC, hashed sessions, active user/actor, authorization | [auth](../../server/auth), [project actor](../../server/projects/actor.ts), [database client](../../server/db/client.ts) |
+| A | Username/password, scrypt hashes, hashed sessions, active user/actor, authorization | [auth](../../server/auth), [project actor](../../server/projects/actor.ts), [database client](../../server/db/client.ts) |
 | P | Owner-scoped project and update mutations; story reads | [NewTrip](../../src/pages/NewTrip.tsx), [TripDetail](../../src/pages/TripDetail.tsx), [ProjectService](../../server/projects/service.ts), [repository](../../server/projects/repository.ts) |
 | M | Authorized upload, validation/processing, private reads | [AddStepDialog](../../src/components/AddStepDialog.tsx), [media](../../server/media), [Blob adapter](../../server/storage/vercelBlobObjectStorage.ts) |
 | S | Read-only share capability; canonical profile follows/blocking | [ShareLinkRedeem](../../src/pages/ShareLinkRedeem.tsx), [projectShares](../../server/projectShares), [social](../../server/social) |
@@ -73,8 +73,13 @@ An app user owns renovations; a renovation owns Bouwmomenten; each moment refere
 ## What exists versus what we want to run
 
 `public_demo`: browser-local photo demonstration and example pages; authenticated app is disabled. Feedback may use the configured support backend.
-`feedback_beta`: existing account-based implementation; it requires real provider configuration and hosted proof before activation.
+`feedback_beta`: account-based target; the owner authorized replacing Google OIDC with username/password. It requires the database, data-protection and storage configuration plus hosted proof before activation; no OAuth provider is required.
 Profile truth comes from C through `/api/product-profile`, not an independently invented Vite flag.
+
+The F1 contract uses salted Node crypto scrypt password hashes and the existing
+hashed HttpOnly server sessions, origin/CSRF checks, rate limiting and safe
+redirects. New username accounts collect no email. Retained external identities
+are not automatically linked; password recovery is not implemented.
 
 Current coupling to watch, not an instruction to rewrite:
 - C still imports/wires planning, moderation/admin and dormant order/proof modules.

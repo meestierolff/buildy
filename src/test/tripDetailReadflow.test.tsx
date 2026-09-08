@@ -13,7 +13,7 @@ vi.mock("@/lib/appFeatures", () => ({
     betaMode: true,
     inviteRequiredForNewAccounts: true,
     emailAuthEnabled: false,
-    googleSignInEnabled: true,
+    passwordSignInEnabled: true,
     accountLifecycleEnabled: true,
     mediaFeaturesEnabled: true,
     photobooksEnabled: true,

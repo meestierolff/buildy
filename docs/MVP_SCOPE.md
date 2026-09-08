@@ -19,11 +19,11 @@ uit tot een digitaal Bouwboek. Een fysiek exemplaar is voor later.
 - begrijpt het product via de landing en lokale fotodemo;
 - bekijkt een gedeelde verbouwing via een tijdelijke deellink;
 - heeft zonder account uitsluitend leesrechten;
-- logt met Google in om zelf te bouwen of te reageren.
+- maakt een account met gebruikersnaam en wachtwoord om zelf te bouwen of te reageren.
 
 ### Eigenaar
 
-- logt in met Google, zonder invite-, wachtwoord- of e-mailflow;
+- registreert en logt in met gebruikersnaam en wachtwoord, zonder invite of e-mailvraag;
 - kiest een naam en optioneel een type verbouwing;
 - begint met een privéverbouwing;
 - voegt een foto en korte tekst toe als Bouwmoment;
@@ -41,7 +41,7 @@ uit tot een digitaal Bouwboek. Een fysiek exemplaar is voor later.
 ## In scope
 
 - publieke landing, voorbeeld en lokale fotodemo;
-- Google OIDC en server-owned sessies;
+- gebruikersnaam/wachtwoord, scrypt-hashes en server-owned sessies;
 - profiel en eenvoudige onboarding;
 - privé als standaard voor nieuwe verbouwingen;
 - private foto-upload en request-driven mediaverwerking;
@@ -64,7 +64,7 @@ De primaire navigatie is:
 - printproofs, fysieke Bouwboeken, handmatige of automatische printfulfilment;
 - Peecho of een andere actieve printproviderintegratie;
 - transactionele e-mail of een AI-provider;
-- wachtwoorden, magic links of een tweede loginmethode;
+- OAuth, magic links, e-maillogin en wachtwoordherstel;
 - budget, plattegronden, een openbare discoveryfeed, projectmanagementsuite of
   marktplaats;
 - een tweede zichtbaar follow- of projecttoegangsmodel;

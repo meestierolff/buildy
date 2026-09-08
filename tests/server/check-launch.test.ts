@@ -20,7 +20,7 @@ const json = (data, status = 200, headers = {}) => new Response(JSON.stringify({
   headers: { "content-type": "application/json", ...headers },
 });
 const productCapabilities = {
-  googleSignIn: true,
+  passwordSignIn: true,
   emailAuth: false,
   renovations: true,
   updates: true,
