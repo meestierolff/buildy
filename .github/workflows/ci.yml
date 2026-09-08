@@ -608,6 +608,16 @@ jobs:
           appendFileSync(process.env.GITHUB_ENV, `PLAYWRIGHT_BASE_URL=${requested}\n`, "utf8");
           NODE
 
+      - name: Bind selected staging deployment to workflow SHA
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "GitHub leverde geen volledige 40-teken release-SHA." >&2
+            exit 1
+          fi
+          LAUNCH_EXPECTED_GIT_SHA="$GITHUB_SHA" \
+            bun run check:launch -- --staging --base-url="$PLAYWRIGHT_BASE_URL"
+
       - name: Materialize protected synthetic session
         env:
           STORAGE_STATE_JSON: ${{ secrets.PLAYWRIGHT_STORAGE_STATE_JSON }}

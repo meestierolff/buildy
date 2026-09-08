@@ -64,7 +64,7 @@ const Auth = () => {
   if (!authLoading && user) return <Navigate to={nextPath} replace />;
 
   return (
-    <div className="bg-background px-5 py-8 sm:px-6 md:py-14">
+    <main className="bg-background px-5 py-8 sm:px-6 md:py-14">
       <div className="mx-auto grid max-w-5xl overflow-hidden border border-border bg-card shadow-[0_24px_80px_-42px_hsl(var(--foreground)/0.28)] lg:min-h-[640px] lg:grid-cols-[0.92fr_1.08fr]">
         <aside
           className="relative hidden overflow-hidden bg-foreground p-10 text-background lg:flex lg:flex-col lg:justify-between"
@@ -139,7 +139,7 @@ const Auth = () => {
           </div>
         </section>
       </div>
-    </div>
+    </main>
   );
 };
 

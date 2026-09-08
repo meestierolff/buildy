@@ -1,7 +1,9 @@
 # Server-owned productprofiel
 
-Buildy gebruikt één profielnaam: `PRODUCT_PROFILE=feedback_beta`. Die naam
+Het enige Buildy-releaseprofiel is `PRODUCT_PROFILE=feedback_beta`. Die naam
 schakelt geen oude “simple app” in; zij groepeert de production-MVP-capabilities.
+`public_demo` bestaat uitsluitend als veilige statische fallback en is nooit
+een Preview-, staging- of production-releaseprofiel.
 
 ## Publiek contract
 
@@ -30,9 +32,9 @@ schakelt geen oude “simple app” in; zij groepeert de production-MVP-capabili
 ```
 
 De waarden hierboven illustreren een ongeconfigureerde fail-closed omgeving;
-zij zijn geen productionconfig. De frontend toont functionaliteit alleen wanneer
-de bijbehorende servercapability waar is. Er is geen `VITE_SIMPLE_APP_MODE` of
-client-owned capability truth.
+`feedback_beta` met checkout `off` is geen geldige releaseconfiguratie. De
+frontend toont functionaliteit alleen wanneer de bijbehorende servercapability
+waar is. Er is geen `VITE_SIMPLE_APP_MODE` of client-owned capability truth.
 
 ## Readiness-afleiding
 
@@ -62,12 +64,19 @@ activeren. Er zijn geen media- of photobookcronroutes/schedules.
 
 ## Environmentregels
 
-- lokaal mag `CHECKOUT_MODE=off` als bewust gesloten ontwikkelpad;
+- `public_demo` en `CHECKOUT_MODE=off` mogen alleen als expliciete veilige
+  statische fallback voor lokaal gebruik of incidentmitigatie worden ingezet;
+  geen van beide kan een releasecheck passeren;
 - automatische betaaltests en Vercel Preview gebruiken `test`;
 - production commerce gebruikt alleen na formele GO `live`;
 - keyprefix, Stripe environment/account, price/seller environment en approval-
   geldigheid moeten exact overeenkomen;
 - capability output geeft nooit secrets, seller-PII of providerpayload terug.
+
+De fail-closed launchchecks vereisen daarom `feedback_beta/test` voor Preview
+en staging, en `feedback_beta/live` voor Production. Een statische fallback mag
+beschikbaar blijven voor veilig herstel, maar geldt nooit als bewijs dat de
+production-MVP klaar of uitgerold is.
 
 De huidige release is geen production-GO. Zie
 [MVP_RELEASE_REPORT.md](MVP_RELEASE_REPORT.md).

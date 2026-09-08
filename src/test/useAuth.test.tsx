@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const clientMocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -47,8 +47,13 @@ const session = {
 
 describe("AuthProvider", () => {
   beforeEach(() => {
+    queryClient.clear();
     clientMocks.getSession.mockReset().mockResolvedValue({ session, user });
     clientMocks.signOut.mockReset().mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("maps the Google user to the temporary legacy metadata contract", () => {
@@ -88,6 +93,76 @@ describe("AuthProvider", () => {
     await waitFor(() => expect(clientMocks.getSession).toHaveBeenCalledTimes(2));
   });
 
+  it("reports a failed sign-out and retains the refreshed server session", async () => {
+    clientMocks.signOut.mockRejectedValueOnce(new Error("logout unavailable"));
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    let result: boolean | undefined;
+    const Probe = () => {
+      const auth = useAuth();
+      return (
+        <button type="button" onClick={async () => { result = await auth.signOut(); }}>
+          {auth.user?.email ?? "uitgelogd"}
+        </button>
+      );
+    };
+
+    render(<AuthProvider><Probe /></AuthProvider>);
+    await screen.findByRole("button", { name: "bewoner@example.com" });
+    fireEvent.click(screen.getByRole("button"));
+
+    await waitFor(() => expect(result).toBe(false));
+    expect(screen.getByRole("button", { name: "bewoner@example.com" })).toBeInTheDocument();
+    expect(clientMocks.getSession).toHaveBeenCalledTimes(2);
+  });
+
+  it("accepts an anonymous refresh after a lost sign-out response", async () => {
+    clientMocks.getSession
+      .mockResolvedValueOnce({ session, user })
+      .mockResolvedValueOnce({ session: null, user: null });
+    clientMocks.signOut.mockRejectedValueOnce(new Error("logout response lost"));
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    let result: boolean | undefined;
+    const Probe = () => {
+      const auth = useAuth();
+      return (
+        <button type="button" onClick={async () => { result = await auth.signOut(); }}>
+          {auth.user?.email ?? "uitgelogd"}
+        </button>
+      );
+    };
+
+    render(<AuthProvider><Probe /></AuthProvider>);
+    await screen.findByRole("button", { name: "bewoner@example.com" });
+    fireEvent.click(screen.getByRole("button"));
+
+    await waitFor(() => expect(result).toBe(true));
+    expect(screen.getByRole("button", { name: "uitgelogd" })).toBeInTheDocument();
+  });
+
+  it("retains the known session when sign-out and its verification both fail", async () => {
+    clientMocks.getSession
+      .mockResolvedValueOnce({ session, user })
+      .mockRejectedValueOnce(new Error("session verification unavailable"));
+    clientMocks.signOut.mockRejectedValueOnce(new Error("logout unavailable"));
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    let result: boolean | undefined;
+    const Probe = () => {
+      const auth = useAuth();
+      return (
+        <button type="button" onClick={async () => { result = await auth.signOut(); }}>
+          {auth.user?.email ?? "uitgelogd"}
+        </button>
+      );
+    };
+
+    render(<AuthProvider><Probe /></AuthProvider>);
+    await screen.findByRole("button", { name: "bewoner@example.com" });
+    fireEvent.click(screen.getByRole("button"));
+
+    await waitFor(() => expect(result).toBe(false));
+    expect(screen.getByRole("button", { name: "bewoner@example.com" })).toBeInTheDocument();
+  });
+
   it("slaat iedere authrequest over wanneer de server de openbare demo activeert", async () => {
     const Probe = () => {
       const auth = useAuth();
@@ -108,7 +183,9 @@ describe("AuthProvider", () => {
         session: { ...session, userId: "auth-user-2" },
         user: { ...user, id: "auth-user-2", email: "ander@example.com" },
       });
-    const clear = vi.spyOn(queryClient, "clear");
+    const publicProfile = { profile: "feedback_beta" };
+    queryClient.setQueryData(["private", "actor"], { secret: true });
+    queryClient.setQueryData(["product", "profile"], publicProfile);
     const Probe = () => {
       const auth = useAuth();
       return (
@@ -123,6 +200,7 @@ describe("AuthProvider", () => {
     fireEvent.click(screen.getByRole("button"));
 
     await screen.findByRole("button", { name: "ander@example.com" });
-    await waitFor(() => expect(clear).toHaveBeenCalledOnce());
+    await waitFor(() => expect(queryClient.getQueryData(["private", "actor"])).toBeUndefined());
+    expect(queryClient.getQueryData(["product", "profile"])).toEqual(publicProfile);
   });
 });

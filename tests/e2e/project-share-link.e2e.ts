@@ -129,10 +129,13 @@ test.describe("Tijdelijke projectdeellink", () => {
   });
 
   test("fragment wordt vóór redemption verwijderd en succes navigeert naar een schoon projectpad", async ({ page }) => {
+    // Redemption deliberately replaces the document to discard all token state.
+    // A font request from that outgoing document can be cancelled by the browser;
+    // the destination must still load that same font successfully below.
     allowBrowserDiagnostics(
       page,
       /^console: \[JavaScript Error: "downloadable font: download failed .*Instrument Serif.*$/,
-      /^requestfailed: GET https?:\/\/[^/]+\/(?:assets\/instrument-serif-latin-400-normal-[\w-]+|node_modules\/@fontsource\/instrument-serif\/files\/instrument-serif-latin-400-normal)\.woff2 \((?:Load request cancelled|cancelled)\)$/,
+      /^requestfailed: GET https?:\/\/[^/]+\/(?:assets\/instrument-serif-latin-400-normal-[\w-]+|node_modules\/@fontsource\/instrument-serif\/files\/instrument-serif-latin-400-normal)\.woff2 \((?:Load request cancelled|cancelled|NS_BINDING_ABORTED)\)$/,
     );
     const networkUrls: string[] = [];
     page.on("request", (request) => networkUrls.push(request.url()));
@@ -168,6 +171,11 @@ test.describe("Tijdelijke projectdeellink", () => {
     await page.goto(`${BASE}/delen#toegang=${RAW_LINK}`);
     await expect(page).toHaveURL(`${BASE}/project/${SYNTHETIC_IDS.project}`);
     await expect(page.getByRole("heading", { level: 1, name: "Synthetische verbouwing" })).toBeVisible();
+    const destinationFontLoaded = await page.evaluate(async () => {
+      const faces = await document.fonts.load('400 32px "Instrument Serif"');
+      return faces.length > 0 && faces.every((face) => face.status === "loaded");
+    });
+    expect(destinationFontLoaded, "de bestemmingspagina laadt Instrument Serif na de navigatie").toBe(true);
     expect(networkUrls.some((url) => url.includes(RAW_LINK))).toBe(false);
     expect(fixture.requests.find((request) => request.pathname === "/api/project-share-links/redeem")?.body)
       .toEqual({ token: RAW_LINK });

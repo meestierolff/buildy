@@ -92,6 +92,12 @@ export function authErrorMessage(error: unknown, flow: AuthFlow): string {
   if (status === 429 || code === "RATE_LIMITED") {
     return "Je hebt dit te vaak geprobeerd. Wacht even en probeer opnieuw.";
   }
+  if (
+    flow === "sign-out"
+    && (status === 503 || code === "AUTH_UNAVAILABLE" || code === "PROVIDER_UNAVAILABLE")
+  ) {
+    return "Uitloggen is tijdelijk niet beschikbaar. Probeer het later opnieuw.";
+  }
   if (status === 503 || code === "AUTH_UNAVAILABLE" || code === "PROVIDER_UNAVAILABLE") {
     return "Inloggen is tijdelijk niet beschikbaar. Probeer het later opnieuw.";
   }

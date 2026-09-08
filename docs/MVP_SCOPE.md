@@ -1,6 +1,6 @@
 # Buildy MVP-scope
 
-Status: canoniek voor de eenvoudige, gratis MVP.
+Status: canoniek voor de Buildy production-MVP.
 
 ## Belofte
 
@@ -8,7 +8,7 @@ Status: canoniek voor de eenvoudige, gratis MVP.
 
 Buildy brengt voortgangsfoto's en korte verhalen samen in één rustig,
 chronologisch verbouwingsdagboek. Hetzelfde bronmateriaal groeit automatisch
-uit tot een digitaal Bouwboek.
+uit tot een digitaal en drukbaar Bouwboek.
 
 ## Kernreizen
 
@@ -27,8 +27,10 @@ uit tot een digitaal Bouwboek.
 - voegt een foto en korte tekst toe als Bouwmoment;
 - ziet Bouwmomenten terug in het chronologische Verhaal;
 - maakt, roteert of trekt een veilige deellink in;
-- bekijkt en verfijnt het digitale Bouwboek;
-- deelt algemene feedback of printinteresse.
+- bekijkt en verfijnt het Bouwboek en keurt één exacte printproofrevisie goed;
+- accepteert de actuele voorwaarden en het maatwerkkarakter, ontvangt een
+  server-owned quote en rekent af via Stripe-hosted Checkout;
+- volgt de server-owned orderstatus en deelt algemene feedback.
 
 ### Ingelogde kijker
 
@@ -47,7 +49,11 @@ uit tot een digitaal Bouwboek.
 - chronologisch Verhaal met reacties;
 - intrekbare, high-entropy deellinks met alleen-lezen gasttoegang;
 - digitaal Bouwboek met cover, indeling, volgorde en inhoudsselectie;
-- feedbackformulier en vrijblijvende interesse in later laten drukken;
+- immutable printproofs, server-owned prijzen/seller/voorwaarden en Stripe-
+  hosted Checkout;
+- geverifieerde, idempotente Stripe-webhooks als enige bevestiging van betaling;
+- een beveiligde adminorderqueue voor handmatige externe printfulfilment;
+- feedback- en supportformulieren;
 - accountinzage, export en verwijdering;
 - privacy-, voorwaarden- en supportpagina's.
 
@@ -58,28 +64,36 @@ De primaire navigatie is:
 
 ## Bewust niet in scope
 
-- betalingen, checkout, prijzen, bestellingen of refunds;
-- een printproof, drukopdracht of fulfilmentprovider;
+- automatische printfulfilment, drukker-API, callback, poller of cron;
+- Peecho of een andere actieve printproviderintegratie;
 - transactionele e-mail of een AI-provider;
 - wachtwoorden, magic links of een tweede loginmethode;
 - een openbare discoveryfeed, projectmanagementsuite of marktplaats;
 - een tweede zichtbaar follow- of projecttoegangsmodel;
 - geautomatiseerde media- of Bouwboekcrons.
 
-Historische routes, databasevelden en commercecode mogen voor compatibiliteit
-dormant blijven. Ze staan niet in de primaire navigatie en zijn geen onderdeel
-van de releasebelofte.
+Historische routes en databasevelden mogen voor compatibiliteit blijven. Ze
+introduceren geen tweede zichtbaar productmodel of alternatieve providerflow.
 
 ## Operationeel contract
 
 - `PRODUCT_PROFILE=feedback_beta`;
 - `BETA_MODE=false`;
-- `CHECKOUT_MODE=off`;
+- Preview en staging gebruiken `CHECKOUT_MODE=test` met
+  `STRIPE_ENVIRONMENT=test`;
+- Production gebruikt pas na alle releasegates `CHECKOUT_MODE=live` met
+  `STRIPE_ENVIRONMENT=live` en afzonderlijke live approvals/secrets;
+- `public_demo` en `CHECKOUT_MODE=off` zijn alleen een veilige statische,
+  fail-closed fallback en kunnen nooit releasebewijs of een releaseprofiel zijn;
 - Neon is de database en private Vercel Blob bewaart customer-media;
 - browsercode gebruikt uitsluitend de typed same-origin API;
 - autorisatie en capabilities komen van de server;
+- alleen een signature-, account-, environment- en inhoudsgeverifieerde Stripe-
+  webhook kan een order betaald maken;
+- betaalde orders worden in `/beheer/bestellingen` handmatig beoordeeld en
+  extern geplaatst;
 - alleen account lifecycle heeft één dagelijkse cron.
 
 De MVP is pas vrij te geven nadat één vastgezette Preview-build de owner-,
-deel-, kijker-, Bouwboek- en feedbackreizen op desktop en mobiel aantoonbaar
-doorloopt.
+deel-, kijker-, Bouwboek-, Stripe-test-, adminorder- en feedbackreizen op
+desktop en mobiel aantoonbaar doorloopt en alle overige releasegates groen zijn.

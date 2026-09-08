@@ -112,6 +112,7 @@ const AccountSettings = () => {
   const [draftVersion, setDraftVersion] = useState<number | null>(null);
   const [includeMediaInExport, setIncludeMediaInExport] = useState(true);
   const [deletionConfirmation, setDeletionConfirmation] = useState("");
+  const [leavingAccount, setLeavingAccount] = useState(false);
   const sessionsQuery = useAccountSessions(Boolean(user));
   const exportsQuery = useAccountExports(Boolean(user));
   const revokeSessionMutation = useRevokeAccountSessionMutation();
@@ -132,12 +133,12 @@ const AccountSettings = () => {
     setDraftVersion(profile.version);
   }, [draftVersion, profile]);
 
-  if (authLoading) {
+  if (authLoading || leavingAccount) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center" role="status" aria-live="polite">
+      <main className="flex min-h-[60vh] items-center justify-center" role="status" aria-live="polite">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
-        <span className="sr-only">Account laden…</span>
-      </div>
+        <span className="sr-only">{leavingAccount ? "Uitloggen…" : "Account laden…"}</span>
+      </main>
     );
   }
 
@@ -199,12 +200,24 @@ const AccountSettings = () => {
     }
   };
 
+  const signOutAndReturnHome = async () => {
+    // signOut clears the session before its refresh finishes. Keep this view
+    // pending so it cannot redirect to /auth during the planned full navigation.
+    setLeavingAccount(true);
+    const signedOut = await signOut();
+    if (!signedOut) {
+      setLeavingAccount(false);
+      return false;
+    }
+    window.location.assign("/");
+    return true;
+  };
+
   const revokeSession = async (sessionId: string, isCurrent: boolean) => {
     try {
       await revokeSessionMutation.mutateAsync(sessionId);
       if (isCurrent) {
-        await signOut();
-        window.location.assign("/");
+        await signOutAndReturnHome();
         return;
       }
       toast.success("De sessie is ingetrokken.");
@@ -228,8 +241,7 @@ const AccountSettings = () => {
         idempotencyKey: createClientIdempotencyKey("account-deletion"),
       });
       toast.success("Je account is voor veilige verwijdering ingepland.");
-      await signOut();
-      window.location.assign("/");
+      await signOutAndReturnHome();
     } catch (error) {
       console.error("Account deletion request failed", error);
       toast.error(error instanceof ApiClientError
@@ -239,8 +251,7 @@ const AccountSettings = () => {
   };
 
   const logout = async () => {
-    await signOut();
-    window.location.assign("/");
+    await signOutAndReturnHome();
   };
 
   return (

@@ -318,9 +318,9 @@ const OrderAdmin = () => {
   const { user, loading } = useAuth();
   usePageMeta({ title: orderId ? "Bestelling beheren — Buildy" : "Betaalde Bouwboeken — Buildy", noIndex: true });
 
-  if (loading) return <div className="flex min-h-[60vh] items-center justify-center" role="status"><Loader2 className="animate-spin" /><span className="sr-only">Beheeromgeving laden…</span></div>;
+  if (loading) return <main className="flex min-h-[60vh] items-center justify-center" role="status"><Loader2 className="animate-spin" /><span className="sr-only">Beheeromgeving laden…</span></main>;
   if (!user) return <Navigate to={`/auth?next=${encodeURIComponent(orderId ? `/beheer/bestellingen/${orderId}` : "/beheer/bestellingen")}`} replace />;
-  return orderId ? <OrderDetail orderId={orderId} /> : <OrderList />;
+  return <main>{orderId ? <OrderDetail orderId={orderId} /> : <OrderList />}</main>;
 };
 
 export default OrderAdmin;

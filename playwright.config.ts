@@ -41,9 +41,9 @@ const baseURL = configuredBaseURL || "http://127.0.0.1:8090";
 const devCommand = "bun run dev:web -- --host 127.0.0.1 --port 8090";
 const previewCommand = "bunx vite preview --host 127.0.0.1 --port 8090 --strictPort";
 const crossBrowserCoreTestMatch =
-  /(?:canonical-routes|discovery|friends-follow|landing-photo-handoff|photobook|project-detail|project-registration-synthetic|project-share-link|public-accessibility)\.e2e\.ts/;
+  /(?:account-budget|canonical-routes|discovery|friends-follow|landing-photo-handoff|photobook|project-detail|project-registration-synthetic|project-share-link|public-accessibility)\.e2e\.ts/;
 const mobileChromiumTestMatch =
-  /(?:canonical-routes|discovery|friends-follow|landing-photo-handoff|photobook|project-detail|project-registration-synthetic|project-share-link|public-accessibility|public-demo)\.e2e\.ts/;
+  /(?:account-budget|canonical-routes|discovery|friends-follow|landing-photo-handoff|photobook|project-detail|project-registration-synthetic|project-share-link|public-accessibility|public-demo)\.e2e\.ts/;
 
 const desktopViewport = { width: 1440, height: 1000 } as const;
 const tabletViewport = { width: 768, height: 1024 } as const;

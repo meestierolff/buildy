@@ -52,10 +52,10 @@ met de twee openbare supportartikelen.
 5. Bouwmoment: grote media, datum/fase, korte tekst en ondergeschikte reacties.
 6. Gedeelde viewer: dezelfde foto-hiërarchie zonder editcontrols; login alleen
    wanneer iemand wil reageren of een opmerking wil plaatsen.
-7. Bouwboek: cover en chronologische spreads, maximaal twee layouts en alleen
-   een vrijblijvende interesseactie.
-8. Profiel: eigen verbouwing, naam/privacy, feedback en uitloggen; geen
-   beheer- of commerce-dashboard.
+7. Bouwboek: cover en chronologische spreads, maximaal twee layouts, een exact
+   printproof en daarna de server-owned quote en Stripe-hosted Checkout.
+8. Profiel: eigen verbouwing, naam/privacy, feedback en uitloggen; beheer en
+   handmatige fulfilment blijven op afzonderlijke beveiligde adminroutes.
 
 ## Buildy-componentbesluiten
 
@@ -66,8 +66,9 @@ met de twee openbare supportartikelen.
 - `BouwmomentCard` houdt foto's dominant en opmerkingen in een sheet/drawer.
 - `ShareLinkDialog` benoemt expliciet dat iedereen met de link kan kijken en
   ondersteunt kopiëren, native delen en intrekken.
-- `BouwboekViewer` is digitaal en afgeleid; proof-, provider-, betaal- en
-  bestelcomponenten komen niet in de actieve gebruikersflow.
+- `BouwboekViewer` blijft digitaal en afgeleid; de actieve bestelstap bindt
+  checkout uitsluitend aan één goedgekeurde proofrevisie en server-owned
+  prijs-, seller- en termswaarheid.
 - Lege en foutstaten geven één concrete vervolgstap en tonen nooit een ruwe
   database- of providerfout.
 
@@ -79,4 +80,5 @@ met de twee openbare supportartikelen.
 - Geen nagebouwde proprietary Step- of Travel Book-layout.
 - Geen testimonial, gebruikersaantal of productbeschikbaarheid suggereren die
   Buildy nog niet werkelijk heeft.
-- Geen checkout, drukbestelling of fulfilment beloven in deze gratis MVP.
+- Geen automatische fulfilment, providerstatus of productbeschikbaarheid
+  beloven die niet werkelijk operationeel en aantoonbaar goedgekeurd is.

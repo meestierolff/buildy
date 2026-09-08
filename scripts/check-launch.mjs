@@ -3,12 +3,13 @@ import { dirname, extname, join, normalize, relative, resolve } from "node:path"
 import { spawnSync } from "node:child_process";
 
 import {
-  launchReadinessFailures,
   parseLaunchCliArguments,
+  releaseContractFor,
   requireExpectedGitSha,
+  targetReadinessFailures,
   verifyDeployedGitSha,
-  verifyPublicDemoCapabilities,
-  verifyPublicDemoProductProfile,
+  verifyTargetCapabilities,
+  verifyTargetProductProfile,
 } from "./release-gates.mjs";
 
 const root = process.cwd();
@@ -318,6 +319,7 @@ await runCheck("static", "Migratiebestanden en ledger zijn statisch geldig", asy
 
 let baseUrl;
 let expectedGitSha;
+let expectedReleaseContract;
 const vercelAutomationBypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
 if (!staticOnly) {
   await runCheck("live", "Doelomgeving is expliciet en veilig", async () => {
@@ -337,7 +339,8 @@ if (!staticOnly) {
     const candidateExpectedGitSha = requireExpectedGitSha(rawExpectedGitSha);
     baseUrl = candidateBaseUrl;
     expectedGitSha = candidateExpectedGitSha;
-    return `${requestedEnvironment} op ${baseUrl.origin}; release-SHA expliciet vastgezet`;
+    expectedReleaseContract = releaseContractFor(requestedEnvironment);
+    return `${requestedEnvironment} op ${baseUrl.origin}; ${expectedReleaseContract.profile}/${expectedReleaseContract.checkoutMode}; release-SHA expliciet vastgezet`;
   });
 }
 
@@ -372,8 +375,6 @@ async function responseJson(response) {
   }
 }
 
-let liveCapabilities;
-let liveProfileName;
 if (!staticOnly && baseUrl) {
   await runCheck("live", "Publieke app en securityheaders", async () => {
     const response = await fetchWithin("/");
@@ -396,9 +397,9 @@ if (!staticOnly && baseUrl) {
     const response = await fetchWithin("/api/product-profile");
     const body = await responseJson(response);
     assert(response.status === 200, `product-profile gaf HTTP ${response.status}`);
-    verifyPublicDemoProductProfile(body?.data);
-    liveProfileName = body.data.profile;
-    return "public_demo; accounts en checkout uit";
+    assert(expectedReleaseContract, "verwacht releasecontract ontbreekt");
+    verifyTargetProductProfile(body?.data, expectedReleaseContract);
+    return `${expectedReleaseContract.profile}; checkout ${expectedReleaseContract.checkoutMode}; volledige productcapabilities actief`;
   });
 
   await runCheck("live", "Health heeft juiste release en capabilities", async () => {
@@ -409,23 +410,18 @@ if (!staticOnly && baseUrl) {
     assert(expectedGitSha, "verwachte release-SHA ontbreekt");
     verifyDeployedGitSha(body.data.release, expectedGitSha);
     const capabilities = body.data.capabilities ?? {};
-    liveCapabilities = capabilities;
-    assert(liveProfileName, "launchprofiel ontbreekt");
-    verifyPublicDemoCapabilities(capabilities);
+    verifyTargetCapabilities(capabilities);
     assert(response.headers.has("x-request-id"), "request-ID ontbreekt");
-    return `provider-onafhankelijke demo; release ${body.data.release}`;
+    return `auth, media, Bouwboek en betalingen ready; release ${body.data.release}`;
   });
 
   await runCheck("live", "Readiness en least-privilegerollen", async () => {
     const response = await fetchWithin("/api/readiness");
     const body = await responseJson(response);
     assert(response.status === 200 && body?.data?.ready === true, `readiness gaf HTTP ${response.status}`);
-    assert(liveProfileName, "launchprofiel ontbreekt");
-    const failed = launchReadinessFailures(body.data.checks, liveProfileName);
+    const failed = targetReadinessFailures(body.data.checks);
     assert(failed.length === 0, `onbewezen checks: ${failed.join(", ")}`);
-    return liveProfileName === "public_demo"
-      ? "demo-configuratie pass; uitgeschakelde providerrollen niet uitgevoerd"
-      : `${Object.keys(body.data.checks).length} configuratie-/databasegrenzen pass`;
+    return `${Object.keys(body.data.checks).length} configuratie-/database- en workergrenzen pass`;
   });
 
   await runCheck("live", "Publieke legal-, robots- en sitemaproutes", async () => {
@@ -439,7 +435,7 @@ if (!staticOnly && baseUrl) {
   await runCheck("live", "Anonieme private/mutatiegrenzen", async () => {
     const randomId = crypto.randomUUID();
     const privateResponse = await fetchWithin(`/api/media/${randomId}/original`);
-    const protectedStatuses = liveProfileName === "public_demo" ? [401, 404, 503] : [401, 404];
+    const protectedStatuses = [401, 404];
     assert(protectedStatuses.includes(privateResponse.status), `private media gaf HTTP ${privateResponse.status}`);
     assert(!privateResponse.headers.has("location"), "private media redirectte naar een object-URL");
 
@@ -448,7 +444,7 @@ if (!staticOnly && baseUrl) {
       headers: { "content-type": "application/json", origin: baseUrl.origin },
       body: "{}",
     });
-    const writeStatuses = liveProfileName === "public_demo" ? [401, 503] : [401];
+    const writeStatuses = [401];
     assert(writeStatuses.includes(mutationResponse.status), `anonieme projectwrite gaf HTTP ${mutationResponse.status}`);
 
     const hostileResponse = await fetchWithin("/api/projects", {
@@ -463,26 +459,9 @@ if (!staticOnly && baseUrl) {
     return "private media, writes en bestellingbeheer fail-closed";
   });
 
-  if (liveProfileName === "public_demo") {
-    await runCheck("live", "Bestaande publieke supportbackend", async () => {
-      const request = (pathname) => fetchWithin(pathname, {
-        method: "POST",
-        headers: { "content-type": "application/json", origin: baseUrl.origin },
-        body: "{}",
-      });
-      const support = await request("/api/support");
-      assert(support.status === 400, `supportvalidatie gaf HTTP ${support.status}`);
-      for (const pathname of ["/api/feedback", "/api/moderation/reports"]) {
-        const dormant = await request(pathname);
-        assert(dormant.status === 503, `${pathname} gaf HTTP ${dormant.status}`);
-      }
-      return "supportvalidatie actief; feedback- en meldwrites profile-gated uit";
-    });
-  }
-
   await runCheck("live", "Alleen accountonderhoud heeft een beschermde cronroute", async () => {
     const accountCron = await fetchWithin("/api/internal/cron/account-lifecycle");
-    const expectedAccountCronStatuses = liveProfileName === "public_demo" ? [401, 503] : [401];
+    const expectedAccountCronStatuses = [401];
     assert(expectedAccountCronStatuses.includes(accountCron.status), `accountcron gaf HTTP ${accountCron.status}`);
     for (const path of ["/api/internal/cron/media", "/api/internal/cron/photobooks"]) {
       const response = await fetchWithin(path);
@@ -497,11 +476,9 @@ if (!staticOnly && baseUrl) {
       headers: { "content-type": "application/json" },
       body: "{}",
     });
-    const expected = liveCapabilities?.payments === "ready" ? 400 : 503;
+    const expected = 400;
     assert(response.status === expected, `/api/webhooks/stripe gaf HTTP ${response.status}, verwacht ${expected}`);
-    return expected === 400
-      ? "actieve Stripe-webhook weigert ongeldige signature"
-      : "checkout uit; Stripe-webhook fail-closed onbeschikbaar";
+    return "actieve Stripe-webhook weigert ongeldige signature";
   });
 }
 

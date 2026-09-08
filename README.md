@@ -5,11 +5,11 @@ huis verbouwen en voor de vrienden en familie die willen meekijken.
 
 > Maak van je verbouwing een verhaal om te bewaren.
 
-De MVP-flow is:
+De production-MVP-flow is:
 
-`foto → Bouwmoment → Verhaal → delen en reageren → digitaal Bouwboek`
+`foto → Bouwmoment → Verhaal → delen en reageren → Bouwboek → Stripe Checkout → handmatige fulfilment`
 
-## MVP van vandaag
+## Production-MVP
 
 - een rustige publieke landing met een lokale fotodemo;
 - Google OpenID Connect als enige loginmethode;
@@ -18,8 +18,12 @@ De MVP-flow is:
 - foto-first Bouwmomenten in één chronologisch Verhaal;
 - intrekbare deellinks voor alleen-lezen toegang zonder account;
 - reageren na inloggen;
-- een gratis digitaal Bouwboek dat uit echte Bouwmomenten groeit;
-- feedback, inclusief interesse in een later gedrukt Bouwboek.
+- een digitaal en drukbaar Bouwboek dat uit echte Bouwmomenten groeit;
+- een server-owned quote en Stripe-hosted Checkout voor een expliciet
+  goedgekeurde Bouwboekrevisie;
+- een geverifieerde Stripe-webhook als enige bron voor betaalstatus;
+- handmatige beoordeling en printfulfilment vanuit `/beheer/bestellingen`;
+- feedback en support zonder transactionele e-mailprovider.
 
 De primaire ingelogde navigatie is `Mijn verbouwing`, `Bouwmoment toevoegen`,
 `Bouwboek` en `Profiel`. Oudere routes en datanamen kunnen voor compatibiliteit
@@ -33,20 +37,31 @@ blijven bestaan, maar vormen geen tweede zichtbaar productmodel.
 - Google OIDC met opaque, server-owned sessies;
 - private Vercel Blob met autorisatie per mediaread;
 - request-driven mediaverwerking onder een eigen workerrol;
+- server-owned prijs-, seller- en termsconfiguratie;
+- Stripe-hosted Checkout met accountgebonden webhookverificatie;
+- een handmatige adminorderqueue voor printfulfilment;
 - TanStack Query v5 en een Wouter-compatibiliteitsrouter;
 - één dagelijkse Vercel-cron voor account lifecycle.
 
-De bedoelde productconfiguratie is:
+Het enige releaseprofiel is `PRODUCT_PROFILE=feedback_beta`. Preview en staging
+gebruiken uitsluitend Stripe test mode:
 
 ```env
 PRODUCT_PROFILE="feedback_beta"
 BETA_MODE="false"
-CHECKOUT_MODE="off"
+CHECKOUT_MODE="test"
+STRIPE_ENVIRONMENT="test"
 ```
 
-Er is in deze gratis MVP geen actieve checkout, bestelling, printfulfilment,
-transactionele e-mail of AI-runtime. Historische code en databasestructuren
-hiervoor zijn dormant en geen releaseafhankelijkheid.
+Production gebruikt pas na alle releasegates `CHECKOUT_MODE=live` samen met een
+volledig overeenkomende live Stripe-, prijs-, seller- en termsconfiguratie.
+`public_demo` en `CHECKOUT_MODE=off` zijn uitsluitend een veilige statische,
+fail-closed fallback voor lokale demonstratie of incidentmitigatie; ze zijn
+nooit een Preview- of production-releaseprofiel.
+
+Er is geen transactionele e-mail-, AI- of automatische printprovider-runtime.
+Een betaalde order wordt door een bevoegde operator gecontroleerd, extern bij
+de goedgekeurde drukker geplaatst en vervolgens in Buildy bijgewerkt.
 
 ## Lokaal starten
 
@@ -88,6 +103,8 @@ DATABASE_MIGRATION_URL='<tijdelijke-directe-url>' bun run db:verify
 - [Sociaal toegangsmodel](docs/SOCIAL_STATE_MACHINE.md)
 - [Google-authconfiguratie](docs/GOOGLE_AUTH_SETUP.md)
 - [Private Blob-configuratie](docs/VERCEL_BLOB_SETUP.md)
+- [Stripe Checkout-configuratie](docs/STRIPE_SETUP.md)
+- [Production-releaseprocedure](docs/PRODUCTION_RELEASE.md)
 
 ## Veiligheidsgrenzen
 
@@ -95,5 +112,7 @@ DATABASE_MIGRATION_URL='<tijdelijke-directe-url>' bun run db:verify
 - Identiteit en autorisatie worden altijd server-side bepaald.
 - Customer-media blijft privé; Buildy publiceert geen permanente object-URL.
 - Een deellink geeft alleen kijktoegang en kan worden ingetrokken.
+- De browser bepaalt nooit prijzen, sellergegevens of betaalstatus; alleen een
+  geverifieerde Stripe-webhook kan betaling bevestigen.
 - PII hoort niet in logs, eventmetadata, idempotencykeys of URL's.
 - SQL-migrations zijn append-only.

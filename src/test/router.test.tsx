@@ -7,6 +7,7 @@ import {
   normalizeAppPath,
   Route,
   Routes,
+  useLocation,
   useParams,
 } from "@/lib/router";
 
@@ -48,6 +49,27 @@ describe("browserrouter", () => {
 
     expect(screen.getByRole("link", { name: "Connecties" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Volgend" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("werkt de locatie bij bij navigatie naar een query en hash op hetzelfde pad", () => {
+    window.history.replaceState({ source: "initial" }, "", "/project/project-123");
+    const LocationProbe = () => {
+      const location = useLocation();
+      return <output>{`${location.pathname}${location.search}${location.hash}:${String((location.state as { source?: string } | null)?.source)}`}</output>;
+    };
+
+    render(
+      <BrowserRouter>
+        <Link to="/project/project-123?update=nieuw#verhaal" state={{ source: "navigation" }}>
+          Bouwmoment toevoegen
+        </Link>
+        <LocationProbe />
+      </BrowserRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "Bouwmoment toevoegen" }));
+
+    expect(screen.getByText("/project/project-123?update=nieuw#verhaal:navigation")).toBeInTheDocument();
   });
 
   it("weigert protocol-relative en backslash-bestemmingen", () => {

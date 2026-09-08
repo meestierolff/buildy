@@ -26,6 +26,8 @@ test.describe("Juridische en contactroutes", () => {
     ] as const) {
       await page.goto(`${BASE}${pathname}`);
       await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
+      // Finish the current document's font loads before deliberately replacing it.
+      await page.evaluate(() => document.fonts.ready.then(() => undefined));
     }
     expect(fixture.unhandled).toEqual([]);
   });

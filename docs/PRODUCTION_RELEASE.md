@@ -131,6 +131,11 @@ LAUNCH_EXPECTED_GIT_SHA="$(git rev-parse HEAD)" \
 De live launchcheck accepteert uitsluitend de volledige 40-teken-SHA en eist
 dat `/api/health` exact die deploymentidentiteit teruggeeft. Zet
 `PREVIEW_ORIGIN` eerst op de expliciet vastgelegde HTTPS-origin.
+De doelmatrix is fail-closed: `--preview` en `--staging` vereisen
+`PRODUCT_PROFILE=feedback_beta`, `CHECKOUT_MODE=test` en alle zes readinesschecks
+op `pass`; `--production` vereist hetzelfde profiel met `CHECKOUT_MODE=live`.
+Een `public_demo`, checkout `off`, een mode-mismatch of een niet uitgevoerde
+payment-/photobookworkercheck kan dus geen releasecheck passeren.
 
 ### Provider- en rolreizen
 

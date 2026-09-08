@@ -1,6 +1,6 @@
 # Vereiste operatoracties
 
-Deze checklist geldt voor de eenvoudige, gratis Buildy-MVP. Koppel bewijs aan
+Deze checklist geldt voor de canonieke Buildy production-MVP. Koppel bewijs aan
 één volledige release-SHA en zet nooit secrets of persoonsgegevens in de
 repository, logs of screenshots.
 
@@ -10,18 +10,22 @@ repository, logs of screenshots.
 - [ ] Gebruik één bekend Vercel-project met gescheiden Preview- en
   Production-environments.
 - [ ] Controleer domains, TLS, securityheaders en environment-scoping.
-- [ ] Stel overal `PRODUCT_PROFILE=feedback_beta`, `BETA_MODE=false` en
-  `CHECKOUT_MODE=off` in.
+- [ ] Stel overal `PRODUCT_PROFILE=feedback_beta` en `BETA_MODE=false` in.
+- [ ] Gebruik lokaal `CHECKOUT_MODE=off`, in Preview/staging exact `test` en in
+  Production pas na alle gates exact `live`; laat iedere incomplete mode
+  fail-closed.
 - [ ] Laat Vercel installeren met de lockfile en bouwen met typecheck plus build.
 
 ## 2. Neon en databescherming
 
 - [ ] Gebruik afzonderlijke Preview- en Production-databases of -branches met
   backups en een geoefend herstelpad.
-- [ ] Maak unieke TLS-rollen voor migraties, web-runtime, accountworker en
-  mediaworker.
+- [ ] Maak unieke TLS-rollen voor migraties, web-runtime, accountworker,
+  mediaworker, photobookworker en paymentworker.
 - [ ] Configureer `DATABASE_URL`, `DATABASE_ACCOUNT_WORKER_URL` en
-  `DATABASE_MEDIA_WORKER_URL` per environment.
+  `DATABASE_MEDIA_WORKER_URL` per environment; configureer in Preview/staging en
+  live Production daarnaast `DATABASE_PHOTOBOOK_WORKER_URL` en
+  `DATABASE_PAYMENT_WORKER_URL`.
 - [ ] Houd `DATABASE_MIGRATION_URL` en `DATABASE_DIRECT_URL` buiten de
   web-runtime en gebruik ze alleen voor gecontroleerde operatoracties.
 - [ ] Pas de append-only migrations toe en voer `bun run db:verify` uit tegen
@@ -53,8 +57,9 @@ e-mailauthenticatie.
 - [ ] Controleer dat customer-media niet via een publieke of permanente
   object-URL in HTML, data, logs of caches terechtkomt.
 
-Het digitale Bouwboek gebruikt de web-runtime en private Blob. Het heeft in
-deze MVP geen print- of Bouwboekworker nodig.
+Het digitale Bouwboek gebruikt de web-runtime en private Blob. Proofgeneratie
+voor checkout gebruikt daarnaast de geïsoleerde photobookworker; er is geen
+automatische printworker of printproviderintegratie.
 
 ## 5. Dagelijkse account lifecycle
 
@@ -79,6 +84,9 @@ Er zijn geen media-, Bouwboek-, e-mail- of providercrons.
   reageren na inloggen.
 - [ ] Controleer cover, indeling, volgorde en inhoudsselectie in het digitale
   Bouwboek.
+- [ ] Genereer en keur een exact proof goed; bewijs een server-owned quote,
+  Stripe-testcheckout, geverifieerde webhook, paid order en handmatige
+  beheerqueue zonder een echte drukkerorder te plaatsen.
 - [ ] Verstuur algemene feedback en printinteresse en controleer de ontvangst.
 - [ ] Controleer primaire navigatie, toetsenbord/focus, fouten en console op
   mobiel en desktop in Chromium, Firefox en WebKit.
@@ -86,7 +94,10 @@ Er zijn geen media-, Bouwboek-, e-mail- of providercrons.
 
 ## 7. Productievrijgave
 
-- [ ] Controleer privacy-, voorwaarden- en supportteksten voor de gratis dienst.
+- [ ] Controleer privacy-, voorwaarden-, herroepings- en supportteksten voor de
+  dienst en het gepersonaliseerde betaal-/maatwerkpad.
+- [ ] Controleer de actuele price-/seller-/termsapprovals, Stripe-liveconfig en
+  het goedgekeurde handmatige fulfilmentproces zonder een echte order te maken.
 - [ ] Review Previewbewijs, databaseherstel, monitoring en rollback tegen
   dezelfde SHA.
 - [ ] Deploy exact die SHA en voer een niet-destructieve smoke uit voor landing,
@@ -95,10 +106,10 @@ Er zijn geen media-, Bouwboek-, e-mail- of providercrons.
 
 ## Niet configureren voor deze MVP
 
-- Stripe, prijzen, sellerdata, checkoutwebhooks of paymentworkers;
-- Peecho of een andere druk-/fulfilmentprovider;
-- een printproof- of Bouwboekworker;
+- Peecho of een andere automatische druk-/fulfilmentprovider;
+- een automatische printworker, providercallback of fulfilmentcron;
 - transactionele e-mail of een AI-provider.
 
-Historische schema's en routes voor deze onderdelen zijn dormant. Met
-`CHECKOUT_MODE=off` mogen ze geen zichtbare flow of releaseafhankelijkheid zijn.
+Stripe, server-owned prijzen/seller/terms en de payment- en photobookworker zijn
+wel actief in `test`/`live`; met `CHECKOUT_MODE=off` moeten zij fail-closed en
+onzichtbaar blijven. Historische Peecho-/e-mailruntime blijft dormant.

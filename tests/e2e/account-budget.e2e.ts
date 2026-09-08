@@ -1,6 +1,6 @@
-import type { Route } from "@playwright/test";
+import type { Page, Route } from "@playwright/test";
 
-import { BASE, expect, test } from "./helpers";
+import { allowBrowserDiagnostics, BASE, expect, test } from "./helpers";
 import {
   FIXED_NOW,
   SYNTHETIC_IDS,
@@ -9,6 +9,39 @@ import {
   success,
   syntheticProjectCard,
 } from "./syntheticApi";
+
+function observeNavigatedPaths(page: Page): string[] {
+  const paths: string[] = [];
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) paths.push(new URL(frame.url()).pathname);
+  });
+  return paths;
+}
+
+async function waitForLandingReady(page: Page): Promise<void> {
+  // Firefox can report an aborted superseded image request during the full-page
+  // logout navigation. The assertions below still require the final images to
+  // have decoded successfully before the test may finish.
+  allowBrowserDiagnostics(
+    page,
+    /^requestfailed: GET .*\/images\/buildy-(?:renovation-complete|bouwboek-preview)\.webp \(NS_BINDING_ABORTED\)$/,
+  );
+  await expect(page.getByRole("heading", {
+    level: 1,
+    name: "Maak van je verbouwing een verhaal om te bewaren.",
+  })).toBeVisible();
+  for (const source of [
+    "/images/buildy-renovation-complete.webp",
+    "/images/buildy-bouwboek-preview.webp",
+  ]) {
+    const image = page.locator(`img[src="${source}"]`);
+    await image.scrollIntoViewIfNeeded();
+    await expect.poll(() => image.evaluate((element: HTMLImageElement) => (
+      element.complete && element.naturalWidth > 0
+    ))).toBe(true);
+  }
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
+}
 
 async function accountRoutes(route: Route, pathname: string, method: string): Promise<boolean> {
   if (pathname === "/api/projects" && method === "GET") {
@@ -64,11 +97,20 @@ test.describe("Accountinstellingen", () => {
     await expect(page.getByLabel(/wachtwoord/i)).toHaveCount(0);
     await expect(page.getByRole("button", { name: /wachtwoord/i })).toHaveCount(0);
 
-    const primaryNavigation = page.getByRole("navigation", { name: "Hoofdnavigatie" });
-    await expect(primaryNavigation.getByRole("link", { name: "Mijn verbouwing" })).toBeVisible();
-    await expect(primaryNavigation.getByRole("link", { name: "Bouwmoment toevoegen" })).toBeVisible();
-    await expect(primaryNavigation.getByRole("link", { name: "Bouwboek" })).toBeVisible();
-    await expect(primaryNavigation.getByRole("link", { name: "Profiel" })).toBeVisible();
+    const desktopNavigation = (page.viewportSize()?.width ?? 1440) >= 1024;
+    const primaryNavigation = page.getByRole("navigation", {
+      name: desktopNavigation ? "Hoofdnavigatie" : "Mobiele navigatie",
+    });
+    for (const [desktopLabel, mobileLabel, href] of [
+      ["Mijn verbouwing", "Verhaal", `/project/${SYNTHETIC_IDS.project}`],
+      ["Bouwmoment toevoegen", "Toevoegen", `/project/${SYNTHETIC_IDS.project}?update=nieuw`],
+      ["Bouwboek", "Bouwboek", `/project/${SYNTHETIC_IDS.project}/bouwboek`],
+      ["Profiel", "Profiel", "/profiel"],
+    ]) {
+      const link = primaryNavigation.getByRole("link", { name: desktopNavigation ? desktopLabel : mobileLabel });
+      await expect(link).toBeVisible();
+      await expect(link).toHaveAttribute("href", href);
+    }
     await expect(primaryNavigation.getByRole("link", { name: /budget|ontdek/i })).toHaveCount(0);
     expect(fixture.unhandled).toEqual([]);
   });
@@ -97,6 +139,7 @@ test.describe("Accountinstellingen", () => {
   });
 
   test("logt uit via de server en keert terug naar de publieke landing", async ({ page }) => {
+    const navigatedPaths = observeNavigatedPaths(page);
     let signedOut = false;
     const fixture = await installSyntheticApi(page, {
       handle: async ({ request, route, url }) => {
@@ -117,14 +160,109 @@ test.describe("Accountinstellingen", () => {
     await page.getByRole("button", { name: "Uitloggen", exact: true }).click();
 
     await expect(page).toHaveURL(`${BASE}/`);
-    await expect(page.getByRole("heading", {
-      level: 1,
-      name: "Maak van je verbouwing een verhaal om te bewaren.",
-    })).toBeVisible();
+    await waitForLandingReady(page);
+    expect(navigatedPaths, "uitloggen opent geen tussentijdse authroute").not.toContain("/auth");
     expect(fixture.requests).toContainEqual(expect.objectContaining({
       method: "POST",
       pathname: "/api/auth/logout",
     }));
+    expect(fixture.unhandled).toEqual([]);
+  });
+
+  test("accepteert een verloren logoutresponse wanneer de sessie daarna anoniem is", async ({ page }) => {
+    allowBrowserDiagnostics(
+      page,
+      /^http-503: POST .*\/api\/auth\/logout$/,
+      /^console: Failed to load resource:.*503/,
+      /^console: Sign-out failed /,
+    );
+    const navigatedPaths = observeNavigatedPaths(page);
+    let logoutAttempted = false;
+    const fixture = await installSyntheticApi(page, {
+      handle: async ({ request, route, url }) => {
+        if (url.pathname === "/api/auth/logout" && request.method() === "POST") {
+          logoutAttempted = true;
+          await fulfillJson(route, { error: { code: "SERVICE_UNAVAILABLE" } }, 503);
+          return true;
+        }
+        if (logoutAttempted && url.pathname === "/api/auth/session" && request.method() === "GET") {
+          await fulfillJson(route, success({ session: null, user: null }));
+          return true;
+        }
+        return accountRoutes(route, url.pathname, request.method());
+      },
+    });
+
+    await page.goto(`${BASE}/profiel`);
+    await page.getByRole("button", { name: "Uitloggen", exact: true }).click();
+
+    await expect(page).toHaveURL(`${BASE}/`);
+    await waitForLandingReady(page);
+    expect(navigatedPaths, "verloren logoutresponse opent geen authroute").not.toContain("/auth");
+    expect(fixture.unhandled).toEqual([]);
+  });
+
+  test("blijft bij een actieve sessie op het profiel wanneer uitloggen faalt", async ({ page }) => {
+    allowBrowserDiagnostics(
+      page,
+      /^http-503: POST .*\/api\/auth\/logout$/,
+      /^console: Failed to load resource:.*503/,
+      /^console: Sign-out failed /,
+    );
+    const fixture = await installSyntheticApi(page, {
+      handle: async ({ request, route, url }) => {
+        if (url.pathname === "/api/auth/logout" && request.method() === "POST") {
+          await fulfillJson(route, {
+            error: {
+              code: "SERVICE_UNAVAILABLE",
+              message: "Uitloggen is tijdelijk niet beschikbaar.",
+              requestId: SYNTHETIC_IDS.request,
+            },
+          }, 503);
+          return true;
+        }
+        return accountRoutes(route, url.pathname, request.method());
+      },
+    });
+
+    await page.goto(`${BASE}/profiel`);
+    await page.getByRole("button", { name: "Uitloggen", exact: true }).click();
+
+    await expect(page).toHaveURL(`${BASE}/profiel`);
+    await expect(page.getByRole("heading", { level: 1, name: "Jouw Buildy" })).toBeVisible();
+    await expect(page.getByText("Uitloggen is tijdelijk niet beschikbaar. Probeer het later opnieuw.")).toBeVisible();
+    expect(fixture.unhandled).toEqual([]);
+  });
+
+  test("behoudt de bekende sessie wanneer logout en verificatie beide falen", async ({ page }) => {
+    allowBrowserDiagnostics(
+      page,
+      /^http-503: (?:GET .*\/api\/auth\/session|POST .*\/api\/auth\/logout)$/,
+      /^console: Failed to load resource:.*503/,
+      /^console: Sign-out failed /,
+    );
+    let logoutAttempted = false;
+    const fixture = await installSyntheticApi(page, {
+      handle: async ({ request, route, url }) => {
+        if (url.pathname === "/api/auth/logout" && request.method() === "POST") {
+          logoutAttempted = true;
+          await fulfillJson(route, { error: { code: "SERVICE_UNAVAILABLE" } }, 503);
+          return true;
+        }
+        if (logoutAttempted && url.pathname === "/api/auth/session" && request.method() === "GET") {
+          await fulfillJson(route, { error: { code: "SERVICE_UNAVAILABLE" } }, 503);
+          return true;
+        }
+        return accountRoutes(route, url.pathname, request.method());
+      },
+    });
+
+    await page.goto(`${BASE}/profiel`);
+    await page.getByRole("button", { name: "Uitloggen", exact: true }).click();
+
+    await expect(page).toHaveURL(`${BASE}/profiel`);
+    await expect(page.getByRole("heading", { level: 1, name: "Jouw Buildy" })).toBeVisible();
+    await expect(page.getByText("Uitloggen is tijdelijk niet beschikbaar. Probeer het later opnieuw.")).toBeVisible();
     expect(fixture.unhandled).toEqual([]);
   });
 
@@ -213,6 +351,7 @@ test.describe("Accountinstellingen", () => {
   });
 
   test("vereist de exacte verwijderbevestiging en meldt de accountverwijdering server-side aan", async ({ page }) => {
+    const navigatedPaths = observeNavigatedPaths(page);
     let signedOut = false;
     const deletionId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
     const fixture = await installSyntheticApi(page, {
@@ -263,6 +402,8 @@ test.describe("Accountinstellingen", () => {
       body: expect.objectContaining({ confirmation: "VERWIJDEREN" }),
     }));
     await expect(page).toHaveURL(`${BASE}/`);
+    await waitForLandingReady(page);
+    expect(navigatedPaths, "accountverwijdering opent geen tussentijdse authroute").not.toContain("/auth");
     expect(fixture.unhandled).toEqual([]);
   });
 });

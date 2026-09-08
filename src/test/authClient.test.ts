@@ -52,5 +52,6 @@ describe("Google OIDC client helpers", () => {
     expect(authErrorMessage(error, "google")).toMatch(/uitnodiging/i);
     expect(authErrorMessage({ status: 429 }, "google")).toMatch(/te vaak/i);
     expect(authErrorMessage({ status: 503 }, "google")).toMatch(/tijdelijk/i);
+    expect(authErrorMessage({ status: 503 }, "sign-out")).toMatch(/^Uitloggen is tijdelijk/i);
   });
 });

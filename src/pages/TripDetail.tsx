@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BookOpen,
   Hammer,
@@ -74,7 +74,6 @@ const TripDetail = () => {
   const [isOnline, setIsOnline] = useState(() => (
     typeof navigator === "undefined" || navigator.onLine
   ));
-  const composerRequestHandled = useRef<string | null>(null);
 
   const project = overviewQuery.data;
   const updates = useMemo(() => {
@@ -112,11 +111,10 @@ const TripDetail = () => {
   const pageCover = project?.cover?.proxyPath ?? coverFallback;
 
   useEffect(() => {
-    if (!project || composerRequestHandled.current === project.id) return;
+    if (!project) return;
     const query = new URLSearchParams(search);
     if (query.get("update") !== "nieuw") return;
 
-    composerRequestHandled.current = project.id;
     if (project.viewerAccess === "owner" && project.canEdit) {
       setImportLandingPhoto(query.get("intent") === LANDING_PHOTO_INTENT);
       setShowAddUpdate(true);

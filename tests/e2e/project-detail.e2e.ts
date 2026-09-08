@@ -7,6 +7,7 @@ import {
   fulfillJson,
   installSyntheticApi,
   success,
+  syntheticProjectCard,
   syntheticProjectOverview,
   syntheticProjectUpdate,
 } from "./syntheticApi";
@@ -22,7 +23,10 @@ async function installProjectFixture(page: Page) {
   return installSyntheticApi(page, {
     handle: async ({ request, route, url }) => {
       if (url.pathname === "/api/projects" && request.method() === "GET") {
-        await fulfillJson(route, success({ items: [], nextCursor: null }));
+        await fulfillJson(route, success({
+          items: [syntheticProjectCard(visibility)],
+          nextCursor: null,
+        }));
         return true;
       }
       if (url.pathname === `/api/media/${SYNTHETIC_IDS.media}`) {
@@ -164,6 +168,55 @@ async function installProjectFixture(page: Page) {
 }
 
 test.describe("Verbouwing detail", () => {
+  test("opent de Bouwmoment-composer telkens via dezelfde route met een nieuwe query", async ({ page }) => {
+    const fixture = await installProjectFixture(page);
+    await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}`);
+
+    const desktopNavigation = (page.viewportSize()?.width ?? 1440) >= 1024;
+    const navigation = page.getByRole("navigation", {
+      name: desktopNavigation ? "Hoofdnavigatie" : "Mobiele navigatie",
+    });
+    const addUpdateLink = navigation.getByRole("link", {
+      name: desktopNavigation ? "Bouwmoment toevoegen" : "Toevoegen",
+    });
+
+    await addUpdateLink.click();
+    await expect(page.getByRole("heading", { name: "Wat is er veranderd?" })).toBeVisible();
+    await page.getByRole("button", { name: "Annuleren" }).click();
+    await expect(page.getByRole("heading", { name: "Wat is er veranderd?" })).toHaveCount(0);
+
+    await addUpdateLink.click();
+    await expect(page.getByRole("heading", { name: "Wat is er veranderd?" })).toBeVisible();
+    expect(fixture.unhandled).toEqual([]);
+  });
+
+  test("springt vanuit de lightbox naar een Bouwmoment via dezelfde projectroute", async ({ page }) => {
+    await page.addInitScript(() => {
+      const scrolledIds: string[] = [];
+      Object.defineProperty(window, "__buildyScrolledIds", { value: scrolledIds });
+      Element.prototype.scrollIntoView = function recordScrollTarget() {
+        scrolledIds.push((this as HTMLElement).id);
+      };
+    });
+    const fixture = await installProjectFixture(page);
+    await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}`);
+    await page.getByRole("button", { name: "Open media van De eerste muur is open" }).click();
+    await expect(page.getByRole("link", { name: /Spring naar update/ })).toBeVisible();
+    await page.evaluate(() => {
+      (window as typeof window & { __buildyScrolledIds: string[] }).__buildyScrolledIds.length = 0;
+    });
+
+    await page.getByRole("link", { name: /Spring naar update/ }).click();
+
+    await expect(page).toHaveURL(
+      `${BASE}/project/${SYNTHETIC_IDS.project}?update=${SYNTHETIC_IDS.update}#update-${SYNTHETIC_IDS.update}`,
+    );
+    await expect.poll(() => page.evaluate(() => (
+      (window as typeof window & { __buildyScrolledIds: string[] }).__buildyScrolledIds
+    ))).toContain(`update-${SYNTHETIC_IDS.update}`);
+    expect(fixture.unhandled).toEqual([]);
+  });
+
   test("toont het foto-first Verhaal en de vier server-owned zichtbaarheidstanden", async ({ page }) => {
     const fixture = await installProjectFixture(page);
     await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}`);

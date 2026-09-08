@@ -423,10 +423,10 @@ const Index = ({
 
   if (view === "projects" && authLoading) {
     return (
-      <div className="flex min-h-[55vh] items-center justify-center" role="status">
+      <main className="flex min-h-[55vh] items-center justify-center" role="status">
         <span className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-foreground" aria-hidden="true" />
         <span className="sr-only">Account controleren…</span>
-      </div>
+      </main>
     );
   }
 
@@ -435,7 +435,7 @@ const Index = ({
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <main className="min-h-screen bg-background">
       {isLanding ? (
         <>
           <section className="relative isolate overflow-hidden bg-[#26231F] text-white" aria-labelledby="home-title">
@@ -810,7 +810,7 @@ const Index = ({
           </div>
         </section>
       ) : null}
-    </div>
+    </main>
   );
 };
 

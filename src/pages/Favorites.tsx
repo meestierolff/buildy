@@ -25,7 +25,7 @@ const Favorites = () => {
     noIndex: true,
   });
 
-  if (authLoading) return <div className="min-h-screen bg-background" />;
+  if (authLoading) return <main className="min-h-screen bg-background" />;
   if (!user) return <Navigate to={authPagePath(PRODUCT_ROUTES.following)} replace />;
 
   const projects = feedQuery.data?.projects ?? [];
