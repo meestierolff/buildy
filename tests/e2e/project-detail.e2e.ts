@@ -168,6 +168,39 @@ async function installProjectFixture(page: Page) {
 }
 
 test.describe("Verbouwing detail", () => {
+  test("houdt foto's en plaatsknoppen binnen de composer op 320px", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 844 });
+    const fixture = await installProjectFixture(page);
+    await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}?update=nieuw`);
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await page.getByLabel("Kies foto's uit je bibliotheek").setInputFiles([
+      { name: "lange-testfoto-van-de-keuken.png", mimeType: "image/png", buffer: ONE_PIXEL_PNG },
+      { name: "lange-testfoto-van-de-verbouwing.png", mimeType: "image/png", buffer: ONE_PIXEL_PNG },
+    ]);
+    await expect(dialog.getByAltText("Voorvertoning 2")).toBeVisible();
+    const submit = dialog.getByRole("button", { name: "Bouwmoment plaatsen", exact: true });
+    await submit.scrollIntoViewIfNeeded();
+    const bounds = await dialog.evaluate((element) => {
+      const dialogRect = element.getBoundingClientRect();
+      const form = element.querySelector("form")!.getBoundingClientRect();
+      const buttons = Array.from(element.querySelectorAll('form button[type="submit"], form button[type="button"]'));
+      return {
+        overflow: element.scrollWidth - element.clientWidth,
+        formRight: form.right,
+        dialogRight: dialogRect.right,
+        clippedButtons: buttons.filter((button) => {
+          const rect = button.getBoundingClientRect();
+          return rect.left < dialogRect.left || rect.right > dialogRect.right;
+        }).length,
+      };
+    });
+    expect(bounds.overflow).toBeLessThanOrEqual(1);
+    expect(bounds.formRight).toBeLessThanOrEqual(bounds.dialogRight);
+    expect(bounds.clippedButtons).toBe(0);
+    expect(fixture.unhandled).toEqual([]);
+  });
+
   test("opent de Bouwmoment-composer telkens via dezelfde route met een nieuwe query", async ({ page }) => {
     const fixture = await installProjectFixture(page);
     await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}`);

@@ -648,7 +648,7 @@ const AddStepDialog = ({
             <DialogDescription>Begin met beeld. De praktische details kun je daarna rustig aanvullen.</DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="mt-2 space-y-7">
+          <form onSubmit={handleSubmit} className="mt-2 min-w-0 space-y-7">
             {mediaFeaturesEnabled ? (
             <section aria-labelledby="update-media-title">
               <div className="flex items-end justify-between gap-4">
@@ -750,7 +750,7 @@ const AddStepDialog = ({
             {saveStatus && <p role="status" aria-live="polite" className={`text-sm ${saveError ? "text-destructive" : "text-muted-foreground"}`}>{saveStatus}</p>}
             {draftPersistenceError && <p role="alert" className="text-sm text-destructive">{draftPersistenceError}</p>}
 
-            <div className="sticky bottom-0 -mx-5 flex gap-3 border-t border-border bg-background px-5 py-4 sm:-mx-6 sm:px-6">
+            <div className="sticky bottom-0 -mx-5 flex flex-col-reverse gap-3 border-t border-border bg-background px-5 py-4 min-[360px]:flex-row sm:-mx-6 sm:px-6">
               <Button type="button" variant="ghost" onClick={requestClose} className="min-h-11 flex-1" disabled={loading}>Annuleren</Button>
               <Button
                 type="submit"
