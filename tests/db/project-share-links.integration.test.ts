@@ -1,8 +1,13 @@
 // @vitest-environment node
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
 import { describe, expect, it } from "vitest";
+import * as schema from "../../db/schema";
+import { PostgresEngagementRepository } from "../../server/engagement/repository";
+import { EngagementService } from "../../server/engagement/service";
+import { PrivacyBlindIndex } from "../../server/security/dataProtection";
 
 const databaseUrl = process.env.DATABASE_SECURITY_TEST_URL?.trim();
 const webRole = process.env.DATABASE_SECURITY_WEB_ROLE?.trim();
@@ -111,6 +116,94 @@ async function issueLink(
 }
 
 describeWithDatabase("project share-link PostgreSQL boundary", () => {
+  it("persists shared-viewer comments with zero, one and multiple mentions, replays safely and denies revoked access", async () => {
+    assertLocalDisposableDatabase(databaseUrl!, webRole!);
+    const client = new Client({ connectionString: databaseUrl });
+    await client.connect();
+    const rollback = new Error("Roll back the synthetic comment fixture");
+    const mentionedId = randomUUID();
+    const unavailableId = randomUUID();
+    try {
+      await drizzle(client, { schema }).transaction(async (transaction) => {
+        await client.query("SET LOCAL statement_timeout = '15s'");
+        await client.query(`
+          INSERT INTO app_users (id, status) VALUES ($1, 'active'), ($2, 'active'), ($3, 'active'), ($4, 'suspended')
+        `, [ids.owner, ids.viewer, mentionedId, unavailableId]);
+        await client.query(`
+          INSERT INTO profiles (user_id, display_name, slug, is_private) VALUES
+            ($1, 'Deellink-eigenaar', 'deellink-eigenaar', false),
+            ($2, 'Deellink-kijker', 'deellink-kijker', false)
+        `, [ids.owner, ids.viewer]);
+        await client.query(`
+          INSERT INTO projects (id, owner_id, slug, title, visibility, lifecycle_status, published_at)
+          VALUES ($1, $2, 'deellink-reacties', 'Deellinkreacties', 'unlisted', 'active', now())
+        `, [ids.project, ids.owner]);
+        await client.query(`
+          INSERT INTO updates (id, project_id, project_owner_id, author_id, update_date, status, published_at)
+          VALUES ($1, $2, $3, $3, current_date, 'published', now())
+        `, [ids.update, ids.project, ids.owner]);
+        await issueLink(client, webRole!, ids.link1, "create", null, "comment-create");
+        const service = new EngagementService(
+          new PostgresEngagementRepository(transaction),
+          new PrivacyBlindIndex(Buffer.alloc(32, 7).toString("base64")),
+        );
+        const viewer = { kind: "authenticated" as const, appUserId: ids.viewer, shareLinkId: ids.link1 };
+        const inputs = [
+          { idempotencyKey: randomUUID(), body: "Wat een mooie voortgang!" },
+          { idempotencyKey: randomUUID(), body: "Dank aan de eigenaar", mentionUserIds: [ids.owner] },
+          { idempotencyKey: randomUUID(), body: "Samen bouwen", mentionUserIds: [ids.owner, mentionedId] },
+        ];
+        const commentIds: string[] = [];
+        for (const input of inputs) {
+          const created = await service.createComment(viewer, ids.project, ids.update, input);
+          expect(created.replayed).toBe(false);
+          commentIds.push(created.commentId);
+          expect(await service.createComment(viewer, ids.project, ids.update, input))
+            .toEqual({ commentId: created.commentId, replayed: true });
+        }
+        const page = await service.comments(viewer, ids.project, ids.update, {});
+        expect(page.items.map((comment) => comment.id).sort()).toEqual([...commentIds].sort());
+        expect(page.items.map((comment) => comment.body).sort()).toEqual(inputs.map((input) => input.body).sort());
+
+        // The array binding must still reach the existing database eligibility check.
+        const unavailable = await service.createComment(viewer, ids.project, ids.update, {
+          idempotencyKey: randomUUID(), body: "Niet publiceren", mentionUserIds: [unavailableId],
+        }).then(() => null, (error: unknown) => error);
+        expect(unavailable).toBeTruthy();
+        const databaseError = unavailable as { code?: string; cause?: { code?: string } };
+        expect(databaseError.cause?.code ?? databaseError.code).toBe("42501");
+
+        await client.query("RESET ROLE");
+        const persisted = await client.query<{ comment_id: string; mentioned_user_id: string }>(`
+          SELECT comment_id, mentioned_user_id FROM comment_mentions
+          WHERE comment_id = ANY($1::uuid[]) ORDER BY comment_id, mentioned_user_id
+        `, [commentIds]);
+        expect(persisted.rows).toHaveLength(3);
+        expect(persisted.rows.filter((row) => row.comment_id === commentIds[0])).toHaveLength(0);
+        expect(persisted.rows.filter((row) => row.comment_id === commentIds[1]).map((row) => row.mentioned_user_id))
+          .toEqual([ids.owner]);
+        expect(persisted.rows.filter((row) => row.comment_id === commentIds[2]).map((row) => row.mentioned_user_id).sort())
+          .toEqual([ids.owner, mentionedId].sort());
+        expect((await client.query("SELECT id FROM comments WHERE project_id = $1", [ids.project])).rowCount).toBe(3);
+
+        await setContext(client, webRole!, ids.owner, null);
+        await client.query("SELECT * FROM app_revoke_project_share_link($1, 1, $2, $3, $4)", [
+          ids.project, hash("comment-revoke:idempotency"), hash("comment-revoke:request"), randomUUID(),
+        ]);
+        await expect(service.createComment(viewer, ids.project, ids.update, {
+          idempotencyKey: randomUUID(), body: "Na intrekken",
+        })).rejects.toMatchObject({ reason: "CONTENT_NOT_FOUND" });
+        await expect(service.comments(viewer, ids.project, ids.update, {}))
+          .rejects.toMatchObject({ reason: "CONTENT_NOT_FOUND" });
+        throw rollback;
+      });
+    } catch (error) {
+      if (error !== rollback) throw error;
+    } finally {
+      await client.end();
+    }
+  });
+
   it("revalidates one bearer grant across every project surface and invalidation event", async () => {
     assertLocalDisposableDatabase(databaseUrl!, webRole!);
     const client = new Client({ connectionString: databaseUrl });
