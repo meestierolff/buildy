@@ -11,9 +11,9 @@ Username/password auth is fixed scope: no Google, email, commerce or redesign.
 The owner confirmed personal hobby use; no purchase or upgrade was made.
 
 - Branch: `release/free-mvp-20260908`; [PR #4](https://github.com/meestierolff/buildy/pull/4).
-- Last passing automatic candidate: `66d0c272d108e11e21604ca66dfa927ed8cb2e70`.
-  [CI 34216553767](https://github.com/meestierolff/buildy/actions/runs/34216553767):
-  12 automatic jobs PASS, 1,036 unit/server tests, 126 migration tests,
+- Last passing app candidate: `b11413d4261fccabc504c1ab6d77a3bf3d02ed4a`.
+  [CI 34220543578](https://github.com/meestierolff/buildy/actions/runs/34220543578):
+  12 automatic jobs PASS, 1,039 unit/server tests, 126 migration tests,
   37 real PostgreSQL tests and 245 browser checks across desktop Chromium,
   Firefox, WebKit, mobile and tablet, with no browser retries, failures or skips.
   Optional protected hosted jobs were not run and do not supply user proof.
@@ -37,11 +37,11 @@ The owner confirmed personal hobby use; no purchase or upgrade was made.
 | Runtime roles | New dedicated web/account-worker/media-worker roles: NOINHERIT, NOBYPASSRLS, no role memberships. Operator credentials remain outside ordinary Vercel runtime |
 | Preview Vercel | Explicit candidate branch settings: `feedback_beta`, `BETA_MODE=false`, `CHECKOUT_MODE=off`, exact stable origin and three verified restricted DB connections |
 | Preview secrets | Sensitive exports returned placeholders; first faulty redeploy was stopped before signup. Invalid overrides were removed. Existing PII/cron records moved to the candidate by scope-only PATCH, with their IDs/types and internal values preserved. Existing private Preview-only Blob connection is inherited. No key rotation |
-| Tested Preview | `dpl_DuP7318Q4xQXhumuh46TYweQHNtJ`, exact source `66d0c272d108e11e21604ca66dfa927ed8cb2e70`, READY. [Stable Preview](https://buildy-git-release-free-mvp-20260908-clarios-projects-05f6a57e.vercel.app) |
+| Tested Preview | `dpl_AJZM3DQgSVktEjK2qMygJbj9fRBo`, exact source `b11413d4261fccabc504c1ab6d77a3bf3d02ed4a`, READY. Fresh F0 PASS; complete earlier journey keeps its actual phase SHAs. [Stable Preview](https://buildy-git-release-free-mvp-20260908-clarios-projects-05f6a57e.vercel.app) |
 | Public Production | [buildy-gamma.vercel.app](https://buildy-gamma.vercel.app/), still demo source `162be48ee3c494c821d3ffe0cb19e9cbda0a4af4`, deployment `dpl_69yfxtocmLFXVRY3eVxx9tKupiSi`. No merge or public account-MVP release |
 | Production Neon prepared | Full-data rollback branch `br-gentle-recipe-b1hql4zh` from main at LSN `0/2660608`, no compute endpoint, expires `2026-09-15T10:52:06Z`. Existing migration role applied the 27 missing migrations: ledger/checksums, all 51 migrations, no-op replay, canonical grants/RLS and new restricted runtime connections PASS. All 48 existing table counts compared: no decreases; only three canonical outbox events added. Existing passwords/ownership unchanged |
 | Production Vercel prepared | `feedback_beta`, BETA_MODE false, checkout off, exact public origins and the three verified restricted runtime connections installed. Own private fra1 Blob store `store_dHQJVVge0sUQ7rmJ` connected only to Production. Existing PII/lifecycle records preserved; verified operator credentials backed up privately and removed from ordinary runtime |
-| Protected Production build | `dpl_7gLneQfnAz62xy7VCxR5HpexfS1E`, source `66d0c27`, READY/STAGED, autoAssignCustomDomains false. The generated project alias is assigned, but both generated hosts require Vercel authentication and the sole configured public domain retains demo162. F0 configuration/database/account/media PASS; readiness is 503 solely because an inactive legacy photobook-worker connection is still checked with checkout off |
+| Protected Production build | `dpl_9CqP2mQc9Q9kYsUbDSzmwvgtTSeB`, exact app source `b11413d4261fccabc504c1ab6d77a3bf3d02ed4a`, READY/STAGED, autoAssignCustomDomains false. Actual F0 PASS at 11:35 UTC: readiness 200, configuration/database/account/media pass, inactive payment/proof workers not_checked; password signin enabled, feedback_beta, checkout off. Trusted public origin reaches input validation (400 BAD_REQUEST); an untrusted origin is denied (403 FORBIDDEN). No account created. Both generated hosts require Vercel authentication; only a temporary deployment share was used. The sole configured public domain still serves demo162 |
 
 ## Genuine hosted evidence and concrete corrections
 
@@ -68,6 +68,7 @@ Git and public evidence.
 | Final F3/F6 | On `66d0c27`, old viewer page/timeline/all three media paths, old share token and fresh anonymous access are denied after revocation; owner retains edit access and the existing unlisted visibility. Real feedback receipt PASS. Disposable project/photo, ordinary logout/login/delete, old-session/data/media denial and deleted-login denial all PASS. Final owner read confirms the original two moments, three photos and edited content |
 | Preview cleanup | All three synthetic run accounts deleted through normal UI and the canonical restricted worker. No auth identities/credentials/sessions/mappings remain; all three jobs completed with redacted tombstones. All 21 manifest objects and nine additional exact official locations are HEAD-absent. Feedback remains canonically unlinked/redacted. No broad deletion or other-user data touched. The exact disposable local PostgreSQL cluster was stopped and removed |
 | Staged readiness mismatch | Composition creates a printproof worker only for checkout test/live, but readiness still probed a configured worker with checkout off. The staged build proves this blocks the free core despite all its required boundaries passing. Automatic approval review rejected deleting the unreadable Sensitive Production record; no deletion occurred. Readiness now follows the existing active-worker condition, preserving that setting and every active worker security check. HTTP regression first reproduced 503 and an unwanted proof query with checkout off; afterward all 35 router/composition tests PASS, off makes no proof query and returns 200, while test/live still return 503 on the failed boundary. Typecheck, lint and build PASS |
+| Corrected F0 | On `b11413d`, exact READY Preview health/profile/readiness all PASS: feedback_beta, BETA_MODE false, checkout off, required configuration/database/account/media checks pass; inactive payment/proof workers not_checked. An empty signup body gets 400 BAD_REQUEST from the trusted origin and 403 FORBIDDEN from an untrusted origin, without creating an account or invoking the limiter. This fresh proof explicitly references the prior 66d0 journey and final three-account cleanup |
 
 All hosted F2 failures are preserved as failed evidence. Source corrections are
 limited to deployment routing/CSP, the required registration disclosure and
@@ -82,15 +83,19 @@ provider checkpoints and corrected runner assumptions remain archived separately
 
 ## Next action and release boundary
 
-Verify the narrow readiness correction with off versus active-mode regression,
-required CI on the new candidate and fresh actual Preview/staged Production F0.
-The already proved identity/photo/share/book/deletion paths are unchanged.
+One owner action remains: supply the actual public operator name, address and
+direct contact/privacy email for the existing legal pages. Then publish those
+details, finish the required checks for that final change, normally merge PR #4
+and verify the actual public Production commit with real signup/photo/relogin
+and cleanup. The app candidate already passed required CI and fresh actual
+Preview/staged Production F0; the earlier complete user journey retains its
+original per-phase evidence.
 
 Production preparation is executed and its actual mutation evidence is retained
 privately. Public-domain signup/photo/relogin smoke has not run. Real public
 operator/contact details still await one owner response; no identity, policy
 approval or retention date was invented. Production auto-deploys main, so PR #4
-must remain unmerged until those details and the corrected staged F0 are ready.
+must remain unmerged until those details are supplied.
 Verdict: **the complete real Preview journey and its cleanup PASS; Production
-database/storage/configuration are prepared, with the inactive-worker readiness
-correction under verification; public release remains pending**.
+database/storage/configuration and corrected staged F0 PASS; public release and
+its real signup/photo/relogin smoke remain pending the operator details**.
