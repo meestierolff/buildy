@@ -605,11 +605,13 @@ describe("OrderService", () => {
   });
 
   it("retries the exact provider order after Stripe succeeds but session persistence times out", async () => {
-    const context = dependencies();
+    let now = new Date("2026-08-04T12:00:00.000Z");
+    const context = dependencies({ clock: () => now });
     context.repository.recordCheckoutFailuresRemaining = 1;
 
     await expect(context.service.checkout(ACTOR_ID, REVISION_ID, input))
       .rejects.toThrow("database timeout");
+    now = new Date("2026-08-04T12:28:00.000Z");
     const recovered = await context.service.checkout(ACTOR_ID, REVISION_ID, {
       ...input,
       idempotencyKey: RENEWED_COMMAND_ID,
@@ -621,6 +623,9 @@ describe("OrderService", () => {
     expect(context.repository.reservations).toHaveLength(1);
     expect(context.checkoutCalls).toHaveLength(2);
     expect(context.checkoutCalls[0]).toEqual(context.checkoutCalls[1]);
+    expect(context.checkoutCalls[1]?.expiresAt).toBe("2026-08-04T13:05:00.000Z");
+    expect(Date.parse(context.checkoutCalls[1]!.expiresAt) - now.getTime())
+      .toBeGreaterThan(35 * 60_000);
     expect(context.repository.sessions).toHaveLength(1);
   });
 
