@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { createHash } from "node:crypto";
+import { BlobNotFoundError } from "@vercel/blob";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ObjectStorageError } from "../../server/storage/objectStorage";
 import {
@@ -40,7 +41,7 @@ function details(
 }
 
 function notFound(): Error {
-  return Object.assign(new Error("missing"), { name: "BlobNotFoundError" });
+  return new BlobNotFoundError();
 }
 
 function stream(bytes: Uint8Array): ReadableStream<Uint8Array> {
@@ -343,6 +344,20 @@ describe("private Vercel Blob object storage", () => {
       addRandomSuffix: false,
       allowOverwrite: false,
     });
+  });
+
+  it("does not treat a named provider error as a missing object or write after it", async () => {
+    const { sdk, storage } = fixture();
+    vi.mocked(sdk.head).mockRejectedValueOnce(
+      Object.assign(new Error("provider failed"), { name: "BlobNotFoundError" }),
+    );
+
+    await expect(storage.writeObject({
+      key: `display/22/${ASSET_ID}/large.webp`,
+      contentType: "image/webp",
+      bytes: Buffer.from("processed-display"),
+    })).rejects.toMatchObject({ code: "PROVIDER_ERROR" });
+    expect(sdk.put).not.toHaveBeenCalled();
   });
 
   it("streams a private response above Vercel's buffered 4.5 MiB limit", async () => {
