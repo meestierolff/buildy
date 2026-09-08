@@ -28,6 +28,7 @@ const SHA256 = /^[0-9a-f]{64}$/;
 const COUNTRY = /^[A-Z]{2}$/;
 const PRODUCT_REFERENCE = /^[A-Za-z0-9._:-]{1,120}$/;
 const MAX_QUOTE_TTL_MILLISECONDS = 30 * 60_000;
+const CHECKOUT_AFTER_QUOTE_MILLISECONDS = 35 * 60_000;
 
 function scopedIdempotencyKey(actorId: string, clientKey: string): string {
   return createHash("sha256")
@@ -378,6 +379,12 @@ export class OrderService {
         successUrl: new URL(`/bestellingen/${reservation.orderId}?checkout=success`, this.appOrigin).toString(),
         cancelUrl: new URL(`/project/${reservation.projectId}/bouwboek?checkout=cancelled`, this.appOrigin).toString(),
         idempotencyKey: `buildy:checkout:${reservation.orderId}:v1`,
+        // The persisted quote deadline never changes on replay. Starting from
+        // it also leaves Stripe's 30-minute minimum plus transport margin on
+        // any first attempt that still has a valid quote.
+        expiresAt: new Date(
+          reservation.quoteExpiresAt.getTime() + CHECKOUT_AFTER_QUOTE_MILLISECONDS,
+        ).toISOString(),
       });
     } catch (error) {
       if (error instanceof PaymentProviderError) {

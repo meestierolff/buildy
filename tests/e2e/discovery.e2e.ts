@@ -70,7 +70,7 @@ test.describe("Marketinglanding en minimale openbare navigatie", () => {
     await page.goto(`${BASE}/#probeer-buildy`);
     await waitForLandingImages(page);
 
-    await expect(page.getByText(/Pas na Google-login en wanneer jij het Bouwmoment plaatst/i)).toBeVisible();
+    await expect(page.getByText(/Pas na het inloggen en wanneer jij het Bouwmoment plaatst/i)).toBeVisible();
     await page.getByLabel("Kies een verbouwfoto van dit apparaat").setInputFiles({
       name: "keuken-met-privenaam.png",
       mimeType: "image/png",
@@ -81,10 +81,10 @@ test.describe("Marketinglanding en minimale openbare navigatie", () => {
     await expect(page.getByText("02 · Bouwmoment")).toBeVisible();
     await expect(page.getByText("03 · Verhaal")).toBeVisible();
     await expect(page.getByText("04 · Bouwboek")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Doorgaan met Google" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Inloggen en bewaren" })).toBeVisible();
     expect(requestedUrls.some((url) => url.includes("keuken-met-privenaam"))).toBe(false);
 
-    await page.getByRole("link", { name: "Doorgaan met Google" }).click();
+    await page.getByRole("link", { name: "Inloggen en bewaren" }).click();
     await expect(page).toHaveURL(
       /\/auth\?next=%2Fproject%2Fnieuw%3Fintent%3Deerste-bouwmoment$/,
     );

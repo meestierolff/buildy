@@ -39,7 +39,7 @@ const mocks = vi.hoisted(() => ({
   },
   user: {
     email: "ada@example.test",
-    id: "google-oidc-auth-user",
+    id: "session-auth-user",
   } as { email: string; id: string } | null,
 }));
 
@@ -112,7 +112,7 @@ function socialProfile() {
 
 describe("profile browser flow", () => {
   beforeEach(() => {
-    mocks.user = { email: "ada@example.test", id: "google-oidc-auth-user" };
+    mocks.user = { email: "ada@example.test", id: "session-auth-user" };
     mocks.updateMutation.mutateAsync.mockReset().mockResolvedValue({
       id: PROFILE_ID,
       version: 4,
@@ -173,7 +173,7 @@ describe("profile browser flow", () => {
     expect(screen.getByRole("heading", { name: "Ada Bouwer" })).toBeInTheDocument();
     expect(mocks.publicProfile).toHaveBeenCalledWith("ada-bouwer", true);
     expect(mocks.socialProfile).toHaveBeenCalledWith(PROFILE_ID, true);
-    expect(mocks.socialProfile).not.toHaveBeenCalledWith("google-oidc-auth-user", true);
+    expect(mocks.socialProfile).not.toHaveBeenCalledWith("session-auth-user", true);
     expect(screen.queryByRole("link", { name: /connecties|ontdekken/i })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Terug naar Buildy" })).toHaveAttribute("href", "/");
   });

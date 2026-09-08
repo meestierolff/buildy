@@ -9,7 +9,7 @@ export type AppFeatures = {
   betaMode: boolean;
   inviteRequiredForNewAccounts: boolean;
   emailAuthEnabled: boolean;
-  googleSignInEnabled: boolean;
+  passwordSignInEnabled: boolean;
   accountLifecycleEnabled: boolean;
   mediaFeaturesEnabled: boolean;
   photobooksEnabled: boolean;
@@ -22,7 +22,7 @@ export function deriveAppFeatures(profile?: ProductProfile): AppFeatures {
     betaMode: profile?.betaMode ?? true,
     inviteRequiredForNewAccounts: profile?.inviteRequiredForNewAccounts ?? true,
     emailAuthEnabled: profile?.capabilities.emailAuth ?? false,
-    googleSignInEnabled: profile?.capabilities.googleSignIn ?? false,
+    passwordSignInEnabled: profile?.capabilities.passwordSignIn ?? false,
     accountLifecycleEnabled: profile?.capabilities.accountDeletion ?? false,
     mediaFeaturesEnabled: profile?.capabilities.media ?? false,
     photobooksEnabled: profile?.capabilities.photobookPreview ?? false,

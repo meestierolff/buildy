@@ -3,19 +3,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  freeMvpReadinessFailures,
-  launchReadinessFailures,
   parseLaunchCliArguments,
+  releaseContractFor,
   requireExpectedGitSha,
   requireSyntheticStagingEmail,
+  targetReadinessFailures,
   verifyDeployedGitSha,
-  verifyFreeMvpCapabilities,
-  verifyFreeMvpProductProfile,
-  verifyLaunchCapabilities,
-  verifyLaunchProductProfile,
-  verifyPublicDemoCapabilities,
-  verifyPublicDemoProductProfile,
   verifySyntheticSessionEmail,
+  verifyTargetCapabilities,
+  verifyTargetProductProfile,
 } from "../../scripts/release-gates.mjs";
 
 const RELEASE_SHA = "0123456789abcdef0123456789abcdef01234567";
@@ -84,7 +80,23 @@ describe("deployment release identity gates", () => {
     expect(() => verifyDeployedGitSha(RELEASE_SHA.slice(0, 12), RELEASE_SHA)).toThrow("geen volledige geldige git-SHA");
   });
 
-  it("requires the free MVP core while keeping invites, email, checkout and fulfilment disabled", () => {
+  it("keeps checkout off in every free MVP release environment", () => {
+    expect(releaseContractFor("preview")).toEqual({
+      profile: "feedback_beta",
+      checkoutMode: "off",
+    });
+    expect(releaseContractFor("staging")).toEqual({
+      profile: "feedback_beta",
+      checkoutMode: "off",
+    });
+    expect(releaseContractFor("production")).toEqual({
+      profile: "feedback_beta",
+      checkoutMode: "off",
+    });
+    expect(() => releaseContractFor("local" as never)).toThrow("onbekende releaseomgeving");
+  });
+
+  it("requires accounts and storage while rejecting active payments", () => {
     const capabilities = {
       database: "ready",
       authentication: "ready",
@@ -97,23 +109,23 @@ describe("deployment release identity gates", () => {
       privateBeta: "disabled",
     };
 
-    expect(() => verifyFreeMvpCapabilities(capabilities)).not.toThrow();
-    expect(() => verifyFreeMvpCapabilities({ ...capabilities, media: "unconfigured" }))
+    expect(() => verifyTargetCapabilities(capabilities)).not.toThrow();
+    expect(() => verifyTargetCapabilities({ ...capabilities, media: "unconfigured" }))
       .toThrow("kerncapabilities niet ready: media");
-    expect(() => verifyFreeMvpCapabilities({ ...capabilities, privateBeta: "ready" }))
+    expect(() => verifyTargetCapabilities({ ...capabilities, privateBeta: "ready" }))
       .toThrow("privateBeta moet disabled");
-    expect(() => verifyFreeMvpCapabilities({ ...capabilities, payments: "ready" }))
+    expect(() => verifyTargetCapabilities({ ...capabilities, payments: "ready" }))
       .toThrow("payments moet disabled");
   });
 
-  it("requires the exact open-signup, no-checkout product profile", () => {
+  it("requires the account product and rejects checkout activation or a demo", () => {
     const profile = {
       profile: "feedback_beta",
       checkoutMode: "off",
       betaMode: false,
       inviteRequiredForNewAccounts: false,
       capabilities: {
-        googleSignIn: true,
+        passwordSignIn: true,
         emailAuth: false,
         renovations: true,
         updates: true,
@@ -126,65 +138,30 @@ describe("deployment release identity gates", () => {
         checkout: false,
       },
     };
+    const previewContract = releaseContractFor("preview");
+    const productionContract = releaseContractFor("production");
 
-    expect(() => verifyFreeMvpProductProfile(profile)).not.toThrow();
-    expect(() => verifyFreeMvpProductProfile({ ...profile, betaMode: true }))
-      .toThrow("BETA_MODE moet false");
-    expect(() => verifyFreeMvpProductProfile({ ...profile, checkoutMode: "test" }))
+    expect(() => verifyTargetProductProfile(profile, previewContract)).not.toThrow();
+    expect(() => verifyTargetProductProfile(profile, productionContract)).not.toThrow();
+    expect(() => verifyTargetProductProfile({
+      ...profile,
+      capabilities: { ...profile.capabilities, passwordSignIn: false, googleSignIn: true },
+    }, previewContract)).toThrow("passwordSignIn");
+    expect(() => verifyTargetProductProfile({ ...profile, checkoutMode: "live" }, productionContract))
       .toThrow("CHECKOUT_MODE moet off");
-  });
-
-  it("requires the exact provider-independent public demo profile", () => {
-    const capabilities = {
-      database: "unconfigured",
-      authentication: "disabled",
-      accountLifecycle: "disabled",
-      media: "disabled",
-      photobooks: "disabled",
-      email: "disabled",
-      payments: "disabled",
-      printFulfilment: "disabled",
-      privateBeta: "disabled",
-    };
-    const profile = {
-      profile: "public_demo",
-      checkoutMode: "off",
-      betaMode: false,
-      inviteRequiredForNewAccounts: false,
-      capabilities: {
-        googleSignIn: false,
-        emailAuth: false,
-        renovations: false,
-        updates: false,
-        story: false,
-        media: false,
-        photobookPreview: true,
-        sharing: false,
-        feedback: true,
-        accountDeletion: false,
-        checkout: false,
-      },
-    };
-
-    expect(() => verifyPublicDemoCapabilities(capabilities)).not.toThrow();
-    expect(() => verifyLaunchCapabilities(capabilities, "public_demo")).not.toThrow();
-    expect(() => verifyPublicDemoProductProfile(profile)).not.toThrow();
-    expect(() => verifyLaunchProductProfile(profile)).not.toThrow();
-    expect(() => verifyPublicDemoCapabilities({ ...capabilities, authentication: "ready" }))
-      .toThrow("authentication moet disabled");
-    expect(() => verifyPublicDemoProductProfile({
+    expect(() => verifyTargetProductProfile({ ...profile, betaMode: true }, previewContract))
+      .toThrow("BETA_MODE moet false");
+    expect(() => verifyTargetProductProfile({ ...profile, profile: "public_demo" }, previewContract))
+      .toThrow("PRODUCT_PROFILE moet feedback_beta");
+    expect(() => verifyTargetProductProfile({ ...profile, checkoutMode: "test" }, previewContract))
+      .toThrow("CHECKOUT_MODE moet off");
+    expect(() => verifyTargetProductProfile({
       ...profile,
       capabilities: { ...profile.capabilities, checkout: true },
-    })).toThrow("checkout moet uit staan");
-    expect(() => verifyPublicDemoProductProfile({
-      ...profile,
-      capabilities: { ...profile.capabilities, feedback: false },
-    })).toThrow("veilige supportroute");
-    expect(() => verifyPublicDemoProductProfile({ ...profile, profile: "feedback_beta" }))
-      .toThrow("PRODUCT_PROFILE moet public_demo");
+    }, previewContract)).toThrow("checkout moeten uit staan");
   });
 
-  it("requires active runtime workers but allows dormant commerce and print workers", () => {
+  it("requires core database boundaries and permits explicitly idle commerce workers", () => {
     const checks = {
       configuration: "pass",
       database: "pass",
@@ -194,23 +171,20 @@ describe("deployment release identity gates", () => {
       photobookWorker: "not_checked",
     };
 
-    expect(freeMvpReadinessFailures(checks)).toEqual([]);
-    expect(freeMvpReadinessFailures({ ...checks, mediaWorker: "not_checked" }))
+    expect(targetReadinessFailures(checks)).toEqual([]);
+    expect(targetReadinessFailures({ ...checks, mediaWorker: "not_checked" }))
       .toEqual(["mediaWorker=not_checked"]);
-    expect(freeMvpReadinessFailures({ ...checks, paymentWorker: "fail" }))
+    expect(targetReadinessFailures({ ...checks, paymentWorker: "fail" }))
       .toEqual(["paymentWorker=fail"]);
-    expect(launchReadinessFailures({
-      configuration: "pass",
-      database: "not_checked",
-      accountWorker: "not_checked",
-      mediaWorker: "not_checked",
-      paymentWorker: "not_checked",
-      photobookWorker: "not_checked",
-    }, "public_demo")).toEqual([]);
-    expect(launchReadinessFailures({
-      configuration: "pass",
-      database: "fail",
-    }, "public_demo")).toEqual(["database=fail"]);
+    expect(targetReadinessFailures({ ...checks, photobookWorker: "fail" }))
+      .toEqual(["photobookWorker=fail"]);
+    expect(targetReadinessFailures({ configuration: "pass" })).toEqual([
+      "database=missing",
+      "accountWorker=missing",
+      "mediaWorker=missing",
+      "paymentWorker=missing",
+      "photobookWorker=missing",
+    ]);
   });
 
   it("accepts only a dedicated non-personal staging account and binds the live session to it", () => {

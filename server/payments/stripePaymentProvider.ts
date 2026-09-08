@@ -16,7 +16,56 @@ export interface StripePaymentProviderConfig {
 }
 
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9:_-]{16,128}$/;
+const STRIPE_EVENT_ID = /^evt_[A-Za-z0-9_]{3,250}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+type StripeRequestOperation = "account" | "checkout" | "event";
+type StripeFailureKind = "configuration" | "invalid_request" | "resource_missing" | "transient" | "unknown";
+
+function stripeErrorField(error: unknown, field: "code" | "statusCode"): unknown {
+  return error && typeof error === "object"
+    ? (error as Record<string, unknown>)[field]
+    : undefined;
+}
+
+function classifyStripeSdkError(error: unknown): StripeFailureKind {
+  const statusCode = stripeErrorField(error, "statusCode");
+  const code = stripeErrorField(error, "code");
+  if (
+    error instanceof Stripe.errors.StripeConnectionError
+    || error instanceof Stripe.errors.StripeRateLimitError
+    || statusCode === 429
+  ) return "transient";
+  if (
+    error instanceof Stripe.errors.StripeAuthenticationError
+    || error instanceof Stripe.errors.StripePermissionError
+  ) return "configuration";
+  if (code === "resource_missing" || statusCode === 404) return "resource_missing";
+  if (
+    error instanceof Stripe.errors.StripeInvalidRequestError
+    || error instanceof Stripe.errors.StripeIdempotencyError
+  ) return "invalid_request";
+  if (typeof statusCode === "number" && statusCode >= 500 && statusCode <= 599) return "transient";
+  return "unknown";
+}
+
+function safeStripeProviderError(
+  operation: StripeRequestOperation,
+  error: unknown,
+  message: string,
+): PaymentProviderError {
+  const failure = classifyStripeSdkError(error);
+  if (failure === "transient") {
+    return new PaymentProviderError("PROVIDER_UNAVAILABLE", message, true);
+  }
+  if (operation === "event" && failure === "resource_missing") {
+    return new PaymentProviderError("ACCOUNT_MISMATCH", message, false);
+  }
+  if (operation === "checkout" && (failure === "invalid_request" || failure === "resource_missing")) {
+    return new PaymentProviderError("INVALID_CHECKOUT", message, false);
+  }
+  return new PaymentProviderError("PROVIDER_UNAVAILABLE", message, false);
+}
 
 function requireHttpsCheckoutUrl(value: string): string {
   const url = new URL(value);
@@ -34,10 +83,8 @@ function requireHostedStripeCheckoutUrl(value: string): string {
   let url: URL;
   try {
     url = new URL(value);
-  } catch (error) {
-    throw new PaymentProviderError("PROVIDER_UNAVAILABLE", "Stripe Checkout gaf geen geldige URL terug.", false, {
-      cause: error,
-    });
+  } catch {
+    throw new PaymentProviderError("PROVIDER_UNAVAILABLE", "Stripe Checkout gaf geen geldige URL terug.", false);
   }
   if (
     url.protocol !== "https:"
@@ -62,7 +109,8 @@ function validateCheckout(input: CreateCheckoutInput): CreateCheckoutInput {
   if (
     input.merchantReference.length < 8 ||
     input.merchantReference.length > 100 ||
-    !IDEMPOTENCY_KEY.test(input.idempotencyKey)
+    !IDEMPOTENCY_KEY.test(input.idempotencyKey) ||
+    !Number.isFinite(Date.parse(input.expiresAt))
   ) {
     throw new PaymentProviderError("INVALID_CHECKOUT", "Checkoutreferentie is ongeldig.", false);
   }
@@ -92,6 +140,16 @@ function objectMetadata(object: Stripe.Event.Data.Object): Record<string, string
   return Object.fromEntries(
     Object.entries(object.metadata).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
   );
+}
+
+function eventDataObject(event: unknown): Stripe.Event.Data.Object | null {
+  if (!event || typeof event !== "object") return null;
+  const data = (event as { data?: unknown }).data;
+  if (!data || typeof data !== "object" || !("object" in data)) return null;
+  const object = data.object;
+  return object && typeof object === "object"
+    ? object as Stripe.Event.Data.Object
+    : null;
 }
 
 function objectString(object: Stripe.Event.Data.Object, key: string): string | undefined {
@@ -148,22 +206,36 @@ export class StripePaymentProvider implements PaymentProvider {
     try {
       account = await this.stripe.accounts.retrieveCurrent();
     } catch (error) {
-      throw new PaymentProviderError("PROVIDER_UNAVAILABLE", "Stripe-account kon niet worden geverifieerd.", true, {
-        cause: error,
-      });
+      throw safeStripeProviderError("account", error, "Stripe-account kon niet worden geverifieerd.");
     }
     if (account.id !== this.config.expectedAccountId) {
       throw new PaymentProviderError("ACCOUNT_MISMATCH", "Stripe-key hoort niet bij het verwachte Buildy-account.", false);
     }
   }
 
-  async createCheckout(inputValue: CreateCheckoutInput): Promise<CheckoutSession> {
-    const input = validateCheckout(inputValue);
+  private verifyConfiguredAccount(): Promise<void> {
     this.accountVerification ??= this.verifyAccount().catch((error: unknown) => {
       this.accountVerification = undefined;
       throw error;
     });
-    await this.accountVerification;
+    return this.accountVerification;
+  }
+
+  private async canonicalEvent(eventId: string): Promise<Stripe.Event> {
+    try {
+      return await this.stripe.events.retrieve(eventId);
+    } catch (error) {
+      throw safeStripeProviderError(
+        "event",
+        error,
+        "Stripe-event kon niet bij het verwachte account worden geverifieerd.",
+      );
+    }
+  }
+
+  async createCheckout(inputValue: CreateCheckoutInput): Promise<CheckoutSession> {
+    const input = validateCheckout(inputValue);
+    await this.verifyConfiguredAccount();
     let session: Stripe.Checkout.Session;
 
     try {
@@ -174,9 +246,9 @@ export class StripePaymentProvider implements PaymentProvider {
         customer_email: input.customerEmail,
         success_url: input.successUrl,
         cancel_url: input.cancelUrl,
-        // Stripe measures its 30-minute minimum from provider-side creation.
-        // Five minutes of margin keeps transport/queue latency from crossing it.
-        expires_at: Math.floor(Date.now() / 1_000) + 35 * 60,
+        // Every parameter must stay identical for this idempotency key, even
+        // after a timeout or a retry on a different function instance.
+        expires_at: Math.floor(Date.parse(input.expiresAt) / 1_000),
         line_items: input.lines.map((line) => ({
           quantity: line.quantity,
           price_data: {
@@ -206,9 +278,7 @@ export class StripePaymentProvider implements PaymentProvider {
         },
       }, { idempotencyKey: input.idempotencyKey });
     } catch (error) {
-      throw new PaymentProviderError("PROVIDER_UNAVAILABLE", "Stripe Checkout kon niet worden aangemaakt.", true, {
-        cause: error,
-      });
+      throw safeStripeProviderError("checkout", error, "Stripe Checkout kon niet worden aangemaakt.");
     }
 
     if (!session.url || !session.expires_at) {
@@ -232,24 +302,50 @@ export class StripePaymentProvider implements PaymentProvider {
   }
 
   async verifyWebhook(payload: string | Uint8Array, signature: string): Promise<VerifiedPaymentEvent> {
-    let event: Stripe.Event;
+    let signedEvent: Stripe.Event;
     try {
-      event = await this.stripe.webhooks.constructEventAsync(payload, signature, this.config.webhookSecret);
-    } catch (error) {
-      throw new PaymentProviderError("INVALID_SIGNATURE", "Stripe-webhooksignature is ongeldig.", false, {
-        cause: error,
-      });
+      signedEvent = await this.stripe.webhooks.constructEventAsync(payload, signature, this.config.webhookSecret);
+    } catch {
+      throw new PaymentProviderError("INVALID_SIGNATURE", "Stripe-webhooksignature is ongeldig.", false);
+    }
+
+    if (!signedEvent || signedEvent.object !== "event" || !STRIPE_EVENT_ID.test(signedEvent.id)) {
+      throw new PaymentProviderError("ACCOUNT_MISMATCH", "Stripe-event heeft geen geldige identiteit.", false);
+    }
+
+    await this.verifyConfiguredAccount();
+    const event = await this.canonicalEvent(signedEvent.id);
+    const signedObject = eventDataObject(signedEvent);
+    const canonicalObject = eventDataObject(event);
+    const signedObjectId = signedObject ? objectString(signedObject, "id") : undefined;
+    const canonicalObjectId = canonicalObject ? objectString(canonicalObject, "id") : undefined;
+    if (
+      !event
+      || event.object !== "event"
+      || event.id !== signedEvent.id
+      || event.type !== signedEvent.type
+      || event.created !== signedEvent.created
+      || event.livemode !== signedEvent.livemode
+      || (event.account ?? null) !== (signedEvent.account ?? null)
+      || !signedObjectId
+      || !canonicalObject
+      || canonicalObjectId !== signedObjectId
+      || (event.account !== undefined && event.account !== this.config.expectedAccountId)
+      || (signedEvent.account !== undefined && signedEvent.account !== this.config.expectedAccountId)
+    ) {
+      throw new PaymentProviderError(
+        "ACCOUNT_MISMATCH",
+        "Stripe-event komt niet overeen met het canonieke Buildy-account-event.",
+        false,
+      );
     }
 
     const eventEnvironment: PaymentEnvironment = event.livemode ? "live" : "test";
     if (eventEnvironment !== this.config.environment) {
       throw new PaymentProviderError("ENVIRONMENT_MISMATCH", "Stripe-event hoort bij een andere omgeving.", false);
     }
-    if (event.account && event.account !== this.config.expectedAccountId) {
-      throw new PaymentProviderError("ACCOUNT_MISMATCH", "Stripe-event hoort niet bij het Buildy-account.", false);
-    }
 
-    const object = event.data.object;
+    const object = canonicalObject;
     const metadata = objectMetadata(object);
     if (metadata.app !== "buildy") {
       throw new PaymentProviderError("ACCOUNT_MISMATCH", "Stripe-object hoort niet bij Buildy.", false);

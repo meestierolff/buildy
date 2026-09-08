@@ -11,7 +11,7 @@ const NotFound = () => {
   });
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-6">
+    <main className="flex min-h-screen items-center justify-center bg-background px-6">
       <div className="text-center">
         <p className="eyebrow mb-3">404</p>
         <h1 className="mb-4 font-serif italic text-4xl md:text-5xl">Pagina niet gevonden.</h1>
@@ -20,7 +20,7 @@ const NotFound = () => {
           Terug naar Buildy
         </Link>
       </div>
-    </div>
+    </main>
   );
 };
 

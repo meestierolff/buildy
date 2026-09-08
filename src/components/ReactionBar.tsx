@@ -30,7 +30,7 @@ const ReactionBar = ({ projectId, updateId, canReact = true }: ReactionBarProps)
 
   const toggle = async (emoji: SupportedReactionEmoji, viewerReacted: boolean) => {
     if (!user) {
-      toast.error("Log in met Google om te reageren");
+      toast.error("Log in om te reageren");
       return;
     }
     if (!projectId || mutation.isPending) return;
@@ -131,11 +131,11 @@ const ReactionBar = ({ projectId, updateId, canReact = true }: ReactionBarProps)
       </Popover> : !user ? (
         <Link
           to={signInPath}
-          aria-label="Inloggen met Google om te reageren"
+          aria-label="Inloggen om te reageren"
           className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-dashed border-accent/45 px-3 text-xs font-semibold text-accent transition-colors hover:border-accent hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
           <LogIn className="h-3.5 w-3.5" aria-hidden="true" />
-          Inloggen met Google
+          Inloggen
         </Link>
       ) : null}
     </div>

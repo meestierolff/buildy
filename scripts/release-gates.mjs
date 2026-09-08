@@ -79,7 +79,14 @@ export function verifyDeployedGitSha(actualValue, expectedSha) {
   if (actual !== expectedSha) throw new Error("deployment-SHA komt niet overeen met de vastgezette release");
 }
 
-export function verifyFreeMvpCapabilities(capabilities) {
+export function releaseContractFor(environment) {
+  if (["preview", "staging", "production"].includes(environment)) {
+    return { profile: "feedback_beta", checkoutMode: "off" };
+  }
+  throw new Error("onbekende releaseomgeving");
+}
+
+export function verifyTargetCapabilities(capabilities) {
   if (!capabilities || typeof capabilities !== "object") {
     throw new Error("health bevat geen capabilities");
   }
@@ -92,41 +99,22 @@ export function verifyFreeMvpCapabilities(capabilities) {
 
   for (const name of ["email", "payments", "printFulfilment", "privateBeta"]) {
     if (capabilities[name] !== "disabled") {
-      throw new Error(`${name} moet disabled zijn voor de gratis MVP`);
+      throw new Error(`${name} moet disabled zijn`);
     }
   }
 }
 
-export function verifyPublicDemoCapabilities(capabilities) {
-  if (!capabilities || typeof capabilities !== "object") {
-    throw new Error("health bevat geen capabilities");
-  }
-
-  if (!["ready", "unconfigured"].includes(capabilities.database)) {
-    throw new Error("database moet ready of unconfigured zijn voor de publieke demo");
-  }
-  for (const name of [
-    "authentication",
-    "accountLifecycle",
-    "media",
-    "photobooks",
-    "email",
-    "payments",
-    "printFulfilment",
-    "privateBeta",
-  ]) {
-    if (capabilities[name] !== "disabled") {
-      throw new Error(`${name} moet disabled zijn voor de publieke demo`);
-    }
-  }
-}
-
-export function verifyFreeMvpProductProfile(profile) {
+export function verifyTargetProductProfile(profile, contract) {
   if (!profile || typeof profile !== "object") {
     throw new Error("product-profile bevat geen data");
   }
-  if (profile.profile !== "feedback_beta") throw new Error("PRODUCT_PROFILE moet feedback_beta zijn");
-  if (profile.checkoutMode !== "off") throw new Error("CHECKOUT_MODE moet off zijn");
+  if (!contract || typeof contract !== "object") throw new Error("releasecontract ontbreekt");
+  if (profile.profile !== contract.profile) {
+    throw new Error(`PRODUCT_PROFILE moet ${contract.profile} zijn`);
+  }
+  if (profile.checkoutMode !== contract.checkoutMode) {
+    throw new Error(`CHECKOUT_MODE moet ${contract.checkoutMode} zijn voor dit releasedoel`);
+  }
   if (profile.betaMode !== false || profile.inviteRequiredForNewAccounts !== false) {
     throw new Error("BETA_MODE moet false zijn en nieuwe accounts mogen geen invite vereisen");
   }
@@ -136,7 +124,7 @@ export function verifyFreeMvpProductProfile(profile) {
     throw new Error("product-profile bevat geen capabilitydata");
   }
   const required = [
-    "googleSignIn",
+    "passwordSignIn",
     "renovations",
     "updates",
     "story",
@@ -155,74 +143,31 @@ export function verifyFreeMvpProductProfile(profile) {
   }
 }
 
-export function verifyPublicDemoProductProfile(profile) {
-  if (!profile || typeof profile !== "object") {
-    throw new Error("product-profile bevat geen data");
-  }
-  if (profile.profile !== "public_demo") throw new Error("PRODUCT_PROFILE moet public_demo zijn");
-  if (profile.checkoutMode !== "off") throw new Error("CHECKOUT_MODE moet off zijn");
-  if (profile.betaMode !== false || profile.inviteRequiredForNewAccounts !== false) {
-    throw new Error("BETA_MODE moet false zijn en de publieke demo heeft geen accounts");
-  }
-
-  const capabilities = profile.capabilities;
-  if (!capabilities || typeof capabilities !== "object") {
-    throw new Error("product-profile bevat geen capabilitydata");
-  }
-  for (const name of [
-    "googleSignIn",
-    "emailAuth",
-    "renovations",
-    "updates",
-    "story",
-    "media",
-    "sharing",
-    "accountDeletion",
-    "checkout",
-  ]) {
-    if (capabilities[name] !== false) {
-      throw new Error(`${name} moet uit staan voor de publieke demo`);
+export function targetReadinessFailures(checks) {
+  if (!checks || typeof checks !== "object") return ["checks=missing"];
+  const required = [
+    "configuration",
+    "database",
+    "accountWorker",
+    "mediaWorker",
+  ];
+  const failures = required
+    .filter((name) => checks[name] !== "pass")
+    .map((name) => `${name}=${checks[name] ?? "missing"}`);
+  // Off disables both printproof and payment workers; absent/failed checks
+  // still fail closed, while explicitly idle workers need no credentials.
+  const idleWorkers = ["paymentWorker", "photobookWorker"];
+  for (const name of idleWorkers) {
+    if (!["pass", "not_checked"].includes(checks[name])) {
+      failures.push(`${name}=${checks[name] ?? "missing"}`);
     }
   }
-  if (capabilities.photobookPreview !== true) {
-    throw new Error("de statische Bouwboekvoorbeeldweergave moet beschikbaar zijn");
+  for (const [name, state] of Object.entries(checks)) {
+    if (![...required, ...idleWorkers].includes(name) && state !== "pass") {
+      failures.push(`${name}=${state}`);
+    }
   }
-  if (capabilities.feedback !== true) {
-    throw new Error("de bestaande veilige supportroute moet beschikbaar zijn");
-  }
-}
-
-export function verifyLaunchCapabilities(capabilities, profileName) {
-  if (profileName === "public_demo") return verifyPublicDemoCapabilities(capabilities);
-  if (profileName === "feedback_beta") return verifyFreeMvpCapabilities(capabilities);
-  throw new Error("onbekend launchprofiel");
-}
-
-export function verifyLaunchProductProfile(profile) {
-  if (profile?.profile === "public_demo") return verifyPublicDemoProductProfile(profile);
-  if (profile?.profile === "feedback_beta") return verifyFreeMvpProductProfile(profile);
-  throw new Error("onbekend launchprofiel");
-}
-
-export function freeMvpReadinessFailures(checks) {
-  if (!checks || typeof checks !== "object") return ["checks=missing"];
-  const optionalIdleWorkers = new Set(["paymentWorker", "photobookWorker"]);
-  return Object.entries(checks)
-    .filter(([name, state]) => (
-      state !== "pass"
-      && !(optionalIdleWorkers.has(name) && state === "not_checked")
-    ))
-    .map(([name, state]) => `${name}=${state}`);
-}
-
-export function launchReadinessFailures(checks, profileName) {
-  if (profileName !== "public_demo") return freeMvpReadinessFailures(checks);
-  if (!checks || typeof checks !== "object") return ["checks=missing"];
-  return Object.entries(checks)
-    .filter(([name, state]) => (
-      name === "configuration" ? state !== "pass" : state === "fail"
-    ))
-    .map(([name, state]) => `${name}=${state}`);
+  return failures;
 }
 
 export function requireSyntheticStagingEmail(value) {

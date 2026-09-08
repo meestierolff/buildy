@@ -35,7 +35,7 @@ describe("share-link comment controls", () => {
 
   afterEach(cleanup);
 
-  it("houdt een anonieme shareviewer read-only en biedt een duidelijke Google-login", () => {
+  it("houdt een anonieme shareviewer read-only en biedt een duidelijke login", () => {
     const create = vi.fn();
     const remove = vi.fn();
     vi.mocked(useInfiniteComments).mockReturnValue({
@@ -91,8 +91,8 @@ describe("share-link comment controls", () => {
     );
 
     expect(screen.getByText("De keuken wordt prachtig.")).toBeInTheDocument();
-    expect(screen.getByText(/Log in met Google om te reageren/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Inloggen met Google" })).toHaveAttribute(
+    expect(screen.getByText(/Log in om te reageren/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Inloggen" })).toHaveAttribute(
       "href",
       `/auth?next=${encodeURIComponent(`/project/${PROJECT_ID}?update=${UPDATE_ID}`)}`,
     );

@@ -23,6 +23,9 @@ for (const route of PUBLIC_ROUTES) {
     });
     await page.goto(`${BASE}${route.path}`, { waitUntil: "domcontentloaded" });
     await expect(page.locator("#root")).toBeVisible();
+    await expect(page.locator("main").getByRole("heading", { level: 1 }).first()).toBeVisible();
+    await expect(page.locator("main")).toHaveCount(1);
+    await expect(page.locator("footer")).toHaveCount(1);
 
     const result = await new AxeBuilder({ page }).analyze();
     const blocking = result.violations

@@ -301,6 +301,13 @@ registerRoute("GET", "/api/readiness", async (_request, requestId) => {
           and row_security_active('public.project_share_links'::regclass)
           and row_security_active('public.auth_identity_mappings'::regclass)
           and row_security_active('public.product_events'::regclass)
+          and not exists (
+            select 1 from (values ('public.password_credentials'), ('public.password_sessions')) required_table(name)
+            cross join (values ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE')) required_privilege(name)
+            where not has_table_privilege(current_user, required_table.name, required_privilege.name)
+          )
+          and has_function_privilege(current_user, 'public.app_lock_password_auth_identity(text)', 'EXECUTE')
+          and not has_function_privilege(current_user, 'public.app_revoke_password_sessions_on_account_restriction()', 'EXECUTE')
           and has_function_privilege(
             current_user,
             'public.app_resolve_active_user(text)',
@@ -402,7 +409,11 @@ registerRoute("GET", "/api/readiness", async (_request, requestId) => {
     }
   }
 
-  if (capabilities.photobooks === "ready" && config.DATABASE_PHOTOBOOK_WORKER_URL) {
+  if (
+    (config.CHECKOUT_MODE === "test" || config.CHECKOUT_MODE === "live")
+    && capabilities.photobooks === "ready"
+    && config.DATABASE_PHOTOBOOK_WORKER_URL
+  ) {
     try {
       photobookWorker = await photobookWorkerBoundaryReady(
         getBuildyWorkerDatabase(config.DATABASE_PHOTOBOOK_WORKER_URL, "photobook"),

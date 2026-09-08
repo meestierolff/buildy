@@ -142,10 +142,10 @@ const NewTrip = () => {
 
   if (authLoading) {
     return (
-      <div className="flex min-h-[55vh] items-center justify-center" role="status" aria-live="polite">
+      <main className="flex min-h-[55vh] items-center justify-center" role="status" aria-live="polite">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-foreground" />
         <span className="sr-only">Account controleren…</span>
-      </div>
+      </main>
     );
   }
 

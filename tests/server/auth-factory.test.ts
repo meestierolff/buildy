@@ -1,268 +1,181 @@
 // @vitest-environment node
-
 import { createHash } from "node:crypto";
-import { describe, expect, it, vi } from "vitest";
-import type { AuthConfiguration } from "../../server/auth/config";
-import {
-  createBuildyAuth,
-  type CreateBuildyAuthInput,
-  type OpenIdClientApi,
-} from "../../server/auth/factory";
-import type {
-  GoogleLoginAttemptInput,
-  GoogleOidcRepository,
-  GoogleSessionRecord,
-  NewGoogleSession,
-  VerifiedGoogleIdentity,
-} from "../../server/auth/repository";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { createBuildyAuth, type CreateBuildyAuthInput } from "../../server/auth/factory";
+import { hashPassword, verifyPassword, isWeakPassword } from "../../server/auth/password";
+import { UsernameUnavailableError, type PasswordAuthRepository, type PasswordSessionRecord } from "../../server/auth/passwordRepository";
 import type { BuildyDatabase } from "../../server/db/client";
 import { DataProtectionKeyring, PrivacyBlindIndex } from "../../server/security/dataProtection";
+import { authSessionResponseSchema, usernameSignUpInputSchema } from "../../shared/contracts/auth";
 
-const NOW = new Date("2026-08-04T12:00:00.000Z");
-const STATE = "S".repeat(43);
-const NONCE = "N".repeat(43);
-const VERIFIER = "V".repeat(43);
-const SESSION_TOKEN = "T".repeat(43);
-
-const config: AuthConfiguration = {
-  appOrigin: "https://app.buildy.test",
-  betaMode: false,
-  callbackUrl: "https://app.buildy.test/api/auth/callback/google",
-  databaseUrl: "postgresql://buildy:buildy@127.0.0.1:5432/buildy",
-  google: { clientId: "google-client", clientSecret: "google-secret" },
-  secureCookies: true,
-  trustedOrigins: ["https://app.buildy.test"],
+const NOW = new Date("2026-09-08T12:00:00.000Z");
+const TOKEN = "T".repeat(43);
+const PASSWORD = "Mijn houten huis wordt mooi!";
+let passwordHash: string;
+beforeAll(async () => { passwordHash = await hashPassword(PASSWORD); });
+const record: PasswordSessionRecord = {
+  authUserId: "auth-user", username: "verbouwer", name: "verbouwer", email: null,
+  emailVerified: false, image: null, sessionId: "00000000-0000-4000-8000-000000000001",
+  createdAt: NOW, expiresAt: new Date(NOW.getTime() + 604800000), sessionUpdatedAt: NOW,
+  userAgent: null, userCreatedAt: NOW, userUpdatedAt: NOW,
 };
-
-function hash(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}
-
-function record(
-  identity: VerifiedGoogleIdentity,
-  session: NewGoogleSession,
-): GoogleSessionRecord {
-  return {
-    authUserId: "google-auth-user",
-    createdAt: session.createdAt,
-    email: identity.email,
-    expiresAt: session.expiresAt,
-    identitySubject: identity.subject,
-    image: null,
-    name: identity.name,
-    sessionId: session.id,
-    sessionUpdatedAt: session.createdAt,
-    userAgent: session.userAgent,
-    userCreatedAt: NOW,
-    userUpdatedAt: NOW,
+function harness(overrides: Partial<CreateBuildyAuthInput> = {}) {
+  const repository: PasswordAuthRepository = {
+    register: vi.fn(async () => record),
+    findCredentials: vi.fn(async () => ({ authUserId: record.authUserId, passwordHash })),
+    createSession: vi.fn(async () => record),
+    findSession: vi.fn(async () => record),
+    listSessions: vi.fn(async () => [record]),
+    revokeCurrentSession: vi.fn(async () => true),
+    revokeSession: vi.fn(async () => ({ revoked: true, wasCurrent: true })),
   };
-}
-
-function harness() {
-  let attempt: GoogleLoginAttemptInput | null = null;
-  let consumed = false;
-  const completeLogin = vi.fn(async (
-    identity: VerifiedGoogleIdentity,
-    session: NewGoogleSession,
-  ) => record(identity, session));
-  const repository: GoogleOidcRepository = {
-    createLoginAttempt: vi.fn(async (input) => {
-      attempt = input;
-      consumed = false;
-    }),
-    consumeLoginAttempt: vi.fn(async (stateHash) => {
-      if (!attempt || consumed || attempt.stateHash !== stateHash) return null;
-      consumed = true;
-      return {
-        id: attempt.id,
-        browserBindingHash: attempt.browserBindingHash,
-        codeVerifierCiphertext: attempt.codeVerifierCiphertext,
-        nonceCiphertext: attempt.nonceCiphertext,
-        nextPath: attempt.nextPath,
-      };
-    }),
-    completeLogin,
-    findSession: vi.fn(async () => null),
-    listSessions: vi.fn(async () => []),
-    revokeCurrentSession: vi.fn(async () => false),
-    revokeSession: vi.fn(async () => ({ revoked: false, wasCurrent: false })),
-  };
-  const authorizationCodeGrant = vi.fn(async () => ({
-    access_token: "provider-access-token-must-not-persist",
-    refresh_token: "provider-refresh-token-must-not-persist",
-    claims: () => ({
-      sub: "google-subject-123",
-      email: "Bewoner@Example.test",
-      email_verified: true,
-      name: "  Bewoner   Buildy  ",
-    }),
-  }));
-  const discovery = vi.fn(async () => ({ provider: "google" }));
-  const buildAuthorizationUrl = vi.fn((_configuration, parameters: Record<string, string>) => {
-    const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-    for (const [key, value] of Object.entries(parameters)) url.searchParams.set(key, value);
-    return url;
-  });
-  const oidc = {
-    authorizationCodeGrant,
-    buildAuthorizationUrl,
-    calculatePKCECodeChallenge: vi.fn(async () => "pkce-challenge"),
-    discovery,
-    randomNonce: vi.fn(() => NONCE),
-    randomPKCECodeVerifier: vi.fn(() => VERIFIER),
-    randomState: vi.fn(() => STATE),
-  } as unknown as OpenIdClientApi;
-  const keyring = new DataProtectionKeyring({
-    currentVersion: 1,
-    keys: { 1: Buffer.alloc(32, 7).toString("base64") },
-  });
+  const rateLimitStorage = { consume: vi.fn(async (_key: string, _rule: { max: number; window: number }) => ({ allowed: true, retryAfter: null as number | null })) };
   const input: CreateBuildyAuthInput = {
-    blindIndex: new PrivacyBlindIndex(Buffer.alloc(32, 8).toString("base64")),
-    config,
+    config: { appOrigin: "https://app.buildy.test", betaMode: false,
+      databaseUrl: "postgresql://web:secret@localhost/buildy", secureCookies: true,
+      trustedOrigins: ["https://app.buildy.test"] },
     database: {} as BuildyDatabase,
-    identityProvisioner: {
-      ensureForSession: async () => undefined,
-      provisionForAuthUser: async () => undefined,
-    },
-    keyring,
-    now: () => NOW,
-    oidc,
-    randomSessionToken: () => SESSION_TOKEN,
-    rateLimitStorage: {
-      consume: async () => ({ allowed: true, retryAfter: null }),
-    },
-    repository,
+    identityProvisioner: { provisionForAuthUser: vi.fn(), ensureForSession: vi.fn() },
+    blindIndex: new PrivacyBlindIndex(Buffer.alloc(32, 2).toString("base64")),
+    keyring: new DataProtectionKeyring({ currentVersion: 1, keys: { 1: Buffer.alloc(32, 1).toString("base64") } }),
+    repository, rateLimitStorage, now: () => NOW, randomSessionToken: () => TOKEN, ...overrides,
   };
-  return {
-    authorizationCodeGrant,
-    buildAuthorizationUrl,
-    completeLogin,
-    discovery,
-    input,
-    keyring,
-    repository,
-  };
+  return { engine: createBuildyAuth(input), repository, rateLimitStorage, input };
 }
-
-function originHeaders(): HeadersInit {
-  return {
-    "content-type": "application/json",
-    origin: "https://app.buildy.test",
-    "user-agent": "Buildy test browser",
-  };
+function request(path = "/api/auth/sign-in", body: unknown = { username: "Verbouwer", password: PASSWORD, next: "/verbouwing/nieuw" }, headers = {}) {
+  return new Request(`https://app.buildy.test${path}`, { method: "POST", body: JSON.stringify(body),
+    headers: { "content-type": "application/json", origin: "https://app.buildy.test", ...headers } });
 }
+const tokenHash = createHash("sha256").update(TOKEN).digest("hex");
 
-describe("Google OIDC auth factory", () => {
-  it("fails closed when beta mode has no transactional registration gate", () => {
-    const test = harness();
-    expect(() => createBuildyAuth({
-      ...test.input,
-      config: { ...config, betaMode: true },
-    })).toThrowError(expect.objectContaining({ reason: "configuration_invalid" }));
-  });
-
-  it("creates a bounded PKCE/state/nonce attempt and returns only an authorization URL", async () => {
-    const test = harness();
-    const auth = createBuildyAuth(test.input);
-    const response = await auth.handler(new Request(
-      "https://app.buildy.test/api/auth/sign-in/google",
-      {
-        body: JSON.stringify({ next: "/project/project-1?tab=updates" }),
-        headers: originHeaders(),
-        method: "POST",
-      },
-    ));
-    const body = await response.json() as { data: { authorizationUrl: string } };
-
+describe("username and password authentication", () => {
+  it("registers a normalized username with a salted hash, private session and safe next", async () => {
+    const { engine, repository } = harness();
+    const response = await engine.handler(request("/api/auth/sign-up"));
     expect(response.status).toBe(200);
-    expect(response.headers.get("set-cookie")).toMatch(
-      /^buildy_oidc_attempt=[A-Za-z0-9_-]{43}; Path=\/api\/auth\/callback\/google; HttpOnly; SameSite=Lax; Max-Age=600; Secure$/,
-    );
-    const authorizationUrl = new URL(body.data.authorizationUrl);
-    expect(authorizationUrl.origin).toBe("https://accounts.google.com");
-    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(config.callbackUrl);
-    expect(authorizationUrl.searchParams.get("code_challenge_method")).toBe("S256");
-    expect(authorizationUrl.searchParams.get("state")).toBe(STATE);
-    expect(authorizationUrl.searchParams.get("nonce")).toBe(NONCE);
-    expect(test.discovery).toHaveBeenCalledWith(
-      new URL("https://accounts.google.com"),
-      "google-client",
-      "google-secret",
-    );
-    expect(test.repository.createLoginAttempt).toHaveBeenCalledWith(expect.objectContaining({
-      stateHash: hash(STATE),
-      nextPath: "/project/project-1?tab=updates",
-      expiresAt: new Date("2026-08-04T12:10:00.000Z"),
-    }));
-    expect(JSON.stringify(vi.mocked(test.repository.createLoginAttempt).mock.calls))
-      .not.toContain(VERIFIER);
+    expect(await response.json()).toMatchObject({ data: { next: "/verbouwing/nieuw" } });
+    const [identity, session] = vi.mocked(repository.register).mock.calls[0];
+    expect(identity.username).toBe("verbouwer");
+    expect(identity.passwordHash).not.toContain(PASSWORD);
+    expect(await verifyPassword(PASSWORD, identity.passwordHash)).toBe(true);
+    expect(session.tokenHash).toBe(tokenHash);
+    expect(JSON.stringify(session)).not.toContain(TOKEN);
+    expect(response.headers.get("set-cookie")).toContain(`buildy_session=${TOKEN}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800; Secure`);
   });
-
-  it("consumes an attempt once, verifies the ID token, and persists only a session hash", async () => {
-    const test = harness();
-    const auth = createBuildyAuth(test.input);
-    const start = await auth.handler(new Request(
-      "https://app.buildy.test/api/auth/sign-in/google",
-      {
-        body: JSON.stringify({ next: "/projecten" }),
-        headers: originHeaders(),
-        method: "POST",
-      },
-    ));
-    const binding = /buildy_oidc_attempt=([A-Za-z0-9_-]+)/.exec(
-      start.headers.get("set-cookie") ?? "",
-    )?.[1];
-    expect(binding).toBeTruthy();
-
-    const callback = new Request(
-      `https://app.buildy.test/api/auth/callback/google?code=provider-code&state=${STATE}`,
-      { headers: { cookie: `buildy_oidc_attempt=${binding}`, "user-agent": "Buildy test browser" } },
-    );
-    const response = await auth.handler(callback);
-
-    expect(response.status).toBe(303);
-    expect(response.headers.get("location")).toBe("https://app.buildy.test/projecten");
-    expect(response.headers.get("set-cookie")).toContain(
-      `buildy_session=${SESSION_TOKEN}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800; Secure`,
-    );
-    expect(test.authorizationCodeGrant).toHaveBeenCalledWith(
-      expect.anything(),
-      new URL(`${config.callbackUrl}?code=provider-code&state=${STATE}`),
-      {
-        pkceCodeVerifier: VERIFIER,
-        expectedState: STATE,
-        expectedNonce: NONCE,
-        idTokenExpected: true,
-      },
-    );
-    expect(test.completeLogin).toHaveBeenCalledWith(
-      {
-        subject: "google-subject-123",
-        email: "bewoner@example.test",
-        name: "Bewoner Buildy",
-      },
-      expect.objectContaining({ tokenHash: hash(SESSION_TOKEN) }),
-    );
-    expect(JSON.stringify(test.completeLogin.mock.calls)).not.toContain("provider-access-token");
-    expect(JSON.stringify(test.completeLogin.mock.calls)).not.toContain(SESSION_TOKEN);
-
-    const replay = await auth.handler(callback);
-    expect(replay.status).toBe(303);
-    expect(replay.headers.get("location")).toContain("error=GOOGLE_CALLBACK_INVALID");
-    expect(test.authorizationCodeGrant).toHaveBeenCalledTimes(1);
+  it("logs into the same persisted identity and rotates the previous session", async () => {
+    const { engine, repository } = harness();
+    const response = await engine.handler(request(undefined, undefined, { cookie: `buildy_session=${"P".repeat(43)}` }));
+    expect(response.status).toBe(200);
+    expect(repository.createSession).toHaveBeenCalledWith("auth-user", expect.objectContaining({ tokenHash }));
+    expect(repository.revokeCurrentSession).toHaveBeenCalledTimes(1);
   });
+  it("gives the same generic rejection for unknown usernames and wrong passwords", async () => {
+    const { engine, repository } = harness();
+    const wrong = await engine.handler(request(undefined, { username: "verbouwer", password: "verkeerd" }));
+    vi.mocked(repository.findCredentials).mockResolvedValue(null);
+    const missing = await engine.handler(request(undefined, { username: "onbekend", password: PASSWORD }));
+    expect(wrong.status).toBe(401);
+    expect(missing.status).toBe(401);
+    const wrongError = (await wrong.json()).error;
+    const missingError = (await missing.json()).error;
+    expect({ ...wrongError, requestId: undefined }).toEqual({ ...missingError, requestId: undefined });
+    expect(repository.createSession).not.toHaveBeenCalled();
+  });
+  it("rejects a duplicate username without setting a session", async () => {
+    const { engine, repository } = harness();
+    vi.mocked(repository.register).mockRejectedValue(new UsernameUnavailableError());
+    const response = await engine.handler(request("/api/auth/sign-up"));
+    expect(response.status).toBe(409);
+    expect(response.headers.has("set-cookie")).toBe(false);
+  });
+  it("rate limits before password work and uses blinded subject keys", async () => {
+    const { engine, repository, rateLimitStorage } = harness();
+    rateLimitStorage.consume.mockResolvedValue({ allowed: false, retryAfter: 42 });
+    const response = await engine.handler(request(undefined, undefined, { "x-vercel-forwarded-for": "192.0.2.10" }));
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("42");
+    expect(repository.findCredentials).not.toHaveBeenCalled();
+    expect(JSON.stringify(rateLimitStorage.consume.mock.calls)).not.toMatch(/192\.0\.2\.10|verbouwer/);
+  });
+  it("cannot reopen an exhausted signin limit by submitting the signup form", async () => {
+    const { engine, rateLimitStorage, repository } = harness();
+    const counts = new Map<string, number>();
+    rateLimitStorage.consume.mockImplementation(async (key, rule) => {
+      const count = Math.min((counts.get(key) ?? 31) + 1, rule.max + 1);
+      counts.set(key, count);
+      return { allowed: count <= rule.max, retryAfter: 60 };
+    });
+    expect((await engine.handler(request())).status).toBe(429);
+    expect((await engine.handler(request("/api/auth/sign-up"))).status).toBe(429);
+    expect((await engine.handler(request())).status).toBe(429);
+    expect(repository.findCredentials).not.toHaveBeenCalled();
+  });
+  it("rejects cross-origin sign-in, signup and logout", async () => {
+    const { engine, repository } = harness();
+    for (const path of ["/api/auth/sign-in", "/api/auth/sign-up", "/api/auth/logout"]) {
+      expect((await engine.handler(request(path, undefined, { origin: "https://evil.test" }))).status).toBe(403);
+    }
+    expect(repository.register).not.toHaveBeenCalled();
+    expect(repository.revokeCurrentSession).not.toHaveBeenCalled();
+  });
+  it("rejects oversized and invalid input before persistence", async () => {
+    const { engine, repository } = harness();
+    for (const body of [{ username: "xx", password: PASSWORD }, { username: "valid", password: "a".repeat(5000) }, { username: "valid", password: PASSWORD, role: "admin" }]) {
+      expect((await engine.handler(request("/api/auth/sign-up", body))).status).toBe(400);
+    }
+    expect(repository.register).not.toHaveBeenCalled();
+  });
+  it("rejects predictable passwords and does not bypass email-bound beta invitations", async () => {
+    const { engine, input } = harness();
+    expect((await engine.handler(request("/api/auth/sign-up", { username: "valid", password: "password123456789" }))).status).toBe(400);
+    input.config.betaMode = true;
+    expect((await engine.handler(request("/api/auth/sign-up"))).status).toBe(503);
+  });
+  it("never starts Google OAuth or accepts callbacks", async () => {
+    const { engine } = harness();
+    expect((await engine.handler(request("/api/auth/sign-in/google"))).status).toBe(404);
+    expect((await engine.handler(new Request("https://app.buildy.test/api/auth/callback/google?code=anything"))).status).toBe(404);
+  });
+  it("closes safely on a database outage", async () => {
+    const { engine, repository } = harness();
+    vi.mocked(repository.findCredentials).mockRejectedValue(new Error("private database detail"));
+    const response = await engine.handler(request());
+    expect(response.status).toBe(503);
+    expect(await response.text()).not.toContain("private database detail");
+    expect(response.headers.has("set-cookie")).toBe(false);
+  });
+  it("keeps redirects same-origin", async () => {
+    const { engine } = harness();
+    const response = await engine.handler(request(undefined, { username: "verbouwer", password: PASSWORD, next: "https://evil.test" }));
+    expect(await response.json()).toMatchObject({ data: { next: "/" } });
+  });
+  it("resolves and lists server sessions, then revokes on logout", async () => {
+    const { engine, repository } = harness();
+    const sessionRequest = new Request("https://app.buildy.test/api/auth/session", { headers: { cookie: `buildy_session=${TOKEN}` } });
+    const result = authSessionResponseSchema.parse(await (await engine.handler(sessionRequest)).json());
+    expect(result.data.user).toMatchObject({ username: "verbouwer", email: null, emailVerified: false });
+    expect(await engine.resolveAuthUserId(sessionRequest)).toBe("auth-user");
+    expect(await engine.account.listSessions(sessionRequest)).toHaveLength(1);
+    const logout = await engine.handler(request("/api/auth/logout", {}, { cookie: `buildy_session=${TOKEN}` }));
+    expect(repository.revokeCurrentSession).toHaveBeenCalledWith(tokenHash, NOW);
+    expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect((await engine.handler(new Request("https://app.buildy.test/api/auth/session"))).status).toBe(200);
+  });
+});
 
-  it("rejects cross-origin mutations before creating an attempt", async () => {
-    const test = harness();
-    const response = await createBuildyAuth(test.input).handler(new Request(
-      "https://app.buildy.test/api/auth/sign-in/google",
-      {
-        body: "{}",
-        headers: { ...originHeaders(), origin: "https://attacker.test" },
-        method: "POST",
-      },
-    ));
-    expect(response.status).toBe(403);
-    expect(test.repository.createLoginAttempt).not.toHaveBeenCalled();
+describe("password storage", () => {
+  it("salts each hash and rejects a wrong password or malformed stored hash", async () => {
+    const second = await hashPassword(PASSWORD);
+    expect(second).not.toBe(passwordHash);
+    expect(await verifyPassword(PASSWORD, second)).toBe(true);
+    expect(await verifyPassword("wrong", second)).toBe(false);
+    expect(await verifyPassword(PASSWORD, "scrypt$malformed")).toBe(false);
+    expect(await verifyPassword(PASSWORD, null)).toBe(false);
+  });
+  it("allows passphrases, spaces and Unicode without composition rules", () => {
+    expect(usernameSignUpInputSchema.parse({ username: " My.House-2 ", password: "🌳".repeat(15) }).username).toBe("my.house-2");
+    expect(usernameSignUpInputSchema.safeParse({ username: "house", password: "a".repeat(14) }).success).toBe(false);
+    expect(usernameSignUpInputSchema.safeParse({ username: "house", password: "🌳".repeat(129) }).success).toBe(false);
+    expect(isWeakPassword(PASSWORD, "verbouwer")).toBe(false);
   });
 });

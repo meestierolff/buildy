@@ -28,12 +28,16 @@ describe("structured privacy-safe logging", () => {
       recipientEmail: "bouwer@example.test",
       signedUrl: "https://private.example/token",
       authorization: "Bearer secret",
+      username: "private_account_name",
+      passwordHash: "private_password_hash",
     });
 
     const serialized = String(output.mock.calls[0][0]);
     expect(serialized).not.toContain("bouwer@example.test");
     expect(serialized).not.toContain("private.example");
     expect(serialized).not.toContain("Bearer secret");
+    expect(serialized).not.toContain("private_account_name");
+    expect(serialized).not.toContain("private_password_hash");
   });
 
   it("classifies errors without logging messages or stacks", () => {

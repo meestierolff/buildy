@@ -146,7 +146,7 @@ const LocalPhotoDemo = ({
         <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-[#A94E36]" aria-hidden="true" />
         <p>{publicDemo
           ? "Je foto blijft op dit apparaat en wordt niet geüpload."
-          : "Je foto blijft op dit apparaat totdat je hem bewaart. Pas na Google-login en wanneer jij het Bouwmoment plaatst, wordt hij privé geüpload."}</p>
+          : "Je foto blijft op dit apparaat totdat je hem bewaart. Pas na het inloggen en wanneer jij het Bouwmoment plaatst, wordt hij privé geüpload."}</p>
       </div>
 
       {error ? <p className="border-t border-[#D8CFC1] px-4 py-3 text-sm text-destructive sm:px-6" role="alert">{error}</p> : null}
@@ -246,7 +246,7 @@ const LocalPhotoDemo = ({
                 {savingPhoto
                   ? "Foto lokaal bewaren…"
                   : saveHref.startsWith("/auth")
-                    ? "Doorgaan met Google"
+                    ? "Inloggen en bewaren"
                     : "Bewaar dit Bouwmoment"} <ArrowRight aria-hidden="true" />
               </Link>
             </Button>

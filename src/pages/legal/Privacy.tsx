@@ -6,7 +6,7 @@ const Privacy = () => (
   <LegalLayout
     title="Privacyverklaring"
     description="Welke persoonsgegevens Buildy in de gratis MVP verwerkt, waarom en welke keuzes en rechten je hebt."
-    updated="29 augustus 2026"
+    updated="8 september 2026"
   >
     <LegalPendingNotice title="Verantwoordelijke en contactgegevens nog vereist">
       <p>
@@ -34,7 +34,7 @@ const Privacy = () => (
 
     <h2>2. Welke gegevens verwerkt Buildy?</h2>
     <ul>
-      <li><strong>Account en profiel:</strong> je Google-identificatie, e-mailadres, weergavenaam, profielfoto, profieltekst, globale locatie, privacykeuze en accountmomenten.</li>
+      <li><strong>Account en profiel:</strong> je gebruikersnaam, een beveiligde hash van je wachtwoord, weergavenaam, profielfoto, profieltekst, globale locatie, privacykeuze en accountmomenten. Voor een nieuw account vragen we geen e-mailadres. Eerder opgeslagen externe accountidentificatie en contactgegevens kunnen voor bestaande accounts nog aanwezig zijn; nieuwe accounts worden daar niet automatisch aan gekoppeld.</li>
       <li><strong>Verbouwing en Bouwmomenten:</strong> titel, type verbouwing, datums, voortgang, verhalen, foto&apos;s, volgorde en zichtbaarheid.</li>
       <li><strong>Sociale gegevens:</strong> volgverzoeken en -relaties, reacties, emoji-reacties en meldingen.</li>
       <li><strong>Digitaal Bouwboek:</strong> titel, cover, geselecteerde Bouwmomenten, foto&apos;s, volgorde en opmaakvoorkeuren.</li>
@@ -60,7 +60,7 @@ const Privacy = () => (
         </thead>
         <tbody>
           <tr>
-            <td>Google-login, profiel, verbouwingsverhaal en digitaal Bouwboek leveren</td>
+            <td>Inloggen, profiel, verbouwingsverhaal en digitaal Bouwboek leveren</td>
             <td>Account-, profiel-, verbouwings-, media- en Bouwboekgegevens</td>
             <td>Uitvoering van de gebruikersovereenkomst</td>
           </tr>
@@ -108,7 +108,6 @@ const Privacy = () => (
     <ul>
       <li><strong><a href="https://vercel.com/legal/dpa" target="_blank" rel="noreferrer">Vercel</a>:</strong> hosting van de webapp en serverfuncties, private Vercel Blob-opslag voor media en technische beveiligings- en requestlogs.</li>
       <li><strong><a href="https://neon.com/security" target="_blank" rel="noreferrer">Neon</a>:</strong> PostgreSQL-database voor accounts en productgegevens.</li>
-      <li><strong>Google:</strong> OpenID Connect voor de Google-login die je zelf start.</li>
       <li><strong>Bevoegde adviseurs, toezichthouders of autoriteiten:</strong> alleen wanneer dat noodzakelijk of wettelijk verplicht is.</li>
     </ul>
     <p>
@@ -143,15 +142,17 @@ const Privacy = () => (
       Buildy gebruikt noodzakelijke HttpOnly-cookies voor de inlogsessie en, wanneer van
       toepassing, toegang via een deel-link. Deze cookies gebruiken SameSite=Lax en worden
       op HTTPS als Secure geplaatst. De actieve MVP gebruikt geen advertentie- of
-      analyticscookies. De Google-inlogpagina valt ook onder het eigen privacy- en
-      cookiebeleid van Google.
+      analyticscookies. Je logt rechtstreeks bij Buildy in met je gebruikersnaam en
+      wachtwoord.
     </p>
 
     <h2>9. Beveiliging</h2>
     <p>
       Buildy gebruikt maatregelen die bij de risico&apos;s passen, waaronder server-side
       toegangscontrole, database-toegangsregels, private Blob-opslag en geautoriseerde
-      levering van media. Het supportformulier slaat het antwoordadres en de berichtinhoud
+      levering van media. Wachtwoorden worden met een unieke salt via scrypt gehasht;
+      we slaan het wachtwoord zelf niet op. Herhaalde loginpogingen worden begrensd.
+      Het supportformulier slaat het antwoordadres en de berichtinhoud
       versleuteld op. Geen enkele online dienst kan absolute veiligheid garanderen. Meld
       een vermoeden van misbruik of een datalek via <Link to="/support">Support</Link>.
     </p>

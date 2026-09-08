@@ -7,7 +7,7 @@ export type BuildyAuthTransaction = Parameters<
 >[0];
 
 export interface AuthIdentityUser {
-  email: string;
+  email: string | null;
   id: string;
   name: string;
 }

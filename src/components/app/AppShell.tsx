@@ -49,7 +49,7 @@ const AppShell = ({
       </header>
     ) : null}
 
-    <main
+    <div
       id={mainId}
       tabIndex={-1}
       className={cn(
@@ -59,12 +59,12 @@ const AppShell = ({
       )}
     >
       {children}
-    </main>
+    </div>
 
     {footer ? (
-      <footer className={cn(mobileNavigation && "mb-[calc(4.25rem+env(safe-area-inset-bottom))] lg:mb-0", footerClassName)}>
+      <div className={cn(mobileNavigation && "mb-[calc(4.25rem+env(safe-area-inset-bottom))] lg:mb-0", footerClassName)}>
         {footer}
-      </footer>
+      </div>
     ) : null}
 
     {mobileNavigation}

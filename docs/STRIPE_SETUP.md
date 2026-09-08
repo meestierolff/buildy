@@ -12,9 +12,9 @@ in [PRODUCTION_RELEASE.md](PRODUCTION_RELEASE.md) groen en vastgelegd is.
 | --- | --- | --- | --- | --- |
 | lokaal zonder betaaltest | `off` | leeg | leeg | ja |
 | geautomatiseerde tests | `test` | `test` | alleen testfixture of `sk_test_…` | ja |
-| Vercel Preview | `test` | `test` | `sk_test_…` | verplicht vóór releasebewijs |
-| productie vóór volledige goedkeuring | `off` | leeg | geen checkout | alleen als verkoop bewust gesloten blijft |
-| productie met verkoop | `live` | `live` | `sk_live_…` | pas na expliciete live-GO |
+| Vercel Preview / beschermde staging | `test` | `test` | `sk_test_…` | verplicht vóór releasebewijs |
+| veilige statische fallback / incidentmitigatie | `off` | leeg | leeg | geen releaseprofiel of releasebewijs |
+| Production | `live` | `live` | `sk_live_…` | uitsluitend na alle gates en expliciete live-GO |
 
 `off`, `test` en `live` zijn alle drie fail-closed:
 
@@ -26,6 +26,9 @@ in [PRODUCTION_RELEASE.md](PRODUCTION_RELEASE.md) groen en vastgelegd is.
 
 De browser bepaalt de modus niet. Hij toont checkout alleen wanneer het
 server-owned productprofiel `capabilities.checkout=true` teruggeeft.
+Het releaseprofiel blijft in Preview, staging en Production altijd
+`PRODUCT_PROFILE=feedback_beta`; `public_demo` of checkout `off` kan geen
+releasecheck passeren.
 
 ## Vereiste serverconfiguratie
 
@@ -153,7 +156,9 @@ er is geen losse `SUPPORT_EMAIL`-runtimevariabele en geen e-mailprovider.
 
 1. Gebruik in Preview uitsluitend het aangewezen Stripe test-account.
 2. Leg het verwachte account-ID als `STRIPE_EXPECTED_ACCOUNT_ID` vast. De server
-   vraagt het huidige account bij Stripe op vóór de eerste checkout.
+   verifieert met de geconfigureerde secret key via Stripe
+   `accounts.retrieveCurrent` dat iedere checkout- en webhookflow werkelijk aan
+   dit account is gebonden.
 3. Maak een endpoint voor `POST /api/webhooks/stripe` op de exacte Preview- of
    Production-origin.
 4. Abonneer het endpoint op:
@@ -171,6 +176,30 @@ environment/account-identiteit, Buildy-metadata en exact overeenkomende
 orderbedragen en valuta mag betaling bevestigen. Provider-event-ID's en
 mutaties zijn idempotent in de database.
 
+### Account- en eventverificatie van webhooks
+
+De webhookbody is ook na een geldige signature niet zelfstandig de canonieke
+providerwaarheid. Buildy verwerkt iedere ondersteunde Stripe-webhook in deze
+volgorde:
+
+1. verifieer de ruwe body tegen het environment-specifieke `whsec_…` secret;
+2. verifieer via `accounts.retrieveCurrent` dat de gebruikte Stripe-secret key
+   bij exact `STRIPE_EXPECTED_ACCOUNT_ID` hoort;
+3. haal met diezelfde accountgebonden key het event-ID opnieuw canoniek op via
+   Stripe `events.retrieve`;
+4. eis dat signed en opgehaald event exact overeenkomen op event-ID, type,
+   created timestamp, livemode, eventueel account-ID en het ID van het
+   onderliggende Stripe-object;
+5. valideer environment, `app=buildy` metadata, orderbinding, bedragen en valuta
+   en normaliseer uitsluitend de gegevens uit het canoniek opgehaalde event.
+
+Een accountmismatch, ontbrekend canoniek event of verschil tussen body en
+opgehaald event faalt gesloten en veroorzaakt geen betaalmutatie. Een tijdelijke
+Stripe-netwerkfout bij account- of eventverificatie bevestigt evenmin betaling;
+de webhook kan volgens het begrensde retrypad opnieuw worden aangeboden. Deze
+controle maakt een geldig gesigneerde maar verkeerd gerouteerde of niet-
+canonieke payload nooit tot databasewaarheid.
+
 ## Verificatie in Preview
 
 Bewaar per verificatie commit-SHA, deployment-URL, tijdstip en geanonimiseerd
@@ -185,8 +214,10 @@ bewijs; leg geen secrets, adresgegevens, e-mailadressen of Checkout-URL's vast.
    begint.
 5. Rond één testbetaling af; bewijs dat de geldige webhook de order naar betaald
    brengt en dat een herhaalde webhook geen tweede mutatie veroorzaakt.
-6. Test ongeldige signature, verkeerd account, live event, verkeerde bedragen,
-   verlopen quote, mislukte/asynchrone betaling, verlopen sessie en refund.
+6. Test ongeldige signature, verkeerd key-account, een niet canoniek
+   terugvindbaar event, afwijkingen tussen signed en opgehaald event, live event,
+   verkeerde bedragen, verlopen quote, mislukte/asynchrone betaling, verlopen
+   sessie en refund.
 7. Controleer dat de paid order in `/beheer/bestellingen` verschijnt en het
    customerportaal de actuele serverstatus toont.
 8. Test de volledige rolreis ook interactief via de verplichte Playwright MCP-

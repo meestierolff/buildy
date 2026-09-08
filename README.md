@@ -5,21 +5,21 @@ huis verbouwen en voor de vrienden en familie die willen meekijken.
 
 > Maak van je verbouwing een verhaal om te bewaren.
 
-De MVP-flow is:
+De gratis MVP-flow is:
 
-`foto → Bouwmoment → Verhaal → delen en reageren → digitaal Bouwboek`
+`account → privéverbouwing → foto/Bouwmoment → gedeeld Verhaal → like/reactie → digitaal Bouwboek`
 
 ## MVP van vandaag
 
 - een rustige publieke landing met een lokale fotodemo;
-- Google OpenID Connect als enige loginmethode;
+- een account met gebruikersnaam en wachtwoord, zonder e-mailadres;
 - korte onboarding met een naam en optioneel type verbouwing;
 - een nieuwe verbouwing die standaard privé is;
 - foto-first Bouwmomenten in één chronologisch Verhaal;
 - intrekbare deellinks voor alleen-lezen toegang zonder account;
 - reageren na inloggen;
 - een gratis digitaal Bouwboek dat uit echte Bouwmomenten groeit;
-- feedback, inclusief interesse in een later gedrukt Bouwboek.
+- feedback en support zonder transactionele e-mailprovider.
 
 De primaire ingelogde navigatie is `Mijn verbouwing`, `Bouwmoment toevoegen`,
 `Bouwboek` en `Profiel`. Oudere routes en datanamen kunnen voor compatibiliteit
@@ -30,13 +30,14 @@ blijven bestaan, maar vormen geen tweede zichtbaar productmodel.
 - React 18, TypeScript en Vite;
 - typed same-origin Vercel Functions API;
 - Neon PostgreSQL, Drizzle en append-only migrations;
-- Google OIDC met opaque, server-owned sessies;
+- scrypt-wachtwoordhashes en opaque, server-owned sessies;
 - private Vercel Blob met autorisatie per mediaread;
 - request-driven mediaverwerking onder een eigen workerrol;
 - TanStack Query v5 en een Wouter-compatibiliteitsrouter;
 - één dagelijkse Vercel-cron voor account lifecycle.
 
-De bedoelde productconfiguratie is:
+Het accountgebaseerde releaseprofiel is `PRODUCT_PROFILE=feedback_beta`.
+Lokaal, Preview, staging en Production gebruiken voor deze gratis MVP:
 
 ```env
 PRODUCT_PROFILE="feedback_beta"
@@ -44,9 +45,14 @@ BETA_MODE="false"
 CHECKOUT_MODE="off"
 ```
 
-Er is in deze gratis MVP geen actieve checkout, bestelling, printfulfilment,
-transactionele e-mail of AI-runtime. Historische code en databasestructuren
-hiervoor zijn dormant en geen releaseafhankelijkheid.
+`public_demo` blijft een veilige rollbackoptie; een online demo bewijst niet dat
+de accountgebaseerde MVP werkt. De actuele scope en het werkelijke bewijs staan
+in [GRAPH](docs/architecture/GRAPH.md), [FLOWS](docs/architecture/FLOWS.md) en
+[STATE](docs/architecture/STATE.md).
+
+Stripe, Peecho, fysieke bestellingen, printproof, budget, plattegronden en brede
+discovery zijn voor later. Bestaande commercecode blijft dormant en is geen
+releaseafhankelijkheid. Er is geen transactionele e-mail- of AI-runtime.
 
 ## Lokaal starten
 
@@ -86,8 +92,10 @@ DATABASE_MIGRATION_URL='<tijdelijke-directe-url>' bun run db:verify
 - [Vereiste operatoracties](docs/OPERATOR_ACTIONS_REQUIRED.md)
 - [Productmodel](docs/PRODUCT_MODEL.md)
 - [Sociaal toegangsmodel](docs/SOCIAL_STATE_MACHINE.md)
-- [Google-authconfiguratie](docs/GOOGLE_AUTH_SETUP.md)
+- [Account- en sessiereis](docs/architecture/FLOWS.md)
 - [Private Blob-configuratie](docs/VERCEL_BLOB_SETUP.md)
+- [Stripe Checkout-configuratie — dormant, buiten deze release](docs/STRIPE_SETUP.md)
+- [Production-releaseprocedure](docs/PRODUCTION_RELEASE.md)
 
 ## Veiligheidsgrenzen
 
@@ -95,5 +103,7 @@ DATABASE_MIGRATION_URL='<tijdelijke-directe-url>' bun run db:verify
 - Identiteit en autorisatie worden altijd server-side bepaald.
 - Customer-media blijft privé; Buildy publiceert geen permanente object-URL.
 - Een deellink geeft alleen kijktoegang en kan worden ingetrokken.
+- Checkout blijft uit; de bestaande betaalbeveiliging blijft behouden voor
+  eventueel later gebruik.
 - PII hoort niet in logs, eventmetadata, idempotencykeys of URL's.
 - SQL-migrations zijn append-only.

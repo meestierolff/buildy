@@ -1,12 +1,18 @@
 // @vitest-environment node
 
 import { randomUUID } from "node:crypto";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
 import { describe, expect, it } from "vitest";
+import * as schema from "../../db/schema";
+import { PostgresPhotobookRepository } from "../../server/photobooks/repository";
+import type { PhotobookExclusion } from "../../shared/contracts/photobooks";
 
 const adminDatabaseUrl = process.env.DATABASE_SECURITY_TEST_URL?.trim();
 const workerDatabaseUrl = process.env.DATABASE_SECURITY_PHOTOBOOK_WORKER_URL?.trim();
+const webRole = process.env.DATABASE_SECURITY_WEB_ROLE?.trim();
 const describeWithDatabase = adminDatabaseUrl && workerDatabaseUrl ? describe : describe.skip;
+const describeWithCoreDatabase = adminDatabaseUrl && webRole ? describe : describe.skip;
 
 function assertLocalDisposableDatabase(rawUrl: string): void {
   const url = new URL(rawUrl);
@@ -22,6 +28,101 @@ function postgresCode(error: unknown): string | undefined {
     ? String(error.code)
     : undefined;
 }
+
+describeWithCoreDatabase("digital photobook PostgreSQL exclusions", () => {
+  it("persists and resets zero, one and multiple targets while rejecting targets from another project", async () => {
+    assertLocalDisposableDatabase(adminDatabaseUrl!);
+    if (!/^[a-z_][a-z0-9_]{0,62}$/.test(webRole!)) throw new Error("Ongeldige testwebrol.");
+    const client = new Client({ connectionString: adminDatabaseUrl });
+    await client.connect();
+    const rollback = new Error("Roll back the synthetic digital photobook fixture");
+    const ownerId = randomUUID();
+    const projectId = randomUUID();
+    const otherProjectId = randomUUID();
+    const updateIds = [randomUUID(), randomUUID(), randomUUID()];
+    const mediaIds = [randomUUID(), randomUUID(), randomUUID()];
+    const phaseIds = [randomUUID(), randomUUID(), randomUUID()];
+    try {
+      await drizzle(client, { schema }).transaction(async (transaction) => {
+        await client.query("SET LOCAL statement_timeout = '15s'");
+        await client.query("INSERT INTO app_users (id, status) VALUES ($1, 'active')", [ownerId]);
+        for (const id of [projectId, otherProjectId]) {
+          await client.query(`
+            INSERT INTO projects (id, owner_id, slug, title, visibility, lifecycle_status)
+            VALUES ($1, $2, $3, 'Digitaal Bouwboek', 'private', 'active')
+          `, [id, ownerId, `digital-book-${id}`]);
+        }
+        for (let index = 0; index < 3; index += 1) {
+          const fixtureProjectId = index < 2 ? projectId : otherProjectId;
+          await client.query(`
+            INSERT INTO project_phases (id, project_id, name, sort_order)
+            VALUES ($1, $2, $3, $4)
+          `, [phaseIds[index], fixtureProjectId, `Hoofdstuk ${index + 1}`, index]);
+          await client.query(`
+            INSERT INTO updates (id, project_id, project_owner_id, author_id, phase_id, update_date, status, published_at, sort_order)
+            VALUES ($1, $2, $3, $3, $4, current_date, 'published', now(), $5)
+          `, [updateIds[index], fixtureProjectId, ownerId, phaseIds[index], index]);
+          await client.query(`
+            INSERT INTO media_assets (
+              id, owner_id, project_id, purpose, status, bucket, object_key,
+              upload_idempotency_key, detected_content_type, size_bytes, sha256,
+              width_pixels, height_pixels, exif_stripped, ready_at
+            ) VALUES ($1, $2, $3, 'project_media', 'ready', 'test-assets', $4, $5,
+              'image/jpeg', 4096, $6, 2400, 1600, true, now())
+          `, [mediaIds[index], ownerId, fixtureProjectId, `originals/${mediaIds[index]}.jpg`,
+            `digital-book-${mediaIds[index]}`, "1".repeat(64)]);
+          await client.query(`
+            INSERT INTO update_media (update_id, project_id, media_asset_id, role, sort_order)
+            VALUES ($1, $2, $3, 'gallery', 0)
+          `, [updateIds[index], fixtureProjectId, mediaIds[index]]);
+        }
+        await client.query(`
+          INSERT INTO photobook_drafts (id, project_id, owner_id, project_revision, document)
+          VALUES ($1, $2, $3, 1, '{}'::jsonb)
+        `, [randomUUID(), projectId, ownerId]);
+        await client.query(`SET LOCAL ROLE "${webRole!}"`);
+        const repository = new PostgresPhotobookRepository(transaction);
+        const assertExclusions = async (expected: PhotobookExclusion[]) => {
+          const source = await repository.loadSource(ownerId, projectId);
+          expect(source).not.toBeNull();
+          expect(source!.exclusions).toHaveLength(expected.length);
+          expect(source!.exclusions).toEqual(expect.arrayContaining(expected));
+        };
+        const cases: PhotobookExclusion[][] = [
+          [],
+          [{ targetType: "update", updateId: updateIds[0] }],
+          updateIds.slice(0, 2).map((updateId) => ({ targetType: "update", updateId })),
+          [{ targetType: "media", mediaAssetId: mediaIds[0] }],
+          mediaIds.slice(0, 2).map((mediaAssetId) => ({ targetType: "media", mediaAssetId })),
+          [{ targetType: "chapter", chapterKey: phaseIds[0] }],
+          phaseIds.slice(0, 2).map((chapterKey) => ({ targetType: "chapter", chapterKey })),
+          [{ targetType: "chapter", chapterKey: "other" }],
+        ];
+        for (const exclusions of cases) {
+          await repository.replaceExclusions(ownerId, projectId, exclusions);
+          await assertExclusions(exclusions);
+        }
+        const foreignTargets: PhotobookExclusion[] = [
+          { targetType: "update", updateId: updateIds[2] },
+          { targetType: "media", mediaAssetId: mediaIds[2] },
+          { targetType: "chapter", chapterKey: phaseIds[2] },
+        ];
+        for (const target of foreignTargets) {
+          await expect(repository.replaceExclusions(ownerId, projectId, [target]))
+            .rejects.toMatchObject({ reason: "PHOTOBOOK_NOT_FOUND" });
+          await assertExclusions(cases.at(-1)!);
+        }
+        await repository.replaceExclusions(ownerId, projectId, []);
+        await assertExclusions([]);
+        throw rollback;
+      });
+    } catch (error) {
+      if (error !== rollback) throw error;
+    } finally {
+      await client.end();
+    }
+  });
+});
 
 describeWithDatabase("photobook PostgreSQL worker boundary", () => {
   it("claims and finalizes an exact proof without granting the worker table access", async () => {

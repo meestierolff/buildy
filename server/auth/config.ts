@@ -8,12 +8,7 @@ const TLS_DATABASE_MODES = new Set(["require", "verify-ca", "verify-full"]);
 export interface AuthConfiguration {
   appOrigin: string;
   betaMode?: boolean;
-  callbackUrl: string;
   databaseUrl: string;
-  google: {
-    clientId: string;
-    clientSecret: string;
-  };
   secureCookies: boolean;
   trustedOrigins: readonly string[];
 }
@@ -74,7 +69,7 @@ function validateDatabaseUrl(databaseUrl: string): void {
 }
 
 export function resolveAuthConfiguration(runtime: RuntimeConfig): AuthConfiguration {
-  if (!runtime.DATABASE_URL || !runtime.GOOGLE_CLIENT_ID || !runtime.GOOGLE_CLIENT_SECRET) {
+  if (!runtime.DATABASE_URL) {
     throw new AuthUnavailableError("configuration_missing");
   }
   validateDatabaseUrl(runtime.DATABASE_URL);
@@ -102,12 +97,7 @@ export function resolveAuthConfiguration(runtime: RuntimeConfig): AuthConfigurat
   return {
     appOrigin,
     betaMode: runtime.BETA_MODE !== false,
-    callbackUrl: new URL("/api/auth/callback/google", appOrigin).toString(),
     databaseUrl: runtime.DATABASE_URL,
-    google: {
-      clientId: runtime.GOOGLE_CLIENT_ID,
-      clientSecret: runtime.GOOGLE_CLIENT_SECRET,
-    },
     secureCookies: new URL(appOrigin).protocol === "https:",
     trustedOrigins,
   };

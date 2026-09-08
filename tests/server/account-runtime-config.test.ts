@@ -10,8 +10,6 @@ function configured(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
     APP_ORIGIN: "https://app.buildy.test",
     DATABASE_URL: "postgresql://web:secret@127.0.0.1:5432/buildy_test",
     DATABASE_ACCOUNT_WORKER_URL: "postgresql://account:secret@127.0.0.1:5432/buildy_test",
-    GOOGLE_CLIENT_ID: "google-client",
-    GOOGLE_CLIENT_SECRET: "google-secret",
     PII_ENCRYPTION_KEYS: JSON.stringify({ 1: Buffer.alloc(32, 1).toString("base64") }),
     PII_ENCRYPTION_CURRENT_VERSION: 1,
     PII_BLIND_INDEX_KEY: Buffer.alloc(32, 2).toString("base64"),
@@ -31,8 +29,6 @@ describe("account lifecycle runtime configuration", () => {
   it.each([
     "DATABASE_URL",
     "DATABASE_ACCOUNT_WORKER_URL",
-    "GOOGLE_CLIENT_ID",
-    "GOOGLE_CLIENT_SECRET",
     "PII_ENCRYPTION_KEYS",
     "PII_ENCRYPTION_CURRENT_VERSION",
     "PII_BLIND_INDEX_KEY",

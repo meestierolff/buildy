@@ -11,13 +11,15 @@ export function parseLaunchCliArguments(
 ): ParsedLaunchCliArguments;
 export function requireExpectedGitSha(value: string | undefined): string;
 export function verifyDeployedGitSha(actualValue: unknown, expectedSha: string): void;
-export function verifyFreeMvpCapabilities(capabilities: unknown): void;
-export function verifyFreeMvpProductProfile(profile: unknown): void;
-export function verifyPublicDemoCapabilities(capabilities: unknown): void;
-export function verifyPublicDemoProductProfile(profile: unknown): void;
-export function verifyLaunchCapabilities(capabilities: unknown, profileName: unknown): void;
-export function verifyLaunchProductProfile(profile: unknown): void;
-export function freeMvpReadinessFailures(checks: unknown): string[];
-export function launchReadinessFailures(checks: unknown, profileName: unknown): string[];
+export type ReleaseContract = {
+  profile: "feedback_beta";
+  checkoutMode: "off";
+};
+export function releaseContractFor(
+  environment: "preview" | "staging" | "production",
+): ReleaseContract;
+export function verifyTargetCapabilities(capabilities: unknown): void;
+export function verifyTargetProductProfile(profile: unknown, contract: ReleaseContract): void;
+export function targetReadinessFailures(checks: unknown): string[];
 export function requireSyntheticStagingEmail(value: string | undefined): string;
 export function verifySyntheticSessionEmail(actualValue: unknown, expectedEmail: string): void;

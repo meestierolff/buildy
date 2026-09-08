@@ -234,12 +234,12 @@ const CommentsSheet = ({
             <div>
               <p className="text-sm font-semibold text-foreground">Praat mee over dit Bouwmoment</p>
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                Log in met Google om te reageren. Daarna kom je terug bij deze gedeelde verbouwing.
+                Log in om te reageren. Daarna kom je terug bij deze gedeelde verbouwing.
               </p>
             </div>
             <Button asChild type="button" size="sm" className="min-h-11 w-full gap-2">
               <Link to={signInPath}>
-                <LogIn className="h-4 w-4" aria-hidden="true" /> Inloggen met Google
+                <LogIn className="h-4 w-4" aria-hidden="true" /> Inloggen
               </Link>
             </Button>
           </div>

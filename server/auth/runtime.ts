@@ -22,7 +22,7 @@ export interface DefaultAuthDependencies {
 let dependencies: DefaultAuthDependencies | undefined;
 let engine: AuthEngine | undefined;
 
-/** Install server-owned OIDC persistence dependencies before the first request. */
+/** Install server-owned account persistence dependencies before the first request. */
 export function configureDefaultAuthRuntime(next: DefaultAuthDependencies): void {
   if (engine || dependencies) {
     throw new Error("De standaard auth-runtime is al geconfigureerd.");

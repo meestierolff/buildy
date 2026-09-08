@@ -10,14 +10,14 @@ import {
   syntheticProjectOverview,
 } from "./syntheticApi";
 
-test("draagt een landingfoto lokaal door Google-login naar het eerste Bouwmoment", async ({ page }) => {
+test("draagt een landingfoto lokaal door gebruikersnaamlogin naar het eerste Bouwmoment", async ({ page }) => {
   allowBrowserDiagnostics(
     page,
     /^requestfailed: GET https?:\/\/[^/]+\/images\/buildy-(?:renovation-(?:progress|complete)|bouwboek-preview)\.webp \(NS_BINDING_ABORTED\)$/,
   );
   let authenticated = false;
   let projectCreated = false;
-  let googleStartBody: unknown = null;
+  let signInBody: unknown = null;
   const requestedUrls: string[] = [];
   page.on("request", (request) => requestedUrls.push(request.url()));
 
@@ -54,19 +54,10 @@ test("draagt een landingfoto lokaal door Google-login naar het eerste Bouwmoment
         }));
         return true;
       }
-      if (request.method() === "POST" && url.pathname === "/api/auth/sign-in/google") {
-        googleStartBody = request.postDataJSON();
-        await fulfillJson(route, success({
-          authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth?client_id=synthetic",
-        }));
-        return true;
-      }
-      if (url.origin === "https://accounts.google.com") {
-        await route.fulfill({
-          status: 200,
-          contentType: "text/html; charset=utf-8",
-          body: "<!doctype html><title>Synthetische Google-toestemming</title>",
-        });
+      if (request.method() === "POST" && url.pathname === "/api/auth/sign-in") {
+        signInBody = request.postDataJSON();
+        authenticated = true;
+        await fulfillJson(route, success({ next: "/project/nieuw?intent=eerste-bouwmoment" }));
         return true;
       }
       if (request.method() === "POST" && url.pathname === "/api/projects") {
@@ -113,7 +104,7 @@ test("draagt een landingfoto lokaal door Google-login naar het eerste Bouwmoment
     mimeType: "image/png",
     buffer: ONE_PIXEL_PNG,
   });
-  await page.getByRole("link", { name: "Doorgaan met Google" }).click();
+  await page.getByRole("link", { name: "Inloggen en bewaren" }).click();
 
   await expect(page).toHaveURL(
     /\/auth\?next=%2Fproject%2Fnieuw%3Fintent%3Deerste-bouwmoment$/,
@@ -147,12 +138,14 @@ test("draagt een landingfoto lokaal door Google-login naar het eerste Bouwmoment
   expect(fixture.requests.some((request) => request.pathname.startsWith("/api/media"))).toBe(false);
   expect(requestedUrls.some((url) => url.includes("blob.vercel-storage.com"))).toBe(false);
 
-  await page.getByRole("button", { name: "Doorgaan met Google" }).click();
-  await expect(page).toHaveURL(/^https:\/\/accounts\.google\.com\/o\/oauth2\/v2\/auth/);
-  expect(googleStartBody).toEqual({ next: "/project/nieuw?intent=eerste-bouwmoment" });
-
-  authenticated = true;
-  await page.goto(`${BASE}/project/nieuw?intent=eerste-bouwmoment`);
+  await page.getByLabel("Gebruikersnaam", { exact: true }).fill("bouw-eigenaar");
+  await page.getByLabel("Wachtwoord", { exact: true }).fill("Drie rustige bouwdagen");
+  await page.getByRole("button", { name: "Inloggen", exact: true }).click();
+  await expect(page).toHaveURL(`${BASE}/project/nieuw?intent=eerste-bouwmoment`);
+  expect(signInBody).toEqual({
+    username: "bouw-eigenaar", password: "Drie rustige bouwdagen",
+    next: "/project/nieuw?intent=eerste-bouwmoment",
+  });
   await page.getByLabel("Hoe heet je verbouwing?").fill("Ons synthetische familiehuis");
   await page.getByRole("button", { name: "Verbouwing starten" }).click();
 

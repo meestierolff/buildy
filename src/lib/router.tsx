@@ -9,8 +9,13 @@ import {
   useSearchParams,
 } from "wouter";
 import {
+  useHistoryState,
+  useLocationProperty,
+  useSearch as useBrowserSearch,
+} from "wouter/use-browser-location";
+import {
   forwardRef,
-  useMemo,
+  useCallback,
   type AnchorHTMLAttributes,
   type ReactElement,
   type ReactNode,
@@ -89,7 +94,10 @@ export function Navigate({ to, replace = false }: { to: string; replace?: boolea
 
 export function useNavigate(): (to: string, options?: NavigationOptions) => void {
   const [, navigate] = useWouterLocation();
-  return (to, options) => navigate(normalizeAppPath(to), options);
+  return useCallback(
+    (to: string, options?: NavigationOptions) => navigate(normalizeAppPath(to), options),
+    [navigate],
+  );
 }
 
 export function useLocation(): {
@@ -99,16 +107,14 @@ export function useLocation(): {
   state: unknown;
 } {
   const [pathname] = useWouterLocation();
-
-  return useMemo(
-    () => ({
-      pathname,
-      search: typeof window === "undefined" ? "" : window.location.search,
-      hash: typeof window === "undefined" ? "" : window.location.hash,
-      state: typeof window === "undefined" ? undefined : window.history.state,
-    }),
-    [pathname],
+  const search = useBrowserSearch();
+  const hash = useLocationProperty(
+    () => window.location.hash,
+    () => "",
   );
+  const state = useHistoryState<unknown>();
+
+  return { pathname, search, hash, state };
 }
 
 export function useParams<TParams extends Record<string, string | undefined> = Record<string, string | undefined>>() {

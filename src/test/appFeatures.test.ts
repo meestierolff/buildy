@@ -9,7 +9,7 @@ describe("app feature mapping", () => {
       betaMode: true,
       inviteRequiredForNewAccounts: true,
       capabilities: {
-        googleSignIn: true,
+        passwordSignIn: true,
         emailAuth: false,
         renovations: true,
         updates: true,
@@ -23,7 +23,7 @@ describe("app feature mapping", () => {
       },
     });
 
-    expect(features.googleSignInEnabled).toBe(true);
+    expect(features.passwordSignInEnabled).toBe(true);
     expect(features.emailAuthEnabled).toBe(false);
     expect(features.mediaFeaturesEnabled).toBe(true);
     expect(features.photobooksEnabled).toBe(false);
@@ -35,7 +35,7 @@ describe("app feature mapping", () => {
     const features = deriveAppFeatures();
 
     expect(features.emailAuthEnabled).toBe(false);
-    expect(features.googleSignInEnabled).toBe(false);
+    expect(features.passwordSignInEnabled).toBe(false);
     expect(features.mediaFeaturesEnabled).toBe(false);
     expect(features.photobooksEnabled).toBe(false);
     expect(features.checkoutEnabled).toBe(false);
@@ -48,7 +48,7 @@ describe("app feature mapping", () => {
       betaMode: true,
       inviteRequiredForNewAccounts: true,
       capabilities: {
-        googleSignIn: true,
+        passwordSignIn: true,
         emailAuth: false,
         renovations: true,
         updates: true,
