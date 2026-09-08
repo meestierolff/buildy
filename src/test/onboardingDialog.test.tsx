@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
   updateProfile: vi.fn(),
+  location: { pathname: "/projecten", search: "", hash: "", state: undefined },
 }));
 
 vi.mock("@/hooks/useProfiles", () => ({
@@ -30,7 +31,7 @@ vi.mock("@/hooks/useProjectApi", () => ({
 }));
 
 vi.mock("@/lib/router", () => ({
-  useLocation: () => ({ pathname: "/projecten", search: "", hash: "", state: undefined }),
+  useLocation: () => mocks.location,
   useNavigate: () => mocks.navigate,
 }));
 vi.mock("sonner", () => ({
@@ -55,6 +56,7 @@ function profile(onboardedAt: string | null = null) {
 
 describe("private project onboarding", () => {
   beforeEach(() => {
+    mocks.location.pathname = "/projecten";
     mocks.createProject.mockReset().mockResolvedValue({
       project: { id: PROJECT_ID },
       replayed: false,
@@ -82,6 +84,21 @@ describe("private project onboarding", () => {
     render(<OnboardingDialog enabled />);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
+
+  it.each(["/delen", `/project/${PROJECT_ID}`, "/project/nieuw", "/profiel"])(
+    "onderbreekt %s niet en bewaart onboarding voor het eigen dashboard",
+    (pathname) => {
+      mocks.location.pathname = pathname;
+      const { rerender } = render(<OnboardingDialog enabled />);
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(mocks.createProject).not.toHaveBeenCalled();
+      expect(mocks.updateProfile).not.toHaveBeenCalled();
+
+      mocks.location.pathname = "/projecten";
+      rerender(<OnboardingDialog enabled />);
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    },
+  );
 
   it("maakt privé aan, voltooit daarna het profiel en opent de composer", async () => {
     render(<OnboardingDialog enabled />);

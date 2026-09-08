@@ -94,6 +94,7 @@ Current coupling to watch, not an instruction to rewrite:
 2. UI may upload directly to private Blob only with server-authorized scope; validate/finalize before publishing. Document CSP permits the installed SDK's `https://vercel.com/api/blob` API paths and Blob storage hosts; unrelated Vercel API paths remain blocked.
 3. Every read/write rechecks its relevant ownership, visibility, link and block rules. Invalidate private client state when access changes.
 4. Core flows must not require payment, printer, email or discovery. Dormant code is not automatically safe; keep its endpoints gated.
+   Owner onboarding opens only on the personal start/dashboard routes, so a newly registered shared-story viewer can interact without creating a renovation.
 5. Keep secrets and migration credentials out of browsers, ordinary runtime fallback, diagrams and evidence.
 6. Use append-only migrations only for an actual blocker. Do not rewrite schema simply to make the graph look smaller.
 
