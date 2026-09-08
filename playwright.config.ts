@@ -26,14 +26,14 @@ if (useRealStaging) {
     || target.password
   ) throw new Error("staging-real accepteert uitsluitend één exacte HTTPS-origin.");
   if (!configuredStorageState || !existsSync(configuredStorageState)) {
-    throw new Error("PLAYWRIGHT_STORAGE_STATE moet naar een bestaande beschermde statefile wijzen.");
+    throw new Error("PLAYWRIGHT_STORAGE_STATE moet naar de beschermde statefile van een eigenaar na Google-login wijzen.");
   }
   if (
     !configuredStagingProjectId
     || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
       .test(configuredStagingProjectId)
   ) {
-    throw new Error("PLAYWRIGHT_STAGING_PROJECT_ID ontbreekt of is ongeldig.");
+    throw new Error("PLAYWRIGHT_STAGING_PROJECT_ID moet een bestaande private testverbouwing met twee Bouwmomenten en drie foto's aanwijzen.");
   }
 }
 
@@ -55,8 +55,8 @@ export default defineConfig({
   testIgnore: useRealStaging ? undefined : /staging-real\.e2e\.ts/,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  // A retry after Stripe accepted payment would create a second real test
-  // order. The manual provider gate therefore runs exactly once.
+  // Run the hosted persistence smoke once so a retry cannot hide an unstable
+  // provider result. Full interactive owner/viewer acceptance is separate evidence.
   retries: useRealStaging ? 0 : process.env.CI ? 2 : 0,
   workers: 1,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
