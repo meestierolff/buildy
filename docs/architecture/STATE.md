@@ -36,7 +36,7 @@ Read-only Vercel/Neon CLI/API inspection; no provider or customer-data mutations
 | Target | Observed state |
 | --- | --- |
 | Production | [buildy-gamma.vercel.app](https://buildy-gamma.vercel.app/), deployed SHA `162be48ee3c494c821d3ffe0cb19e9cbda0a4af4`, Vercel READY; health 200, `public_demo/off`; readiness 503 with database failure |
-| Existing stable Preview | [branch alias](https://buildy-git-codex-buildy-produc-9fc802-clarios-projects-05f6a57e.vercel.app); protected endpoints return 401 without an authorized Vercel context |
+| Candidate Preview | [stable candidate alias](https://buildy-git-release-free-mvp-20260908-clarios-projects-05f6a57e.vercel.app); Git-linked deployment created for [draft PR #4](https://github.com/meestierolff/buildy/pull/4); verify current head against Vercel metadata. Provider activation remains blocked. |
 | Google | `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` absent in both Preview and Production |
 | Preview config scope | Core runtime, database, PII, cron and retention names exist only for `codex/buildy-production-finish`; new candidate branch does not inherit them. Presence is not proof that values work. |
 | Isolated Neon | Project `patient-fire-15490270` currently has only `main`. Previous isolated branch expired `2026-09-06T21:59:00Z` and is absent. No test SQL executed against main. |
@@ -61,18 +61,23 @@ Real PostgreSQL integration tests were not rerun locally; no new database change
 The 390/1440 visual regression screenshots and 15 additional photo-rich
 captures at 320/390/1440 were generated and inspected locally. The latter use
 repository example photos, with owner/viewer stories, digital book and composer.
-They use mock APIs and contain no real accounts or private photos. Final composer
+They use mock APIs and contain no real accounts or private photos. The final
+composer check has zero internal overflow at 320, 390 and 1440 px; dialog
+client/scroll widths are 318/318, 388/388 and 670/670. Final composer
 captures are in `/private/tmp/buildy-photo-visual-20260908/`; other browser artifacts
 are outside Git. No visual baselines were changed. Hosted CI is pending at this
-checkpoint; follow the candidate PR checks before any release.
+checkpoint; follow [the candidate checks](https://github.com/meestierolff/buildy/pull/4/checks)
+before any release. The workflow also runs the real PostgreSQL migration/RLS
+integration suite; this is distinct from real hosted Google/Blob proof.
 
 ## Concrete owner action / next slice
 
-Current slice: F0 → F1. Owner Google setup action has been requested; do not
+Current slice: F0 → F1. Owner Google setup action has been requested; the candidate alias above replaces
+the old-branch alias used in the initial request. Do not
 replace OIDC, disable accounts or treat elapsed time as permission.
 
 1. In Google Auth Platform configure webclients for exact origins
-   `https://buildy-gamma.vercel.app` and the existing stable Preview origin above.
+   `https://buildy-gamma.vercel.app` and the candidate Preview origin above.
    Each redirect is its exact origin plus `/api/auth/callback/google`; no wildcard.
    Enter the two Google values only in the matching Vercel dashboard scopes and
    allow the two intended test accounts if Google remains in testing mode.
