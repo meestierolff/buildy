@@ -409,7 +409,11 @@ registerRoute("GET", "/api/readiness", async (_request, requestId) => {
     }
   }
 
-  if (capabilities.photobooks === "ready" && config.DATABASE_PHOTOBOOK_WORKER_URL) {
+  if (
+    (config.CHECKOUT_MODE === "test" || config.CHECKOUT_MODE === "live")
+    && capabilities.photobooks === "ready"
+    && config.DATABASE_PHOTOBOOK_WORKER_URL
+  ) {
     try {
       photobookWorker = await photobookWorkerBoundaryReady(
         getBuildyWorkerDatabase(config.DATABASE_PHOTOBOOK_WORKER_URL, "photobook"),
