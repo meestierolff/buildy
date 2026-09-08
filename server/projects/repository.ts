@@ -184,6 +184,8 @@ function mapProjectOverview(row: RawProjectOverview): ProjectOverview {
 function mapProjectUpdate(row: RawProjectUpdate): ProjectUpdate {
   return {
     ...row,
+    publishedAt: nullableIso(row.publishedAt),
+    updatedAt: iso(row.updatedAt),
     contentRevision: Number(row.contentRevision),
     version: Number(row.version),
     phase: row.phase

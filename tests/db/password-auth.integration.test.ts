@@ -10,8 +10,11 @@ import { PostgresPasswordAuthRepository, UsernameUnavailableError, type NewPassw
 import { createBuildyDatabase } from "../../server/db/client";
 import { StrictMappedProjectActorResolver } from "../../server/projects/actor";
 import { PostgresActiveAppUserLookup } from "../../server/projects/authActor";
+import { KeyringProjectPrivateDetailsProtector } from "../../server/projects/protector";
 import { PostgresProjectRepository } from "../../server/projects/repository";
+import { ProjectService } from "../../server/projects/service";
 import { DataProtectionKeyring, PrivacyBlindIndex } from "../../server/security/dataProtection";
+import { followingFeedResponseSchema, timelineResponseSchema, updateMutationResponseSchema } from "../../shared/contracts/projects";
 
 const adminUrl = process.env.DATABASE_SECURITY_TEST_URL?.trim();
 const webUrl = process.env.DATABASE_SECURITY_WEB_URL?.trim();
@@ -154,6 +157,64 @@ describeWithDatabase("username/password PostgreSQL boundary", () => {
     expect(profile.rows).toEqual([{ is_private: true, migration_status: "linked" }]);
     expect(JSON.stringify(result)).not.toContain(passwordHash);
     expect(JSON.stringify(result)).not.toContain(first.tokenHash);
+  });
+
+  it("returns persisted PostgreSQL update timestamps accepted by mutation, timeline and following contracts", async () => {
+    const actors: string[] = [];
+    for (let index = 0; index < 2; index += 1) {
+      const account = await repository.register({ username: username(), passwordHash }, session());
+      const mapping = await admin.query<{ app_user_id: string }>(
+        "SELECT app_user_id FROM public.auth_identity_mappings WHERE auth_user_id = $1",
+        [account.authUserId],
+      );
+      actors.push(mapping.rows[0].app_user_id);
+    }
+    const [ownerId, followerId] = actors;
+    const projects = new ProjectService(
+      new PostgresProjectRepository(resources.database),
+      new KeyringProjectPrivateDetailsProtector(new DataProtectionKeyring({
+        currentVersion: 1, keys: { 1: Buffer.alloc(32, 6).toString("base64") },
+      }), 1),
+      new PrivacyBlindIndex(Buffer.alloc(32, 7).toString("base64")),
+    );
+    const { project } = await projects.createProject(ownerId, {
+      title: "Bouwmoment met echte databasetijden", idempotencyKey: randomUUID(),
+    });
+    const mutation = await projects.createUpdate(ownerId, project.id, {
+      idempotencyKey: randomUUID(), expectedProjectVersion: project.version,
+      updateDate: "2026-09-08", title: "De eerste muur", publish: true,
+    });
+    const timeline = await projects.timeline(
+      { kind: "authenticated", appUserId: ownerId }, project.id, {},
+    );
+    expect(timeline.items.map((item) => item.id)).toEqual([mutation.update.id]);
+
+    await admin.query(`
+      INSERT INTO public.user_relationships (source_user_id, target_user_id, kind, status, decided_at)
+      VALUES ($1, $2, 'follow', 'active', now())
+    `, [followerId, ownerId]);
+    const overview = await projects.overview({ kind: "authenticated", appUserId: ownerId }, project.id);
+    await projects.updateProject(ownerId, project.id, {
+      expectedVersion: overview.version, visibility: "followers",
+    });
+    const following = await projects.following(followerId, {});
+    expect(following.activity.map((item) => item.update.id)).toEqual([mutation.update.id]);
+
+    // PostgreSQL JSONB serializes timestamptz with an offset (and can include
+    // microseconds), unlike the UTC ISO strings required by our public contract.
+    const stored = await admin.query<{ timestamps: { publishedAt: string; updatedAt: string } }>(`
+      SELECT jsonb_build_object('publishedAt', published_at, 'updatedAt', updated_at) AS timestamps
+      FROM public.updates WHERE id = $1
+    `, [mutation.update.id]);
+    expect(stored.rows[0].timestamps.updatedAt).toMatch(/[+-]\d{2}:\d{2}$/);
+    const meta = { requestId: randomUUID() };
+    expect.soft(() => updateMutationResponseSchema.parse({ data: mutation, meta })).not.toThrow();
+    expect.soft(() => timelineResponseSchema.parse({ data: timeline, meta })).not.toThrow();
+    expect.soft(() => followingFeedResponseSchema.parse({ data: following, meta })).not.toThrow();
+    for (const update of [mutation.update, timeline.items[0], following.activity[0].update]) {
+      expect.soft(update.publishedAt).toBe(new Date(stored.rows[0].timestamps.publishedAt).toISOString());
+      expect.soft(update.updatedAt).toBe(new Date(stored.rows[0].timestamps.updatedAt).toISOString());
+    }
   });
 
   it("rolls back the losing concurrent registration and failed profile provisioning", async () => {
