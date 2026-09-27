@@ -5,7 +5,7 @@ Use the node IDs in [GRAPH](GRAPH.md). Actual deployment evidence belongs in
 
 | Flow / nodes | Observable result | Boundary |
 | --- | --- | --- |
-| F1 / U,H,A,D | Register with username/password, reload, log out and sign in to the same account. | No email, OAuth or invitations. Reject incorrect passwords, repeated abuse and cross-origin mutations. No promised password recovery. |
+| F1 / U,H,A,D | Register with username/password (minimum 10 characters), reload, log out and sign in to the same account. | No email, OAuth or invitations. An email entered as username offers an explicit username suggestion. Reject incorrect passwords, repeated abuse and cross-origin mutations. No promised password recovery. |
 | F2 / U,H,A,P,M,D | Create a private renovation; save photo/date/text; reload and edit the same Bouwmoment. | Owner-only writes; private media stays private. Retry must preserve text and avoid duplicate moments. |
 | F3 / U,H,A,S,P,M,D | Share a read-only link, open the story and revoke it. | Revoked links stop authorizing API and media reads; already downloaded bytes cannot be recalled. |
 | F4 / U,H,A,S,E,D | A permitted signed-in viewer follows this renovation and adds a reaction/comment; content survives reload. | Following grants no access or edits and never subscribes to every project of its owner. Blocking/removal/revocation still applies. |

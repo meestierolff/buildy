@@ -8,6 +8,7 @@ const BLOCKED_NEXT_PATHS = [
   "/wachtwoord-resetten",
 ] as const;
 const NEXT_URL_BASE = "https://navigation.buildy.invalid";
+export const MIN_PASSWORD_LENGTH = 10;
 
 function hasControlCharacters(value: string): boolean {
   return Array.from(value).some((character) => {
@@ -67,8 +68,8 @@ export const usernameSignInInputSchema = z.object({
 }).strict().transform((input) => ({ ...input, next: safeAuthNextPath(input.next) }));
 export const usernameSignUpInputSchema = z.object({
   username: usernameSchema,
-  password: passwordSchema.refine((value) => Array.from(value).length >= 15,
-    "Gebruik minimaal 15 tekens. Een paar woorden is makkelijk te onthouden."),
+  password: passwordSchema.refine((value) => Array.from(value).length >= MIN_PASSWORD_LENGTH,
+    `Gebruik minimaal ${MIN_PASSWORD_LENGTH} tekens.`),
   next: z.string().max(2_048).optional(),
 }).strict().transform((input) => ({ ...input, next: safeAuthNextPath(input.next) }));
 export const passwordAuthResponseSchema = apiSuccessSchema(z.object({

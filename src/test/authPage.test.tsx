@@ -11,7 +11,7 @@ vi.mock("@/hooks/useAuth", () => ({ useAuth: vi.fn() }));
 vi.mock("@/hooks/usePageMeta", () => ({ usePageMeta: vi.fn() }));
 vi.mock("@/lib/appFeatures", () => ({ useAppFeatures: vi.fn() }));
 
-const password = "Drie rustige bouwdagen";
+const password = "Bouw!dag27";
 const refetchSession = vi.fn();
 
 function renderAuth(path = "/auth") {
@@ -44,7 +44,7 @@ describe("username/password auth page", () => {
     expect(screen.getByLabelText("Wachtwoord", { exact: true })).toHaveAttribute("autocomplete", "current-password");
     expect(screen.getByLabelText("Wachtwoord", { exact: true })).toHaveAttribute("type", "password");
     expect(screen.queryByText(/Google|magic link|wachtwoord vergeten/i)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/e-mail|invite|uitnodiging/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^e-mail|invite|uitnodiging/i)).not.toBeInTheDocument();
   });
 
   it("keeps the destination when switching modes and clears the previous password", () => {
@@ -75,8 +75,29 @@ describe("username/password auth page", () => {
     fillCredentials();
     fireEvent.change(screen.getByLabelText("Wachtwoord", { exact: true }), { target: { value: "te kort" } });
     fireEvent.submit(screen.getByRole("form", { name: "Account maken" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("15 tot 128 tekens");
+    expect(screen.getByRole("alert")).toHaveTextContent("10 tot 128 tekens");
     expect(signUp).not.toHaveBeenCalled();
+  });
+
+  it("helps an email entry become a username and accepts a ten-character signup password", async () => {
+    const signUp = vi.spyOn(authClient, "signUp").mockResolvedValue("/");
+    renderAuth("/auth?mode=register");
+    fillCredentials();
+    const username = screen.getByLabelText("Gebruikersnaam", { exact: true });
+    fireEvent.change(username, { target: { value: "Bouw.Eigenaar@example.test" } });
+    fireEvent.submit(screen.getByRole("form", { name: "Account maken" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("geen e-mailadres");
+    expect(username).toHaveFocus();
+    expect(signUp).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Gebruik bouw.eigenaar" }));
+    expect(username).toHaveValue("bouw.eigenaar");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("Minimaal 10 tekens.")).toBeInTheDocument();
+    expect(screen.queryByText(/wachtwoordherstel/i)).not.toBeInTheDocument();
+    fireEvent.submit(screen.getByRole("form", { name: "Account maken" }));
+    await waitFor(() => expect(signUp).toHaveBeenCalledExactlyOnceWith({
+      username: "bouw.eigenaar", password, next: "/",
+    }));
   });
 
   it.each([

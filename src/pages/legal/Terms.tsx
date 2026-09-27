@@ -35,7 +35,7 @@ const Terms = () => (
     <ul>
       <li>Je maakt een account met een gebruikersnaam en wachtwoord. We vragen daarvoor geen e-mailadres.</li>
       <li>Je verstrekt juiste profielinformatie en bewaart je wachtwoord veilig. Deel je inloggegevens niet.</li>
-      <li>Wachtwoordherstel is in deze versie niet beschikbaar. Bewaar je inloggegevens zorgvuldig.</li>
+      <li>Bewaar je inloggegevens zorgvuldig.</li>
       <li>Je gebruikt geen account van een ander en probeert toegangscontroles niet te omzeilen.</li>
       <li>Je kunt via <em>Profiel &rsaquo; Account verwijderen</em> de verwijdering van je account aanvragen.</li>
     </ul>

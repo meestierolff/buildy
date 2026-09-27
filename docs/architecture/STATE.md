@@ -47,8 +47,31 @@ chunks and from 358,727 to 320,512 summed gzip bytes (10.7% smaller). This is to
 JavaScript output, not a measured page-load latency improvement. Book-preview
 fonts now use Latin subsets matching the renderer's typefaces.
 
-Next action: commit/push this cleanup and verify one actual public account/photo/
-PDF journey on the resulting Vercel deployment, using only disposable test data.
+Cleanup commit `5597ea9e2a32a05afdd20ed83f230dfd6a176779` is live at the public
+URL through READY deployment `dpl_rEQeKyBss6TSDp5AMQWNM82UUHqG`. A disposable
+account completed actual UI signup, private photo/date/text persistence after
+reload and logout/login, and a canonical PDF download with matching hashes.
+Its account deletion request immediately revoked session/project/media access.
+No browser errors or server 5xx occurred. Physical cleanup was not asserted.
+
+## F1 signup usability fix — 2026-09-27
+
+An email entered in the username field triggered local validation before any
+signup request. The form now explains the username requirement, shows errors
+beside the affected field and offers a button to use the email's valid name part.
+The user must explicitly select that suggestion; no email is persisted.
+The shared client/server signup minimum is now 10 characters. Recovery-availability
+copy was removed from the signup form and terms; no recovery feature is promised.
+
+38 focused authentication/copy checks passed in 4.26s, including a real scrypt
+hash for a 10-character password and rejection of 9 characters before storage.
+Typecheck, changed-file lint and the production build (3.21s) passed.
+Next action: publish this fix and verify actual signup/re-login with a disposable
+account and an exactly 10-character password on the resulting production SHA.
+
+The unrelated short-book change remains preserved in commit `30cb14a` on
+`pending/digital-book-pages`; migration 0054 was not applied or authorized.
+This signup release is based on the deployed cleanup and requires no migration.
 
 ## Existing real hosted evidence
 

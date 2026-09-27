@@ -25,7 +25,7 @@ describe("juridische copy voor de gratis MVP", () => {
     expect(text).toMatch(/legt jou of Buildy nergens op vast/i);
     expect(text).toMatch(/gebruikersnaam en wachtwoord/i);
     expect(text).toMatch(/geen e-mailadres/i);
-    expect(text).toMatch(/Wachtwoordherstel is in deze versie niet beschikbaar/i);
+    expect(text).toMatch(/Bewaar je inloggegevens zorgvuldig/i);
     expect(text).not.toMatch(/Google|OAuth/i);
     expect(text).not.toMatch(/Stripe|Peecho|checkout|bestell|betaling|herroepingsrecht|drukker|bezorger|print-PDF/i);
     expect(screen.getAllByRole("link", { name: /support(formulier)?/i })[0]).toHaveAttribute("href", "/support");
