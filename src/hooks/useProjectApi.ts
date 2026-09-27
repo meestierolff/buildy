@@ -27,6 +27,7 @@ import {
   getProjectDiscovery,
   getProjectOverview,
   getProjectTimeline,
+  setProjectFollow,
   updateProject,
 } from "@/lib/projectApi";
 import { ApiClientError } from "@/lib/apiClient";
@@ -105,6 +106,26 @@ export function useProject(projectId: string, enabled = true) {
   const overviewQuery = useProjectOverview(projectId, enabled);
   const timelineQuery = useProjectTimeline(projectId, enabled);
   return { overviewQuery, timelineQuery };
+}
+
+export function useProjectFollowMutation(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (following: boolean) => setProjectFollow(projectId, following),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: projectQueryKeys.overview(projectId) }),
+        queryClient.invalidateQueries({ queryKey: projectQueryKeys.following }),
+      ]);
+    },
+    onError: (error) => {
+      if (error instanceof ApiClientError && [401, 403, 404].includes(error.status)) {
+        queryClient.removeQueries({ queryKey: projectQueryKeys.timeline(projectId) });
+        queryClient.removeQueries({ queryKey: projectQueryKeys.following });
+        void queryClient.invalidateQueries({ queryKey: projectQueryKeys.overview(projectId) });
+      }
+    },
+  });
 }
 
 export function useUpdateProjectMutation(projectId: string) {

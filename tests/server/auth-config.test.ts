@@ -32,7 +32,8 @@ describe("auth configuration", () => {
       "https://preview.buildy.test",
     ]);
     expect(config.secureCookies).toBe(true);
-    expect(config.callbackUrl).toBe("https://app.buildy.test/api/auth/callback/google");
+    expect(config).not.toHaveProperty("google");
+    expect(config).not.toHaveProperty("callbackUrl");
   });
 
   it("allows insecure cookies only on a local loopback origin", () => {
@@ -71,20 +72,12 @@ describe("auth configuration", () => {
     expect(() => resolveAuthConfiguration(runtime({ DATABASE_URL: undefined }))).toThrowError(
       expect.objectContaining({ reason: "configuration_missing" }),
     );
-    expect(() => resolveAuthConfiguration(runtime({ GOOGLE_CLIENT_ID: undefined }))).toThrowError(
-      expect.objectContaining({ reason: "configuration_missing" }),
-    );
-    expect(() => resolveAuthConfiguration(runtime({ GOOGLE_CLIENT_SECRET: undefined }))).toThrowError(
-      expect.objectContaining({ reason: "configuration_missing" }),
-    );
   });
 
-  it("configures only the required Google client credentials", () => {
-    expect(
-      resolveAuthConfiguration(
-        runtime({ GOOGLE_CLIENT_ID: "client", GOOGLE_CLIENT_SECRET: "secret" }),
-      ).google,
-    ).toEqual({ clientId: "client", clientSecret: "secret" });
+  it("works without a Google client or callback", () => {
+    expect(resolveAuthConfiguration(runtime({
+      GOOGLE_CLIENT_ID: undefined, GOOGLE_CLIENT_SECRET: undefined,
+    })).databaseUrl).toContain("postgresql:");
   });
 
   it("requires TLS for a remote PostgreSQL connection", () => {

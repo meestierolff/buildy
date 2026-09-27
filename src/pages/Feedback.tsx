@@ -13,7 +13,7 @@ const Feedback = () => {
   });
   const { loading, user } = useAuth();
   if (loading) {
-    return <p className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground" role="status"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Sessie controleren…</p>;
+    return <main className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground" role="status"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Sessie controleren…</main>;
   }
   if (!user) return <Navigate to="/auth" replace />;
   return (

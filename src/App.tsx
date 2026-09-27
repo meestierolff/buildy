@@ -57,10 +57,10 @@ const PublicExampleBook = lazy(() => import("./pages/PublicDemoExample").then((m
 })));
 
 const RouteFallback = () => (
-  <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-live="polite">
+  <main className="flex min-h-[50vh] items-center justify-center" role="status" aria-live="polite">
     <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-foreground" />
     <span className="sr-only">Laden…</span>
-  </div>
+  </main>
 );
 
 const routeParam = (
@@ -201,7 +201,7 @@ const ProductProfileApplication = () => {
   if (profileQuery.isPending) return <RouteFallback />;
   if (profileQuery.isError || !profileQuery.data) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#F7F2E9] px-6 text-center">
+      <main className="flex min-h-screen items-center justify-center bg-[#F7F2E9] px-6 text-center">
         <div className="max-w-lg">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#A94E36]">Buildy</p>
           <h1 className="mt-3 font-serif text-4xl text-[#26231F]">De demo kon niet veilig worden geladen.</h1>
@@ -214,7 +214,7 @@ const ProductProfileApplication = () => {
             Opnieuw proberen
           </button>
         </div>
-      </div>
+      </main>
     );
   }
 

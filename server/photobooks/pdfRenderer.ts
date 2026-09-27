@@ -23,7 +23,7 @@ const MAX_RENDERED_IMAGE_BYTES = 40 * 1024 * 1024;
 const FIXED_PDF_DATE = new Date("2000-01-01T00:00:00.000Z");
 
 export const PHOTOBOOK_RENDER_ENGINE = "pdfkit";
-export const PHOTOBOOK_RENDER_VERSION = "pdfkit-0.19.1-buildy-1";
+export const PHOTOBOOK_RENDER_VERSION = "pdfkit-0.19.1-buildy-2";
 
 export type PhotobookRenderErrorCode =
   | "INVALID_DOCUMENT"

@@ -14,7 +14,7 @@ const PublicDemoDeferred = () => {
   });
 
   return (
-    <section className="flex min-h-[65vh] items-center bg-[#F7F2E9] px-4 py-16 sm:px-6 md:px-8">
+    <main className="flex min-h-[65vh] items-center bg-[#F7F2E9] px-4 py-16 sm:px-6 md:px-8">
       <div className="mx-auto w-full max-w-3xl border-y border-[#D8CFC1] py-12 text-center sm:py-16">
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#A94E36]">
           Openbare demo
@@ -31,7 +31,7 @@ const PublicDemoDeferred = () => {
           </a>
         </Button>
       </div>
-    </section>
+    </main>
   );
 };
 

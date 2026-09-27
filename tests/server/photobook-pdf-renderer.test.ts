@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { createHash } from "node:crypto";
+import PDFDocument from "pdfkit";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -44,6 +45,31 @@ function build(overrides: Partial<BuildPhotobookDocumentInput> = {}) {
 }
 
 describe("server-side canonical PDF renderer", () => {
+  it("embeds visible glyphs for ordinary Dutch text in every registered font", () => {
+    const sample = "ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789 Bouwboek: één café, naïef, reünie, façade — ‘thuis’ €";
+    const pdf = new PDFDocument({ autoFirstPage: false });
+    typography.register(pdf);
+    try {
+      for (const name of Object.keys(fonts)) {
+        pdf.font(name);
+        // Inspect PDFKit's loaded fontkit face, not just the CSS subset label:
+        // a missing glyph may still have a width and produce a valid PDF.
+        const face = (pdf as PDFKit.PDFDocument & {
+          _font: { font: {
+            hasGlyphForCodePoint(codePoint: number): boolean;
+            layout(text: string): { glyphs: Array<{ id: number }> };
+          } };
+        })._font.font;
+        const missing = [...new Set(sample)].filter((character) =>
+          !face.hasGlyphForCodePoint(character.codePointAt(0)!));
+        expect(missing, name).toEqual([]);
+        expect(face.layout(sample).glyphs.some((glyph) => glyph.id === 0), name).toBe(false);
+      }
+    } finally {
+      pdf.end();
+    }
+  });
+
   it("embeds the canonical page model into a byte-stable complete PDF", async () => {
     const document = build();
     const assets = {
@@ -65,6 +91,37 @@ describe("server-side canonical PDF renderer", () => {
     expect(first.fontSetSha256).toMatch(/^[0-9a-f]{64}$/);
   }, 20_000);
 
+  it("finishes embedding ordinary Dutch accents and ligatures across long canonical paragraphs", async () => {
+    const paragraph = "Eén thermoskan koffie op de vensterbank, frisse ideeën voor de keuken en een reünie aan de nieuwe tafel. We bekijken de façade, meten de kamer opnieuw en werken rustig verder: schuren, passen en vastzetten.";
+    const document = build({
+      projectTitle: "Een thuis vol ideeën",
+      projectSubtitle: "Van café tot keuken — één verhaal om te bewaren",
+      updates: [{
+        id: UPDATE_ID,
+        updateDate: "2026-04-12",
+        sortOrder: 0,
+        title: "De eerste ideeën krijgen vorm",
+        room: "Keuken",
+        description: Array.from({ length: 48 }, (_, index) =>
+          `Dagboekregel ${index + 1}. ${paragraph}`).join("\n\n"),
+        phaseId: "finishing",
+        phaseName: "Afwerking",
+        media: [],
+      }],
+    });
+    expect(document.pages.filter((page) => page.kind === "update_text").length).toBeGreaterThan(1);
+
+    const proof = await renderPhotobookPdf({
+      document,
+      fonts,
+      assets: { readOriginal: async () => { throw new Error("text-only book has no images"); } },
+    });
+
+    expect(proof.pageCount).toBe(document.pageCount);
+    expect(proof.bytes.subarray(-1_024).toString("ascii")).toContain("%%EOF");
+    expect(proof.pdfSizeBytes).toBeGreaterThan(10_000);
+  }, 20_000);
+
   it("renders a verified high-resolution source and records its immutable assetset", async () => {
     const source = await sharp({
       create: { width: 1_200, height: 800, channels: 3, background: "#b45a32" },
@@ -81,7 +138,7 @@ describe("server-side canonical PDF renderer", () => {
         description: "De eerste dag.",
         phaseId: "phase-one",
         phaseName: "Start",
-        phaseSortOrder: 1,
+        sortOrder: 0,
         media: [{
           id: ASSET_ID,
           sha256,
@@ -121,7 +178,7 @@ describe("server-side canonical PDF renderer", () => {
         description: null,
         phaseId: null,
         phaseName: null,
-        phaseSortOrder: null,
+        sortOrder: 0,
         media: [{
           id: ASSET_ID,
           sha256: createHash("sha256").update(expected).digest("hex"),

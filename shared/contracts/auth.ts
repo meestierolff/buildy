@@ -51,19 +51,36 @@ export function safeAuthNextPath(value: string | null | undefined): string {
   }
 }
 
-export const googleAuthStartInputSchema = z.object({
-  next: z.string().max(2_048).optional(),
-}).strict().transform((input) => ({ next: safeAuthNextPath(input.next) }));
+export const usernameSchema = z.string().trim().toLowerCase().regex(
+  /^[a-z0-9][a-z0-9_.-]{2,31}$/,
+  "Gebruik 3 tot 32 letters, cijfers, punten, streepjes of underscores.",
+);
 
-export const googleAuthStartResponseSchema = apiSuccessSchema(z.object({
-  authorizationUrl: z.string().url().startsWith("https://"),
+const passwordSchema = z.string().min(1).max(256).refine(
+  (value) => Array.from(value).length <= 128,
+  "Gebruik maximaal 128 tekens.",
+);
+export const usernameSignInInputSchema = z.object({
+  username: usernameSchema,
+  password: passwordSchema,
+  next: z.string().max(2_048).optional(),
+}).strict().transform((input) => ({ ...input, next: safeAuthNextPath(input.next) }));
+export const usernameSignUpInputSchema = z.object({
+  username: usernameSchema,
+  password: passwordSchema.refine((value) => Array.from(value).length >= 15,
+    "Gebruik minimaal 15 tekens. Een paar woorden is makkelijk te onthouden."),
+  next: z.string().max(2_048).optional(),
+}).strict().transform((input) => ({ ...input, next: safeAuthNextPath(input.next) }));
+export const passwordAuthResponseSchema = apiSuccessSchema(z.object({
+  next: z.string().refine((value) => safeAuthNextPath(value) === value),
 }));
 
 export const authClientUserSchema = z.object({
   id: z.string().min(1).max(512),
   name: z.string().min(1).max(80),
-  email: z.string().email(),
-  emailVerified: z.literal(true),
+  email: z.string().email().nullable(),
+  username: usernameSchema.nullable(),
+  emailVerified: z.boolean(),
   image: z.string().url().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),

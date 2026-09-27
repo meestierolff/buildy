@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { BlobNotFoundError } from "@vercel/blob";
 import {
   ObjectStorageError,
   assertChecksumSha256Base64,
@@ -128,12 +129,7 @@ export interface VercelBlobObjectStorageConfig {
 type UploadTokenPayload = ClientUploadAuthorization & { schemaVersion: 1 };
 
 function isNotFound(error: unknown): boolean {
-  return Boolean(
-    error &&
-    typeof error === "object" &&
-    "name" in error &&
-    error.name === "BlobNotFoundError",
-  );
+  return error instanceof BlobNotFoundError;
 }
 
 function privateBlobLocation<T extends VercelBlobLocation>(

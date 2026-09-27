@@ -15,7 +15,7 @@ const account = {
   revokeSession: async () => ({ revoked: false, wasCurrent: false }),
 };
 
-describe("Google OIDC HTTP boundary", () => {
+describe("Password auth HTTP boundary", () => {
   beforeEach(() => {
     vi.stubEnv("APP_ENV", "test");
     vi.stubEnv("APP_ORIGIN", "https://app.buildy.test");
@@ -76,7 +76,7 @@ describe("Google OIDC HTTP boundary", () => {
     }));
 
     const response = await handler(
-      new Request("https://app.buildy.test/api/auth/sign-in/google", { method: "POST" }),
+      new Request("https://app.buildy.test/api/auth/sign-in", { method: "POST" }),
       requestId,
     );
 
@@ -126,7 +126,7 @@ describe("Google OIDC HTTP boundary", () => {
       if (origin) headers.set("origin", origin);
 
       const response = await handleApiRequest(
-        new Request("https://app.buildy.test/api/auth/sign-in/google", {
+        new Request("https://app.buildy.test/api/auth/sign-in", {
           headers,
           method: "POST",
         }),

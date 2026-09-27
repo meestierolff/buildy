@@ -2,29 +2,31 @@ import { readFile } from "node:fs/promises";
 import PDFDocument from "pdfkit";
 import type { PhotobookTextMeasurer } from "./document.js";
 
+// Latin includes ordinary Dutch text; the installed WOFF2 files fail fontkit's
+// PDF subsetting for composite glyphs, while their equivalent WOFF files embed.
 const FONT_URLS = {
   "inter-regular": new URL(
-    "../../node_modules/@fontsource/inter/files/inter-latin-ext-400-normal.woff2",
+    "../../node_modules/@fontsource/inter/files/inter-latin-400-normal.woff",
     import.meta.url,
   ),
   "inter-regular-italic": new URL(
-    "../../node_modules/@fontsource/inter/files/inter-latin-ext-400-italic.woff2",
+    "../../node_modules/@fontsource/inter/files/inter-latin-400-italic.woff",
     import.meta.url,
   ),
   "inter-semibold": new URL(
-    "../../node_modules/@fontsource/inter/files/inter-latin-ext-600-normal.woff2",
+    "../../node_modules/@fontsource/inter/files/inter-latin-600-normal.woff",
     import.meta.url,
   ),
   "inter-semibold-italic": new URL(
-    "../../node_modules/@fontsource/inter/files/inter-latin-ext-600-italic.woff2",
+    "../../node_modules/@fontsource/inter/files/inter-latin-600-italic.woff",
     import.meta.url,
   ),
   "instrument-serif-regular": new URL(
-    "../../node_modules/@fontsource/instrument-serif/files/instrument-serif-latin-ext-400-normal.woff2",
+    "../../node_modules/@fontsource/instrument-serif/files/instrument-serif-latin-400-normal.woff",
     import.meta.url,
   ),
   "instrument-serif-regular-italic": new URL(
-    "../../node_modules/@fontsource/instrument-serif/files/instrument-serif-latin-ext-400-italic.woff2",
+    "../../node_modules/@fontsource/instrument-serif/files/instrument-serif-latin-400-italic.woff",
     import.meta.url,
   ),
 } as const;

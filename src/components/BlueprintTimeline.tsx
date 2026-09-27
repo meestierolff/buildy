@@ -13,6 +13,7 @@ import ReportDialog from "@/components/moderation/ReportDialog";
 import { phaseColor } from "@/components/PhaseSelect";
 import ReactionBar from "@/components/ReactionBar";
 import { Button } from "@/components/ui/button";
+import { useLocation } from "@/lib/router";
 
 interface Props {
   updates: readonly ProjectUpdate[];
@@ -45,6 +46,7 @@ const BlueprintTimeline = ({
 }: Props) => {
   const [openComments, setOpenComments] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<{ items: LightboxItem[]; index: number } | null>(null);
+  const { hash, search } = useLocation();
 
   const chronologicalUpdates = useMemo(
     () => [...updates].sort((a, b) => (
@@ -56,16 +58,16 @@ const BlueprintTimeline = ({
   );
 
   useEffect(() => {
-    const requestedId = new URLSearchParams(window.location.search).get("update");
+    const requestedId = new URLSearchParams(search).get("update");
     if (!requestedId || !chronologicalUpdates.some((update) => update.id === requestedId)) return;
     const frame = window.requestAnimationFrame(() => {
       document.getElementById(`update-${requestedId}`)?.scrollIntoView({ block: "start" });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [chronologicalUpdates, projectId]);
+  }, [chronologicalUpdates, hash, projectId, search]);
 
   const copyUpdateLink = async (updateId: string) => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(search);
     params.set("update", updateId);
     const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
     try {

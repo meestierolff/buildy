@@ -137,8 +137,6 @@ export function getCapabilities(config = getRuntimeConfig()): HealthResponse["da
       : readyWhen(
         config.DATABASE_URL,
         config.APP_ENV === "production" ? config.PRIMARY_DOMAIN : "non-production",
-        config.GOOGLE_CLIENT_ID,
-        config.GOOGLE_CLIENT_SECRET,
         config.PII_ENCRYPTION_KEYS,
         config.PII_ENCRYPTION_CURRENT_VERSION ? String(config.PII_ENCRYPTION_CURRENT_VERSION) : undefined,
         config.PII_BLIND_INDEX_KEY,
@@ -147,8 +145,6 @@ export function getCapabilities(config = getRuntimeConfig()): HealthResponse["da
       enableAuthenticatedProduct,
       config.DATABASE_URL,
       config.DATABASE_ACCOUNT_WORKER_URL,
-      config.GOOGLE_CLIENT_ID,
-      config.GOOGLE_CLIENT_SECRET,
       config.PII_ENCRYPTION_KEYS,
       config.PII_ENCRYPTION_CURRENT_VERSION ? String(config.PII_ENCRYPTION_CURRENT_VERSION) : undefined,
       config.PII_BLIND_INDEX_KEY,
@@ -186,7 +182,6 @@ export function getProductProfile(config = getRuntimeConfig()): ProductProfile {
   const publicDemo = activeProfile === "public_demo";
   const capabilities = getCapabilities(config);
   const databaseReady = capabilities.database === "ready";
-  const googleConfigured = Boolean(config.GOOGLE_CLIENT_ID && config.GOOGLE_CLIENT_SECRET);
 
   return {
     profile: activeProfile,
@@ -194,7 +189,7 @@ export function getProductProfile(config = getRuntimeConfig()): ProductProfile {
     betaMode: publicDemo ? false : config.BETA_MODE !== false,
     inviteRequiredForNewAccounts: publicDemo ? false : config.BETA_MODE !== false,
     capabilities: {
-      googleSignIn: !publicDemo && capabilities.authentication === "ready" && googleConfigured,
+      passwordSignIn: !publicDemo && capabilities.authentication === "ready",
       emailAuth: false,
       renovations: !publicDemo && databaseReady,
       updates: !publicDemo && databaseReady,

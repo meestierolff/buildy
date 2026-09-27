@@ -46,16 +46,17 @@ met de twee openbare supportartikelen.
 
 1. Landing: beeldvullende renovatie, belofte, lokale foto-demo, de reeks
    `foto -> Bouwmoment -> Verhaal -> Bouwboek`, deelweergave en privacy.
-2. Auth: 50/50 fotografie en één rustige `Doorgaan met Google`-actie.
+2. Auth: de bestaande rustige vormgeving met gebruikersnaam, wachtwoord en een
+   duidelijke keuze tussen account maken en inloggen; geen OAuth-link.
 3. Onboarding: naam, optioneel type, privé aanmaken en direct composer openen.
 4. Verbouwing: cover, naam/privacy/delen, verticale bouwlijn en Bouwmomenten.
 5. Bouwmoment: grote media, datum/fase, korte tekst en ondergeschikte reacties.
 6. Gedeelde viewer: dezelfde foto-hiërarchie zonder editcontrols; login alleen
    wanneer iemand wil reageren of een opmerking wil plaatsen.
-7. Bouwboek: cover en chronologische spreads, maximaal twee layouts en alleen
-   een vrijblijvende interesseactie.
-8. Profiel: eigen verbouwing, naam/privacy, feedback en uitloggen; geen
-   beheer- of commerce-dashboard.
+7. Bouwboek: digitaal, met cover, chronologische spreads en maximaal twee
+   layouts. Fysiek bestellen en printproofs vallen buiten deze gratis MVP.
+8. Profiel: eigen verbouwing, naam/privacy, feedback en uitloggen; bestaande
+   beveiligde beheerroutes worden geen primaire productbestemming.
 
 ## Buildy-componentbesluiten
 
@@ -66,8 +67,8 @@ met de twee openbare supportartikelen.
 - `BouwmomentCard` houdt foto's dominant en opmerkingen in een sheet/drawer.
 - `ShareLinkDialog` benoemt expliciet dat iedereen met de link kan kijken en
   ondersteunt kopiëren, native delen en intrekken.
-- `BouwboekViewer` is digitaal en afgeleid; proof-, provider-, betaal- en
-  bestelcomponenten komen niet in de actieve gebruikersflow.
+- `BouwboekViewer` blijft digitaal en afgeleid; proof-, betaal- en
+  bestelcomponenten blijven dormant bij `CHECKOUT_MODE=off`.
 - Lege en foutstaten geven één concrete vervolgstap en tonen nooit een ruwe
   database- of providerfout.
 
@@ -79,4 +80,6 @@ met de twee openbare supportartikelen.
 - Geen nagebouwde proprietary Step- of Travel Book-layout.
 - Geen testimonial, gebruikersaantal of productbeschikbaarheid suggereren die
   Buildy nog niet werkelijk heeft.
+- Geen automatische fulfilment, providerstatus of productbeschikbaarheid
+  beloven die niet werkelijk operationeel en aantoonbaar goedgekeurd is.
 - Geen checkout, drukbestelling of fulfilment beloven in deze gratis MVP.

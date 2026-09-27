@@ -192,7 +192,7 @@ function renderPage(path: string) {
       <Routes>
         <Route path="/beheer/bestellingen/:orderId" element={<OrderAdmin />} />
         <Route path="/beheer/bestellingen" element={<OrderAdmin />} />
-        <Route path="/auth" element={<p>Google-loginbestemming</p>} />
+        <Route path="/auth" element={<p>Loginbestemming</p>} />
       </Routes>
     </BrowserRouter>,
   );
@@ -350,7 +350,7 @@ describe("OrderAdmin page", () => {
     restorePrototypeProperty(Element.prototype, "scrollIntoView", scrollIntoViewDescriptor);
   });
 
-  it("redirects an anonymous visitor to Google auth with the exact protected destination", async () => {
+  it("redirects an anonymous visitor to account login with the exact protected destination", async () => {
     vi.mocked(useAuth).mockReturnValue({
       user: null,
       loading: false,
@@ -363,7 +363,7 @@ describe("OrderAdmin page", () => {
     expect(window.location.search).toBe(
       `?next=${encodeURIComponent(`/beheer/bestellingen/${ORDER_ID}`)}`,
     );
-    expect(screen.getByText("Google-loginbestemming")).toBeInTheDocument();
+    expect(screen.getByText("Loginbestemming")).toBeInTheDocument();
   });
 
   it("shows a server-owned non-enumerating denial to an authenticated ordinary user", () => {

@@ -1,5 +1,11 @@
 # Google auth setup
 
+**Historisch — niet configureren.** De eigenaar heeft op 8 september 2026 de
+vervanging door gebruikersnaam/wachtwoord geautoriseerd. Onderstaande OAuth-
+instructies beschrijven de eerdere implementatie en zijn geen actief
+releasecontract of blocker. Zie [FLOWS](architecture/FLOWS.md) en
+[STATE](architecture/STATE.md) voor de huidige accountreis en bewijsstatus.
+
 ## Doel
 
 Buildy gebruikt Google OpenID Connect Authorization Code met PKCE, state en

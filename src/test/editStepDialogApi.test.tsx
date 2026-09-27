@@ -39,6 +39,7 @@ const project: ProjectOverview = {
   contentRevision: 4,
   followerCount: 0,
   viewerAccess: "owner",
+  viewerFollowStatus: "self",
   canEdit: true,
   phases: [{
     id: "66666666-6666-4666-8666-666666666666",

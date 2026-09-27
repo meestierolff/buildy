@@ -109,7 +109,7 @@ export class BetaService {
     user: AuthIdentityUser,
   ): Promise<void> {
     if (!this.betaMode) return;
-    if (!reservation) throw new BetaError("INVITE_REQUIRED");
+    if (!reservation || !user.email) throw new BetaError("INVITE_REQUIRED");
     await this.repository.completeSignup(transaction, {
       authUserId: user.id,
       emailHash: betaInviteEmailHash(user.email, this.blindIndex),

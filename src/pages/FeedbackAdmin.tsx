@@ -56,10 +56,10 @@ function AccessBoundary({ children }: { children: (role: ModerationAdminRole) =>
   const { user, loading } = useAuth();
   const session = useFeedbackAdminSession(Boolean(user) && !loading);
 
-  if (loading) return <div className="py-20 text-center" role="status">Sessie controleren…</div>;
+  if (loading) return <main className="py-20 text-center" role="status">Sessie controleren…</main>;
   if (!user) return <Navigate to="/auth?next=%2Fbeheer%2Ffeedback" replace />;
   if (session.isPending) {
-    return <div className="py-20 text-center" role="status">Beheerrol controleren…</div>;
+    return <main className="py-20 text-center" role="status">Beheerrol controleren…</main>;
   }
   if (session.isError) {
     const denied = session.error instanceof ApiClientError

@@ -15,6 +15,7 @@ import {
   type DeleteUpdateInput,
   type EditUpdateInput,
   type FollowingFeed,
+  type ProjectFollowMutationResult,
   type ProjectOverview,
   type ProjectPage,
   type ProjectPageQuery,
@@ -24,7 +25,7 @@ import {
   type UpdateProjectInput,
 } from "../../shared/contracts/projects.js";
 import { ProjectError } from "./errors.js";
-import type { ProjectActor } from "./actor.js";
+import type { AuthenticatedProjectActor, ProjectActor } from "./actor.js";
 import type { PrivacyBlindIndex } from "../security/dataProtection.js";
 import { decodeProjectCursor, encodeProjectCursor } from "./cursor.js";
 import { projectRequestHash, scopedProjectIdempotencyKey } from "./idempotency.js";
@@ -193,14 +194,21 @@ export class ProjectService {
     };
   }
 
-  async following(actorId: string, rawQuery: unknown): Promise<FollowingFeed> {
-    const actor = actorId.toLowerCase();
+  async following(actor: AuthenticatedProjectActor, rawQuery: unknown): Promise<FollowingFeed> {
     const query = followingFeedQuerySchema.parse(rawQuery);
     const [projects, activity] = await Promise.all([
       this.repository.listFollowingProjects(actor, query.projectLimit),
       this.repository.listFollowingActivity(actor, query.activityLimit),
     ]);
     return { projects, activity };
+  }
+
+  async setProjectFollow(
+    actor: AuthenticatedProjectActor,
+    projectId: string,
+    following: boolean,
+  ): Promise<ProjectFollowMutationResult> {
+    return this.repository.setProjectFollow(actor, projectId, following);
   }
 
   async overview(viewer: ProjectActor, projectId: string): Promise<ProjectOverview> {

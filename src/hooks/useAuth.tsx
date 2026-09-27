@@ -16,7 +16,7 @@ import {
   type AuthClientUser,
   type AuthSessionData,
 } from "@/lib/authClient";
-import { queryClient } from "@/lib/queryClient";
+import { clearIdentityScopedQueryData } from "@/lib/queryClient";
 import { toast } from "sonner";
 
 export interface AuthUserMetadata {
@@ -36,9 +36,9 @@ export interface AuthContextValue {
   error: Error | null;
   loading: boolean;
   refreshing: boolean;
-  refetchSession: () => Promise<void>;
+  refetchSession: () => Promise<AuthSessionData | undefined>;
   session: AuthSession | null;
-  signOut: () => Promise<void>;
+  signOut: () => Promise<boolean>;
   user: AuthUser | null;
 }
 
@@ -80,7 +80,7 @@ export const AuthProvider = ({
       setError(null);
       setLoading(false);
       setRefreshing(false);
-      return;
+      return { session: null, user: null };
     }
     const sequence = ++requestSequence.current;
     setRefreshing(true);
@@ -89,10 +89,11 @@ export const AuthProvider = ({
       if (requestSequence.current !== sequence) return;
       setData(next);
       setError(null);
+      return next;
     } catch (cause) {
       if (requestSequence.current !== sequence) return;
-      setData({ session: null, user: null });
       setError(cause instanceof Error ? cause : new Error("Sessiecontrole mislukt."));
+      return undefined;
     } finally {
       if (requestSequence.current === sequence) {
         setLoading(false);
@@ -127,7 +128,7 @@ export const AuthProvider = ({
     if (
       previousIdentity.current !== undefined
       && previousIdentity.current !== currentIdentity
-    ) queryClient.clear();
+    ) clearIdentityScopedQueryData();
     previousIdentity.current = currentIdentity;
   }, [data.user?.id, loading]);
 
@@ -137,18 +138,22 @@ export const AuthProvider = ({
     [data.session],
   );
   const signOut = useCallback(async () => {
-    if (!enabled) return;
+    if (!enabled) return true;
+    let signedOut = false;
     try {
       await authClient.signOut();
       setData({ session: null, user: null });
       setError(null);
-      queryClient.clear();
+      clearIdentityScopedQueryData();
+      signedOut = true;
     } catch (cause) {
       console.error("Sign-out failed", authErrorDetails(cause));
       toast.error(authErrorMessage(cause, "sign-out"));
     } finally {
-      await refetchSession();
+      const refreshed = await refetchSession();
+      if (refreshed && !refreshed.session && !refreshed.user) signedOut = true;
     }
+    return signedOut;
   }, [enabled, refetchSession]);
 
   const value = useMemo<AuthContextValue>(

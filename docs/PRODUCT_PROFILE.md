@@ -1,7 +1,11 @@
 # Server-owned productprofiel
 
-Buildy gebruikt één profielnaam: `PRODUCT_PROFILE=feedback_beta`. Die naam
-schakelt geen oude “simple app” in; zij groepeert de production-MVP-capabilities.
+Het accountgebaseerde Buildy-releaseprofiel is `PRODUCT_PROFILE=feedback_beta`,
+met `BETA_MODE=false` en `CHECKOUT_MODE=off` voor de gratis MVP. Die naam
+schakelt geen oude “simple app” in; zij groepeert de bestaande corecapabilities.
+`public_demo` blijft een veilige rollbackoptie en bewijst geen werkende
+accountgebaseerde MVP. De actuele scope en bewijsstatus staan in
+[GRAPH](architecture/GRAPH.md) en [STATE](architecture/STATE.md).
 
 ## Publiek contract
 
@@ -11,10 +15,10 @@ schakelt geen oude “simple app” in; zij groepeert de production-MVP-capabili
 {
   "profile": "feedback_beta",
   "checkoutMode": "off",
-  "betaMode": true,
-  "inviteRequiredForNewAccounts": true,
+  "betaMode": false,
+  "inviteRequiredForNewAccounts": false,
   "capabilities": {
-    "googleSignIn": false,
+    "passwordSignIn": false,
     "emailAuth": false,
     "renovations": false,
     "updates": false,
@@ -29,45 +33,59 @@ schakelt geen oude “simple app” in; zij groepeert de production-MVP-capabili
 }
 ```
 
-De waarden hierboven illustreren een ongeconfigureerde fail-closed omgeving;
-zij zijn geen productionconfig. De frontend toont functionaliteit alleen wanneer
-de bijbehorende servercapability waar is. Er is geen `VITE_SIMPLE_APP_MODE` of
-client-owned capability truth.
+De waarden hierboven illustreren het doelprofiel vóór providerconfiguratie;
+alle corecapabilities moeten voor een release werkelijk beschikbaar en bewezen
+zijn, terwijl checkout `false` blijft. De frontend toont functionaliteit alleen
+wanneer de bijbehorende servercapability waar is. Er is geen
+`VITE_SIMPLE_APP_MODE` of client-owned capability truth.
 
 ## Readiness-afleiding
 
 - database maakt Verbouwingen, Bouwmomenten, Verhaal, sharing en feedback
   beschikbaar;
-- Google plus database, PII-keyring/blind index en productionorigin maken
-  `googleSignIn` ready;
-- account lifecycle vereist database, accountworker, Google, PII, retentie,
+- database, PII-keyring/blind index en productionorigin maken
+  `passwordSignIn` ready; er zijn geen OAuth-secrets of callbacks vereist;
+- account lifecycle vereist database, accountworker, PII, retentie,
   private Blob én `CRON_SECRET`;
-- media en Bouwboek vereisen respectievelijk hun geïsoleerde worker-DB-URL plus
-  private Blob; hun request-driven capabilities vereisen geen `CRON_SECRET`;
+- media vereist de geïsoleerde mediaworker-DB-URL plus private Blob; het
+  digitale Bouwboek vereist de webdatabase en private Blob, geen printworker;
+  deze capabilities vereisen geen `CRON_SECRET`;
 - `emailAuth` is altijd `false`;
-- checkout is alleen `true` bij mode `test|live` én volledige geldige Stripe,
-  paymentworker, PII, price, seller en termsconfig;
-- `off` maakt payments disabled; incomplete `test|live` blijft unconfigured.
+- `off` maakt payments disabled. De bestaande beveiliging van dormant commerce
+  blijft intact: `test|live` vereist volledige geldige Stripe-, paymentworker-,
+  PII-, price-, seller- en termsconfig, maar valt buiten deze release.
+
+Nieuwe accounts gebruiken een gebruikersnaam van 3–32 tekens en een wachtwoord
+van 15–128 tekens; registratie vraagt geen e-mailadres. De server slaat een
+gezouten scrypt-hash op en geeft de bestaande opaque HttpOnly-sessie af. Alleen
+de sessiehash staat in de database. Herhaalde loginpogingen zijn begrensd en
+mutaties controleren origin/CSRF. Wachtwoordherstel is niet geïmplementeerd;
+bestaande Google-identiteiten worden niet automatisch aan nieuwe accounts gekoppeld.
 
 `GET /api/health` toont de veilig samengevatte runtimecapabilities en
 `GET /api/readiness` controleert database- en actieve workergrenzen. De health-
-capability `printFulfilment=disabled` betekent dat automatische fulfilment is
-uitgeschakeld; de menselijke adminorderflow blijft actief. `email=disabled` is
-bedoeld en geen ontbrekende provider.
+capabilities `payments=disabled`, `printFulfilment=disabled` en `email=disabled`
+zijn bedoeld in de gratis MVP en betekenen geen ontbrekende coreprovider.
 
-Na media-completion verwerkt de request het exacte asset. Een proofrequest
-verwerkt de exacte revisie; zolang die nog `rendering` is, kan de
-owner-geautoriseerde editorpoll dezelfde leased/idempotente verwerking opnieuw
-activeren. Er zijn geen media- of photobookcronroutes/schedules.
+Na media-completion verwerkt de request het exacte asset; owner-geautoriseerde
+polling kan verwerking veilig hervatten. Printproofverwerking is dormant en
+geen afhankelijkheid van het digitale Bouwboek. Er zijn geen media- of
+photobookcronroutes/schedules.
 
 ## Environmentregels
 
-- lokaal mag `CHECKOUT_MODE=off` als bewust gesloten ontwikkelpad;
-- automatische betaaltests en Vercel Preview gebruiken `test`;
-- production commerce gebruikt alleen na formele GO `live`;
-- keyprefix, Stripe environment/account, price/seller environment en approval-
-  geldigheid moeten exact overeenkomen;
+- lokaal, Preview, staging en Production gebruiken `feedback_beta`,
+  `BETA_MODE=false` en `CHECKOUT_MODE=off` voor de gratis MVP;
+- `public_demo` kan als rollback beschikbaar zijn, maar passeert geen
+  accountgebaseerde MVP-releasecheck;
+- eventueel later commercewerk behoudt de bestaande mode-, account- en
+  approvalcontroles; deze release activeert geen hosted betaalpad of live checkout;
 - capability output geeft nooit secrets, seller-PII of providerpayload terug.
 
-De huidige release is geen production-GO. Zie
-[MVP_RELEASE_REPORT.md](MVP_RELEASE_REPORT.md).
+De launchchecks toetsen het gratis doelprofiel en de actieve core-readiness.
+Payment- en printproofworkers zijn geen vereiste. Een succesvolle configcheck
+vervangt nooit de echte hosted owner-/kijkerreis uit
+[FLOWS](architecture/FLOWS.md).
+
+Gebruik [STATE](architecture/STATE.md) voor de huidige release-uitkomst;
+historische releaseverslagen zijn geen actuele GO of nieuwe releasevereisten.

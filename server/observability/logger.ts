@@ -3,7 +3,7 @@ export type LogField = string | number | boolean | null | undefined;
 export type LogFields = Readonly<Record<string, LogField>>;
 
 const SAFE_FIELD_NAME = /^[a-z][a-zA-Z0-9_]{0,79}$/;
-const FORBIDDEN_FIELD_NAME = /(authorization|cookie|credential|secret|password|token|email|address|recipient|payload|body|url|ip$|useragent)/i;
+const FORBIDDEN_FIELD_NAME = /(authorization|cookie|credential|secret|password|token|email|address|recipient|payload|body|url|ip$|useragent|username)/i;
 const SAFE_EVENT_NAME = /^[a-z][a-z0-9_.-]{2,119}$/;
 const SAFE_ERROR_CODE = /^[A-Z0-9_.:-]{1,80}$/i;
 

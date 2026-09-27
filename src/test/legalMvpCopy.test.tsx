@@ -23,6 +23,10 @@ describe("juridische copy voor de gratis MVP", () => {
     expect(text).toMatch(/gratis digitale dienst/i);
     expect(text).toMatch(/printinteressevragen zijn alleen feedback/i);
     expect(text).toMatch(/legt jou of Buildy nergens op vast/i);
+    expect(text).toMatch(/gebruikersnaam en wachtwoord/i);
+    expect(text).toMatch(/geen e-mailadres/i);
+    expect(text).toMatch(/Wachtwoordherstel is in deze versie niet beschikbaar/i);
+    expect(text).not.toMatch(/Google|OAuth/i);
     expect(text).not.toMatch(/Stripe|Peecho|checkout|bestell|betaling|herroepingsrecht|drukker|bezorger|print-PDF/i);
     expect(screen.getAllByRole("link", { name: /support(formulier)?/i })[0]).toHaveAttribute("href", "/support");
   });
@@ -32,7 +36,10 @@ describe("juridische copy voor de gratis MVP", () => {
 
     const text = document.body.textContent ?? "";
     expect(screen.getByRole("heading", { level: 1, name: "Privacyverklaring" })).toBeInTheDocument();
-    expect(text).toMatch(/Google-identificatie/i);
+    expect(text).toMatch(/gebruikersnaam.*hash van je wachtwoord/i);
+    expect(text).toMatch(/geen e-mailadres/i);
+    expect(text).toMatch(/niet automatisch aan gekoppeld/i);
+    expect(text).not.toMatch(/Google|OpenID Connect/i);
     expect(text).toMatch(/private Blob-opslag/i);
     expect(text).toMatch(/Neon/i);
     expect(text).toMatch(/printinteresse is alleen productonderzoek/i);

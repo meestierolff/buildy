@@ -5,6 +5,7 @@ import { ZodError } from "zod";
 import type {
   FollowingActivity,
   ProjectCard,
+  ProjectFollowMutationResult,
   ProjectOverview,
   ProjectUpdate,
 } from "../../shared/contracts/projects";
@@ -13,6 +14,7 @@ import { PrivacyBlindIndex } from "../../server/security/dataProtection";
 import {
   ANONYMOUS_PROJECT_ACTOR,
   StrictMappedProjectActorResolver,
+  type AuthenticatedProjectActor,
   type ProjectActor,
 } from "../../server/projects/actor";
 import { decodeProjectCursor, encodeProjectCursor } from "../../server/projects/cursor";
@@ -74,6 +76,7 @@ function overview(overrides: Partial<ProjectOverview> = {}): ProjectOverview {
     expectedEndDate: "2026-12-01",
     contentRevision: 1,
     followerCount: 0,
+    viewerFollowStatus: "self",
     viewerAccess: "owner",
     canEdit: true,
     phases: STANDARD_PROJECT_PHASES.map((name, sortOrder) => ({
@@ -178,12 +181,20 @@ class FakeProjectRepository implements ProjectRepository {
     return this.discoveryRows.slice(0, limit);
   }
 
-  async listFollowingProjects(_actorId: string, limit: number): Promise<ProjectCard[]> {
+  async listFollowingProjects(_actor: AuthenticatedProjectActor, limit: number): Promise<ProjectCard[]> {
     return this.followingProjectRows.slice(0, limit);
   }
 
-  async listFollowingActivity(_actorId: string, limit: number): Promise<FollowingActivity[]> {
+  async listFollowingActivity(_actor: AuthenticatedProjectActor, limit: number): Promise<FollowingActivity[]> {
     return this.followingActivityRows.slice(0, limit);
+  }
+
+  async setProjectFollow(
+    _actor: AuthenticatedProjectActor,
+    _projectId: string,
+    following: boolean,
+  ): Promise<ProjectFollowMutationResult> {
+    return { state: following ? "following" : "none", replayed: false };
   }
 
   async getOverview(_viewer: ProjectActor, projectId: string): Promise<ProjectOverview | null> {
@@ -434,14 +445,14 @@ describe("project service", () => {
     }];
     const service = new ProjectService(repository, new RecordingProtector(), BLIND_INDEX);
 
-    await expect(service.following(ACTOR_ID, {
+    await expect(service.following({ kind: "authenticated", appUserId: ACTOR_ID }, {
       projectLimit: "10",
       activityLimit: "5",
     })).resolves.toEqual({
       projects: repository.followingProjectRows,
       activity: repository.followingActivityRows,
     });
-    await expect(service.following(ACTOR_ID, { activityLimit: "500" })).rejects.toBeInstanceOf(ZodError);
+    await expect(service.following({ kind: "authenticated", appUserId: ACTOR_ID }, { activityLimit: "500" })).rejects.toBeInstanceOf(ZodError);
   });
 
   it("creates a private project for the injected actor and encrypts every private field", async () => {

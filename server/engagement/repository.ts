@@ -424,7 +424,7 @@ async function eligibleMentionIds(
       select app_resolve_engagement_mentions(
         ${command.projectId}::uuid,
         ${command.updateId}::uuid,
-        ${command.input.mentionUserIds}::uuid[]
+        ${sql.param(command.input.mentionUserIds)}::uuid[]
       ) as ids
     `);
     return typedRows<{ ids: string[] }>(result.rows)[0]?.ids ?? [];

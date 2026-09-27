@@ -71,13 +71,13 @@ function AccessBoundary({ children }: { children: (role: ModerationAdminRole) =>
   const session = useModerationAdminSession(Boolean(user) && !loading);
 
   if (loading) {
-    return <div className="py-20 text-center" role="status">Sessie controleren…</div>;
+    return <main className="py-20 text-center" role="status">Sessie controleren…</main>;
   }
   if (!user) {
     return <Navigate to="/auth?next=%2Fbeheer%2Fmoderatie" replace />;
   }
   if (session.isPending) {
-    return <div className="py-20 text-center" role="status">Moderatierol controleren…</div>;
+    return <main className="py-20 text-center" role="status">Moderatierol controleren…</main>;
   }
   if (session.isError) {
     const forbidden = session.error instanceof ApiClientError

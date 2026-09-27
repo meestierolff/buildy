@@ -64,12 +64,12 @@ type SourceHeaderRow = {
 type UpdateRow = {
   id: string;
   update_date: string;
+  sort_order: number | string;
   title: string | null;
   room: string | null;
   description: string | null;
   phase_id: string | null;
   phase_name: string | null;
-  phase_sort_order: number | string | null;
 };
 
 type MediaRow = {
@@ -240,12 +240,12 @@ export class PostgresPhotobookRepository implements PhotobookRepository {
         select
           update.id,
           update.update_date,
+          update.sort_order,
           update.title,
           update.room,
           update.description,
           phase.id as phase_id,
-          phase.name as phase_name,
-          phase.sort_order as phase_sort_order
+          phase.name as phase_name
         from public.updates update
         left join public.project_phases phase
           on phase.id = update.phase_id
@@ -323,12 +323,12 @@ export class PostgresPhotobookRepository implements PhotobookRepository {
         updates: updateResult.rows.map((update) => ({
           id: update.id,
           updateDate: update.update_date,
+          sortOrder: numberValue(update.sort_order),
           title: update.title,
           room: update.room,
           description: update.description,
           phaseId: update.phase_id,
           phaseName: update.phase_name,
-          phaseSortOrder: nullableNumber(update.phase_sort_order),
           media: (mediaByUpdate.get(update.id) ?? []).map((media) => ({
             id: media.id,
             sha256: media.sha256,
@@ -429,7 +429,7 @@ export class PostgresPhotobookRepository implements PhotobookRepository {
             from public.updates update
             where update.project_id = ${projectId}::uuid
               and update.project_owner_id = ${actorId}::uuid
-              and update.id = any(${updateIds}::uuid[])
+              and update.id = any(${sql.param(updateIds)}::uuid[])
               and update.status <> 'deleted'
           `);
           if (numberValue(valid.rows[0]?.count ?? 0) !== new Set(updateIds).size) {
@@ -442,7 +442,7 @@ export class PostgresPhotobookRepository implements PhotobookRepository {
             from public.media_assets asset
             where asset.project_id = ${projectId}::uuid
               and asset.owner_id = ${actorId}::uuid
-              and asset.id = any(${mediaIds}::uuid[])
+              and asset.id = any(${sql.param(mediaIds)}::uuid[])
               and asset.original_asset_id is null
               and asset.status = 'ready'
               and asset.purpose in ('project_media', 'project_cover')
@@ -457,7 +457,7 @@ export class PostgresPhotobookRepository implements PhotobookRepository {
             select count(*) as count
             from public.project_phases phase
             where phase.project_id = ${projectId}::uuid
-              and phase.id = any(${phaseIds}::uuid[])
+              and phase.id = any(${sql.param(phaseIds)}::uuid[])
           `);
           if (numberValue(valid.rows[0]?.count ?? 0) !== new Set(phaseIds).size) {
             throw new PhotobookError("PHOTOBOOK_NOT_FOUND");

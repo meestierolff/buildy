@@ -54,15 +54,15 @@ const CONNECTION_VIEWS: ReadonlyArray<{
   value: SocialConnectionView;
 }> = [
   {
-    emptyDescription: "Zoek een bouwer en volg het verbouwingsverhaal.",
-    emptyTitle: "Je volgt nog niemand",
-    label: "Volgend",
+    emptyDescription: "Zoek een bouwer om een profielconnectie te maken.",
+    emptyTitle: "Nog geen profielconnecties",
+    label: "Mijn profielconnecties",
     value: "following",
   },
   {
-    emptyDescription: "Volgers verschijnen hier zodra iemand jouw profiel volgt.",
-    emptyTitle: "Nog geen volgers",
-    label: "Volgers",
+    emptyDescription: "Hier staan mensen die met jouw profiel verbonden zijn.",
+    emptyTitle: "Nog niemand verbonden met je profiel",
+    label: "Met mijn profiel",
     value: "followers",
   },
   {
@@ -118,7 +118,7 @@ const Friends = () => {
 
   usePageMeta({
     title: "Connecties — Buildy",
-    description: "Zoek bouwers en beheer je volgers, verzoeken en blokkades.",
+    description: "Zoek bouwers en beheer je profielconnecties, verzoeken en blokkades.",
     path: "/connecties",
   });
 
@@ -163,7 +163,7 @@ const Friends = () => {
 
   const toggleFollow = async (profile: ConnectionPerson) => {
     if (!user) {
-      toast.error("Log in om bouwers te volgen");
+      toast.error("Log in om profielen te verbinden");
       return;
     }
     const removing = profile.viewerFollowStatus === "following" || profile.viewerFollowStatus === "pending";
@@ -177,14 +177,14 @@ const Friends = () => {
           removing
             ? profile.viewerFollowStatus === "pending"
               ? "Verzoek ingetrokken"
-              : "Je volgt deze bouwer niet meer"
+              : "Profielverbinding verwijderd"
             : result.state === "pending"
-              ? "Volgverzoek verstuurd"
-              : "Je volgt deze bouwer nu",
+              ? "Connectieverzoek verstuurd"
+              : "Profiel verbonden",
         );
       });
     } catch {
-      toast.error("Volgen bijwerken mislukt");
+      toast.error("Profielverbinding bijwerken mislukt");
     }
   };
 
@@ -192,10 +192,10 @@ const Friends = () => {
     try {
       await runFor(profile.id, async () => {
         await removeFollowerMutation.mutateAsync({ followerId: profile.id });
-        toast.success("Volger verwijderd");
+        toast.success("Profielconnectie verwijderd");
       });
     } catch {
-      toast.error("Volger verwijderen mislukt");
+      toast.error("Profielconnectie verwijderen mislukt");
     }
   };
 
@@ -207,7 +207,7 @@ const Friends = () => {
           decision,
           kind: "profile",
         });
-        toast.success(decision === "accept" ? "Volgverzoek geaccepteerd" : "Volgverzoek afgewezen");
+        toast.success(decision === "accept" ? "Connectieverzoek geaccepteerd" : "Connectieverzoek afgewezen");
       });
     } catch {
       toast.error("Verzoek verwerken mislukt");
@@ -300,11 +300,11 @@ const Friends = () => {
         ) : (
           <UserPlus className="mr-1 h-3 w-3" aria-hidden="true" />
         )}
-        {context === "following"
-          ? "Ontvolgen"
+        {context === "following" || isFollowing
+          ? "Verbinding verwijderen"
           : context === "outgoing" || isPending
             ? "Intrekken"
-            : "Volgen"}
+            : "Profiel verbinden"}
       </Button>
     );
   };
@@ -377,10 +377,10 @@ const Friends = () => {
         <EmptyState
           icon={Users}
           title="Log in voor je connecties"
-          description="Je volgers, verzoeken en blokkades zijn alleen voor jou zichtbaar."
+          description="Je profielconnecties, verzoeken en blokkades zijn alleen voor jou zichtbaar."
           action={(
             <Button asChild className="rounded-full">
-              <Link to={authPagePath("/connecties")}>Inloggen met Google</Link>
+              <Link to={authPagePath("/connecties")}>Inloggen</Link>
             </Button>
           )}
         />
@@ -428,7 +428,7 @@ const Friends = () => {
           <p className="eyebrow mb-3">Connecties</p>
           <h1 className="font-serif text-4xl italic leading-tight md:text-5xl">Bouw samen, op jouw voorwaarden.</h1>
           <p className="mt-4 text-sm font-light text-muted-foreground">
-            Vind andere bouwers en beheer hier alle volgers, verzoeken en blokkades vanuit één rustige plek.
+            Beheer je profielconnecties, toegangsverzoeken en blokkades. Volg een specifieke verbouwing op de verhaalpagina voor nieuwe Bouwmomenten in Volgend.
           </p>
         </div>
 

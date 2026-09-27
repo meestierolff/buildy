@@ -49,10 +49,10 @@ const Notifications = () => {
 
   if (authLoading) {
     return (
-      <div className="flex min-h-[55vh] items-center justify-center" role="status">
+      <main className="flex min-h-[55vh] items-center justify-center" role="status">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
         <span className="sr-only">Account controleren…</span>
-      </div>
+      </main>
     );
   }
 

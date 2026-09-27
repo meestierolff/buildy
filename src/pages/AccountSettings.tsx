@@ -5,7 +5,6 @@ import {
   Loader2,
   Lock,
   LogOut,
-  Mail,
   MapPin,
   MonitorSmartphone,
   Save,
@@ -101,7 +100,7 @@ const AccountSettings = () => {
   const accountLifecycleEnabled = appFeatures.accountLifecycleEnabled;
   usePageMeta({
     title: "Account & instellingen — Buildy",
-    description: "Beheer je profiel, privacy en Google-login.",
+    description: "Beheer je profiel, privacy en account.",
     path: "/profiel",
     noIndex: true,
   });
@@ -112,6 +111,7 @@ const AccountSettings = () => {
   const [draftVersion, setDraftVersion] = useState<number | null>(null);
   const [includeMediaInExport, setIncludeMediaInExport] = useState(true);
   const [deletionConfirmation, setDeletionConfirmation] = useState("");
+  const [leavingAccount, setLeavingAccount] = useState(false);
   const sessionsQuery = useAccountSessions(Boolean(user));
   const exportsQuery = useAccountExports(Boolean(user));
   const revokeSessionMutation = useRevokeAccountSessionMutation();
@@ -132,12 +132,12 @@ const AccountSettings = () => {
     setDraftVersion(profile.version);
   }, [draftVersion, profile]);
 
-  if (authLoading) {
+  if (authLoading || leavingAccount) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center" role="status" aria-live="polite">
+      <main className="flex min-h-[60vh] items-center justify-center" role="status" aria-live="polite">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
-        <span className="sr-only">Account laden…</span>
-      </div>
+        <span className="sr-only">{leavingAccount ? "Uitloggen…" : "Account laden…"}</span>
+      </main>
     );
   }
 
@@ -199,12 +199,24 @@ const AccountSettings = () => {
     }
   };
 
+  const signOutAndReturnHome = async () => {
+    // signOut clears the session before its refresh finishes. Keep this view
+    // pending so it cannot redirect to /auth during the planned full navigation.
+    setLeavingAccount(true);
+    const signedOut = await signOut();
+    if (!signedOut) {
+      setLeavingAccount(false);
+      return false;
+    }
+    window.location.assign("/");
+    return true;
+  };
+
   const revokeSession = async (sessionId: string, isCurrent: boolean) => {
     try {
       await revokeSessionMutation.mutateAsync(sessionId);
       if (isCurrent) {
-        await signOut();
-        window.location.assign("/");
+        await signOutAndReturnHome();
         return;
       }
       toast.success("De sessie is ingetrokken.");
@@ -228,8 +240,7 @@ const AccountSettings = () => {
         idempotencyKey: createClientIdempotencyKey("account-deletion"),
       });
       toast.success("Je account is voor veilige verwijdering ingepland.");
-      await signOut();
-      window.location.assign("/");
+      await signOutAndReturnHome();
     } catch (error) {
       console.error("Account deletion request failed", error);
       toast.error(error instanceof ApiClientError
@@ -239,8 +250,7 @@ const AccountSettings = () => {
   };
 
   const logout = async () => {
-    await signOut();
-    window.location.assign("/");
+    await signOutAndReturnHome();
   };
 
   return (
@@ -250,7 +260,7 @@ const AccountSettings = () => {
           <p className="eyebrow mb-2">Profiel</p>
           <h1 className="font-serif text-4xl leading-tight">Jouw Buildy</h1>
           <p className="mt-3 text-sm text-muted-foreground">
-            Beheer je profiel, privacy en Google-login.
+            Beheer je profiel, privacy en account.
           </p>
         </div>
         <Button type="button" variant="outline" className="min-h-11 gap-2" onClick={() => void logout()}>
@@ -386,16 +396,16 @@ const AccountSettings = () => {
           <div>
             <h2 id="login-settings-title" className="text-base font-semibold">Login</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Je logt uitsluitend in met Google. Buildy bewaart geen wachtwoord of OAuth-token.
+              Je logt in met je gebruikersnaam en wachtwoord.
             </p>
           </div>
         </div>
 
         <div className="mb-6 flex items-start gap-3 rounded-lg border bg-muted/20 p-4">
-          <Mail className="mt-0.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <UserRound className="mt-0.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">E-mail</p>
-            <p className="mt-1 truncate text-sm">{user.email}</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Gebruikersnaam</p>
+            <p className="mt-1 truncate text-sm">{user.username ?? "Niet ingesteld"}</p>
           </div>
         </div>
 
@@ -550,7 +560,7 @@ const AccountSettings = () => {
                 <AlertDialogTitle>Weet je dit zeker?</AlertDialogTitle>
                 <AlertDialogDescription>
                   Dit is niet ongedaan te maken. Typ VERWIJDEREN om te bevestigen.
-                  Uit veiligheid moet je Google-login jonger dan tien minuten zijn.
+                  Uit veiligheid moet je login jonger dan tien minuten zijn.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <div className="my-5 space-y-4">

@@ -6,6 +6,7 @@ export const projectRoutes = {
   discovery: "/api/discovery",
   following: "/api/following",
   detail: "/api/projects/:projectId",
+  follow: "/api/projects/:projectId/follow",
   updates: "/api/projects/:projectId/updates",
   updateDetail: "/api/projects/:projectId/updates/:updateId",
   phases: "/api/projects/:projectId/phases",
@@ -263,6 +264,7 @@ export const projectOverviewSchema = projectCardSchema.extend({
   expectedEndDate: isoDateSchema.nullable(),
   contentRevision: z.number().int().positive(),
   followerCount: z.number().int().nonnegative(),
+  viewerFollowStatus: z.enum(["self", "none", "following"]).default("none"),
   viewerAccess: z.enum(["owner", "follower", "link", "public"]),
   canEdit: z.boolean(),
   phases: z.array(projectPhaseSchema),
@@ -310,9 +312,15 @@ export const followingFeedSchema = z.object({
   activity: z.array(followingActivitySchema),
 });
 
+export const projectFollowMutationResultSchema = z.object({
+  state: z.enum(["following", "none"]),
+  replayed: z.boolean(),
+});
+
 export const dashboardResponseSchema = apiSuccessSchema(projectPageSchema);
 export const discoveryResponseSchema = apiSuccessSchema(projectPageSchema);
 export const followingFeedResponseSchema = apiSuccessSchema(followingFeedSchema);
+export const projectFollowMutationResponseSchema = apiSuccessSchema(projectFollowMutationResultSchema);
 export const projectOverviewResponseSchema = apiSuccessSchema(projectOverviewSchema);
 export const projectMutationResponseSchema = apiSuccessSchema(z.object({
   project: projectOverviewSchema,
@@ -365,3 +373,4 @@ export type ProjectPage = z.infer<typeof projectPageSchema>;
 export type TimelinePage = z.infer<typeof timelinePageSchema>;
 export type FollowingActivity = z.infer<typeof followingActivitySchema>;
 export type FollowingFeed = z.infer<typeof followingFeedSchema>;
+export type ProjectFollowMutationResult = z.infer<typeof projectFollowMutationResultSchema>;

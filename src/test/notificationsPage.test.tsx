@@ -56,6 +56,7 @@ function auth(authenticated: boolean): ReturnType<typeof useAuth> {
           id: "66666666-6666-4666-8666-666666666666",
           name: "Noor",
           email: "noor@example.com",
+          username: "test-eigenaar",
           emailVerified: true,
           image: null,
           createdAt: new Date(),

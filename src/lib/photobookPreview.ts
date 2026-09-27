@@ -81,13 +81,14 @@ export function normalizedPageIndex(index: number, pageCount: number, spread: bo
 
 export function hasExactPhotobookProof(
   proof: PhotobookDraft["proof"],
-  document: Pick<PhotobookDocument, "pageCount">,
+  document: Pick<PhotobookDocument, "pageCount" | "checksumSha256">,
 ): boolean {
   return Boolean(
     proof &&
     ["ready", "approved", "locked"].includes(proof.status) &&
     proof.pdfSha256 &&
     proof.pdfPath &&
+    proof.documentSha256 === document.checksumSha256 &&
     proof.pageCount === document.pageCount,
   );
 }

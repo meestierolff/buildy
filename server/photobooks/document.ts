@@ -47,12 +47,12 @@ export interface PhotobookMediaSource {
 export interface PhotobookUpdateSource {
   id: string;
   updateDate: string;
+  sortOrder: number;
   title: string | null;
   room: string | null;
   description: string | null;
   phaseId: string | null;
   phaseName: string | null;
-  phaseSortOrder: number | null;
   media: PhotobookMediaSource[];
 }
 
@@ -336,6 +336,8 @@ export function buildPhotobookDocument(input: BuildPhotobookDocumentInput): Phot
   for (const update of input.updates) {
     for (const media of update.media) {
       if (excludedMedia.has(media.id)) continue;
+      if ((excludedUpdates.has(update.id) || excludedChapters.has(update.phaseId ?? "other"))
+        && media.id !== input.coverMediaAssetId) continue;
       const warning = mediaValidationWarning(media, update.id);
       if (warning) {
         warnings.push(warning);
@@ -359,8 +361,10 @@ export function buildPhotobookDocument(input: BuildPhotobookDocumentInput): Phot
   }
 
   const visibleUpdates = input.updates
-    .filter((update) => !excludedUpdates.has(update.id))
-    .sort((left, right) => left.updateDate.localeCompare(right.updateDate) || left.id.localeCompare(right.id));
+    .filter((update) => !excludedUpdates.has(update.id) && !excludedChapters.has(update.phaseId ?? "other"))
+    .sort((left, right) => left.updateDate.localeCompare(right.updateDate)
+      || left.sortOrder - right.sortOrder
+      || left.id.localeCompare(right.id));
   const requestedCover = input.coverMediaAssetId
     ? validMediaById.get(input.coverMediaAssetId)
     : undefined;
@@ -468,31 +472,26 @@ export function buildPhotobookDocument(input: BuildPhotobookDocumentInput): Phot
     blocks: coverBlocks,
   });
 
-  const chapterGroups = new Map<string, {
+  const chapterRuns: Array<{
     id: string;
     key: string;
     title: string;
-    order: number;
     updates: PhotobookUpdateSource[];
-  }>();
+  }> = [];
   for (const update of visibleUpdates) {
     const key = update.phaseId ?? "other";
-    if (excludedChapters.has(key)) continue;
-    const existing = chapterGroups.get(key);
-    if (existing) existing.updates.push(update);
-    else chapterGroups.set(key, {
-      id: `chapter:${key}`,
+    const preceding = chapterRuns.at(-1);
+    if (preceding?.key === key) preceding.updates.push(update);
+    else chapterRuns.push({
+      id: `chapter:${key}:${update.id}`,
       key,
       title: update.phaseName?.trim() || "Overige updates",
-      order: update.phaseSortOrder ?? Number.MAX_SAFE_INTEGER,
       updates: [update],
     });
   }
 
   const chapters: PhotobookDocument["chapters"] = [];
-  const sortedChapters = [...chapterGroups.values()]
-    .sort((left, right) => left.order - right.order || left.title.localeCompare(right.title, "nl-NL") || left.key.localeCompare(right.key));
-  for (const chapter of sortedChapters) {
+  for (const chapter of chapterRuns) {
     const chapterPageNumber = pages.length + 1;
     const chapterLines = input.measurer.wrap({
       font: "instrument-serif",
@@ -555,12 +554,29 @@ export function buildPhotobookDocument(input: BuildPhotobookDocumentInput): Phot
 
     for (const update of chapter.updates) {
       const heading = update.title?.trim() || update.room?.trim() || "Update";
-      const headingLines = input.measurer.wrap({
+      const description = update.description?.trim() ?? "";
+      const selectedMedia = orderedMedia(update, input.photoOrderByUpdate?.[update.id])
+        .filter((media) => !excludedMedia.has(media.id))
+        .map((media) => validMediaById.get(media.id))
+        .filter((media): media is ValidMedia => Boolean(media));
+      const storyWidthMm = 105;
+      const storyHeadingLines = input.measurer.wrap({
+        font: "instrument-serif", fontSizePt: 22, fontStyle: "normal",
+        fontWeight: "semibold", maxWidthMm: storyWidthMm, text: heading,
+      });
+      const storyBodyLines = description ? input.measurer.wrap({
+        font: "instrument-serif", fontSizePt: 12, fontStyle: "italic",
+        fontWeight: "regular", maxWidthMm: storyWidthMm, text: description,
+      }) : [];
+      const storyPhoto = selectedMedia.length > 0 && storyHeadingLines.length <= 2
+        && storyBodyLines.length <= lineCapacity(124, 15.6) ? selectedMedia[0] : null;
+      const textWidthMm = storyPhoto ? storyWidthMm : 273;
+      const headingLines = storyPhoto ? storyHeadingLines : input.measurer.wrap({
         font: "instrument-serif",
         fontSizePt: 22,
         fontStyle: "normal",
         fontWeight: "semibold",
-        maxWidthMm: 273,
+        maxWidthMm: textWidthMm,
         text: heading,
       });
       if (headingLines.length > 2) warnings.push({
@@ -571,14 +587,13 @@ export function buildPhotobookDocument(input: BuildPhotobookDocumentInput): Phot
         updateId: update.id,
         message: "Een updatetitel past niet binnen twee regels.",
       });
-      const description = update.description?.trim() ?? "";
-      const descriptionLines = description
+      const descriptionLines = storyPhoto ? storyBodyLines : description
         ? input.measurer.wrap({
             font: "instrument-serif",
             fontSizePt: 12,
             fontStyle: "italic",
             fontWeight: "regular",
-            maxWidthMm: 273,
+            maxWidthMm: textWidthMm,
             text: description,
           })
         : [];
@@ -587,7 +602,7 @@ export function buildPhotobookDocument(input: BuildPhotobookDocumentInput): Phot
       do {
         const first = textPageIndex === 0;
         const bodyFrame: Frame = first
-          ? { xMm: 12, yMm: 68, widthMm: 273, heightMm: 124 }
+          ? { xMm: 12, yMm: 68, widthMm: textWidthMm, heightMm: 124 }
           : { xMm: 12, yMm: 32, widthMm: 273, heightMm: 160 };
         const capacity = lineCapacity(bodyFrame.heightMm, 15.6);
         const lines = descriptionLines.slice(lineOffset, lineOffset + capacity);
@@ -595,7 +610,7 @@ export function buildPhotobookDocument(input: BuildPhotobookDocumentInput): Phot
         const blocks: PhotobookPage["blocks"] = [
           textBlock({
             id: `update:${update.id}:date:${textPageIndex}`,
-            frame: { xMm: 12, yMm: 18, widthMm: 273, heightMm: 8 },
+            frame: { xMm: 12, yMm: 18, widthMm: textWidthMm, heightMm: 8 },
             text: first ? localizedDate(update.updateDate) : `${localizedDate(update.updateDate)} · vervolg`,
             lines: [first ? localizedDate(update.updateDate) : `${localizedDate(update.updateDate)} · vervolg`],
             font: "inter",
@@ -607,7 +622,7 @@ export function buildPhotobookDocument(input: BuildPhotobookDocumentInput): Phot
         ];
         if (first) blocks.push(textBlock({
           id: `update:${update.id}:title`,
-          frame: { xMm: 12, yMm: 37, widthMm: 273, heightMm: 24 },
+          frame: { xMm: 12, yMm: 37, widthMm: textWidthMm, heightMm: 24 },
           text: heading,
           lines: headingLines.slice(0, 2),
           font: "instrument-serif",
@@ -628,6 +643,19 @@ export function buildPhotobookDocument(input: BuildPhotobookDocumentInput): Phot
           lineHeightPt: 15.6,
           color: "#3f3f3f",
         }));
+        if (first && storyPhoto) {
+          const frame = { xMm: 129, yMm: 12, widthMm: 156, heightMm: 186 };
+          const crop = input.cropByAsset?.[storyPhoto.id] ?? { ...defaultCrop(), fit: "contain" as const };
+          const facts = cropFacts(storyPhoto, frame, crop);
+          warnings.push(...warningForPhoto(storyPhoto, crop, number, update.id, facts));
+          sourceAssets.set(storyPhoto.id, asSourceAsset(storyPhoto));
+          blocks.push({
+            id: `update:${update.id}:story:asset:${storyPhoto.id}`,
+            type: "photo", frame, assetId: storyPhoto.id, crop,
+            effectiveDpi: facts.effectiveDpi,
+            altText: storyPhoto.altText?.trim() || `Projectfoto bij ${heading}`,
+          });
+        }
         pages.push({
           id: `update:${update.id}:text:${textPageIndex + 1}`,
           number,
@@ -642,11 +670,7 @@ export function buildPhotobookDocument(input: BuildPhotobookDocumentInput): Phot
         textPageIndex += 1;
       } while (lineOffset < descriptionLines.length);
 
-      const selectedMedia = orderedMedia(update, input.photoOrderByUpdate?.[update.id])
-        .filter((media) => !excludedMedia.has(media.id))
-        .map((media) => validMediaById.get(media.id))
-        .filter((media): media is ValidMedia => Boolean(media));
-      let mediaOffset = 0;
+      let mediaOffset = storyPhoto ? 1 : 0;
       let photoPageIndex = 0;
       while (mediaOffset < selectedMedia.length) {
         const layoutKey = `update:${update.id}:photos:${photoPageIndex + 1}`;
@@ -686,7 +710,8 @@ export function buildPhotobookDocument(input: BuildPhotobookDocumentInput): Phot
     }
   }
 
-  while (pages.length < LAUNCH_PHOTOBOOK_MIN_PAGES || pages.length % 2 !== 0) {
+  // Reserve the final PDF page for the back cover; padding belongs inside it.
+  while (pages.length + 1 < LAUNCH_PHOTOBOOK_MIN_PAGES || (pages.length + 1) % 2 !== 0) {
     pages.push({
       id: `blank:${pages.length + 1}`,
       number: pages.length + 1,
@@ -698,6 +723,27 @@ export function buildPhotobookDocument(input: BuildPhotobookDocumentInput): Phot
       blocks: [],
     });
   }
+  pages.push({
+    id: "back-cover",
+    number: pages.length + 1,
+    kind: "cover",
+    chapterId: null,
+    updateId: null,
+    background: "#26372f",
+    overlay: null,
+    blocks: [textBlock({
+      id: "back-cover-title",
+      frame: { xMm: 38.5, yMm: 90, widthMm: 220, heightMm: 30 },
+      text: "Een verhaal om te bewaren.",
+      lines: ["Een verhaal om te bewaren."],
+      font: "instrument-serif",
+      weight: "regular",
+      fontSizePt: 28,
+      lineHeightPt: 32,
+      align: "center",
+      color: "#fffdf8",
+    })],
+  });
   if (pages.length > input.maximumPages) {
     warnings.push({
       code: "PAGE_LIMIT_EXCEEDED",

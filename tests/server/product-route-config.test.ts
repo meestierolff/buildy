@@ -30,11 +30,26 @@ describe("canonical product route configuration", () => {
     });
   });
 
-  it("documents open signup with commerce disabled for the MVP", () => {
+  it("documents the free account profile and core provider configuration", () => {
     const environmentExample = readFileSync(resolve(process.cwd(), ".env.example"), "utf8");
 
+    expect(environmentExample).toMatch(/^PRODUCT_PROFILE="feedback_beta"/m);
     expect(environmentExample).toMatch(/^BETA_MODE="false"/m);
     expect(environmentExample).toMatch(/^CHECKOUT_MODE="off"/m);
+    for (const name of [
+      "DATABASE_URL",
+      "DATABASE_ACCOUNT_WORKER_URL",
+      "DATABASE_MEDIA_WORKER_URL",
+      "BLOB_READ_WRITE_TOKEN",
+      "PII_ENCRYPTION_KEYS",
+      "PII_BLIND_INDEX_KEY",
+      "CRON_SECRET",
+      "ACCOUNT_RETENTION_POLICY_VERSION",
+      "ACCOUNT_RETENTION_POLICY_APPROVED_AT",
+    ]) {
+      expect(environmentExample, name).toMatch(new RegExp(`^${name}=`, "m"));
+    }
+    expect(environmentExample).not.toMatch(/^GOOGLE_CLIENT_(?:ID|SECRET)=/m);
   });
 
   it("keeps every legacy public URL as a permanent redirect", () => {
@@ -65,7 +80,7 @@ describe("canonical product route configuration", () => {
 
     expect(config.rewrites?.slice(0, 2)).toEqual([
       { source: "/project/:id", destination: "/api/page?__buildy_project_id=:id" },
-      { source: "/api/:path*", destination: "/api/router?__buildy_api_path=:path*" },
+      { source: "/api/:__buildy_api_path*", destination: "/api/router?__buildy_api_path=:__buildy_api_path*" },
     ]);
     expect(config.rewrites?.at(-1)).toEqual({ source: "/:path*", destination: "/index.html" });
   });

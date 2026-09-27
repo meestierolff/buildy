@@ -25,7 +25,7 @@ const Favorites = () => {
     noIndex: true,
   });
 
-  if (authLoading) return <div className="min-h-screen bg-background" />;
+  if (authLoading) return <main className="min-h-screen bg-background" />;
   if (!user) return <Navigate to={authPagePath(PRODUCT_ROUTES.following)} replace />;
 
   const projects = feedQuery.data?.projects ?? [];
@@ -56,7 +56,7 @@ const Favorites = () => {
         <EmptyState
           icon={Heart}
           title="Je volgt nog niks"
-          description="Volg een bouwer om nieuwe bouwmomenten hier terug te zien."
+          description="Volg een verbouwing via de knop bij het verhaal. Nieuwe Bouwmomenten vind je hier terug."
         />
       ) : (
         <Tabs defaultValue="feed">

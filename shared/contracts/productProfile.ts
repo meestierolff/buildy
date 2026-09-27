@@ -8,7 +8,7 @@ export const checkoutModeSchema = z.enum(["off", "test", "live"]);
 export type CheckoutMode = z.infer<typeof checkoutModeSchema>;
 
 export const productProfileCapabilitiesSchema = z.object({
-  googleSignIn: z.boolean(),
+  passwordSignIn: z.boolean(),
   emailAuth: z.boolean(),
   renovations: z.boolean(),
   updates: z.boolean(),

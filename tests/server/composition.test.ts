@@ -8,10 +8,15 @@ import {
 } from "../../server/composition";
 import { resolveDefaultAccountWorker } from "../../server/account/runtime";
 import { handleDefaultAuthRequest } from "../../server/auth";
-import { resetRuntimeConfigForTests } from "../../server/config/runtime";
+import { getCapabilities, resetRuntimeConfigForTests } from "../../server/config/runtime";
 import { closeBuildyDatabaseForTests } from "../../server/db/client";
+import * as databaseClient from "../../server/db/client";
 import { handleDefaultModerationRequest } from "../../server/moderation/runtime";
+import { PostgresPhotobookRepository } from "../../server/photobooks/repository";
+import * as photobookRuntime from "../../server/photobooks/runtime";
+import { PhotobookProofWorker } from "../../server/photobooks/worker";
 import { handleDefaultProjectRequest } from "../../server/projects/runtime";
+import { photobookPreferencesSchema } from "../../shared/contracts/photobooks";
 
 const { capturedBlobConfigurations } = vi.hoisted(() => ({
   capturedBlobConfigurations: [] as Array<{
@@ -39,6 +44,8 @@ function stubBaseEnvironment(): void {
   vi.stubEnv("PII_ENCRYPTION_CURRENT_VERSION", "");
   vi.stubEnv("PII_BLIND_INDEX_KEY", "");
   vi.stubEnv("BLOB_READ_WRITE_TOKEN", "");
+  vi.stubEnv("CHECKOUT_MODE", "off");
+  vi.stubEnv("DATABASE_PHOTOBOOK_WORKER_URL", "");
 }
 
 function stubAuthEnvironment(): void {
@@ -59,6 +66,7 @@ describe("server composition", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     vi.unstubAllEnvs();
     resetRuntimeConfigForTests();
     resetServerCompositionForTests();
@@ -133,6 +141,65 @@ describe("server composition", () => {
     expect(ensureServerComposition()).toBe("ready");
     expect(capturedBlobConfigurations).toHaveLength(0);
   });
+
+  it.each([true, false])(
+    "keeps checkout off while PDF rendering follows its dedicated worker configuration (%s)",
+    async (workerConfigured) => {
+      stubAuthEnvironment();
+      vi.stubEnv("PRODUCT_PROFILE", "feedback_beta");
+      vi.stubEnv("BLOB_READ_WRITE_TOKEN", "synthetic-private-blob-token");
+      const workerUrl = "postgresql://photobook:synthetic@127.0.0.1:5432/buildy_test";
+      vi.stubEnv("DATABASE_PHOTOBOOK_WORKER_URL", workerConfigured ? workerUrl : "");
+      resetRuntimeConfigForTests();
+
+      const actorId = "10000000-0000-4000-8000-000000000001";
+      const projectId = "20000000-0000-4000-8000-000000000001";
+      const draftId = "30000000-0000-4000-8000-000000000001";
+      vi.spyOn(PostgresPhotobookRepository.prototype, "loadSource").mockResolvedValue({
+        projectId, ownerId: actorId, projectRevision: 1,
+        projectTitle: "Ons huis", projectSubtitle: null,
+        draftId, draftVersion: 1, exclusions: [], updates: [],
+        settings: {
+          coverMediaAssetId: null, selectedFormat: "a4-landscape-hardcover-v1",
+          title: null, subtitle: null, includeBudget: false,
+          preferences: photobookPreferencesSchema.parse({}), version: 1,
+        },
+      });
+      vi.spyOn(PostgresPhotobookRepository.prototype, "saveDraft")
+        .mockResolvedValue({ draftId, version: 1 });
+      vi.spyOn(PostgresPhotobookRepository.prototype, "latestProof").mockResolvedValue(null);
+      const request = vi.spyOn(PostgresPhotobookRepository.prototype, "requestProof")
+        .mockImplementation(async ({ revisionId }) => ({ revisionId, status: "rendering", replayed: false }));
+      const processRevision = vi.spyOn(PhotobookProofWorker.prototype, "processRevision")
+        .mockImplementation(async (revisionId) => ({
+          status: "rendered", revisionId, pageCount: 24, pdfSha256: "a".repeat(64),
+        }));
+      const workerDatabase = vi.spyOn(databaseClient, "getBuildyWorkerDatabase");
+      const configure = vi.spyOn(photobookRuntime, "configureDefaultPhotobookRuntime");
+
+      expect(ensureServerComposition()).toBe("ready");
+      expect(getCapabilities().payments).toBe("disabled");
+      const service = configure.mock.calls[0]![0].service;
+      const editor = await service.editor(actorId, projectId);
+      const proof = service.requestProof(actorId, projectId, {
+        idempotencyKey: "60000000-0000-4000-8000-000000000001",
+        expectedDraftVersion: editor.version,
+        expectedDocumentSha256: editor.document.checksumSha256,
+      });
+
+      if (workerConfigured) {
+        await expect(proof).resolves.toMatchObject({ status: "ready" });
+        expect(request).toHaveBeenCalledOnce();
+        expect(processRevision).toHaveBeenCalledWith(request.mock.calls[0]![0].revisionId);
+        expect(workerDatabase).toHaveBeenCalledWith(workerUrl, "photobook");
+      } else {
+        await expect(proof).rejects.toMatchObject({ reason: "PROOF_UNAVAILABLE" });
+        expect(request).not.toHaveBeenCalled();
+        expect(processRevision).not.toHaveBeenCalled();
+        expect(workerDatabase).not.toHaveBeenCalledWith(workerUrl, "photobook");
+      }
+    },
+  );
 
   it("shares one private Vercel Blob adapter across web, workers and guarded order admin", () => {
     stubAuthEnvironment();

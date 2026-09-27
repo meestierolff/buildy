@@ -37,7 +37,7 @@ class ErrorBoundary extends Component<Props, State> {
     if (!this.state.hasError) return this.props.children;
 
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background px-6">
+      <main className="flex min-h-screen items-center justify-center bg-background px-6">
         <div className="text-center">
           <p className="eyebrow mb-3">Er ging iets mis</p>
           <h1 className="mb-4 font-serif italic text-4xl md:text-5xl">Even niet gelukt.</h1>
@@ -52,7 +52,7 @@ class ErrorBoundary extends Component<Props, State> {
             Pagina opnieuw laden
           </button>
         </div>
-      </div>
+      </main>
     );
   }
 }

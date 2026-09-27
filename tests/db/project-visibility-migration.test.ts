@@ -63,12 +63,16 @@ describe("four-mode project visibility boundary", () => {
     expect(migration).not.toContain("accepted_access");
   });
 
-  it("keeps unlisted projects out of discovery and following feeds", async () => {
+  it("keeps discovery public and followed projects subject to current access", async () => {
     const repository = await readFile(repositoryUrl, "utf8");
+    const followingQueries = repository.slice(
+      repository.indexOf("async listFollowingProjects("),
+      repository.indexOf("async getOverview("),
+    );
 
     expect(repository).toContain("where project.visibility = 'public'");
-    expect(repository).toContain("and project.visibility in ('followers', 'public')");
-    expect(repository).not.toMatch(/project\.visibility in \([^)]*unlisted[^)]*\)/);
+    expect(followingQueries.match(/and app_can_view_project\(project\.id\)/g)).toHaveLength(2);
+    expect(followingQueries.match(/project_follow\.project_id = project\.id/g)).toHaveLength(2);
     expect(repository).not.toContain("from project_access_requests accepted_access");
   });
 

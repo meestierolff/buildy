@@ -6,6 +6,7 @@ import {
   discoveryResponseSchema,
   followingFeedQuerySchema,
   followingFeedResponseSchema,
+  projectFollowMutationResponseSchema,
   projectMutationResponseSchema,
   projectOverviewResponseSchema,
   projectPageQuerySchema,
@@ -143,6 +144,14 @@ export async function getProjectOverview(
     projectPath(projectId),
     projectOverviewResponseSchema,
     { signal },
+  )).data;
+}
+
+export async function setProjectFollow(projectId: string, following: boolean) {
+  return (await apiRequest(
+    `${projectPath(projectId)}/follow`,
+    projectFollowMutationResponseSchema,
+    { method: following ? "PUT" : "DELETE" },
   )).data;
 }
 

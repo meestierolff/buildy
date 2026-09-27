@@ -47,8 +47,9 @@ const PROJECT_TYPES = [
 
 export default function OnboardingDialog({ enabled, activeProjectId }: OnboardingDialogProps) {
   const navigate = useNavigate();
-  const { search } = useLocation();
-  const profileQuery = useOwnProfile(enabled);
+  const { pathname, search } = useLocation();
+  const onboardingRoute = pathname === PRODUCT_ROUTES.landing || pathname === PRODUCT_ROUTES.projects;
+  const profileQuery = useOwnProfile(enabled && onboardingRoute);
   const updateProfile = useUpdateOwnProfileMutation();
   const createProject = useCreateProjectMutation();
   const profile = profileQuery.data;
@@ -66,7 +67,7 @@ export default function OnboardingDialog({ enabled, activeProjectId }: Onboardin
     if (activeProjectId) setCreatedProjectId(activeProjectId);
   }, [activeProjectId]);
 
-  const open = Boolean(enabled && profile && !profile.onboardedAt && !dismissed);
+  const open = Boolean(enabled && onboardingRoute && profile && !profile.onboardedAt && !dismissed);
   const isPending = createProject.isPending || updateProfile.isPending;
   const needsProject = !createdProjectId;
 

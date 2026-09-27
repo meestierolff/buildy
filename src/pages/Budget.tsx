@@ -516,37 +516,37 @@ const Budget = () => {
 
   if (authLoading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center" role="status">
+      <main className="flex min-h-[60vh] items-center justify-center" role="status">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         <span className="sr-only">Account laden</span>
-      </div>
+      </main>
     );
   }
 
   if (!user) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center px-6">
+      <main className="flex min-h-[60vh] items-center justify-center px-6">
         <EmptyState
           icon={LockKeyhole}
           title="Log in voor je budget"
           description="Budgetinformatie is uitsluitend zichtbaar voor de eigenaar van de verbouwing."
           action={<Button asChild><Link to={`/auth?next=${encodeURIComponent(`/project/${id}/budget`)}`}>Inloggen</Link></Button>}
         />
-      </div>
+      </main>
     );
   }
 
   if (budgetQuery.isLoading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center gap-3 text-sm text-muted-foreground" role="status">
+      <main className="flex min-h-[60vh] items-center justify-center gap-3 text-sm text-muted-foreground" role="status">
         <Loader2 className="h-5 w-5 animate-spin" /> Privébudget laden
-      </div>
+      </main>
     );
   }
 
   if (budgetQuery.error && !isUnavailable) {
     return (
-      <div className="mx-auto flex min-h-[60vh] max-w-xl items-center px-6">
+      <main className="mx-auto flex min-h-[60vh] max-w-xl items-center px-6">
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Budget kon niet worden geladen</AlertTitle>
@@ -557,7 +557,7 @@ const Budget = () => {
             </Button>
           </AlertDescription>
         </Alert>
-      </div>
+      </main>
     );
   }
 

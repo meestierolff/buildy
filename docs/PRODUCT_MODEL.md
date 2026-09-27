@@ -110,7 +110,7 @@ Commerce:  Bouwboek → proof genereren → goedkeuren → proof locken → quot
 
 `PRODUCT_PROFILE=feedback_beta` is het enige profiel. De browser leest
 `/api/product-profile` en leidt mogelijkheden af uit servercapabilities. De
-server publiceert onder meer Google-login, media, Bouwboek-preview,
+server publiceert onder meer gebruikersnaam/wachtwoord-login, media, Bouwboek-preview,
 accountverwijdering en checkout alleen als de vereiste runtimeconfiguratie
 compleet is.
 

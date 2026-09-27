@@ -423,10 +423,10 @@ const Index = ({
 
   if (view === "projects" && authLoading) {
     return (
-      <div className="flex min-h-[55vh] items-center justify-center" role="status">
+      <main className="flex min-h-[55vh] items-center justify-center" role="status">
         <span className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-foreground" aria-hidden="true" />
         <span className="sr-only">Account controleren…</span>
-      </div>
+      </main>
     );
   }
 
@@ -435,7 +435,7 @@ const Index = ({
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <main className="min-h-screen bg-background">
       {isLanding ? (
         <>
           <section className="relative isolate overflow-hidden bg-[#26231F] text-white" aria-labelledby="home-title">
@@ -547,7 +547,7 @@ const Index = ({
                 <p className="max-w-xl text-base leading-7 text-white/70 lg:col-span-4 lg:col-start-9 lg:pt-7">
                   {publicDemo
                     ? "Bekijk een volledig verzonnen verbouwing met meerdere Bouwmomenten in chronologische volgorde. Er worden geen klantgegevens geladen."
-                    : "Een vriend ziet de foto’s, datum en het korte verhaal—zonder editknoppen. Met Google kan diegene reageren of een opmerking plaatsen."}
+                    : "Een vriend ziet de foto’s, datum en het korte verhaal—zonder editknoppen. Ingelogd kan diegene reageren of een opmerking plaatsen."}
                 </p>
               </div>
               <ExampleRenovation publicDemo={publicDemo} />
@@ -810,7 +810,7 @@ const Index = ({
           </div>
         </section>
       ) : null}
-    </div>
+    </main>
   );
 };
 

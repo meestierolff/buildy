@@ -14,8 +14,6 @@ function configured(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
     DATABASE_ACCOUNT_WORKER_URL: "postgresql://account:secret@127.0.0.1:5432/buildy_test",
     DATABASE_MEDIA_WORKER_URL: "postgresql://media:secret@127.0.0.1:5432/buildy_test",
     DATABASE_PHOTOBOOK_WORKER_URL: "postgresql://photobook:secret@127.0.0.1:5432/buildy_test",
-    GOOGLE_CLIENT_ID: "google-client",
-    GOOGLE_CLIENT_SECRET: "google-secret",
     PII_ENCRYPTION_KEYS: JSON.stringify({ 1: Buffer.alloc(32, 1).toString("base64") }),
     PII_ENCRYPTION_CURRENT_VERSION: 1,
     PII_BLIND_INDEX_KEY: Buffer.alloc(32, 2).toString("base64"),

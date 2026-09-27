@@ -56,7 +56,7 @@ const details: Record<AccountErrorReason, { code: ApiErrorCode; message: string;
   },
   REAUTH_REQUIRED: {
     code: "FORBIDDEN",
-    message: "Log opnieuw in met Google voordat je je account verwijdert.",
+    message: "Log opnieuw in voordat je je account verwijdert.",
     status: 403,
   },
   SESSION_NOT_FOUND: {

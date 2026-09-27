@@ -333,32 +333,15 @@ async function profileRelationshipUpdate(
   return rows[0];
 }
 
-async function revokeLegacyProjectRelationships(
+async function revokeProjectRelationships(
   transaction: DatabaseTransaction,
   followerId: string,
   ownerId: string,
-  decidedById: string,
-  now: Date,
 ): Promise<void> {
+  // A block closes participant visibility before cleanup. This bounded helper
+  // can revoke the relationship without reopening project or legacy access APIs.
   await transaction.execute(sql`
-    update project_access_requests access
-    set
-      status = 'revoked',
-      decided_by_id = ${decidedById}::uuid,
-      decided_at = ${now},
-      revoked_at = ${now},
-      version = access.version + 1,
-      updated_at = ${now}
-    where access.status in ('pending', 'accepted')
-      and access.requester_id = ${followerId}::uuid
-      and access.project_owner_id = ${ownerId}::uuid
-  `);
-  await transaction.execute(sql`
-    update project_followers follower
-    set status = 'revoked', updated_at = ${now}
-    where follower.status in ('active', 'muted')
-      and follower.follower_id = ${followerId}::uuid
-      and follower.project_owner_id = ${ownerId}::uuid
+    select public.app_revoke_project_follows(${followerId}::uuid, ${ownerId}::uuid)
   `);
 }
 
@@ -579,13 +562,7 @@ export class PostgresSocialRepository implements SocialRepository {
       await lockActiveActor(transaction, actorId);
       await usersBlocked(transaction, actorId, profileId);
       const existing = await relationship(transaction, actorId, profileId, "follow");
-      await revokeLegacyProjectRelationships(
-        transaction,
-        actorId,
-        profileId,
-        actorId,
-        now,
-      );
+      await revokeProjectRelationships(transaction, actorId, profileId);
       if (!existing || existing.status === "rejected" || existing.status === "revoked") {
         return { replayed: true, state: "none" };
       }
@@ -625,13 +602,7 @@ export class PostgresSocialRepository implements SocialRepository {
       const existing = await relationship(transaction, requesterId, actorId, "follow");
       if (existing?.status === decision) {
         if (decision === "rejected") {
-          await revokeLegacyProjectRelationships(
-            transaction,
-            requesterId,
-            actorId,
-            actorId,
-            now,
-          );
+          await revokeProjectRelationships(transaction, requesterId, actorId);
         }
         return {
           replayed: true,
@@ -643,13 +614,7 @@ export class PostgresSocialRepository implements SocialRepository {
       }
       await profileRelationshipUpdate(transaction, existing, decision, now);
       if (decision === "rejected") {
-        await revokeLegacyProjectRelationships(
-          transaction,
-          requesterId,
-          actorId,
-          actorId,
-          now,
-        );
+        await revokeProjectRelationships(transaction, requesterId, actorId);
       }
       await appendNotification(transaction, {
         actorId,
@@ -678,26 +643,14 @@ export class PostgresSocialRepository implements SocialRepository {
       await usersBlocked(transaction, actorId, followerId);
       const existing = await relationship(transaction, followerId, actorId, "follow");
       if (existing?.status === "revoked") {
-        await revokeLegacyProjectRelationships(
-          transaction,
-          followerId,
-          actorId,
-          actorId,
-          now,
-        );
+        await revokeProjectRelationships(transaction, followerId, actorId);
         return { replayed: true, state: "revoked" };
       }
       if (!existing || existing.status !== "active") {
         throw new SocialError("TARGET_NOT_FOUND");
       }
       await profileRelationshipUpdate(transaction, existing, "revoked", now);
-      await revokeLegacyProjectRelationships(
-        transaction,
-        followerId,
-        actorId,
-        actorId,
-        now,
-      );
+      await revokeProjectRelationships(transaction, followerId, actorId);
       return { replayed: false, state: "revoked" };
     });
   }
@@ -762,20 +715,8 @@ export class PostgresSocialRepository implements SocialRepository {
           ),
         );
 
-      await revokeLegacyProjectRelationships(
-        transaction,
-        actorId,
-        profileId,
-        actorId,
-        now,
-      );
-      await revokeLegacyProjectRelationships(
-        transaction,
-        profileId,
-        actorId,
-        actorId,
-        now,
-      );
+      await revokeProjectRelationships(transaction, actorId, profileId);
+      await revokeProjectRelationships(transaction, profileId, actorId);
       return { replayed: Boolean(replayed), state: "blocked" };
     });
   }

@@ -17,6 +17,8 @@ export interface CreateCheckoutInput {
   successUrl: string;
   cancelUrl: string;
   idempotencyKey: string;
+  /** Stable server-owned deadline from the persisted checkout reservation. */
+  expiresAt: string;
 }
 
 export interface CheckoutSession {

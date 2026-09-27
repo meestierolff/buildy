@@ -5,6 +5,7 @@ import { deriveDigitalBook } from "@/pages/Photobook";
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 const EARLY_UPDATE_ID = "22222222-2222-4222-8222-222222222222";
 const LATE_UPDATE_ID = "33333333-3333-4333-8333-333333333333";
+const ASSET_ID = "44444444-4444-4444-8444-444444444444";
 
 function cover(): PhotobookPage {
   return {
@@ -67,6 +68,15 @@ function momentPage(input: {
 }
 
 function documentWith(pages: PhotobookPage[]): PhotobookDocument {
+  const paddedPages: PhotobookPage[] = [...pages];
+  while (paddedPages.length < 24) {
+    paddedPages.push({
+      ...cover(),
+      id: `blank:${paddedPages.length + 1}`,
+      number: paddedPages.length + 1,
+      kind: "blank",
+    });
+  }
   return {
     version: 1,
     projectId: PROJECT_ID,
@@ -83,52 +93,79 @@ function documentWith(pages: PhotobookPage[]): PhotobookDocument {
     },
     cover: { title: "Ons huis", subtitle: "", mediaAssetId: null, crop: null },
     chapters: [],
-    pages,
+    pages: paddedPages,
     sourceAssets: [],
     sourceAssetIds: [],
-    pageCount: pages.length,
+    pageCount: paddedPages.length,
     warnings: [],
     checksumSha256: "a".repeat(64),
   };
 }
 
 describe("digitaal Bouwboek", () => {
-  it("leidt cover, opening, chronologische Bouwmomenten en afsluiting af", () => {
-    const result = deriveDigitalBook(documentWith([
+  it("bewaart het canonieke document en leidt navigatie af in de servervolgorde", () => {
+    const document = documentWith([
       cover(),
+      { ...cover(), id: "chapter:test:divider", number: 2, kind: "chapter" },
       momentPage({
         date: "12 augustus 2026",
-        number: 2,
+        number: 3,
         title: "De keuken",
         updateId: LATE_UPDATE_ID,
       }),
+      {
+        ...cover(),
+        id: `update:${LATE_UPDATE_ID}:photos:1`,
+        number: 4,
+        kind: "photos",
+        updateId: LATE_UPDATE_ID,
+        blocks: [{
+          id: `update:${LATE_UPDATE_ID}:photo:1`,
+          type: "photo",
+          frame: { xMm: 12, yMm: 12, widthMm: 273, heightMm: 186 },
+          assetId: ASSET_ID,
+          crop: { fit: "cover", focusX: 0.5, focusY: 0.5, zoom: 1 },
+          effectiveDpi: 300,
+          altText: "De keuken",
+        }],
+      },
       momentPage({
         date: "3 juli 2026",
-        number: 3,
+        number: 5,
         title: "De eerste muur",
         updateId: EARLY_UPDATE_ID,
       }),
-    ]));
-
-    expect(result.document.pages.map((page) => page.id)).toEqual([
-      "cover",
-      "digital:opening",
-      `update:${EARLY_UPDATE_ID}:text:1`,
-      `update:${LATE_UPDATE_ID}:text:1`,
-      "digital:closing",
     ]);
-    expect(result.document.pages.map((page) => page.number)).toEqual([1, 2, 3, 4, 5]);
-    expect(result.moments.map((moment) => moment.title)).toEqual([
-      "De eerste muur",
-      "De keuken",
+    const unchangedDocument = structuredClone(document);
+    const result = deriveDigitalBook(document);
+
+    expect(result.document).toBe(document);
+    expect(document).toEqual(unchangedDocument);
+    expect(result.document.pageCount).toBe(24);
+    expect(result.moments).toEqual([
+      {
+        assetIds: [ASSET_ID],
+        date: "12 augustus 2026",
+        firstPageIndex: 2,
+        title: "De keuken",
+        updateId: LATE_UPDATE_ID,
+      },
+      {
+        assetIds: [],
+        date: "3 juli 2026",
+        firstPageIndex: 4,
+        title: "De eerste muur",
+        updateId: EARLY_UPDATE_ID,
+      },
     ]);
   });
 
-  it("maakt geen fictieve bladzijden wanneer er nog geen Bouwmoment is", () => {
-    const result = deriveDigitalBook(documentWith([cover()]));
+  it("bewaart cover en opvulpagina's zonder Bouwmomenten voor te stellen", () => {
+    const document = documentWith([cover()]);
+    const result = deriveDigitalBook(document);
 
     expect(result.moments).toEqual([]);
-    expect(result.document.pages).toEqual([]);
-    expect(result.document.pageCount).toBe(0);
+    expect(result.document).toBe(document);
+    expect(result.document.pageCount).toBe(24);
   });
 });

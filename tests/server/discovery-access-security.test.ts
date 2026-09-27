@@ -28,19 +28,20 @@ describe("discovery, following and project-visibility boundaries", () => {
     expect(detail).not.toContain("RequestAccessCard");
   });
 
-  it("feeds active profile followers only public and followers-only published work", () => {
+  it("feeds explicit project followers only currently accessible published work", () => {
     const repository = source("../../server/projects/repository.ts");
     const start = repository.indexOf("async listFollowingProjects");
     const end = repository.indexOf("async getOverview");
     const followingReads = repository.slice(start, end);
 
-    expect(followingReads).toContain("builder_follow.source_user_id");
-    expect(followingReads).toContain("project.visibility in ('followers', 'public')");
+    expect(followingReads).toContain("project_follow.follower_id");
+    expect(followingReads).toContain("project_follow.project_id = project.id");
+    expect(followingReads).toContain("app_can_view_project(project.id)");
     expect(followingReads).toContain("item.status = 'published'");
     expect(followingReads).toContain("block.source_user_id");
     expect(followingReads).toContain("block.target_user_id");
     expect(followingReads).not.toContain("project_access_requests");
-    expect(followingReads).not.toContain("project_followers");
+    expect(followingReads).not.toContain("builder_follow");
     expect(followingReads).not.toContain("unlisted");
     expect(followingReads).not.toMatch(/address|postal|contractor|ciphertext|object_key|bucket_name/i);
   });
@@ -62,13 +63,10 @@ describe("discovery, following and project-visibility boundaries", () => {
     expect(router).not.toContain("app_social_project_context");
   });
 
-  it("keeps historical project relationship tables write-only for safe revocation", () => {
+  it("delegates project relationship revocation without reopening legacy reads or grants", () => {
     const repository = source("../../server/social/repository.ts");
 
-    expect(repository.match(/project_access_requests/g)).toHaveLength(1);
-    expect(repository.match(/project_followers/g)).toHaveLength(1);
-    expect(repository).toContain("update project_access_requests");
-    expect(repository).toContain("update project_followers");
+    expect(repository.match(/app_revoke_project_follows\(/g)).toHaveLength(1);
     expect(repository).not.toMatch(/from project_(?:access_requests|followers)/);
     expect(repository).not.toMatch(/insert(?:\s+into)? project_(?:access_requests|followers)/);
   });
