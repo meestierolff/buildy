@@ -9,9 +9,13 @@ Keep accounts, private renovations, photo updates, sharing, likes/comments and a
 Stripe, Peecho, physical ordering and unrelated platform features are not release requirements. Keep checkout off.
 `public_demo` and `feedback_beta` are existing runtime profiles; do not confuse the deployed demo with the target app.
 Missing provider credentials require an owner action, not an authentication bypass or another auth architecture.
-No Computer Use. CLI/API, Playwright and owner-performed personal login are sufficient tooling.
+Use CLI/API or Computer Use for the task. The owner performs personal login and secret entry when needed.
+
+Ship small changes directly. There are no required CI, browser-test, coverage,
+bundle, launch or provider-preflight gates. Run focused unit tests, typecheck or
+lint manually only when useful; do not recreate removed automation.
 
 Update graph edges only when dependencies change, flow contracts only when behavior changes, and STATE only with real evidence.
 Record commit, environment, result and proof type. Tests with mocked APIs never prove hosted persistence.
-Keep instructions concise. Do not create graph infrastructure, new CI machinery or a new documentation framework for this graph pack.
+Keep instructions concise. Do not create graph infrastructure or a new documentation framework for this graph pack.
 Visible product text is Dutch. Use `Verbouwing`, `Bouwmoment`, `Verhaal` and `Bouwboek`; preserve historical technical names when renaming adds risk.

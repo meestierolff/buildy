@@ -18,16 +18,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "test:e2e": "bunx playwright test",
-    "test:e2e:preview": "PLAYWRIGHT_MODE=preview bunx playwright test",
-    "test:regression": "bun run build && PLAYWRIGHT_MODE=preview bunx playwright test",
-    "check:bundle": "node scripts/check-bundle-budget.mjs",
-    "check:launch": "node scripts/check-launch.mjs",
     "audit:private-assets": "node scripts/inventory-private-assets.mjs",
     "audit:social": "node scripts/audit-social-integrity.mjs",
     "moderation:role": "node --import tsx scripts/moderation/manage-role.ts",
-    "setup:providers": "node --import tsx scripts/setup/providers.ts",
     "beta:invites": "node --import tsx scripts/beta/manage-invites.ts",
     "migration:check": "node --import tsx scripts/migration/buildy-migrate.ts preflight",
     "migration:run": "node --import tsx scripts/migration/buildy-migrate.ts",
@@ -35,8 +28,7 @@
     "db:migrate": "tsx db/migrate.ts",
     "db:migrate:check": "tsx db/migrate.ts --check",
     "db:migrate:dry": "tsx db/migrate.ts --dry-run",
-    "db:verify": "tsx db/verify.ts",
-    "test:db-runner": "vitest run tests/db"
+    "db:verify": "tsx db/verify.ts"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
@@ -76,9 +68,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.12.1",
     "@eslint/js": "^9.39.5",
-    "@playwright/test": "^1.62.1",
     "@tailwindcss/typography": "^0.5.20",
     "@testing-library/jest-dom": "^6.10.0",
     "@testing-library/react": "^16.3.2",
@@ -88,7 +78,6 @@
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react-swc": "^3.11.0",
-    "@vitest/coverage-v8": "^4.1.10",
     "autoprefixer": "^10.5.4",
     "brace-expansion": "1.1.18",
     "concurrently": "^10.0.4",

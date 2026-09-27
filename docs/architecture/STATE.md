@@ -3,6 +3,24 @@
 Only mutable progress sheet for the small MVP. Scope: [GRAPH](GRAPH.md),
 acceptance: [FLOWS](FLOWS.md). An online demo is not an account-based MVP.
 
+## F7 — owner removed CI and slow testing, 2026-09-27
+
+The owner explicitly requested removing all CI/GitHub Actions and slow testing.
+GitHub Actions is disabled repository-wide (`enabled: false`), and the active
+run `36303324496` was cancelled. Main has no branch-protection requirement.
+Removed all workflows/composite actions, Playwright config/browser suites and
+snapshots, all 21 PostgreSQL integration suites, coverage/browser dependencies,
+and procedural launch/provider/bundle gates with their dedicated tests.
+Unit tests, lint and typecheck remain available only as manual commands.
+Vercel now runs `bun run build`; no test or typecheck release gate.
+No new test round was run for this removal. Prior hosted app evidence below
+still describes the unchanged runtime behavior. Ordering remains off; Peecho
+company details and the physical-order slice stay explicitly deferred.
+Production main now has all 53 migrations: only 0052/0053 were applied, and
+canonical grants succeeded for the five existing restricted runtime roles.
+No credentials rotated or data deleted.
+Next action: release the already verified account app with the simplified build.
+
 ## F7 — fresh isolated Preview online, 2026-09-27
 
 App commit `8d7f711bd58ca02800860d292a5416e476c0ed54` is pushed to
@@ -64,9 +82,9 @@ an intentionally superseded `renovation-progress` landing image request during
 logout. The test-only correction adds that image to the existing narrow abort
 allowance and still requires it to decode successfully; the repeated image
 locator was scoped to its first instance. The sole Firefox logout test then
-PASS. Application code and mandatory CI are unchanged. Remote CI on this final
-test-only repair is pending. Next action: finish required CI, then release the
-verified account app with ordering off.
+PASS. Application code was unchanged by that repair. The subsequent owner instruction
+removed CI and slow suites entirely; the pending run was cancelled rather than
+used as a release gate. See the current F7 entry above.
 
 ## F4 — project following complete locally, 2026-09-27
 

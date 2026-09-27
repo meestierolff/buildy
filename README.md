@@ -67,18 +67,20 @@ bun run dev
 De webapp draait standaard op `http://127.0.0.1:8080` en de lokale API op
 `http://127.0.0.1:8787`.
 
-## Verificatie
+## Handmatig nakijken (optioneel)
+
+Er zijn geen verplichte CI-, browser- of releasecontroles. Gebruik deze
+commando's wanneer ze helpen bij een concrete wijziging:
 
 ```sh
 bun run typecheck
 bun run lint
-bun run test
-bun run build
-bun run check:bundle
-bun run check:launch -- --static
 ```
 
-Gebruik voor databasecontrole uitsluitend een tijdelijke database:
+Een gerichte unit test draait met `bunx vitest run <testbestand>`.
+Een productiebundle maak je met `bun run build`.
+
+Voor handmatig proberen van migraties gebruik je een tijdelijke database:
 
 ```sh
 DATABASE_MIGRATION_URL='<tijdelijke-directe-url>' bun run db:migrate:check
@@ -89,13 +91,11 @@ DATABASE_MIGRATION_URL='<tijdelijke-directe-url>' bun run db:verify
 ## Documentatie
 
 - [MVP-scope](docs/MVP_SCOPE.md)
-- [Vereiste operatoracties](docs/OPERATOR_ACTIONS_REQUIRED.md)
 - [Productmodel](docs/PRODUCT_MODEL.md)
 - [Sociaal toegangsmodel](docs/SOCIAL_STATE_MACHINE.md)
 - [Account- en sessiereis](docs/architecture/FLOWS.md)
 - [Private Blob-configuratie](docs/VERCEL_BLOB_SETUP.md)
 - [Stripe Checkout-configuratie — dormant, buiten deze release](docs/STRIPE_SETUP.md)
-- [Production-releaseprocedure](docs/PRODUCTION_RELEASE.md)
 
 ## Veiligheidsgrenzen
 

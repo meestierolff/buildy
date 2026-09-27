@@ -38,27 +38,26 @@ F0 still records required DB/PII/core configuration names and distinguishes disa
 | F4 / U,H,A,S,E,D | A separately authenticated permitted viewer follows the specific renovation, uses a small reaction set and plain-text comments; target/counts/content survive reload; author/owner can remove allowed comments. | Viewer cannot edit the project or another user's comments. No silent follow of all owner projects, competing follow system or private/share-revocation bypass. Recheck current visibility/block/link rules on every write; reject duplicates and unauthorized mutations safely. |
 | F5 / U,H,A,B,P,M,D | One canonical document drives preview, page count, quote and PDF in global Bouwmoment-date order with the timeline's stable tie-breaker. Title/cover/exclusions persist. Keep photos/text together, continue long text, inspect portrait/landscape/crop/resolution and rendered pages. Match the selected product's page/cover/spine/margin rules; freeze the approved revision. | Test a later update in an earlier phase and a backdated moment; phases cannot reorder chronology. No truncation or automatic friends' comments. Preview and story work without checkout/print worker; a preview is not print proof. Paid files cannot change with later timeline edits or leak private media. |
 | F6 / U,H,A,L,S,M,D | Feedback persists; logout revokes session; dedicated disposable-account deletion immediately removes access and reports cleanup truthfully. | Do not delete the founder's account or other users' data. Failed physical cleanup cannot leave active links/sessions. |
-| F7 / all affected nodes | Prove the owner/viewer core and test ordering on an identified real Preview; record any missing live approval separately. Preserve the prior public deployment for rollback, verify current recovery resources, then release with required checks and prove the built SHA/profile/public smoke. | CI green or a static preview alone proves neither the core nor printing. Never fall back to an accountless demo. Live ordering stays off until price/margin, operator, Stripe account, hosting permission and print handling are approved; no purchased plan or invented approval. |
+| F7 / all affected nodes | Prove the owner/viewer core and test ordering on an identified real Preview; record any missing live approval separately. Preserve the prior public deployment for rollback, verify current recovery resources, then release and confirm the built SHA/profile and public page. | A successful build or static preview alone proves neither the core nor printing. Never fall back to an accountless demo. Live ordering stays off until price/margin, operator, Stripe account, hosting permission and print handling are approved; no purchased plan or invented approval. |
 | F8 / U,H,A,B,Q,T,O,D | After F0, server quotes the approved revision and stores destination/SKU/pages, cost basis, approved price and expiry with integer amounts/tested rounding. Existing Stripe-hosted test Checkout uses one canonical address; verified server payment creates one paid order. Margin is configurable, explicitly test-only until approval. | Browser amounts/page counts and success redirects are not proof. Check webhook signature/account/environment/order/amount/currency/payment_status, delayed methods and duplicate delivery. No guessed tax/fees/delivery or double-added shipping; stale/missing quotes block ordering only. |
 | F9 / H,A,B,O,R,D | Paid order appears in existing admin with exact PDF, address and cost snapshot. Separate server-authorized owner release submits bounded synthetic sandbox print; persist external reference before payment/follow-up. Keep payment and print/shipping status distinct. | Automatic release stays off. Uncertain create/pay outcome reconciles by supported reference/status or becomes manual review; retries create no duplicate order/charge. Temporary revision file grant supports HEAD/GET/Range/retries. No real order/payment/wallet/proof without separate amount/copies/address/file approval. |
 
-## Existing entry points for tests
+## Existing implementation and optional checks
 
-These are discovery anchors, not proof of current coverage or passing results. Inspect mocks/profile selection before relying on a test.
+The owner removed CI, GitHub Actions, browser matrices, coverage and database integration suites on 2026-09-27. These links help locate the affected code; they do not establish mandatory test or release gates.
 
 | Slice | Start here |
 | --- | --- |
-| F0–F1 | [auth E2E](../../tests/e2e/auth.e2e.ts), [server tests](../../tests/server), [config](../../server/config/runtime.ts) |
-| F0 Peecho | [read-only CLI](../../scripts/setup/peecho.ts), [contract checks](../../scripts/setup/peecho-check.ts), [synthetic security tests](../../tests/server/peecho-check.test.ts) |
-| F2 | [owner E2E](../../tests/e2e/owner-renovation.e2e.ts), [photo handoff](../../tests/e2e/landing-photo-handoff.e2e.ts), [database tests](../../tests/db) |
-| F3–F4 | [sharing E2E](../../tests/e2e/project-share-link.e2e.ts), [project E2E](../../tests/e2e/project-detail.e2e.ts), [follow regression](../../tests/e2e/friends-follow.e2e.ts) |
-| F5 | [Bouwboek E2E](../../tests/e2e/photobook.e2e.ts), [photobooks implementation](../../server/photobooks) |
-| F6 | [support E2E](../../tests/e2e/public-support.e2e.ts), [account implementation](../../server/account), [database tests](../../tests/db) |
-| F7 | [Playwright config](../../playwright.config.ts), [current CI](../../.github/workflows/ci.yml), [scripts](../../package.json) |
-| F8–F9 | [order service](../../server/orders/service.ts), [Stripe webhook tests](../../tests/server/stripe-payment-webhook.test.ts), [admin tests](../../tests/server/order-admin.test.ts), [customer order E2E](../../tests/e2e/customer-orders.e2e.ts) |
+| F0–F1 | [auth](../../server/auth), [server unit tests](../../tests/server), [config](../../server/config/runtime.ts) |
+| F0 Peecho | [read-only CLI](../../scripts/setup/peecho.ts), [contract checks](../../scripts/setup/peecho-check.ts) |
+| F2 | [projects](../../server/projects), [media](../../server/media) |
+| F3–F4 | [sharing](../../server/projectShares), [engagement](../../server/engagement) |
+| F5 | [photobooks](../../server/photobooks) |
+| F6 | [account](../../server/account) |
+| F7 | [manual commands](../../package.json), [Vercel build](../../vercel.json) |
+| F8–F9 | [order service](../../server/orders/service.ts), [Stripe webhook unit tests](../../tests/server/stripe-payment-webhook.test.ts) |
 
-Validate changed behavior once with targeted regression tests; retain required CI at integration. Do not expand the browser matrix, repeat unchanged blocker probes or add historical-report/provider-name gates.
-For auth/access/database changes, include real PostgreSQL tests. For a product release, use actual hosted APIs/storage and permitted owner/viewer sessions, not broad route mocks.
+Use a focused manual check when a change warrants it. Vercel builds the app without running test, lint or typecheck gates. Reuse recorded hosted evidence when behavior is unchanged; no repeated matrices or provider probes.
 
 ## Two-user acceptance journey
 

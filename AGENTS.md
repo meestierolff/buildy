@@ -33,7 +33,7 @@ Live ordering remains gated on approved real production quote/margin, operator d
 2. Name one flow ID, affected graph nodes/edges, and the expected observable result.
 3. Trace UI → API → authorization → persisted data. Fix the first broken edge, not the whole app.
 4. Reuse the existing component/service/repository. Add a dependency or abstraction only for a demonstrated blocker.
-5. Validate the actual change once with focused checks. Do not add procedural gates or repeatedly poll unchanged blockers. Preserve runtime security; required CI runs at integration.
+5. Ship with proportionate manual verification. The owner removed CI, GitHub Actions, browser matrices, coverage and PostgreSQL integration suites on 2026-09-27. Do not restore them or introduce replacement release gates. Preserve runtime security.
 6. Verify the result after reload and under a second role where applicable. Distinguish mocks from real hosted providers.
 7. Update the affected graph/flow only when its contract changes; update STATE with exact evidence and one next action.
 
@@ -54,9 +54,7 @@ Live ordering remains gated on approved real production quote/margin, operator d
 
 ## Verification and handoff
 
-Read [package.json](package.json) and [CI](.github/workflows/ci.yml) for exact commands.
-Use checks proportionate to the changed behavior; avoid repeating full suites during development. Database/access changes need real PostgreSQL/RLS evidence. Required CI provides typecheck, lint and build at integration.
-For a release, keep required CI and prove the affected real hosted journeys on the recorded SHA. Browser-tool brand is not a gate.
-Normal non-destructive commit/push/PR/merge/deploy is authorized after required checks and proven production configuration/core flow. Preserve the current deployment as rollback, verify the built SHA and public smoke, and clean only this run's test data. This does not authorize live ordering or paid upgrades.
+Read [package.json](package.json) for available commands. Unit tests, typecheck and lint are optional manual tools, not CI or release prerequisites. Vercel runs only the app build. Do not repeat already established hosted evidence without a relevant behavioral change.
+Normal non-destructive commit/push/PR/merge/deploy is authorized. Preserve the current deployment as rollback and confirm the resulting public SHA/profile. Clean only this run's test data. This does not authorize live ordering or paid upgrades.
 For documentation-only changes validate links, scope, diagrams and diff; do not run or build an unrelated product workstream.
 Finish with changed flow, evidence, remaining blocker and one next action. Do not claim deployment or GO from test counts alone.
