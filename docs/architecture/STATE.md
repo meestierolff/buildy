@@ -3,6 +3,59 @@
 Only mutable progress sheet for the small MVP. Scope: [GRAPH](GRAPH.md),
 acceptance: [FLOWS](FLOWS.md). An online demo is not an account-based MVP.
 
+## F7 — fresh isolated Preview online, 2026-09-27
+
+App commit `8d7f711bd58ca02800860d292a5416e476c0ed54` is pushed to
+[PR #4](https://github.com/meestierolff/buildy/pull/4). Preview deployment
+`dpl_DZkqWtJjoqaKs2YhHugQTWQm68se` is READY at the
+[existing branch origin](https://buildy-git-release-free-mvp-20260908-clarios-projects-05f6a57e.vercel.app).
+Actual readiness reports configuration, database, account worker, media worker
+and photobook worker all `pass`; payment worker is intentionally `not_checked`.
+Native Chrome reaches the landing page and username/password login.
+The actual hosted browser journey PASS on this SHA: username registration,
+private project, three synthetic photo/date/text saves, reload, logout/login and
+the same persisted images. Three real Blob uploads and ready finalizations were
+observed; anonymous project/media reads were denied. The downloaded 24-page PDF
+matches canonical document/PDF hashes and page count, preserves backdated A→B→A
+chronology and all 14 long-text paragraphs. Downloaded pages 3/7 were visually
+inspected. A separate registered viewer followed the exact project, reacted and
+commented, with persistence after reload and no project editing/book controls.
+After owner link revocation, project/update/media/comment API reads returned
+404, the timeline disappeared, the following feed excluded the project and the
+old link displayed its revoked state. No browser errors or server 5xx observed.
+The runner needed selector/lazy-image corrections; no product fault was hidden
+or mocked. Only its synthetic fixtures remain for final patch verification;
+all issued share links were revoked. No physical-print claim.
+
+The new schema-only Neon branch `br-spring-river-b19te8h8` contains a fresh
+`buildy_preview` database: 53 migrations, 55 tables and 45 RLS tables verified.
+Canonical grants and all four runtime connections passed. Only branch-scoped
+Preview connection settings were replaced; PII keys and Blob token were not
+exported or rotated. `feedback_beta`, beta off, checkout off and the branch
+origin are explicit. Existing Vercel CLI authentication supplies a private
+test cookie; deployment protection stays enabled.
+
+Fresh rollback `br-damp-night-b1l5amxe` is READY at main parent LSN
+`0/2EF2688`, with no compute endpoint. Public Production is not yet redeployed.
+Read-only main verification found 51 valid migrations, only 0052/0053 pending,
+and the existing restricted `buildy_prod_20260908_*` roles. The existing
+migrator and photobook credentials were retrieved individually through Neon,
+stored privately and checked read-only; no credentials were rotated.
+The verified existing restricted photobook URL is configured for the next
+Production build; no main migration has run yet.
+
+CI run `36302034837` found stale migration/project-follow expectations, an old
+visibility label, the intentionally changed mobile Bouwboek screenshot and two
+dependency advisories. The expectations now match exact-project subscriptions
+and current access; sharp is patched to 0.35.4 and js-yaml to 4.3.2. Focused
+migration/security/image/PDF tests 53/53, the single mobile visibility test and
+the high-severity dependency audit PASS. The Linux Bouwboek baseline was visually
+reviewed against the actual CI artifact: canonical 24 pages and the PDF toolbar
+replace the old four-page client rewrite. No unrelated suite was rerun.
+Remote CI on the repair commit is pending; this is not green CI or production
+release evidence. Next action: finish required CI and verify the patched
+candidate, then release the account app with ordering off.
+
 ## F4 — project following complete locally, 2026-09-27
 
 F4 / U,H,A,S,E,D: the existing `project_followers` relation now backs the
@@ -31,8 +84,8 @@ test matrix. Native Chrome was also used to inspect the real local project
 and its anonymous follow-to-login route. No deployment claimed yet.
 
 The replacement isolated Neon Preview `br-spring-river-b19te8h8` was created
-from schema only, without production rows. Fresh empty database provisioning
-is in progress. The old main branch and public deployment remain unchanged.
+from schema only, without production rows. Provisioning and deployment are
+completed above. The old main branch and public deployment remain unchanged.
 
 Next action: connect the isolated Preview and prove the hosted photo/book
 journey. Peecho company details and ordering remain explicitly deferred.

@@ -262,7 +262,7 @@ test.describe("Verbouwing detail", () => {
     await expect(page.getByRole("button", { name: "Mijlpalen" })).toHaveCount(0);
 
     await page.getByLabel("Zichtbaarheid van de verbouwing").click();
-    for (const option of ["Alleen ik", "Mijn volgers", "Alleen via deellink", "Openbaar"]) {
+    for (const option of ["Alleen ik", "Mijn profielconnecties", "Alleen via deellink", "Openbaar"]) {
       await expect(page.getByRole("option", { name: option })).toBeVisible();
     }
     await page.getByRole("option", { name: "Openbaar" }).click();
