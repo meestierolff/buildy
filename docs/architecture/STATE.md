@@ -24,8 +24,14 @@ After owner link revocation, project/update/media/comment API reads returned
 404, the timeline disappeared, the following feed excluded the project and the
 old link displayed its revoked state. No browser errors or server 5xx observed.
 The runner needed selector/lazy-image corrections; no product fault was hidden
-or mocked. Only its synthetic fixtures remain for final patch verification;
-all issued share links were revoked. No physical-print claim.
+or mocked. All issued share links were revoked. No physical-print claim.
+
+Patched commit `775db05ccfc99de09eb2309bafa16a0536311ce6` also passed the actual
+hosted follow-up: a fourth photo uploaded to private Blob and a new 24-page PDF
+included all four source assets. F6 account deletion passed for both synthetic
+accounts: each request returned 202 with `deletion_pending`; retained old cookies
+resolved to a null session, account reads returned 401 and project/media reads
+returned 404. Immediate access denial is proven; physical cleanup is not claimed.
 
 The new schema-only Neon branch `br-spring-river-b19te8h8` contains a fresh
 `buildy_preview` database: 53 migrations, 55 tables and 45 RLS tables verified.
@@ -52,9 +58,15 @@ migration/security/image/PDF tests 53/53, the single mobile visibility test and
 the high-severity dependency audit PASS. The Linux Bouwboek baseline was visually
 reviewed against the actual CI artifact: canonical 24 pages and the PDF toolbar
 replace the old four-page client rewrite. No unrelated suite was rerun.
-Remote CI on the repair commit is pending; this is not green CI or production
-release evidence. Next action: finish required CI and verify the patched
-candidate, then release the account app with ordering off.
+CI run `36302990512` on `775db05` passed unit tests, typecheck/lint, audit, build,
+both PostgreSQL jobs and Chromium/mobile/tablet/WebKit. Firefox alone rejected
+an intentionally superseded `renovation-progress` landing image request during
+logout. The test-only correction adds that image to the existing narrow abort
+allowance and still requires it to decode successfully; the repeated image
+locator was scoped to its first instance. The sole Firefox logout test then
+PASS. Application code and mandatory CI are unchanged. Remote CI on this final
+test-only repair is pending. Next action: finish required CI, then release the
+verified account app with ordering off.
 
 ## F4 — project following complete locally, 2026-09-27
 

@@ -24,17 +24,18 @@ async function waitForLandingReady(page: Page): Promise<void> {
   // have decoded successfully before the test may finish.
   allowBrowserDiagnostics(
     page,
-    /^requestfailed: GET .*\/images\/buildy-(?:renovation-complete|bouwboek-preview)\.webp \(NS_BINDING_ABORTED\)$/,
+    /^requestfailed: GET .*\/images\/buildy-(?:renovation-(?:progress|complete)|bouwboek-preview)\.webp \(NS_BINDING_ABORTED\)$/,
   );
   await expect(page.getByRole("heading", {
     level: 1,
     name: "Maak van je verbouwing een verhaal om te bewaren.",
   })).toBeVisible();
   for (const source of [
+    "/images/buildy-renovation-progress.webp",
     "/images/buildy-renovation-complete.webp",
     "/images/buildy-bouwboek-preview.webp",
   ]) {
-    const image = page.locator(`img[src="${source}"]`);
+    const image = page.locator(`img[src="${source}"]`).first();
     await image.scrollIntoViewIfNeeded();
     await expect.poll(() => image.evaluate((element: HTMLImageElement) => (
       element.complete && element.naturalWidth > 0
