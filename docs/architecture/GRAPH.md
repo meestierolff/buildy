@@ -58,6 +58,7 @@ flowchart LR
 - Browser uploads require scoped server authorization. No public Blob URLs or
   database credentials in the browser.
 - One globally chronological document controls preview, page count and PDF.
+  Digital books contain actual content and covers, without print minimum/even padding.
   Request-driven media/PDF workers use separate restricted database roles.
 - Account deletion revokes access immediately; bounded cleanup and export retain
   their existing data handling. No schema reset or encryption-key rotation.

@@ -3,7 +3,6 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
-  BookHeart,
   BookOpen,
   Check,
   Download,
@@ -21,18 +20,10 @@ import type {
   PhotobookPage,
   PhotobookSettings,
 } from "../../shared/contracts/photobooks";
-import FeedbackForm from "@/components/moderation/FeedbackForm";
 import { PhotobookViewer } from "@/components/photobook/PhotobookViewer";
 import { ResilientImage } from "@/components/ResilientMedia";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
@@ -119,7 +110,6 @@ const Photobook = () => {
   const [settingsDraft, setSettingsDraft] = useState<PhotobookSettings | null>(null);
   const [activePage, setActivePage] = useState(0);
   const [coverAssetLimit, setCoverAssetLimit] = useState(12);
-  const [interestOpen, setInterestOpen] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const pdfController = useRef<AbortController | null>(null);
@@ -494,22 +484,6 @@ const Photobook = () => {
               onActivePageChange={setActivePage}
             />
 
-            <section className="relative mt-8 overflow-hidden rounded-2xl bg-[#26372F] px-6 py-8 text-[#FFFDF8] sm:px-9" aria-labelledby="print-interest-title">
-              <div className="absolute -right-10 -top-14 h-44 w-44 rounded-full border border-white/10" aria-hidden="true" />
-              <BookHeart className="h-7 w-7 text-[#E5B29F]" aria-hidden="true" />
-              <h2 className="mt-4 max-w-lg font-serif text-3xl" id="print-interest-title">Dit verhaal verdient misschien ooit papier</h2>
-              <p className="mt-2 max-w-xl text-sm leading-6 text-white/70">
-                Het digitale Bouwboek is gratis. We onderzoeken rustig of mensen hun verhaal later ook als echt boek willen bewaren.
-              </p>
-              <Button
-                className="mt-6 border-white/30 bg-transparent text-white hover:bg-white hover:text-[#26372F]"
-                onClick={() => setInterestOpen(true)}
-                type="button"
-                variant="outline"
-              >
-                Ik wil dit later laten drukken
-              </Button>
-            </section>
           </div>
 
           <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start" aria-label="Bouwboek aanpassen">
@@ -734,17 +708,6 @@ const Photobook = () => {
         </div>
       )}
 
-      <Dialog open={interestOpen} onOpenChange={setInterestOpen}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="font-serif text-2xl">Vertel ons wat een gedrukt Bouwboek nodig heeft</DialogTitle>
-            <DialogDescription>
-              Met drie korte antwoorden weten we wat voor jou telt. Je zit nergens aan vast.
-            </DialogDescription>
-          </DialogHeader>
-          <FeedbackForm intent="print-interest" />
-        </DialogContent>
-      </Dialog>
     </main>
   );
 };

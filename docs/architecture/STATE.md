@@ -33,7 +33,8 @@ One toast system remains. Sitemap generation no longer fetches an external feed.
 Existing password/session security, private upload/read checks, sharing,
 exact-project following, comments/reactions, canonical PDF generation,
 moderation/support and account export/deletion remain. Applied migrations,
-schema and stored historical data are preserved. No database change is needed.
+schema and stored historical data are preserved. The large cleanup required no
+database change.
 
 F1–F7 focused verification: 149 selected unit checks passed, including password
 sessions, core composition/routes, project sharing/following, canonical PDF and
@@ -47,8 +48,29 @@ chunks and from 358,727 to 320,512 summed gzip bytes (10.7% smaller). This is to
 JavaScript output, not a measured page-load latency improvement. Book-preview
 fonts now use Latin subsets matching the renderer's typefaces.
 
-Next action: commit/push this cleanup and verify one actual public account/photo/
-PDF journey on the resulting Vercel deployment, using only disposable test data.
+Cleanup commit `5597ea9e2a32a05afdd20ed83f230dfd6a176779` is pushed to main.
+Production deployment `dpl_rEQeKyBss6TSDp5AMQWNM82UUHqG` is READY and public
+health reports that exact SHA. On this deployment, a disposable account completed
+UI signup, private project creation, one real Blob photo/date/text save, reload,
+logout/login and canonical PDF download. PDF content/source hashes matched.
+The account then requested deletion; its old session and project/media access
+were immediately denied. No browser errors or server 5xx occurred. This public
+check did not repeat the second-account sharing journey described below.
+
+## Final digital-book simplification
+
+Visual inspection exposed a remaining print rule: even a short digital book was
+padded to 24 pages. The generator and shared contract now keep only covers and
+actual story pages, allowing odd page counts. The physical-print interest button
+is removed. Stored format identifiers and historical PDF records remain readable.
+Append-only migration 0054 updates the matching PostgreSQL page-count constraint
+and finalizer to 2–400 pages; PDF hashes, worker leases and access grants remain.
+
+68 focused book/migration-discovery checks passed in 1.22s, including an actual
+five-page PDF render. Typecheck and lint for the changed files passed.
+
+Next action: publish this final page-count change and verify the actual short
+PDF on the resulting production SHA. No broader test infrastructure is required.
 
 ## Existing real hosted evidence
 

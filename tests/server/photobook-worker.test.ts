@@ -98,12 +98,12 @@ describe("PhotobookProofWorker", () => {
 
     const result = await worker.processNext();
 
-    expect(result).toMatchObject({ status: "rendered", revisionId: REVISION_ID, pageCount: 24 });
+    expect(result).toMatchObject({ status: "rendered", revisionId: REVISION_ID, pageCount: 2 });
     expect(writes).toHaveLength(1);
     expect(Buffer.from(writes[0]!.bytes).subarray(0, 8).toString("ascii")).toMatch(/^%PDF-1\./);
     expect(repository.finalized).toMatchObject({
       pdfSizeBytes: writes[0]!.bytes.byteLength,
-      pageCount: 24,
+      pageCount: 2,
       renderEngine: "pdfkit",
       renderVersion: "pdfkit-0.19.1-buildy-2",
     });

@@ -221,7 +221,7 @@ describe("Bouwboekpagina", () => {
     expect(screen.queryByRole("region", { name: "Bouwboekweergave" })).not.toBeInTheDocument();
   });
 
-  it("biedt alleen de digitale verhaalflow, twee indelingen en de interesseactie", () => {
+  it("biedt de digitale verhaalflow en twee indelingen", () => {
     state.draft = draftWith([cover(), updatePage()]);
     render(<Photobook />);
 
@@ -230,7 +230,7 @@ describe("Bouwboekpagina", () => {
     expect(screen.getByText("Cover · 1 van 2")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Afwisselend" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Foto groot" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ik wil dit later laten drukken" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /laten drukken/i })).not.toBeInTheDocument();
 
     const visibleText = document.body.textContent ?? "";
     expect(visibleText).not.toMatch(/printproof|sha-?256|revisie|checkout|betaling|stripe|peecho/i);
