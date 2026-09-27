@@ -208,7 +208,7 @@ test.describe("Connecties", () => {
     await page.goto(`${BASE}/connecties`);
 
     await expect(page.getByRole("heading", { name: "Bouw samen, op jouw voorwaarden." })).toBeVisible();
-    for (const label of ["Volgend", "Volgers", "Inkomend", "Uitgaand", "Geblokkeerd"]) {
+    for (const label of ["Mijn profielconnecties", "Met mijn profiel", "Inkomend", "Uitgaand", "Geblokkeerd"]) {
       await expect(page.getByRole("tab", { name: `${label} (1)` })).toBeVisible();
     }
 
@@ -221,12 +221,12 @@ test.describe("Connecties", () => {
     expect(fixture.unhandled).toEqual([]);
   });
 
-  test("volgt één gevonden openbaar profiel via PUT", async ({ page }) => {
+  test("verbindt één gevonden openbaar profiel via PUT", async ({ page }) => {
     const fixture = await installSocialFixture(page);
     await page.goto(`${BASE}/connecties`);
 
-    await page.getByRole("button", { name: "Volgen" }).first().click();
-    await expect(page.getByText("Je volgt deze bouwer nu")).toBeVisible();
+    await page.getByRole("button", { name: "Profiel verbinden" }).first().click();
+    await expect(page.getByText("Profiel verbonden")).toBeVisible();
 
     expect(fixture.requests).toContainEqual(expect.objectContaining({
       method: "PUT",
@@ -241,7 +241,7 @@ test.describe("Connecties", () => {
 
     await page.getByRole("tab", { name: "Inkomend (1)" }).click();
     await page.getByRole("button", { name: "Accepteren" }).click();
-    await expect(page.getByText("Volgverzoek geaccepteerd")).toBeVisible();
+    await expect(page.getByText("Connectieverzoek geaccepteerd")).toBeVisible();
 
     await page.getByRole("tab", { name: "Uitgaand (1)" }).click();
     await page.getByRole("button", { name: "Intrekken" }).click();
@@ -268,17 +268,17 @@ test.describe("Connecties", () => {
     expect(fixture.unhandled).toEqual([]);
   });
 
-  test("wijst een verzoek af en verwijdert een bestaande volger", async ({ page }) => {
+  test("wijst een verzoek af en verwijdert een bestaande profielconnectie", async ({ page }) => {
     const fixture = await installSocialFixture(page);
     await page.goto(`${BASE}/connecties`);
 
     await page.getByRole("tab", { name: "Inkomend (1)" }).click();
     await page.getByRole("button", { name: "Afwijzen" }).click();
-    await expect(page.getByText("Volgverzoek afgewezen")).toBeVisible();
+    await expect(page.getByText("Connectieverzoek afgewezen")).toBeVisible();
 
-    await page.getByRole("tab", { name: "Volgers (1)" }).click();
+    await page.getByRole("tab", { name: "Met mijn profiel (1)" }).click();
     await page.getByRole("button", { name: "Verwijderen" }).click();
-    await expect(page.getByText("Volger verwijderd")).toBeVisible();
+    await expect(page.getByText("Profielconnectie verwijderd")).toBeVisible();
 
     expect(fixture.requests).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -295,13 +295,13 @@ test.describe("Connecties", () => {
 });
 
 test.describe("Profiel en gevolgde Bouwmomenten", () => {
-  test("volgt een profiel zonder tweede project-volgmodel", async ({ page }) => {
+  test("verbindt een profiel zonder automatisch een verbouwing te volgen", async ({ page }) => {
     const fixture = await installSocialFixture(page);
     await page.goto(`${BASE}/profiel/synthetische-bouwer`);
 
     await expect(page.getByRole("heading", { level: 1, name: "Synthetische bouwer" })).toBeVisible();
-    await page.getByRole("button", { name: "Volgen", exact: true }).click();
-    await expect(page.getByText("Je volgt deze bouwer nu")).toBeVisible();
+    await page.getByRole("button", { name: "Profiel verbinden", exact: true }).click();
+    await expect(page.getByText("Profiel verbonden")).toBeVisible();
     expect(fixture.requests.filter((request) => request.pathname.endsWith("/follow"))).toEqual([
       expect.objectContaining({
         method: "PUT",
@@ -328,12 +328,12 @@ test.describe("Profiel en gevolgde Bouwmomenten", () => {
     await page.goto(`${BASE}/profiel/${SYNTHETIC_IDS.privateProfile}`);
 
     await expect(page.getByRole("heading", { name: "Profiel niet beschikbaar" })).toBeVisible();
-    await page.getByRole("button", { name: "Volgverzoek versturen" }).click();
-    await expect(page.getByText("Volgverzoek verstuurd")).toBeVisible();
+    await page.getByRole("button", { name: "Profieltoegang vragen" }).click();
+    await expect(page.getByText("Connectieverzoek verstuurd")).toBeVisible();
     await page.getByRole("button", { name: "Verzoek intrekken" }).click();
     await expect(page.getByText("Verzoek ingetrokken")).toBeVisible();
-    await page.getByRole("button", { name: "Volgverzoek versturen" }).click();
-    await expect(page.getByText("Volgverzoek verstuurd")).toBeVisible();
+    await page.getByRole("button", { name: "Profieltoegang vragen" }).click();
+    await expect(page.getByText("Connectieverzoek verstuurd")).toBeVisible();
 
     expect(fixture.requests.filter((captured) => (
       captured.pathname === `/api/social/profiles/${SYNTHETIC_IDS.privateProfile}/follow`
@@ -345,7 +345,7 @@ test.describe("Profiel en gevolgde Bouwmomenten", () => {
     expect(fixture.unhandled).toEqual([]);
   });
 
-  test("verbergt profieldata direct na blokkeren en herstelt geen volgrelatie bij deblokkeren", async ({ page }) => {
+  test("verbergt profieldata direct na blokkeren en herstelt geen profielconnectie bij deblokkeren", async ({ page }) => {
     const fixture = await installSocialFixture(page);
     await page.goto(`${BASE}/profiel/synthetische-bouwer`);
 
@@ -361,7 +361,7 @@ test.describe("Profiel en gevolgde Bouwmomenten", () => {
     const unblockDialog = page.getByRole("alertdialog");
     await unblockDialog.getByRole("button", { name: "Deblokkeren" }).click();
     await expect(page.getByText("Bouwer gedeblokkeerd")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Volgen", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Profiel verbinden", exact: true })).toBeVisible();
 
     expect(fixture.requests).toEqual(expect.arrayContaining([
       expect.objectContaining({

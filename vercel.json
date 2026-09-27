@@ -7,7 +7,7 @@
   "regions": ["fra1"],
   "functions": {
     "api/router.ts": {
-      "includeFiles": "node_modules/@fontsource/{inter,instrument-serif}/files/*latin-ext*.woff2",
+      "includeFiles": "node_modules/@fontsource/{inter,instrument-serif}/files/*-latin-*.woff",
       "maxDuration": 300
     },
     "api/page.ts": {

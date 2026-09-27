@@ -6,6 +6,7 @@ import { resetRuntimeConfigForTests } from "../../server/config/runtime";
 import { handleApiRequest } from "../../server/http/router";
 import {
   ANONYMOUS_PROJECT_ACTOR,
+  type AuthenticatedProjectActor,
   type ProjectActor,
   type ProjectActorResolver,
 } from "../../server/projects/actor";
@@ -43,6 +44,7 @@ function overview(overrides: Partial<ProjectOverview> = {}): ProjectOverview {
     expectedEndDate: null,
     contentRevision: 1,
     followerCount: 0,
+    viewerFollowStatus: "self",
     viewerAccess: "owner",
     canEdit: true,
     phases: [],
@@ -92,6 +94,9 @@ function service(overrides: Partial<ProjectHttpService> = {}): ProjectHttpServic
     dashboard: async () => ({ items: [], nextCursor: null }),
     discovery: async () => ({ items: [], nextCursor: null }),
     following: async () => ({ projects: [], activity: [] }),
+    setProjectFollow: async (_actor, _projectId, following) => ({
+      state: following ? "following" : "none", replayed: false,
+    }),
     overview: async () => overview(),
     timeline: async () => ({ projectId: PROJECT_ID, items: [], nextCursor: null }),
     createUpdate: async () => ({ update: projectUpdate(), replayed: false }),
@@ -177,8 +182,8 @@ describe("project HTTP routes", () => {
   });
 
   it("requires authentication for the following feed and ignores forged identity headers", async () => {
-    const followingSpy = vi.fn(async (actorId: string) => {
-      expect(actorId).toBe(ACTOR_ID);
+    const followingSpy = vi.fn(async (actor: AuthenticatedProjectActor) => {
+      expect(actor).toEqual({ kind: "authenticated", appUserId: ACTOR_ID });
       return { projects: [], activity: [] };
     });
     configureDefaultProjectRuntime({
@@ -196,6 +201,55 @@ describe("project HTTP routes", () => {
     configureDefaultProjectRuntime({ actors: actorResolver(null), service: service() });
     const anonymous = await handleApiRequest(new Request(`${REQUEST_ORIGIN}/api/following`));
     expect(anonymous.status).toBe(401);
+  });
+
+  it.each(["PUT", "DELETE"])("uses only the trusted actor and share grant for %s project follow", async (method) => {
+    const actor: AuthenticatedProjectActor = {
+      kind: "authenticated", appUserId: ACTOR_ID, shareLinkId: PHASE_ID,
+    };
+    const setProjectFollow = vi.fn(async () => ({
+      state: method === "PUT" ? "following" as const : "none" as const,
+      replayed: false,
+    }));
+    configureDefaultProjectRuntime({
+      actors: { resolve: async () => actor }, service: service({ setProjectFollow }),
+    });
+    const response = await handleApiRequest(new Request(`${REQUEST_ORIGIN}/api/projects/${PROJECT_ID}/follow`, {
+      method,
+      headers: { origin: REQUEST_ORIGIN, "x-user-id": FORGED_USER_ID },
+    }));
+    expect(response.status).toBe(200);
+    expect(setProjectFollow).toHaveBeenCalledExactlyOnceWith(actor, PROJECT_ID, method === "PUT");
+    await expect(response.json()).resolves.toMatchObject({
+      data: { state: method === "PUT" ? "following" : "none", replayed: false },
+    });
+  });
+
+  it("keeps the trusted share grant when reading the following feed", async () => {
+    const actor: AuthenticatedProjectActor = {
+      kind: "authenticated", appUserId: ACTOR_ID, shareLinkId: PHASE_ID,
+    };
+    const following = vi.fn(async () => ({ projects: [], activity: [] }));
+    configureDefaultProjectRuntime({ actors: { resolve: async () => actor }, service: service({ following }) });
+    const response = await handleApiRequest(new Request(`${REQUEST_ORIGIN}/api/following`));
+    expect(response.status).toBe(200);
+    expect(following).toHaveBeenCalledExactlyOnceWith(actor, {});
+  });
+
+  it.each(["PUT", "DELETE"])("denies anonymous and cross-origin %s project follows", async (method) => {
+    const setProjectFollow = vi.fn();
+    configureDefaultProjectRuntime({ actors: actorResolver(null), service: service({ setProjectFollow }) });
+    const anonymous = await handleApiRequest(new Request(`${REQUEST_ORIGIN}/api/projects/${PROJECT_ID}/follow`, {
+      method, headers: { origin: REQUEST_ORIGIN },
+    }));
+    expect(anonymous.status).toBe(401);
+    resetDefaultProjectRuntimeForTests();
+    configureDefaultProjectRuntime({ actors: actorResolver(ACTOR_ID), service: service({ setProjectFollow }) });
+    const crossOrigin = await handleApiRequest(new Request(`${REQUEST_ORIGIN}/api/projects/${PROJECT_ID}/follow`, {
+      method, headers: { origin: "https://untrusted.example" },
+    }));
+    expect(crossOrigin.status).toBe(403);
+    expect(setProjectFollow).not.toHaveBeenCalled();
   });
 
   it("matches project parameters and ignores forged client identity headers", async () => {

@@ -21,9 +21,8 @@ function useDesktopSpread(): boolean {
 }
 
 function pageName(page: PhotobookPage): string {
+  if (page.id === "back-cover") return "Achterkant";
   if (page.kind === "cover") return "Cover";
-  if (page.id === "digital:opening") return "Voorwoord";
-  if (page.id === "digital:closing") return "Tot slot";
   if (page.kind === "photos") return "Foto’s";
   if (page.kind === "update_text") return "Bouwmoment";
   return "Verhaal";

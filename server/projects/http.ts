@@ -1,6 +1,7 @@
 import type {
   FollowingFeed,
   ProjectOverview,
+  ProjectFollowMutationResult,
   ProjectPage,
   ProjectPhase,
   ProjectUpdate,
@@ -9,7 +10,7 @@ import type {
 } from "../../shared/contracts/projects.js";
 import { HttpError } from "../http/errors.js";
 import { jsonError, jsonSuccess } from "../http/responses.js";
-import type { ProjectActor, ProjectActorResolver } from "./actor.js";
+import type { AuthenticatedProjectActor, ProjectActor, ProjectActorResolver } from "./actor.js";
 import { ProjectError } from "./errors.js";
 
 const MAX_JSON_BODY_BYTES = 256 * 1024;
@@ -32,7 +33,8 @@ export interface ProjectHttpService {
   }>;
   dashboard(actorId: string, query: unknown): Promise<ProjectPage>;
   discovery(viewer: ProjectActor, query: unknown): Promise<ProjectPage>;
-  following(actorId: string, query: unknown): Promise<FollowingFeed>;
+  following(actor: AuthenticatedProjectActor, query: unknown): Promise<FollowingFeed>;
+  setProjectFollow(actor: AuthenticatedProjectActor, projectId: string, following: boolean): Promise<ProjectFollowMutationResult>;
   overview(viewer: ProjectActor, projectId: string): Promise<ProjectOverview>;
   timeline(viewer: ProjectActor, projectId: string, query: unknown): Promise<TimelinePage>;
   createUpdate(actorId: string, projectId: string, input: unknown): Promise<{
@@ -118,6 +120,10 @@ export function createProjectHttpHandler(dependencies: ProjectHttpDependencies) 
         if (!actorId) throw new ProjectError("ACTOR_REQUIRED");
         return actorId;
       };
+      const authenticatedActor = (): AuthenticatedProjectActor => {
+        if (actor.kind !== "authenticated") throw new ProjectError("ACTOR_REQUIRED");
+        return { ...actor, appUserId: authenticatedActorId() };
+      };
       const url = new URL(request.url);
       const pathname = url.pathname.replace(/\/$/, "") || "/";
       const projectId = parameters.projectId
@@ -145,7 +151,15 @@ export function createProjectHttpHandler(dependencies: ProjectHttpDependencies) 
       }
       if (request.method === "GET" && pathname === "/api/following") {
         return jsonSuccess(
-          await dependencies.service.following(authenticatedActorId(), queryInput(url)),
+          await dependencies.service.following(authenticatedActor(), queryInput(url)),
+          requestId,
+        );
+      }
+      if (projectId && pathname.endsWith("/follow") && ["PUT", "DELETE"].includes(request.method)) {
+        return jsonSuccess(
+          await dependencies.service.setProjectFollow(
+            authenticatedActor(), projectId, request.method === "PUT",
+          ),
           requestId,
         );
       }
@@ -161,6 +175,7 @@ export function createProjectHttpHandler(dependencies: ProjectHttpDependencies) 
         projectId &&
         !pathname.endsWith("/updates") &&
         !pathname.endsWith("/phases") &&
+        !pathname.endsWith("/follow") &&
         !updateId
       ) {
         if (request.method === "GET") {

@@ -3,6 +3,231 @@
 Only mutable progress sheet for the small MVP. Scope: [GRAPH](GRAPH.md),
 acceptance: [FLOWS](FLOWS.md). An online demo is not an account-based MVP.
 
+## F4 — project following complete locally, 2026-09-27
+
+F4 / U,H,A,S,E,D: the existing `project_followers` relation now backs the
+project button, idempotent PUT/DELETE, server-derived overview status/count and
+the following feed. Following one project does not include the owner's other
+projects or grant access. Profile relationships remain visibility connections
+and are labelled accordingly. Trusted share context is rechecked; blocking and
+connection removal revoke exact-pair subscriptions through a guarded helper.
+Append-only migrations 0052/0053 preserve existing RLS and visibility rules.
+
+Focused UI/API tests 30/30 and profile UI 5/5 PASS. Server checks 82 PASS; the
+new real repository test exposed legacy cleanup calling a retired function,
+then PASS after migration 0053. Five focused PostgreSQL boundary/notification
+tests, canonical grants and schema verification PASS (53 migrations, 45 RLS
+tables). Both new DB test files are included in the existing CI database job.
+
+Actual local Playwright at `2026-09-27T07:00:02Z–07:00:05Z` used real login,
+API and isolated PostgreSQL: viewer followed project A, reloaded, saw only A
+and not project B from the same owner in `/volgend`, unfollowed, reloaded and
+saw an empty feed. Both mutations returned 200. Synthetic local data only;
+no intercepted requests, saved browser traces or credentials in evidence.
+
+Coordinated final typecheck, lint, CI-configured production build, bundle budget
+and four static launch checks PASS at `2026-09-27T06:59:11Z`; no duplicate full
+test matrix. Native Chrome was also used to inspect the real local project
+and its anonymous follow-to-login route. No deployment claimed yet.
+
+The replacement isolated Neon Preview `br-spring-river-b19te8h8` was created
+from schema only, without production rows. Fresh empty database provisioning
+is in progress. The old main branch and public deployment remain unchanged.
+
+Next action: connect the isolated Preview and prove the hosted photo/book
+journey. Peecho company details and ordering remain explicitly deferred.
+
+## F5 — canonical Bouwboek and PDF download completed locally, 2026-09-27
+
+F5 / U,H,A,B,P,M,D: preview now consumes the exact server document, without
+client-side sorting, inserted pages or changed counts. The repository carries
+`sort_order`; the builder uses date/order/id like the timeline and keeps phase
+runs chronological (including A→B→A). Short text shares a page with its first
+photo; long text continues completely. Excluded chapters no longer supply an
+automatic cover; excluded assets do not block an unrelated included book.
+The final page is a canonical back cover, with even/minimum padding before it.
+
+The existing private PDF request/download now has a user action, render status,
+visible content warnings and exact document/PDF matching. Checkout off no longer
+disables the existing request-driven renderer; the dedicated photobook database
+role is still required. Stored approved/locked revisions remain immutable.
+No paid order or Peecho print compatibility is claimed.
+
+Visual inspection exposed two real font faults: `latin-ext` omitted ordinary
+Dutch glyphs; the installed Latin WOFF2 files crashed during fontkit subsetting.
+The existing equivalent Latin WOFF files now serve measurement and embedding,
+and Vercel packages them. Renderer version is `pdfkit-0.19.1-buildy-2`.
+Dutch text/accents work; full Unicode/emoji coverage is not established.
+
+Evidence: focused chronology/exclusions/text tests 9/9, current PDF/worker tests
+11/11, canonical client tests 4/4, PDF UI/API/viewer tests 17/17 plus the targeted
+warning test PASS. Checkout-off runtime/router/service tests 63/63 PASS.
+Typecheck, changed-source lint and production build PASS; no full suite repeated.
+The untracked local example `output/pdf/buildy-bouwboek-voorbeeld.pdf` has
+24 pages, document SHA `e94e1833e0f226fd8480179b173e49d618b8a2384d1e404472d6471f3fcd5a6d`,
+PDF SHA `93c0f7d9ca159b688f3e48c37d15ff594ed3f96a081737358654016dad3eacfd`.
+Pages 1/3/5/8/10/24 were rendered and visually inspected; extracted text confirms
+January→February→March order and all 24 long-story paragraphs. Synthetic local
+artifact only, no hosted download/provider/physical proof. No deployment yet. The PDF was also opened through native Chrome Computer Use;
+the browser displays the same title, chronology and 24-page count.
+
+F4 is completed locally above; hosted photo/book evidence is the next action.
+
+## Current slice — Peecho dashboard reached; release checks simplified, 2026-09-27
+
+Latest owner steering explicitly authorizes browser setup and removal of
+unnecessary checks. F0/F7 / C,H,Q: removed five obsolete release gates (provider
+name/import bans, retired-directory inventory, handwritten import crawler,
+exact copy regexes and historical-report presence), plus two unused email
+staging helpers and their test machinery. This removes 190 lines relative to
+the preceding local worktree. Existing CI jobs and actual auth, private-media,
+origin, payment, migration, header and deployment-SHA checks remain unchanged.
+One focused run of `check-launch.test.ts` and `release-gates.test.ts` passed
+11/11; no full test matrix was rerun. No application deployment was made.
+
+Native Chrome now reaches the existing logged-in **production** Peecho dashboard
+at `peecho.com/mio-dashboard/settings/products`; earlier browser-inventory
+absence did not establish native-app inaccessibility. The account has active
+`Hardcover Photobook A4 (landscape)`, product **7382413**, gloss 200gsm,
+24–300 pages. The UI displays wholesale **EUR 6.20 + 0.21 per page**.
+This is catalog evidence only: NL shipping, tax basis and a full quote have not
+been verified. No catalog settings, margins, company details or orders changed.
+
+The API page contains existing Merchant/Secret keys and empty company fields.
+The first native-app observation unintentionally included credential fields in
+tool output; values were not copied to repository/evidence or repeated. Later
+observations hide fields and limit output to the relevant Peecho page; no
+credential was rotated. Owner supplied a key in the gitignored 0600
+`.env.peecho.local` (not `.env.local`) and explicitly confirmed it is a production
+key, authorizing product/quote reads only. Its nonsecret environment label is now
+`live`, with product `7382413`. The authenticated live product read passed at
+`2026-09-27T06:22:26.653Z`: `EU-hcl-M-l`, 297×210 mm, minimum quantity 1,
+24–300 pages, fixed dimensions. No order/payment request was made.
+
+The real quote endpoint returns HTTP 404 with **APP_NO_COMP_DETAILS**: Peecho
+requires actual company/billing details. Raw provider errors are withheld because
+they can echo request URLs/credentials; the preflight reports only recognized
+machine codes. The owner explicitly deferred company details and asked to finish
+the account app. Do not poll this unchanged external dependency. `BUTTON_KEY`
+is unnecessary for Stripe Checkout; `SECRET_KEY` is needed only for later
+server-side Peecho payment signing, not product/quote reads. Neither becomes a
+Vite/client setting.
+
+Current action: complete F5's shared chronological preview/PDF and downloadable
+digital book, independently of Peecho quotes and checkout. Live sales remain off.
+
+### Earlier F0 preparation in this session
+
+F0 / C,H,D,Q: the owner's new scope authorizes Peecho/Stripe after real product
+and quote proof, project-specific following and one canonical print document.
+AGENTS/GRAPH/FLOWS now express that target. Checkout remains off; no live sales,
+order, payment, secret rotation, account deletion or deployment was performed.
+The September 8–9 results below are historical, not current hosted proof.
+
+- Local/remote branch remains `release/free-mvp-20260908`; HEAD and open
+  [PR #4](https://github.com/meestierolff/buildy/pull/4) agree on
+  `9c0287c15ca4ccba5a5bc3e741626ec10935cda6`. Remote main remains
+  `162be48ee3c494c821d3ffe0cb19e9cbda0a4af4`. Existing CI is green from September 8,
+  not a new run. The initial 47-line local STATE addition is preserved, with
+  staged/unstaged binary patches outside Git in a 0700 directory, files 0600;
+  there were no untracked files. No checkout/reset/clean occurred.
+- Fresh public health/profile reads confirm Production remains `public_demo`,
+  checkout off, SHA `162be48`, deployment `dpl_69yfxtocmLFXVRY3eVxx9tKupiSi` READY.
+  Latest Preview `dpl_C7vWGKTY4Wzg4dp1zzoh1DYpVtH6` is READY at `9c0287c`;
+  unauthenticated Preview requests reach protection HTML, not application proof.
+- Neon project `patient-fire-15490270` / main `br-noisy-king-b14pmt91` exists.
+  Existing local credentials matched the main endpoint/database; explicit
+  `BEGIN READ ONLY; SELECT 1; ROLLBACK` passed at `2026-09-27T05:54:08.716Z`.
+  This does not prove current Vercel role configuration. Former isolated Preview
+  `br-lucky-wind-b1oc35t6` and rollback `br-gentle-recipe-b1hql4zh` both return
+  404 and are absent from the branch listing including deleted branches.
+  Their recorded September 15 expiries have passed; deletion times are unknown.
+- Vercel Blob metadata lists both existing Buildy stores as available in fra1:
+  Production `store_dHQJVVge0sUQ7rmJ`, Preview `store_LAdtJpmW9VUnYFEm`.
+  No fresh object upload/read or privacy proof is claimed. Automatic approval
+  review rejected bulk Preview/Production secret export; none was downloaded.
+  Subsequent metadata-only checks succeeded without obtaining secret values.
+- One Computer Use inventory found no reachable Peecho browser tab. The owner
+  was given one Settings → API handoff. Vercel environment-name/scope inventory
+  contains no Peecho or Stripe configuration. No server Merchant API key exists
+  in the checked local environment. Stripe connector metadata is reachable but
+  shows HiggsCat contexts; selection of the intended Buildy account is unconfirmed.
+- Official [v3 reference](https://www.peecho.com/print-api-documentation),
+  [first-order guide](https://www.peecho.com/blog/how-to-place-your-first-peecho-api-order)
+  and [hardcover guide](https://support.peecho.com/hc/en-us/articles/19730953142428-Hardcover-books-File-set-up-guideline)
+  were checked. Product list uses `merchantApiKey`; read-only quote uses `apiKey`
+  and `offeringId`. The public reference does not establish quote money units
+  and nonzero tax inclusion sufficiently to approve consumer pricing.
+- Added a server-only [preflight CLI](../../scripts/setup/peecho.ts):
+  `node --import tsx scripts/setup/peecho.ts --products`, then set the actual
+  environment-specific `PEECHO_PRODUCT_ID` and use `--pages=24,40,80` only if
+  those counts fit that offering. Credentials enter through process environment
+  or a private `node --env-file` file, never arguments. The helper reads only
+  products/quotes, rejects redirects and changed quote identity/pages/quantity/
+  currency/destination, bounds responses, and excludes raw errors/credentials.
+  Output retains raw costs, tax and shipping with unconfirmed units/tax basis;
+  it is not connected to the consumer-price matrix or checkout.
+- Local uncommitted F0 validation: 25 focused preflight/launch tests, typecheck,
+  lint, build, bundle budget, all nine static launch checks and 76 relative
+  documentation links PASS. The outdated blanket Peecho ban now allows only the
+  two read-only setup files; regressions still reject runtime imports, other
+  retired providers and Peecho webhook routes. Review also found and fixed
+  credential-echo redaction for JSON-escaped keys. Actual CLI without credentials exits safely with
+  `PEECHO_MERCHANT_API_KEY_MISSING`; this is BLOCKED provider evidence, not a
+  successful API call. Test/live product IDs, three real quotes, approved margin,
+  new PDF proof, current hosted F1–F6, Stripe payment and sandbox print: NOT_RUN.
+
+The former missing-key action is superseded by the dashboard/key evidence above.
+Restore isolated Preview and fresh rollback resources before later hosted
+verification/release; no old expiry is accepted.
+
+## Release continuation — operator details still missing, 2026-09-09
+
+F7 / U,H,C,A,D,P,M,S,B,L: the owner authorized completing PR #4, normal
+merge, Production deployment, the public signup/photo/relogin/Bouwboek/share
+revocation smoke and cleanup of only this run's synthetic data. The supplied
+operator name, public address and contact/privacy email are all still literal
+`[invullen]`; actual values were requested. No legal identity or approval was
+inferred, and no merge or deployment was performed.
+
+- Initial worktree clean; branch `release/free-mvp-20260908`, HEAD and PR #4
+  head both `9c0287c15ca4ccba5a5bc3e741626ec10935cda6`. PR open and mergeable.
+  [CI 34221666179](https://github.com/meestierolff/buildy/actions/runs/34221666179)
+  has all 12 automatic jobs, including CI gate, PASS on this head; the two
+  optional protected jobs are skipped. This is existing CI evidence, not a
+  newly completed legal change or public smoke.
+- Fresh read-only provider/runtime verification at `2026-09-09T14:46:00Z`:
+  public alias and `/api/health` still agree on deployment
+  `dpl_69yfxtocmLFXVRY3eVxx9tKupiSi`, SHA
+  `162be48ee3c494c821d3ffe0cb19e9cbda0a4af4`; `/api/product-profile` reports
+  `public_demo`. That previous Production deployment remains READY for rollback.
+- Production settings still match `feedback_beta`, `BETA_MODE=false`,
+  `CHECKOUT_MODE=off` and the public origins. The Sensitive trusted-origin
+  record is unchanged since the previously proved staged F0; its value was
+  not exported or represented as newly runtime-tested. Preserved PII/lifecycle
+  records are unchanged, operator credentials remain outside ordinary runtime,
+  and the existing private fra1 Blob store is connected only to Production.
+- All three prepared Production database connections passed fresh read-only
+  identity/role checks: login permitted, no superuser, BYPASSRLS, inheritance
+  or role memberships. The normal `runMigrations({mode: 'dry-run'})` verified
+  all 51 applied migrations/checksums with zero pending and zero executed.
+  No database was created and no migration was reapplied.
+- Existing full-data rollback branch `br-gentle-recipe-b1hql4zh` is READY,
+  retains parent LSN `0/2660608`, has no compute endpoint and expires
+  `2026-09-15T10:52:06Z`. Staged deployment
+  `dpl_9CqP2mQc9Q9kYsUbDSzmwvgtTSeB` remains READY at `b11413d`.
+- Safe preflight evidence: `/private/tmp/buildy-release-preflight-20260909.json`.
+  The private public-smoke runner was prepared for the requested Bouwboek and
+  share/revocation checks and passed syntax/import checks only. Public smoke:
+  **NOT_RUN**. This run created no synthetic accounts or media, so no test-data
+  cleanup was required.
+
+Next action: receive the actual approved public operator name, address and
+contact/privacy email, then finish their minimal existing-page edit and required
+CI before merging PR #4 and proving the final public deployment. Public release
+remains **BLOCKED on those missing values**; the preparation above is current
+evidence, not a claim that the public account app has launched.
+
 ## Current slice — Preview proved, Production staged, 2026-09-08
 
 The owner authorized restoring the existing hosted candidate through CLI/API,

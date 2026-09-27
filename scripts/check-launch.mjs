@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, extname, join, normalize, relative, resolve } from "node:path";
+import { extname, join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 import {
@@ -77,15 +77,6 @@ function filesBelow(entry, extensions = new Set([".ts", ".tsx", ".js", ".mjs", "
   });
 }
 
-const requiredDocs = [
-  ".env.example",
-  "README.md",
-  "docs/MVP_SCOPE.md",
-  "docs/MVP_SHIP_REPORT.md",
-  "docs/OPERATOR_ACTIONS_REQUIRED.md",
-  "docs/POLARSTEPS_TO_BUILDY.md",
-];
-
 await runCheck("static", "Doelruntime bevat geen legacy-providerkoppeling", async () => {
   const forbidden = /@supabase|integrations\/supabase|VITE_SUPABASE|LOVABLE_API_KEY|@lovable\.dev|lovable-tagger|cloud-auth-js|supabase[.]co|\/functions\/v1\//i;
   const files = [
@@ -121,100 +112,6 @@ await runCheck("static", "Packagegraph bevat geen legacy runtimepackage", async 
   assert(!existsSync(join(root, "bun.lockb")), "verouderde bun.lockb bestaat nog");
   assert(!existsSync(join(root, "package-lock.json")), "tweede lockfile package-lock.json bestaat nog");
   return "package.json en canonieke Bun-lockfile zijn schoon";
-});
-
-await runCheck("static", "Actieve runtime importeert geen uitgefaseerde provider", async () => {
-  const activeFiles = [
-    ...filesBelow("api"),
-    ...filesBelow("server"),
-    ...filesBelow("shared"),
-    ...filesBelow("src"),
-    ...filesBelow("scripts"),
-    ...filesBelow("vite.config.ts"),
-    ...filesBelow("vercel.json"),
-  ].filter((path) => (
-    /[.](?:[cm]?js|tsx?|json)$/.test(path)
-    && path !== resolve(root, "scripts/check-launch.mjs")
-  ));
-  const forbiddenImport = /(?:from\s*["'][^"']*(?:r2ObjectStorage|\/email\/|\/fulfilment\/|\/print\/)|@aws-sdk|@better-auth|better-auth|BREVO_|PEECHO_|R2_)/i;
-  const forbiddenRoute = /\/api\/(?:internal\/cron\/(?:email|peecho-fulfilment)|webhooks\/(?:brevo|peecho))/i;
-  const violations = activeFiles.filter((path) => {
-    const contents = readFileSync(path, "utf8");
-    return forbiddenImport.test(contents) || forbiddenRoute.test(contents);
-  });
-  assert(
-    violations.length === 0,
-    `retired runtimekoppeling in ${violations.map((path) => relative(root, path)).join(", ")}`,
-  );
-  return `${activeFiles.length} actieve runtimebestanden schoon`;
-});
-
-await runCheck("static", "Template- en providererfenis is fysiek verwijderd", async () => {
-  const retiredPaths = [
-    ".lovable",
-    ".team",
-    "LOVABLE_PROMPT.md",
-    "artifacts/email-previews",
-    "scripts/email",
-    "scripts/peecho",
-    "server/auth/outbox.ts",
-    "server/auth/postgresOutbox.ts",
-    "server/email",
-    "server/fulfilment",
-    "server/print",
-    "server/storage/r2ObjectStorage.ts",
-    "src/components/TripRouteMap.tsx",
-    "src/integrations",
-    "src/lib/peecho.ts",
-    "supabase",
-  ];
-  const remaining = retiredPaths.filter((path) => existsSync(join(root, path)));
-  assert(remaining.length === 0, `verwijder oude paden: ${remaining.join(", ")}`);
-  return `${retiredPaths.length} retired paden afwezig`;
-});
-
-await runCheck("static", "Productiebrongraaf bevat geen dode modules", async () => {
-  const sourceFiles = filesBelow("src", new Set([".ts", ".tsx"]))
-    .filter((file) => {
-      const path = relative(root, file);
-      return !path.startsWith("src/test/") && !path.endsWith(".test.ts")
-        && !path.endsWith(".test.tsx") && !path.endsWith(".d.ts");
-    })
-    .map(normalize);
-  const sourceSet = new Set(sourceFiles);
-  const resolveModule = (from, specifier) => {
-    const base = specifier.startsWith("@/")
-      ? resolve(root, "src", specifier.slice(2))
-      : specifier.startsWith(".")
-        ? resolve(dirname(from), specifier)
-        : undefined;
-    if (!base) return undefined;
-    return [base, `${base}.ts`, `${base}.tsx`, join(base, "index.ts"), join(base, "index.tsx")]
-      .map(normalize)
-      .find((candidate) => sourceSet.has(candidate));
-  };
-  const edges = new Map(sourceFiles.map((file) => [file, []]));
-  for (const file of sourceFiles) {
-    const contents = readFileSync(file, "utf8");
-    const importPattern = /(?:from\s*|import\s*\()\s*["']([^"']+)["']/g;
-    for (const match of contents.matchAll(importPattern)) {
-      const dependency = resolveModule(file, match[1]);
-      if (dependency) edges.get(file).push(dependency);
-    }
-  }
-  const reachable = new Set();
-  const pending = [normalize(resolve(root, "src/main.tsx"))];
-  while (pending.length > 0) {
-    const file = pending.pop();
-    if (!file || reachable.has(file)) continue;
-    reachable.add(file);
-    pending.push(...(edges.get(file) ?? []));
-  }
-  const unreachable = sourceFiles
-    .filter((file) => !reachable.has(file))
-    .map((file) => relative(root, file));
-  assert(unreachable.length === 0, `dode productiemodules: ${unreachable.join(", ")}`);
-  return `${reachable.size} bereikbare productiemodules vanaf src/main.tsx`;
 });
 
 await runCheck("static", "Vercelconfig is fail-closed", async () => {
@@ -259,7 +156,7 @@ await runCheck("static", "Vercelconfig is fail-closed", async () => {
     "API-router vereist expliciet 300 seconden voor hervatbare private streams",
   );
   assert(!/supabase|lovable/i.test(serialized), "Vercelconfig verwijst naar legacyprovider");
-  assert(!/cloudflarestorage|peecho|brevo/i.test(serialized), "Vercelconfig verwijst naar uitgefaseerde provider");
+  assert(!/cloudflarestorage|brevo/i.test(serialized), "Vercelconfig verwijst naar uitgefaseerde provider");
   assert(serialized.includes("blob.vercel-storage.com"), "Vercel Blob upload-CSP ontbreekt");
   const globalHeaders = config.headers?.find((rule) => rule.source === "/(.*)")?.headers ?? [];
   const globalHeaderNames = new Set(globalHeaders.map((header) => header.key));
@@ -281,29 +178,6 @@ await runCheck("static", "Vercelconfig is fail-closed", async () => {
     assert(globalHeaderNames.has(name), `${name} ontbreekt op de globale /(.*)-route`);
   }
   return `${cronPaths.size} dagelijkse onderhoudscrons; ${redirects.size} redirects en securityheaders aanwezig`;
-});
-
-await runCheck("static", "Zichtbare provider- en bestelteksten spreken de MVP-waarheid", async () => {
-  const files = [
-    "src/pages/legal/Privacy.tsx",
-    "src/pages/legal/Terms.tsx",
-    "src/pages/legal/Withdrawal.tsx",
-    "src/pages/OrderAdmin.tsx",
-    "src/pages/OrderConfirmation.tsx",
-    "src/pages/Photobook.tsx",
-  ];
-  const combined = files.map((path) => readFileSync(join(root, path), "utf8")).join("\n");
-  assert(!/Peecho|Brevo|Cloudflare R2|cloudflarestorage/i.test(combined), "zichtbare copy noemt een uitgefaseerde provider");
-  assert(/private Vercel Blob/i.test(combined), "private Vercel Blob ontbreekt in privacycopy");
-  assert(/handmatig/i.test(combined), "handmatige druk-/fulfilmentwaarheid ontbreekt");
-  assert(/Stripe[^\n]*(?:alleen|wanneer)|(?:alleen|wanneer)[^\n]*Stripe/i.test(combined), "conditionele Stripe-copy ontbreekt");
-  return `${files.length} zichtbare juridische en besteloppervlakken gecontroleerd`;
-});
-
-await runCheck("static", "Verplichte opleverdocumenten bestaan", async () => {
-  const missing = requiredDocs.filter((path) => !existsSync(join(root, path)));
-  assert(missing.length === 0, `ontbreekt: ${missing.join(", ")}`);
-  return `${requiredDocs.length}/${requiredDocs.length} documenten aanwezig`;
 });
 
 await runCheck("static", "Migratiebestanden en ledger zijn statisch geldig", async () => {

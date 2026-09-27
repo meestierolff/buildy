@@ -203,15 +203,22 @@ describe("canonical browsergeometrie", () => {
     const ready = {
       revisionId: REVISION_ID,
       status: "ready" as const,
+      documentSha256: DOCUMENT_SHA,
       pdfSha256: PDF_SHA,
       pageCount: 24,
       pdfPath: `/api/photobooks/proofs/${REVISION_ID}/pdf`,
       thumbnailPaths: [],
     };
-    expect(hasExactPhotobookProof(ready, { pageCount: 24 })).toBe(true);
-    expect(hasExactPhotobookProof({ ...ready, status: "rendering" }, { pageCount: 24 })).toBe(false);
-    expect(hasExactPhotobookProof({ ...ready, pdfSha256: null }, { pageCount: 24 })).toBe(false);
-    expect(hasExactPhotobookProof({ ...ready, pageCount: 26 }, { pageCount: 24 })).toBe(false);
+    const document = { pageCount: 24, checksumSha256: DOCUMENT_SHA };
+    expect(hasExactPhotobookProof(ready, document)).toBe(true);
+    expect(hasExactPhotobookProof({ ...ready, status: "rendering" }, document)).toBe(false);
+    expect(hasExactPhotobookProof({ ...ready, pdfSha256: null }, document)).toBe(false);
+    expect(hasExactPhotobookProof({ ...ready, pageCount: 26 }, document)).toBe(false);
+    expect(hasExactPhotobookProof({
+      ...ready,
+      status: "locked",
+      documentSha256: "c".repeat(64),
+    }, document)).toBe(false);
   });
 });
 

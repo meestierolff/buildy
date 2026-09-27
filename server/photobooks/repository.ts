@@ -64,12 +64,12 @@ type SourceHeaderRow = {
 type UpdateRow = {
   id: string;
   update_date: string;
+  sort_order: number | string;
   title: string | null;
   room: string | null;
   description: string | null;
   phase_id: string | null;
   phase_name: string | null;
-  phase_sort_order: number | string | null;
 };
 
 type MediaRow = {
@@ -240,12 +240,12 @@ export class PostgresPhotobookRepository implements PhotobookRepository {
         select
           update.id,
           update.update_date,
+          update.sort_order,
           update.title,
           update.room,
           update.description,
           phase.id as phase_id,
-          phase.name as phase_name,
-          phase.sort_order as phase_sort_order
+          phase.name as phase_name
         from public.updates update
         left join public.project_phases phase
           on phase.id = update.phase_id
@@ -323,12 +323,12 @@ export class PostgresPhotobookRepository implements PhotobookRepository {
         updates: updateResult.rows.map((update) => ({
           id: update.id,
           updateDate: update.update_date,
+          sortOrder: numberValue(update.sort_order),
           title: update.title,
           room: update.room,
           description: update.description,
           phaseId: update.phase_id,
           phaseName: update.phase_name,
-          phaseSortOrder: nullableNumber(update.phase_sort_order),
           media: (mediaByUpdate.get(update.id) ?? []).map((media) => ({
             id: media.id,
             sha256: media.sha256,

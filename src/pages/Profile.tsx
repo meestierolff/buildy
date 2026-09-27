@@ -85,7 +85,7 @@ const Profile = () => {
 
   const toggleFollow = async () => {
     if (!user) {
-      toast.error("Log in om deze bouwer te volgen");
+      toast.error("Log in om dit profiel te verbinden");
       return;
     }
     if (!profile || isMe) return;
@@ -96,13 +96,13 @@ const Profile = () => {
         profileId: profile.id,
       });
       if (removing) {
-        toast.success(profile.viewerFollowStatus === "pending" ? "Verzoek ingetrokken" : "Je volgt deze bouwer niet meer");
+        toast.success(profile.viewerFollowStatus === "pending" ? "Verzoek ingetrokken" : "Profielverbinding verwijderd");
       } else {
-        toast.success(result.state === "pending" ? "Volgverzoek verstuurd" : "Je volgt deze bouwer nu");
+        toast.success(result.state === "pending" ? "Connectieverzoek verstuurd" : "Profiel verbonden");
       }
     } catch (error) {
       console.error("Profile follow update failed", error);
-      toast.error("Volgen bijwerken mislukt");
+      toast.error("Profielverbinding bijwerken mislukt");
     }
   };
 
@@ -112,7 +112,7 @@ const Profile = () => {
       const result = await followMutation.mutateAsync({ action: "follow", profileId: legacyProfileId });
       if (result.state === "pending") {
         setRestrictedFollowState("pending");
-        toast.success("Volgverzoek verstuurd");
+        toast.success("Connectieverzoek verstuurd");
         return;
       }
       if (result.state === "following") {
@@ -124,7 +124,7 @@ const Profile = () => {
       toast.error("Dit profiel is niet beschikbaar");
     } catch (error) {
       console.error("Restricted profile follow request failed", error);
-      toast.error("Profiel of volgmogelijkheid niet beschikbaar");
+      toast.error("Profiel of connectiemogelijkheid niet beschikbaar");
     }
   };
 
@@ -212,7 +212,7 @@ const Profile = () => {
               {followMutation.isPending
                 ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                 : <UserPlus className="h-4 w-4" aria-hidden="true" />}
-              Volgverzoek versturen
+              Profieltoegang vragen
             </Button>
           ) : validProfileKey && !user ? (
             <Button asChild className="w-full">
@@ -249,7 +249,7 @@ const Profile = () => {
           <div className="space-y-2">
             <h1 id="blocked-profile-title" className="text-xl font-serif font-semibold">Bouwer geblokkeerd</h1>
             <p className="text-sm leading-6 text-muted-foreground">
-              Profielgegevens en verbouwingen zijn verborgen. Deblokkeren herstelt geen oude volgrelatie.
+              Profielgegevens en verbouwingen zijn verborgen. Deblokkeren herstelt geen oude profielconnectie.
             </p>
           </div>
           <AlertDialog>
@@ -265,7 +265,7 @@ const Profile = () => {
               <AlertDialogHeader>
                 <AlertDialogTitle>Deze bouwer deblokkeren?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Jullie kunnen elkaars openbare profiel en verbouwingen daarna weer zien. Volgrelaties worden niet automatisch hersteld.
+                  Jullie kunnen elkaars openbare profiel en verbouwingen daarna weer zien. Profielconnecties worden niet automatisch hersteld.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -315,11 +315,11 @@ const Profile = () => {
             <dl className="flex flex-wrap gap-x-8 gap-y-3 mt-6">
               <div>
                 <dd className="font-serif italic text-2xl leading-none tabular-nums">{profile.followerCount}</dd>
-                <dt className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-1">Volgers</dt>
+                <dt className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-1">Verbonden met dit profiel</dt>
               </div>
               <div>
                 <dd className="font-serif italic text-2xl leading-none tabular-nums">{profile.followingCount}</dd>
-                <dt className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-1">Volgend</dt>
+                <dt className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-1">Verbonden profielen</dt>
               </div>
             </dl>
 
@@ -348,12 +348,12 @@ const Profile = () => {
                   ) : (
                     <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
                   )}
-                  {isFollowing ? "Volgend" : isPending ? "Verzoek intrekken" : "Volgen"}
+                  {isFollowing ? "Verbinding verwijderen" : isPending ? "Verzoek intrekken" : "Profiel verbinden"}
                 </Button>
               ) : (
                 <Button asChild size="sm" className="rounded-full px-5 gap-1.5">
                   <Link to={authPagePath(PRODUCT_ROUTES.profile(profile.slug))}>
-                    <UserPlus className="h-3.5 w-3.5" aria-hidden="true" /> Log in om te volgen
+                    <UserPlus className="h-3.5 w-3.5" aria-hidden="true" /> Log in om te verbinden
                   </Link>
                 </Button>
               )}
@@ -387,7 +387,7 @@ const Profile = () => {
                         Deze bouwer blokkeren?
                       </AlertDialogTitle>
                       <AlertDialogDescription>
-                        Jullie zien elkaars profiel en verbouwingen niet meer. Bestaande volgrelaties worden ingetrokken.
+                        Jullie zien elkaars profiel en verbouwingen niet meer. Bestaande profielconnecties worden ingetrokken.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -411,7 +411,7 @@ const Profile = () => {
         <section className="rounded-2xl border border-border/70 bg-card px-6 py-8 shadow-sm" aria-labelledby="profile-content-title">
           <h2 id="profile-content-title" className="font-serif italic text-2xl">Over deze bouwer</h2>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            Projecten, updates en uitgebreide statistieken worden alleen getoond via hun eigen afgeschermde API’s. Op dit profiel staan daarom uitsluitend de veilig vrijgegeven profielgegevens.
+            Volg een specifieke verbouwing op de verhaalpagina. Nieuwe Bouwmomenten van die verbouwing verschijnen in Volgend.
           </p>
           <Link to={PRODUCT_ROUTES.landing} className="inline-block mt-5 text-sm underline underline-offset-4">Terug naar Buildy</Link>
         </section>

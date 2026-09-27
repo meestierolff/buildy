@@ -6,6 +6,7 @@ import {
   BookHeart,
   BookOpen,
   Check,
+  Download,
   EyeOff,
   Loader2,
   RefreshCcw,
@@ -39,11 +40,18 @@ import { usePageMeta } from "@/hooks/usePageMeta";
 import {
   usePhotobookDraft,
   useReplacePhotobookExclusions,
+  useRequestPhotobookProof,
   useUpdatePhotobookSettings,
 } from "@/hooks/usePhotobook";
 import { ApiClientError } from "@/lib/apiClient";
 import { recordProductEvent } from "@/lib/betaApi";
-import { photobookMediaProxyPath } from "@/lib/photobookApi";
+import {
+  createPhotobookIdempotencyKey,
+  loadPhotobookProofView,
+  photobookMediaProxyPath,
+  type RequestPhotobookProofInput,
+} from "@/lib/photobookApi";
+import { hasExactPhotobookProof } from "@/lib/photobookPreview";
 import { Link, useNavigate, useParams } from "@/lib/router";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -56,21 +64,6 @@ type MomentSummary = {
   updateId: string;
 };
 
-const DUTCH_MONTHS: Record<string, number> = {
-  januari: 0,
-  februari: 1,
-  maart: 2,
-  april: 3,
-  mei: 4,
-  juni: 5,
-  juli: 6,
-  augustus: 7,
-  september: 8,
-  oktober: 9,
-  november: 10,
-  december: 11,
-};
-
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof ApiClientError ? error.message : fallback;
 }
@@ -81,158 +74,32 @@ function pageText(page: PhotobookPage, marker: string): string {
   return block?.type === "text" ? block.lines.join(" ").trim() : "";
 }
 
-function localizedDateValue(value: string): number {
-  const match = /^(\d{1,2})\s+([a-z]+)\s+(\d{4})/i.exec(value.trim());
-  if (!match) return Number.MAX_SAFE_INTEGER;
-  const month = DUTCH_MONTHS[match[2]!.toLowerCase()];
-  if (month === undefined) return Number.MAX_SAFE_INTEGER;
-  return Date.UTC(Number(match[3]), month, Number(match[1]));
-}
-
-function editorialPage(input: {
-  body: string[];
-  eyebrow: string;
-  id: string;
-  number: number;
-  title: string[];
-  tone: "opening" | "closing";
-}): PhotobookPage {
-  const opening = input.tone === "opening";
-  return {
-    id: input.id,
-    number: input.number,
-    kind: "chapter",
-    chapterId: null,
-    updateId: null,
-    background: opening ? "#F5F1E8" : "#26372F",
-    overlay: null,
-    blocks: [
-      {
-        id: `${input.id}:eyebrow`,
-        type: "text",
-        frame: { xMm: 34, yMm: 55, widthMm: 229, heightMm: 12 },
-        font: "inter",
-        weight: "semibold",
-        style: "normal",
-        fontSizePt: 9,
-        lineHeightPt: 11,
-        align: "center",
-        color: opening ? "#A94E36" : "#E5B29F",
-        text: input.eyebrow,
-        lines: [input.eyebrow],
-      },
-      {
-        id: `${input.id}:title`,
-        type: "text",
-        frame: { xMm: 32, yMm: 78, widthMm: 233, heightMm: 54 },
-        font: "instrument-serif",
-        weight: "regular",
-        style: "normal",
-        fontSizePt: 36,
-        lineHeightPt: 39,
-        align: "center",
-        color: opening ? "#26231F" : "#FFFDF8",
-        text: input.title.join("\n"),
-        lines: input.title,
-      },
-      {
-        id: `${input.id}:body`,
-        type: "text",
-        frame: { xMm: 51, yMm: 148, widthMm: 195, heightMm: 34 },
-        font: "inter",
-        weight: "regular",
-        style: "normal",
-        fontSizePt: 10,
-        lineHeightPt: 15,
-        align: "center",
-        color: opening ? "#655F57" : "#E9E3D9",
-        text: input.body.join("\n"),
-        lines: input.body,
-      },
-    ],
-  };
-}
-
 export function deriveDigitalBook(document: PhotobookDocument): {
   document: PhotobookDocument;
   moments: MomentSummary[];
 } {
-  const updatePages = document.pages.filter((page) => Boolean(page.updateId));
-  const pagesByUpdate = new Map<string, PhotobookPage[]>();
-  for (const page of updatePages) {
-    if (!page.updateId) continue;
-    const existing = pagesByUpdate.get(page.updateId) ?? [];
-    existing.push(page);
-    pagesByUpdate.set(page.updateId, existing);
-  }
+  const pagesByUpdate = new Map<string, { firstPageIndex: number; pages: PhotobookPage[] }>();
+  document.pages.forEach((page, index) => {
+    if (!page.updateId) return;
+    const existing = pagesByUpdate.get(page.updateId);
+    if (existing) existing.pages.push(page);
+    else pagesByUpdate.set(page.updateId, { firstPageIndex: index, pages: [page] });
+  });
 
-  const grouped = [...pagesByUpdate.entries()].map(([updateId, pages], originalIndex) => {
+  const moments = [...pagesByUpdate.entries()].map(([updateId, { firstPageIndex, pages }]) => {
     const textPage = pages.find((page) => page.kind === "update_text") ?? pages[0]!;
-    const date = pageText(textPage, ":date:");
-    const title = pageText(textPage, ":title") || "Bouwmoment";
     const assetIds = pages.flatMap((page) =>
       page.blocks.flatMap((block) => block.type === "photo" ? [block.assetId] : []));
     return {
       assetIds: [...new Set(assetIds)],
-      date,
-      originalIndex,
-      pages,
-      sortDate: localizedDateValue(date),
-      title,
+      date: pageText(textPage, ":date:"),
+      firstPageIndex,
+      title: pageText(textPage, ":title") || "Bouwmoment",
       updateId,
     };
-  }).sort((left, right) =>
-    left.sortDate - right.sortDate || left.originalIndex - right.originalIndex);
-
-  if (grouped.length === 0) {
-    return { document: { ...document, pages: [], pageCount: 0 }, moments: [] };
-  }
-
-  const sourcePages = [
-    document.pages.find((page) => page.kind === "cover") ?? document.pages[0]!,
-    editorialPage({
-      body: [
-        "Een huis verandert stap voor stap.",
-        "Hier krijgen de momenten ertussen een vaste plek.",
-      ],
-      eyebrow: "ONS VERBOUWINGSVERHAAL",
-      id: "digital:opening",
-      number: 2,
-      title: ["Van eerste idee", "tot thuis"],
-      tone: "opening",
-    }),
-    ...grouped.flatMap((group) => group.pages),
-    editorialPage({
-      body: [
-        "Dit verhaal is nog niet af.",
-        "Ieder nieuw Bouwmoment krijgt vanzelf een plek.",
-      ],
-      eyebrow: "WORDT VERVOLGD",
-      id: "digital:closing",
-      number: 1,
-      title: ["Verder bouwen,", "verder bewaren"],
-      tone: "closing",
-    }),
-  ];
-  const pages = sourcePages.map((page, index) => ({ ...page, number: index + 1 }));
-  const firstPageByUpdate = new Map<string, number>();
-  pages.forEach((page, index) => {
-    if (page.updateId && !firstPageByUpdate.has(page.updateId)) {
-      firstPageByUpdate.set(page.updateId, index);
-    }
   });
-  const moments = grouped.map((group) => ({
-    assetIds: group.assetIds,
-    date: group.date,
-    firstPageIndex: firstPageByUpdate.get(group.updateId) ?? 0,
-    title: group.title,
-    updateId: group.updateId,
-  }));
 
-  return {
-    document: { ...document, pages, pageCount: pages.length },
-    moments,
-  };
+  return { document, moments };
 }
 
 function exclusionLabel(exclusion: PhotobookExclusion, index: number): string {
@@ -249,10 +116,16 @@ const Photobook = () => {
   const draftQuery = usePhotobookDraft(id, Boolean(user) && validProjectId);
   const settingsMutation = useUpdatePhotobookSettings(id);
   const exclusionsMutation = useReplacePhotobookExclusions(id);
+  const proofMutation = useRequestPhotobookProof(id);
   const [settingsDraft, setSettingsDraft] = useState<PhotobookSettings | null>(null);
   const [activePage, setActivePage] = useState(0);
   const [coverAssetLimit, setCoverAssetLimit] = useState(12);
   const [interestOpen, setInterestOpen] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const pdfController = useRef<AbortController | null>(null);
+  const pdfRequest = useRef<RequestPhotobookProofInput | null>(null);
+  const pdfObjectUrls = useRef(new Set<string>());
   const openedEventSent = useRef(false);
   const appliedSettingsVersion = useRef<number | null>(null);
 
@@ -265,9 +138,20 @@ const Photobook = () => {
   );
   const document = digitalBook?.document;
   const moments = digitalBook?.moments ?? [];
+  const bookWarnings = useMemo(() => [...new Map(
+    (sourceDocument?.warnings ?? []).map((warning) => [
+      `${warning.severity}:${warning.pageNumber}:${warning.message}`,
+      warning,
+    ]),
+  ).values()], [sourceDocument?.warnings]);
+  const pdfBlocked = bookWarnings.some((warning) => warning.severity === "blocking");
   const settingsDirty = Boolean(
     settingsDraft && serverSettings && JSON.stringify(settingsDraft) !== JSON.stringify(serverSettings),
   );
+  const pdfRendering = draft?.proof?.status === "rendering"
+    && draft.proof.documentSha256 === sourceDocument?.checksumSha256;
+  const pdfFailed = draft?.proof?.status === "failed"
+    && draft.proof.documentSha256 === sourceDocument?.checksumSha256;
 
   usePageMeta({
     title: sourceDocument ? `${sourceDocument.cover.title} — Bouwboek` : "Bouwboek — Buildy",
@@ -304,6 +188,88 @@ const Photobook = () => {
     }
     setActivePage((current) => Math.min(current, document.pageCount - 1));
   }, [document?.pageCount, sourceDocument?.checksumSha256]);
+
+  useEffect(() => {
+    setPdfError(null);
+    setPdfLoading(false);
+    pdfRequest.current = null;
+    const objectUrls = pdfObjectUrls.current;
+    return () => {
+      pdfController.current?.abort();
+      pdfController.current = null;
+      objectUrls.forEach((url) => URL.revokeObjectURL(url));
+      objectUrls.clear();
+    };
+  }, [id, sourceDocument?.checksumSha256, user?.id]);
+
+  const downloadPdf = async () => {
+    if (!draft || settingsDirty || pdfBlocked || pdfController.current || proofMutation.isPending || pdfRendering) return;
+    const controller = new AbortController();
+    pdfController.current = controller;
+    setPdfLoading(true);
+    setPdfError(null);
+    try {
+      let currentDraft = draft;
+      if (!hasExactPhotobookProof(currentDraft.proof, currentDraft.document)) {
+        if (!pdfRequest.current || pdfFailed) {
+          pdfRequest.current = {
+            idempotencyKey: createPhotobookIdempotencyKey(),
+            expectedDraftVersion: draft.version,
+            expectedDocumentSha256: draft.document.checksumSha256,
+          };
+        }
+        const requested = await proofMutation.mutateAsync(pdfRequest.current);
+        if (controller.signal.aborted) return;
+        if (requested.status === "failed") {
+          pdfRequest.current = null;
+          throw new Error("PDF generation failed");
+        }
+        const refreshed = await draftQuery.refetch();
+        if (controller.signal.aborted) return;
+        if (!refreshed.data || refreshed.data.document.checksumSha256 !== draft.document.checksumSha256) {
+          throw new ApiClientError({ status: 409, code: "CONFLICT", message: "Het Bouwboek is gewijzigd." });
+        }
+        currentDraft = refreshed.data;
+        if (currentDraft.proof?.status === "rendering"
+          && currentDraft.proof.documentSha256 === currentDraft.document.checksumSha256) return;
+      }
+      const proof = currentDraft.proof;
+      if (!proof?.pdfSha256 || !hasExactPhotobookProof(proof, currentDraft.document)) {
+        throw new Error("PDF unavailable");
+      }
+      const loaded = await loadPhotobookProofView({
+        revisionId: proof.revisionId,
+        documentSha256: currentDraft.document.checksumSha256,
+        pdfSha256: proof.pdfSha256,
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
+      const url = URL.createObjectURL(loaded.blob);
+      pdfObjectUrls.current.add(url);
+      const link = window.document.createElement("a");
+      link.href = url;
+      link.download = "Bouwboek.pdf";
+      window.document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => {
+        if (pdfObjectUrls.current.delete(url)) URL.revokeObjectURL(url);
+      }, 1_000);
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setPdfError(error instanceof ApiClientError && error.code === "CONFLICT"
+          ? "Je Bouwboek is intussen gewijzigd. Vernieuw de pagina en probeer opnieuw."
+          : error instanceof ApiClientError && ["PROVIDER_UNAVAILABLE", "VALIDATION_FAILED"].includes(error.code)
+            ? error.message
+          : "Je PDF kon niet worden gemaakt of gedownload. Probeer het opnieuw.");
+      }
+    } finally {
+      if (pdfController.current === controller) {
+        pdfController.current = null;
+        setPdfLoading(false);
+      }
+    }
+  };
 
   const updateSettingsDraft = useCallback((change: (settings: PhotobookSettings) => PhotobookSettings) => {
     setSettingsDraft((current) => current ? change(current) : current);
@@ -479,10 +445,59 @@ const Photobook = () => {
                 <p className="eyebrow">Blader door je verhaal</p>
                 <h2 className="mt-1 font-serif text-3xl">{sourceDocument.cover.title}</h2>
               </div>
-              <Badge className="border-[#D8CFC1] bg-transparent text-[#655F57] dark:border-border dark:text-muted-foreground" variant="outline">
-                {moments.length} {moments.length === 1 ? "Bouwmoment" : "Bouwmomenten"}
-              </Badge>
+              <div className="flex flex-wrap items-center gap-3">
+                <Badge className="border-[#D8CFC1] bg-transparent text-[#655F57] dark:border-border dark:text-muted-foreground" variant="outline">
+                  {moments.length} {moments.length === 1 ? "Bouwmoment" : "Bouwmomenten"}
+                </Badge>
+                <Button
+                  disabled={settingsDirty || pdfBlocked || settingsMutation.isPending || exclusionsMutation.isPending || pdfLoading || proofMutation.isPending || pdfRendering}
+                  onClick={() => void downloadPdf()}
+                  type="button"
+                  variant="outline"
+                >
+                  {pdfLoading || proofMutation.isPending || pdfRendering
+                    ? <Loader2 className="animate-spin" aria-hidden="true" />
+                    : <Download aria-hidden="true" />}
+                  {pdfLoading || proofMutation.isPending || pdfRendering ? "PDF wordt gemaakt…" : "Download PDF"}
+                </Button>
+              </div>
             </div>
+
+            {bookWarnings.length > 0 ? (
+              <section
+                aria-labelledby="book-warnings-title"
+                className="mb-4 rounded-lg border border-[#D8CFC1] bg-[#FFFDF8] p-4 dark:border-border dark:bg-card"
+              >
+                <h3 className="text-sm font-semibold" id="book-warnings-title">Let op in je Bouwboek</h3>
+                {pdfBlocked ? (
+                  <p className="mt-1 text-sm">Pas de gemarkeerde punten aan om je PDF te downloaden.</p>
+                ) : null}
+                <ul className="mt-2 space-y-2 text-sm">
+                  {bookWarnings.map((warning) => (
+                    <li
+                      className={warning.severity === "blocking" ? "text-destructive" : "text-[#655F57] dark:text-muted-foreground"}
+                      key={`${warning.severity}:${warning.pageNumber}:${warning.message}`}
+                    >
+                      {warning.severity === "blocking" ? <strong>Pas aan: </strong> : null}
+                      {warning.pageNumber !== null ? `Pagina ${warning.pageNumber}: ` : ""}
+                      {warning.message}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            {pdfError || pdfFailed ? (
+              <p className="mb-4 text-sm text-destructive" role="alert">
+                {pdfError ?? "Je PDF kon niet worden gemaakt. Probeer het opnieuw."}
+              </p>
+            ) : settingsDirty ? (
+              <p className="mb-4 text-sm text-[#655F57] dark:text-muted-foreground">Sla je wijzigingen op om deze versie te downloaden.</p>
+            ) : pdfRendering ? (
+              <p className="mb-4 text-sm text-[#655F57] dark:text-muted-foreground" role="status">
+                Je PDF wordt gemaakt. Je kunt hem hier downloaden zodra hij klaar is.
+              </p>
+            ) : null}
 
             <PhotobookViewer
               activePage={activePage}

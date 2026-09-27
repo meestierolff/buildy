@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   BookOpen,
+  Check,
   Hammer,
   Loader2,
   Plus,
@@ -21,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { useAuth } from "@/hooks/useAuth";
-import { useProject, useUpdateProjectMutation } from "@/hooks/useProjectApi";
+import { useProject, useProjectFollowMutation, useUpdateProjectMutation } from "@/hooks/useProjectApi";
 import { ApiClientError } from "@/lib/apiClient";
 import { useAppFeatures } from "@/lib/appFeatures";
 import { LANDING_PHOTO_INTENT } from "@/lib/landingPhotoHandoffStore";
@@ -35,7 +36,7 @@ const PROJECT_VISIBILITY_OPTIONS: ReadonlyArray<{
   label: string;
 }> = [
   { value: "private", label: "Alleen ik" },
-  { value: "followers", label: "Mijn volgers" },
+  { value: "followers", label: "Mijn profielconnecties" },
   { value: "unlisted", label: "Alleen via deellink" },
   { value: "public", label: "Openbaar" },
 ];
@@ -45,7 +46,7 @@ function visibilityShareText(visibility: ProjectVisibility): string {
     case "private":
       return "Deze verbouwing is alleen voor de eigenaar zichtbaar.";
     case "followers":
-      return "Bekijk deze verbouwing op Buildy. Je moet het profiel van de maker actief volgen.";
+      return "Bekijk deze verbouwing op Buildy. Hiervoor heb je een actieve profielconnectie met de maker nodig.";
     case "unlisted":
       return "Bekijk deze verbouwing via een tijdelijke Buildy-deellink.";
     case "public":
@@ -67,6 +68,7 @@ const TripDetail = () => {
   const { hash, search } = useLocation();
   const { overviewQuery, timelineQuery } = useProject(projectId, Boolean(projectId));
   const updateProject = useUpdateProjectMutation(projectId);
+  const followProject = useProjectFollowMutation(projectId);
   const [showAddUpdate, setShowAddUpdate] = useState(false);
   const [importLandingPhoto, setImportLandingPhoto] = useState(false);
   const [editingUpdate, setEditingUpdate] = useState<ProjectUpdate | null>(null);
@@ -76,6 +78,20 @@ const TripDetail = () => {
   ));
 
   const project = overviewQuery.data;
+  const isFollowing = project?.viewerFollowStatus === "following";
+
+  const handleFollow = async () => {
+    if (!user) {
+      navigate(`/auth?next=${encodeURIComponent(PRODUCT_ROUTES.project(projectId))}`);
+      return;
+    }
+    try {
+      const result = await followProject.mutateAsync(!isFollowing);
+      toast.success(result.state === "following" ? "Je volgt deze verbouwing" : "Je volgt deze verbouwing niet meer");
+    } catch (error) {
+      toast.error(error instanceof ApiClientError ? error.message : "Volgen aanpassen lukt nu niet. Probeer opnieuw.");
+    }
+  };
   const updates = useMemo(() => {
     const byId = new Map(
       (timelineQuery.data?.pages ?? [])
@@ -347,7 +363,7 @@ const TripDetail = () => {
                 <PrivacyBadge
                   level={privacyLevel}
                   label={project.visibility === "followers"
-                    ? "Mijn volgers"
+                    ? "Profielconnecties"
                     : project.visibility === "unlisted"
                       ? "Deellink"
                       : undefined}
@@ -378,6 +394,21 @@ const TripDetail = () => {
             </div>
 
             <div className="flex flex-wrap content-start gap-2 lg:max-w-md lg:justify-end">
+              {!isOwner ? (
+                <Button
+                  aria-pressed={isFollowing}
+                  className="min-h-11 gap-2"
+                  disabled={followProject.isPending}
+                  onClick={() => void handleFollow()}
+                  type="button"
+                  variant={isFollowing ? "outline" : "default"}
+                >
+                  {followProject.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    : isFollowing ? <Check className="h-4 w-4" aria-hidden="true" />
+                      : <Plus className="h-4 w-4" aria-hidden="true" />}
+                  {isFollowing ? "Niet meer volgen" : "Volg deze verbouwing"}
+                </Button>
+              ) : null}
               {canEditProject ? (
                 <Button
                   type="button"

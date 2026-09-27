@@ -410,8 +410,7 @@ registerRoute("GET", "/api/readiness", async (_request, requestId) => {
   }
 
   if (
-    (config.CHECKOUT_MODE === "test" || config.CHECKOUT_MODE === "live")
-    && capabilities.photobooks === "ready"
+    capabilities.photobooks === "ready"
     && config.DATABASE_PHOTOBOOK_WORKER_URL
   ) {
     try {
@@ -480,6 +479,8 @@ registerPatternRoute("POST", "/api/projects/:projectId/share-link", handleDefaul
 registerPatternRoute("DELETE", "/api/projects/:projectId/share-link", handleDefaultProjectShareRequest);
 registerPatternRoute("POST", "/api/projects/:projectId/share-link/rotate", handleDefaultProjectShareRequest);
 registerPatternRoute("GET", "/api/projects/:projectId", handleDefaultProjectRequest);
+registerPatternRoute("PUT", "/api/projects/:projectId/follow", handleDefaultProjectRequest);
+registerPatternRoute("DELETE", "/api/projects/:projectId/follow", handleDefaultProjectRequest);
 registerPatternRoute("PATCH", "/api/projects/:projectId", handleDefaultProjectRequest);
 registerPatternRoute("DELETE", "/api/projects/:projectId", handleDefaultProjectRequest);
 registerPatternRoute("GET", "/api/projects/:projectId/updates", handleDefaultProjectRequest);

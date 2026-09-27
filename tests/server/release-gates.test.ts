@@ -6,10 +6,8 @@ import {
   parseLaunchCliArguments,
   releaseContractFor,
   requireExpectedGitSha,
-  requireSyntheticStagingEmail,
   targetReadinessFailures,
   verifyDeployedGitSha,
-  verifySyntheticSessionEmail,
   verifyTargetCapabilities,
   verifyTargetProductProfile,
 } from "../../scripts/release-gates.mjs";
@@ -185,14 +183,5 @@ describe("deployment release identity gates", () => {
       "paymentWorker=missing",
       "photobookWorker=missing",
     ]);
-  });
-
-  it("accepts only a dedicated non-personal staging account and binds the live session to it", () => {
-    const email = requireSyntheticStagingEmail("buildy-staging-e2e@example.com");
-    expect(email).toBe("buildy-staging-e2e@example.com");
-    expect(() => requireSyntheticStagingEmail("persoon@example.com")).toThrow("niet-persoonlijk");
-    expect(() => requireSyntheticStagingEmail(" buildy-staging-e2e@example.com")).toThrow("niet-persoonlijk");
-    expect(() => verifySyntheticSessionEmail("BUILDY-STAGING-E2E@example.com", email)).not.toThrow();
-    expect(() => verifySyntheticSessionEmail("persoon@example.com", email)).toThrow("synthetische account");
   });
 });

@@ -109,8 +109,9 @@ describeWithDatabase("product notifications PostgreSQL boundary", () => {
           ($1, $4, 'follow', 'active', now()),
           ($2, $4, 'follow', 'active', now()),
           ($3, $4, 'follow', 'active', now()),
+          ($5, $4, 'follow', 'active', now()),
           ($2, $4, 'block', 'active', now())
-      `, [followerId, blockedFollowerId, suspendedFollowerId, ownerId]);
+      `, [followerId, blockedFollowerId, suspendedFollowerId, ownerId, moderatorId]);
       await client.query(`
         INSERT INTO projects (
           id, owner_id, slug, title, visibility, lifecycle_status, published_at
@@ -129,6 +130,15 @@ describeWithDatabase("product notifications PostgreSQL boundary", () => {
         `product-followers-${followersProjectId.replaceAll("-", "")}`,
         `product-private-${privateProjectId.replaceAll("-", "")}`,
         `product-unlisted-${unlistedProjectId.replaceAll("-", "")}`,
+      ]);
+      // Profile following alone (the moderator above) is not a subscription.
+      await client.query(`
+        INSERT INTO project_followers (project_id, project_owner_id, follower_id, status)
+        SELECT project_id, $1, follower_id, 'active'
+        FROM unnest($2::uuid[]) project_id CROSS JOIN unnest($3::uuid[]) follower_id
+      `, [ownerId,
+        [publicProjectId, followersProjectId, privateProjectId, unlistedProjectId],
+        [followerId, blockedFollowerId, suspendedFollowerId],
       ]);
       await hideModerationTarget(client, moderatorId, "update", hiddenUpdateId);
       await client.query(`

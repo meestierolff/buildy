@@ -163,7 +163,7 @@ describe("API router", () => {
   });
 
   it.each(["off", "test", "live"] as const)(
-    "checks a failing configured proof worker only when checkout is active (%s)",
+    "checks a failing configured PDF worker independently of checkout (%s)",
     async (checkoutMode) => {
       const proofDatabaseUrl = "postgresql://proof:synthetic@127.0.0.1:5432/buildy_test";
       const environment = {
@@ -194,23 +194,20 @@ describe("API router", () => {
 
       const response = await handleApiRequest(new Request("https://test.buildy.example/api/readiness"));
       const body = readinessResponseSchema.parse(await response.json());
-      const proofActive = checkoutMode !== "off";
-
-      expect.soft(response.status).toBe(proofActive ? 503 : 200);
+      expect.soft(response.status).toBe(503);
       expect.soft(body.data).toEqual({
-        ready: !proofActive,
+        ready: false,
         checks: {
           configuration: "pass",
           database: "pass",
           accountWorker: "pass",
           mediaWorker: "pass",
           paymentWorker: "not_checked",
-          photobookWorker: proofActive ? "fail" : "not_checked",
+          photobookWorker: "fail",
         },
       });
-      expect.soft(photobookDatabaseExecute).toHaveBeenCalledTimes(proofActive ? 1 : 0);
-      if (proofActive) expect(workerDatabase).toHaveBeenCalledWith(proofDatabaseUrl, "photobook");
-      else expect(workerDatabase).not.toHaveBeenCalledWith(proofDatabaseUrl, "photobook");
+      expect.soft(photobookDatabaseExecute).toHaveBeenCalledOnce();
+      expect(workerDatabase).toHaveBeenCalledWith(proofDatabaseUrl, "photobook");
     },
   );
 

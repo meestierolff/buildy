@@ -1,5 +1,4 @@
 const FULL_GIT_SHA = /^[a-f0-9]{40}$/i;
-const SYNTHETIC_STAGING_EMAIL = /^buildy-staging-e2e(?:-[a-z0-9]{1,32})?@[a-z0-9](?:[a-z0-9.-]{0,61}[a-z0-9])?\.[a-z]{2,63}$/i;
 
 const LAUNCH_FLAG_OPTIONS = new Set(["--static", "--preview", "--staging", "--production"]);
 const LAUNCH_VALUE_OPTIONS = new Set(["--environment", "--base-url", "--expected-sha"]);
@@ -168,17 +167,4 @@ export function targetReadinessFailures(checks) {
     }
   }
   return failures;
-}
-
-export function requireSyntheticStagingEmail(value) {
-  const email = value?.trim().toLowerCase();
-  if (!email || value !== value.trim() || !SYNTHETIC_STAGING_EMAIL.test(email)) {
-    throw new Error("staging vereist een niet-persoonlijk buildy-staging-e2e account");
-  }
-  return email;
-}
-
-export function verifySyntheticSessionEmail(actualValue, expectedEmail) {
-  const actual = typeof actualValue === "string" ? actualValue.trim().toLowerCase() : "";
-  if (actual !== expectedEmail) throw new Error("de staging-sessie hoort niet bij het vastgezette synthetische account");
 }

@@ -1,9 +1,9 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectOverview, ProjectUpdate } from "../../shared/contracts/projects";
 import { useAuth } from "@/hooks/useAuth";
-import { useProject } from "@/hooks/useProjectApi";
+import { useProject, useProjectFollowMutation } from "@/hooks/useProjectApi";
 import { ApiClientError } from "@/lib/apiClient";
 import TripDetail from "@/pages/TripDetail";
 
@@ -26,6 +26,7 @@ vi.mock("@/lib/appFeatures", () => ({
 
 vi.mock("@/hooks/useProjectApi", () => ({
   useProject: vi.fn(),
+  useProjectFollowMutation: vi.fn(),
   useDeleteProjectMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useUpdateProjectMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
 }));
@@ -113,6 +114,7 @@ const project: ProjectOverview = {
   contentRevision: 2,
   followerCount: 3,
   viewerAccess: "owner",
+  viewerFollowStatus: "self",
   canEdit: true,
   phases: [],
 };
@@ -178,6 +180,9 @@ function mockReadflow(input: {
 describe("TripDetail typed project-readflow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(useProjectFollowMutation).mockReturnValue({
+      isPending: false, mutateAsync: vi.fn(),
+    } as unknown as ReturnType<typeof useProjectFollowMutation>);
     vi.mocked(useAuth).mockReturnValue({
       user: { id: "provider-owner" },
     } as unknown as ReturnType<typeof useAuth>);
@@ -187,6 +192,28 @@ describe("TripDetail typed project-readflow", () => {
   });
 
   afterEach(cleanup);
+
+  it("volgt en ontvolgt uitsluitend de geopende verbouwing voor een ingelogde kijker", async () => {
+    const mutateAsync = vi.fn().mockResolvedValue({ state: "following", replayed: false });
+    vi.mocked(useProjectFollowMutation).mockReturnValue({
+      isPending: false, mutateAsync,
+    } as unknown as ReturnType<typeof useProjectFollowMutation>);
+    const viewerProject = { ...project, visibility: "unlisted" as const, viewerAccess: "link" as const,
+      canEdit: false, viewerFollowStatus: "none" as const };
+    mockReadflow({ overview: viewerProject });
+    const { rerender } = render(<TripDetail />);
+    fireEvent.click(screen.getByRole("button", { name: "Volg deze verbouwing" }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith(true));
+    expect(useProjectFollowMutation).toHaveBeenCalledWith(PROJECT_ID);
+    expect(screen.queryByRole("button", { name: "Bouwmoment toevoegen" })).not.toBeInTheDocument();
+
+    mockReadflow({ overview: { ...viewerProject, viewerFollowStatus: "following" } });
+    mutateAsync.mockResolvedValue({ state: "none", replayed: false });
+    rerender(<TripDetail />);
+    expect(screen.getByRole("button", { name: "Niet meer volgen" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Niet meer volgen" }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenLastCalledWith(false));
+  });
 
   it("leidt ownerrechten uit het readmodel af en gebruikt alleen proxy-media", () => {
     render(<TripDetail />);
@@ -202,6 +229,7 @@ describe("TripDetail typed project-readflow", () => {
     expect(screen.queryByRole("button", { name: /update bewerken|update verwijderen/i })).not.toBeInTheDocument();
     expect(screen.getByTestId("progress-control")).toHaveTextContent("versie 7");
     expect(screen.getByRole("button", { name: "Deel je verbouwing" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Volg deze verbouwing" })).not.toBeInTheDocument();
   });
 
   it("opent alleen voor de eigenaar de shareflow en laat een ingelogde shareviewer engageren", () => {

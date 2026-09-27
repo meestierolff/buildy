@@ -105,7 +105,7 @@ describe("PhotobookProofWorker", () => {
       pdfSizeBytes: writes[0]!.bytes.byteLength,
       pageCount: 24,
       renderEngine: "pdfkit",
-      renderVersion: "pdfkit-0.19.1-buildy-1",
+      renderVersion: "pdfkit-0.19.1-buildy-2",
     });
     expect(repository.finalized?.pdfSha256).toBe(
       createHash("sha256").update(writes[0]!.bytes).digest("hex"),

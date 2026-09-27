@@ -7,13 +7,14 @@ import type {
   EditUpdateInput,
   FollowingActivity,
   ProjectCard,
+  ProjectFollowMutationResult,
   ProjectOverview,
   ProjectUpdate,
   ProjectDeletionStatus,
   UpdateProjectInput,
 } from "../../shared/contracts/projects.js";
 import type { DashboardCursor, DiscoveryCursor, TimelineCursor } from "./cursor.js";
-import type { ProjectActor } from "./actor.js";
+import type { AuthenticatedProjectActor, ProjectActor } from "./actor.js";
 
 export const STANDARD_PROJECT_PHASES = [
   "Voorbereiding",
@@ -117,8 +118,9 @@ export interface ProjectRepository {
   updateProject(command: UpdateProjectCommand): Promise<void>;
   listDashboard(actorId: string, cursor: DashboardCursor | undefined, limit: number): Promise<ProjectCard[]>;
   listDiscovery(viewer: ProjectActor, cursor: DiscoveryCursor | undefined, limit: number): Promise<ProjectCard[]>;
-  listFollowingProjects(actorId: string, limit: number): Promise<ProjectCard[]>;
-  listFollowingActivity(actorId: string, limit: number): Promise<FollowingActivity[]>;
+  listFollowingProjects(actor: AuthenticatedProjectActor, limit: number): Promise<ProjectCard[]>;
+  listFollowingActivity(actor: AuthenticatedProjectActor, limit: number): Promise<FollowingActivity[]>;
+  setProjectFollow(actor: AuthenticatedProjectActor, projectId: string, following: boolean): Promise<ProjectFollowMutationResult>;
   getOverview(viewer: ProjectActor, projectId: string): Promise<ProjectOverview | null>;
   listTimeline(
     viewer: ProjectActor,

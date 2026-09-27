@@ -197,7 +197,9 @@ describeWithDatabase("username/password PostgreSQL boundary", () => {
     await projects.updateProject(ownerId, project.id, {
       expectedVersion: overview.version, visibility: "followers",
     });
-    const following = await projects.following(followerId, {});
+    const follower = { kind: "authenticated" as const, appUserId: followerId };
+    await projects.setProjectFollow(follower, project.id, true);
+    const following = await projects.following(follower, {});
     expect(following.activity.map((item) => item.update.id)).toEqual([mutation.update.id]);
 
     // PostgreSQL JSONB serializes timestamptz with an offset (and can include

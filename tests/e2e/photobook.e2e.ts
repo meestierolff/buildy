@@ -183,7 +183,7 @@ async function installDigitalBookFixture(
 }
 
 test.describe("Gratis digitaal Bouwboek", () => {
-  test("bladert deterministisch van cover via voorwoord en Bouwmomenten naar het slot", async ({ page }) => {
+  test("bladert door de canonieke cover, Bouwmomenten en opvulpagina's", async ({ page }) => {
     const fixture = await installDigitalBookFixture(page);
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto(`${BASE}/project/${SYNTHETIC_IDS.project}/bouwboek`);
@@ -195,22 +195,21 @@ test.describe("Gratis digitaal Bouwboek", () => {
     await expect(page.getByRole("heading", { level: 2, name: "Synthetisch Bouwboek" })).toBeVisible();
 
     const viewer = page.getByRole("region", { name: "Bouwboekweergave" });
-    await expect(viewer.getByText("Cover · 1 van 6", { exact: true })).toBeVisible();
+    await expect(viewer.getByText("Cover · 1 van 24", { exact: true })).toBeVisible();
     await expect(viewer.getByLabel("Bouwboekpagina 1").getByText("Synthetisch Bouwboek", { exact: true })).toBeVisible();
 
     await viewer.getByRole("button", { name: "Volgende pagina" }).click();
-    await expect(viewer.getByText("2–3 van 6", { exact: true })).toBeVisible();
-    await expect(viewer.getByLabel("Bouwboekpagina 2").getByText("Van eerste idee", { exact: true })).toBeVisible();
-    await expect(viewer.getByLabel("Bouwboekpagina 3").getByText("De eerste muur is open", { exact: true })).toBeVisible();
+    await expect(viewer.getByText("2–3 van 24", { exact: true })).toBeVisible();
+    await expect(viewer.getByLabel("Bouwboekpagina 2").getByText("De eerste muur is open", { exact: true })).toBeVisible();
+    await expect(viewer.getByLabel("Bouwboekpagina 3").getByRole("img", { name: "Sloopfoto van de keuken" })).toBeVisible();
 
     await viewer.getByRole("button", { name: "Volgende pagina" }).click();
-    await expect(viewer.getByText("4–5 van 6", { exact: true })).toBeVisible();
-    await expect(viewer.getByLabel("Bouwboekpagina 4").getByRole("img", { name: "Sloopfoto van de keuken" })).toBeVisible();
-    await expect(viewer.getByLabel("Bouwboekpagina 5").getByText("Licht in de nieuwe keuken", { exact: true })).toBeVisible();
+    await expect(viewer.getByText("4–5 van 24", { exact: true })).toBeVisible();
+    await expect(viewer.getByLabel("Bouwboekpagina 4").getByText("Licht in de nieuwe keuken", { exact: true })).toBeVisible();
 
-    await viewer.getByRole("button", { name: "Volgende pagina" }).click();
-    await expect(viewer.getByText("Tot slot · 6 van 6", { exact: true })).toBeVisible();
-    await expect(viewer.getByLabel("Bouwboekpagina 6").getByText("Verder bouwen,", { exact: true })).toBeVisible();
+    await viewer.press("End");
+    await expect(viewer.getByText("Verhaal · 24 van 24", { exact: true })).toBeVisible();
+    await expect(viewer.getByLabel("Bouwboekpagina 24")).toBeVisible();
 
     const layoutSection = page.getByRole("heading", { name: "Indeling" }).locator("..");
     await expect(layoutSection.getByRole("button")).toHaveCount(2);
@@ -226,12 +225,11 @@ test.describe("Gratis digitaal Bouwboek", () => {
 
     const viewer = page.getByRole("region", { name: "Bouwboekweergave" });
     const labels = [
-      "Cover · 1 van 6",
-      "Voorwoord · 2 van 6",
-      "Bouwmoment · 3 van 6",
-      "Foto’s · 4 van 6",
-      "Bouwmoment · 5 van 6",
-      "Tot slot · 6 van 6",
+      "Cover · 1 van 24",
+      "Bouwmoment · 2 van 24",
+      "Foto’s · 3 van 24",
+      "Bouwmoment · 4 van 24",
+      ...Array.from({ length: 20 }, (_, index) => `Verhaal · ${index + 5} van 24`),
     ];
 
     for (const [index, label] of labels.entries()) {

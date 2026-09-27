@@ -45,7 +45,7 @@ function build(overrides: Partial<Parameters<typeof buildPhotobookDocument>[0]> 
         description: "De draagconstructie is hersteld en klaar voor de volgende stap.",
         phaseId: "phase-structure",
         phaseName: "Constructie",
-        phaseSortOrder: 2,
+        sortOrder: 0,
         media: [{
           id: ASSET_TWO,
           sha256: "b".repeat(64),
@@ -63,7 +63,7 @@ function build(overrides: Partial<Parameters<typeof buildPhotobookDocument>[0]> 
         description: "We begonnen rustig en haalden daarna de oude kasten weg.",
         phaseId: "phase-demolition",
         phaseName: "Sloop",
-        phaseSortOrder: 1,
+        sortOrder: 0,
         media: [{
           id: ASSET_ONE,
           sha256: "a".repeat(64),
@@ -80,7 +80,32 @@ function build(overrides: Partial<Parameters<typeof buildPhotobookDocument>[0]> 
 }
 
 describe("canonical photobook document", () => {
-  it("is deterministic, checksummed, grouped by phase order and padded to an even minimum", () => {
+  it("keeps backdated and returning-phase moments in the timeline's stable order", () => {
+    const moment = (id: number, updateDate: string, phaseId: string, sortOrder = 0) => ({
+      id: `20000000-0000-4000-8000-${String(id).padStart(12, "0")}`,
+      updateDate, sortOrder, phaseId, phaseName: phaseId,
+      title: `Moment ${id}`, room: null, description: null, media: [],
+    });
+    const updates = [
+      moment(1, "2026-03-01", "Sloop", 2),
+      moment(2, "2026-03-01", "Sloop", 1),
+      moment(3, "2026-02-01", "Constructie"),
+      moment(4, "2026-01-01", "Sloop"),
+      moment(5, "2026-03-01", "Sloop", 1),
+    ];
+    const document = build({ updates });
+    const expected = [updates[3].id, updates[2].id, updates[1].id, updates[4].id, updates[0].id];
+
+    expect(document.pages.filter((page) => page.kind === "update_text").map((page) => page.updateId)).toEqual(expected);
+    expect(document.chapters.flatMap((chapter) => chapter.updateIds)).toEqual(expected);
+    expect(document.chapters.map((chapter) => chapter.key)).toEqual(["Sloop", "Constructie", "Sloop"]);
+    expect(new Set(document.pages.map((page) => page.id)).size).toBe(document.pages.length);
+    expect(build({ updates: [...updates].reverse() }).checksumSha256).toBe(document.checksumSha256);
+    expect(build({ updates, excludedChapterKeys: new Set(["Sloop"]) }).chapters.flatMap((chapter) => chapter.updateIds))
+      .toEqual([updates[2].id]);
+  });
+
+  it("is deterministic, checksummed, chronological and padded to an even minimum", () => {
     const first = build();
     const second = build();
 
@@ -95,6 +120,7 @@ describe("canonical photobook document", () => {
     expect(first.chapters.map((chapter) => chapter.title)).toEqual(["Sloop", "Constructie"]);
     expect(first.sourceAssetIds).toEqual([ASSET_ONE, ASSET_TWO]);
     expect(first.pages[0]).toMatchObject({ kind: "cover", number: 1 });
+    expect(first.pages.at(-1)).toMatchObject({ id: "back-cover", kind: "cover", number: 24 });
   });
 
   it("detects a changed canonical page after approval", () => {
@@ -105,6 +131,31 @@ describe("canonical photobook document", () => {
     textBlock.text = "Een andere titel";
 
     expect(verifyPhotobookDocumentChecksum(changed)).toBe(false);
+  });
+
+  it("keeps short text and its photo on one page without repeating the photo", () => {
+    const document = build();
+    const momentPages = document.pages.filter((page) => page.updateId === UPDATE_ONE);
+    expect(momentPages).toHaveLength(1);
+    expect(momentPages[0].blocks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "text", id: `update:${UPDATE_ONE}:body:0` }),
+      expect.objectContaining({ type: "photo", assetId: ASSET_ONE, crop: expect.objectContaining({ fit: "contain" }) }),
+    ]));
+  });
+
+  it("continues long text completely before the next moment", () => {
+    const description = Array.from({ length: 600 }, (_, index) => `woord${index}`).join(" ");
+    const document = build({ updates: [{
+      id: UPDATE_ONE, updateDate: "2026-01-01", sortOrder: 0,
+      title: "Een lang verhaal", room: null, description,
+      phaseId: null, phaseName: null, media: [],
+    }] });
+    const pages = document.pages.filter((page) => page.updateId === UPDATE_ONE);
+    expect(pages.length).toBeGreaterThan(1);
+    const printedText = pages.flatMap((page) => page.blocks)
+      .filter((block) => block.type === "text" && block.id.includes(":body:"))
+      .map((block) => block.type === "text" ? block.lines.join(" ") : "").join(" ");
+    expect(printedText).toBe(description);
   });
 
   it("honours exclusions and never includes an excluded asset in the proof manifest", () => {
@@ -118,6 +169,9 @@ describe("canonical photobook document", () => {
     expect(document.pages.flatMap((page) => page.blocks).some(
       (block) => block.type === "photo",
     )).toBe(false);
+    const withoutDemolition = build({ excludedChapterKeys: new Set(["phase-demolition"]) });
+    expect(withoutDemolition.cover.mediaAssetId).toBe(ASSET_TWO);
+    expect(withoutDemolition.sourceAssetIds).toEqual([ASSET_TWO]);
   });
 
   it("emits blocking diagnostics for an incomplete selected cover and invalid source metadata", () => {
@@ -132,7 +186,7 @@ describe("canonical photobook document", () => {
         description: null,
         phaseId: null,
         phaseName: null,
-        phaseSortOrder: null,
+        sortOrder: 0,
         media: [{
           id: missingCover,
           sha256: null,
@@ -175,7 +229,7 @@ describe("canonical photobook document", () => {
       description: "Een korte beschrijving.",
       phaseId: "many",
       phaseName: "Veel werk",
-      phaseSortOrder: 1,
+      sortOrder: 0,
       media: [],
     }));
     const oversized = build({ maximumPages: 24, updates: manyUpdates });

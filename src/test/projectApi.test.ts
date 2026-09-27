@@ -13,6 +13,7 @@ import {
   getProjectDiscovery,
   getProjectOverview,
   getProjectTimeline,
+  setProjectFollow,
 } from "@/lib/projectApi";
 import type { ProjectVisibility } from "../../shared/contracts/projects";
 
@@ -43,6 +44,7 @@ function overview(visibility: ProjectVisibility = "private", version = 3) {
     contentRevision: 1,
     followerCount: 0,
     viewerAccess: "owner" as const,
+    viewerFollowStatus: "self" as const,
     canEdit: true,
     phases: [],
   };
@@ -78,6 +80,16 @@ function projectUpdate() {
 
 describe("project API write flow", () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it.each([true, false])("sets following=%s only for the requested project without client identity", async (following) => {
+    const fetchMock = vi.fn().mockResolvedValue(success({ state: following ? "following" : "none", replayed: false }));
+    vi.stubGlobal("fetch", fetchMock);
+    await setProjectFollow(PROJECT_ID, following);
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith(`/api/projects/${PROJECT_ID}/follow`, expect.objectContaining({
+      method: following ? "PUT" : "DELETE", credentials: "include",
+    }));
+    expect(fetchMock.mock.calls[0][1].body).toBeUndefined();
+  });
 
   it("creates a private-default project with one cookie-authenticated POST", async () => {
     const fetchMock = vi.fn().mockResolvedValue(mutation());

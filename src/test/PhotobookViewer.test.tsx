@@ -17,9 +17,9 @@ function viewerDocument(): PhotobookDocument {
     cover: { title: "Testboek", subtitle: "", mediaAssetId: null, crop: null },
     chapters: [],
     pages: Array.from({ length: 24 }, (_, index) => ({
-      id: index === 0 ? "cover" : `blank:${index + 1}`,
+      id: index === 0 ? "cover" : index === 23 ? "back-cover" : `blank:${index + 1}`,
       number: index + 1,
-      kind: index === 0 ? "cover" : "blank",
+      kind: index === 0 || index === 23 ? "cover" : "blank",
       chapterId: null,
       updateId: null,
       background: index === 0 ? "#142238" : "#ffffff",
@@ -74,7 +74,7 @@ describe("PhotobookViewer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Volgende pagina" }));
     expect(screen.getByText("Verhaal · 2 van 24")).toBeInTheDocument();
     fireEvent.keyDown(viewer, { key: "End" });
-    expect(screen.getByText("Verhaal · 24 van 24")).toBeInTheDocument();
+    expect(screen.getByText("Achterkant · 24 van 24")).toBeInTheDocument();
     fireEvent.keyDown(viewer, { key: "Home" });
     expect(screen.getByText("Cover · 1 van 24")).toBeInTheDocument();
     const pageViewport = viewer.querySelector(".overflow-hidden.rounded-lg");

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BrowserRouter, Route, Routes } from "@/lib/router";
 import AccountSettings from "@/pages/AccountSettings";
+import Friends from "@/pages/Friends";
 import Profile from "@/pages/Profile";
 
 const PROFILE_ID = "11111111-1111-4111-8111-111111111111";
@@ -33,6 +34,7 @@ const mocks = vi.hoisted(() => ({
     variables: undefined as string | undefined,
   },
   socialProfile: vi.fn(),
+  socialProfiles: vi.fn(),
   updateMutation: {
     isPending: false,
     mutateAsync: vi.fn(),
@@ -68,8 +70,12 @@ vi.mock("@/hooks/useProfiles", () => ({
 }));
 
 vi.mock("@/hooks/useSocial", () => ({
+  useInfiniteSocialConnections: () => ({ data: { pages: [{ items: [], total: 0 }] } }),
+  useInfiniteSocialProfiles: (...arguments_: unknown[]) => mocks.socialProfiles(...arguments_),
   useProfileBlockMutation: () => mocks.blockMutation,
   useProfileFollowMutation: () => mocks.followMutation,
+  useRemoveProfileFollowerMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useSocialRequestDecisionMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useSocialProfile: (...arguments_: unknown[]) => mocks.socialProfile(...arguments_),
 }));
 
@@ -136,6 +142,12 @@ describe("profile browser flow", () => {
       isPending: false,
       refetch: vi.fn(),
     });
+    mocks.socialProfiles.mockReset().mockReturnValue({
+      data: { pages: [{ items: [{ ...socialProfile(), viewerFollowStatus: "following" }] }] },
+      isError: false,
+      isPending: false,
+      refetch: vi.fn(),
+    });
     mocks.accountExports.mockReset().mockReturnValue({
       data: [],
       isError: false,
@@ -190,7 +202,7 @@ describe("profile browser flow", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Blokkeren" }));
     const dialog = screen.getByRole("alertdialog");
-    expect(within(dialog).getByText(/bestaande volgrelaties worden ingetrokken/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/bestaande profielconnecties worden ingetrokken/i)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Blokkeren" }));
 
     await waitFor(() => expect(mocks.blockMutation.mutateAsync).toHaveBeenCalledWith({
@@ -202,7 +214,7 @@ describe("profile browser flow", () => {
     expect(screen.getByText(/profielgegevens en verbouwingen zijn verborgen/i)).toBeInTheDocument();
     expect(screen.queryByText("Ada Bouwer")).not.toBeInTheDocument();
     expect(screen.queryByText("Utrecht")).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /Log in om te volgen/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Log in om te verbinden/i })).not.toBeInTheDocument();
   });
 
   it("toont nooit een blokkeeractie op het eigen profiel", () => {
@@ -222,6 +234,20 @@ describe("profile browser flow", () => {
     );
 
     expect(screen.queryByRole("button", { name: /blokkeren/i })).not.toBeInTheDocument();
+  });
+
+  it("benoemt een bestaande profielconnectie in zoeken als verwijderen en verstuurt die actie", async () => {
+    mocks.followMutation.mutateAsync.mockResolvedValue({ state: "cancelled", replayed: false });
+    window.history.replaceState({}, "", "/connecties");
+    render(<BrowserRouter><Friends /></BrowserRouter>);
+
+    expect(screen.queryByRole("button", { name: "Profiel verbinden" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Verbinding verwijderen" }));
+
+    await waitFor(() => expect(mocks.followMutation.mutateAsync).toHaveBeenCalledWith({
+      action: "remove",
+      profileId: PROFILE_ID,
+    }));
   });
 
   it("schrijft accountprofielvelden met de geladen serverversie en zonder identityveld", async () => {

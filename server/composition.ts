@@ -451,8 +451,7 @@ export function ensureServerComposition(): ServerCompositionStatus {
 
     if (hasCompletePhotobookRuntime(runtime)) {
       const storage = resolveBlobStorage(runtime);
-      const proofRuntimeEnabled = (runtime.CHECKOUT_MODE === "test" || runtime.CHECKOUT_MODE === "live")
-        && Boolean(runtime.DATABASE_PHOTOBOOK_WORKER_URL);
+      const proofRuntimeEnabled = Boolean(runtime.DATABASE_PHOTOBOOK_WORKER_URL);
       const photobookWorker = proofRuntimeEnabled
         ? new PhotobookProofWorker(
             new PostgresPhotobookRepository(

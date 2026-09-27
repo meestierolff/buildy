@@ -374,6 +374,8 @@ jobs:
             tests/db/project-share-links.integration.test.ts \
             tests/db/feedback-admin.integration.test.ts \
             tests/db/product-notifications.integration.test.ts \
+            tests/db/project-following.integration.test.ts \
+            tests/db/project-follow-repository.integration.test.ts \
             --no-file-parallelism \
             --reporter=verbose
 

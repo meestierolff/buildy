@@ -11,13 +11,15 @@ import {
 import type {
   FollowingActivity,
   ProjectCard,
+  ProjectFollowMutationResult,
   ProjectOverview,
   ProjectPhase,
   ProjectUpdate,
   ProjectVisibility,
 } from "../../shared/contracts/projects.js";
+import { projectFollowMutationResultSchema } from "../../shared/contracts/projects.js";
 import type { BuildyDatabase } from "../db/client.js";
-import type { ProjectActor } from "./actor.js";
+import type { AuthenticatedProjectActor, ProjectActor } from "./actor.js";
 import type { DashboardCursor, DiscoveryCursor, TimelineCursor } from "./cursor.js";
 import { ProjectError } from "./errors.js";
 import type {
@@ -84,6 +86,7 @@ type RawProjectOverview = RawProjectCard & {
   expected_end_date: string | null;
   content_revision: number | string;
   follower_count: number | string;
+  viewer_follow_status: ProjectOverview["viewerFollowStatus"];
   viewer_access: "owner" | "follower" | "link" | "public";
   phases: ProjectPhase[];
 };
@@ -170,6 +173,7 @@ function mapProjectOverview(row: RawProjectOverview): ProjectOverview {
     expectedEndDate: row.expected_end_date,
     contentRevision: Number(row.content_revision),
     followerCount: Number(row.follower_count),
+    viewerFollowStatus: row.viewer_follow_status,
     viewerAccess: row.viewer_access,
     canEdit: row.viewer_access === "owner",
     phases: row.phases.map((phase) => ({
@@ -653,9 +657,33 @@ export class PostgresProjectRepository implements ProjectRepository {
     });
   }
 
-  async listFollowingProjects(actorId: string, limit: number): Promise<ProjectCard[]> {
+  async setProjectFollow(
+    actor: AuthenticatedProjectActor,
+    projectId: string,
+    following: boolean,
+  ): Promise<ProjectFollowMutationResult> {
+    try {
+      return await this.database.transaction(async (transaction) => {
+        await setActor(transaction, actor.appUserId, actor.shareLinkId);
+        const result = await transaction.execute(sql`
+          select * from public.app_set_project_follow(${projectId}::uuid, ${following})
+        `);
+        const row = result.rows[0];
+        if (!row) throw new ProjectError("PROJECT_NOT_FOUND");
+        return projectFollowMutationResultSchema.parse(row);
+      });
+    } catch (error) {
+      if (["42501", "P0002"].includes(postgresCode(error) ?? "")) {
+        throw new ProjectError("PROJECT_NOT_FOUND", { cause: error });
+      }
+      throw error;
+    }
+  }
+
+  async listFollowingProjects(actor: AuthenticatedProjectActor, limit: number): Promise<ProjectCard[]> {
+    const actorId = actor.appUserId;
     return this.database.transaction(async (transaction) => {
-      await setActor(transaction, actorId);
+      await setActor(transaction, actorId, actor.shareLinkId);
       const result = await transaction.execute(sql<RawProjectCard>`
         select
           project.id,
@@ -697,14 +725,13 @@ export class PostgresProjectRepository implements ProjectRepository {
           limit 1
         ) cover on true
         where project.lifecycle_status = 'active'
-          and project.visibility in ('followers', 'public')
+          and app_can_view_project(project.id)
           and exists (
             select 1
-            from user_relationships builder_follow
-            where builder_follow.source_user_id = ${actorId}::uuid
-              and builder_follow.target_user_id = project.owner_id
-              and builder_follow.kind = 'follow'
-              and builder_follow.status = 'active'
+            from project_followers project_follow
+            where project_follow.follower_id = ${actorId}::uuid
+              and project_follow.project_id = project.id
+              and project_follow.status in ('active', 'muted')
           )
           and not exists (
             select 1
@@ -723,9 +750,10 @@ export class PostgresProjectRepository implements ProjectRepository {
     });
   }
 
-  async listFollowingActivity(actorId: string, limit: number): Promise<FollowingActivity[]> {
+  async listFollowingActivity(actor: AuthenticatedProjectActor, limit: number): Promise<FollowingActivity[]> {
+    const actorId = actor.appUserId;
     return this.database.transaction(async (transaction) => {
-      await setActor(transaction, actorId);
+      await setActor(transaction, actorId, actor.shareLinkId);
       const result = await transaction.execute(sql<RawFollowingActivity>`
         select
           project.id as project_id,
@@ -776,14 +804,13 @@ export class PostgresProjectRepository implements ProjectRepository {
         ) item_media on true
         where item.status = 'published'
           and project.lifecycle_status = 'active'
-          and project.visibility in ('followers', 'public')
+          and app_can_view_project(project.id)
           and exists (
             select 1
-            from user_relationships builder_follow
-            where builder_follow.source_user_id = ${actorId}::uuid
-              and builder_follow.target_user_id = project.owner_id
-              and builder_follow.kind = 'follow'
-              and builder_follow.status = 'active'
+            from project_followers project_follow
+            where project_follow.follower_id = ${actorId}::uuid
+              and project_follow.project_id = project.id
+              and project_follow.status in ('active', 'muted')
           )
           and not exists (
             select 1
@@ -830,6 +857,7 @@ export class PostgresProjectRepository implements ProjectRepository {
           coalesce(update_stats.update_count, 0) as update_count,
           update_stats.last_update_at,
           coalesce(follower_stats.follower_count, 0) as follower_count,
+          coalesce(follower_stats.viewer_follow_status, 'none') as viewer_follow_status,
           case
             when project.owner_id = ${actorId}::uuid then 'owner'
             when project.visibility = 'followers' then 'follower'
@@ -855,13 +883,7 @@ export class PostgresProjectRepository implements ProjectRepository {
           where item.project_id = project.id
             and item.status in ('draft', 'published')
         ) update_stats on true
-        left join lateral (
-          select count(*)::integer as follower_count
-          from user_relationships follower
-          where follower.target_user_id = project.owner_id
-            and follower.kind = 'follow'
-            and follower.status = 'active'
-        ) follower_stats on true
+        left join lateral public.app_project_follow_summary(project.id) follower_stats on true
         left join lateral (
           select jsonb_agg(jsonb_build_object(
             'id', phase.id,

@@ -21,5 +21,3 @@ export function releaseContractFor(
 export function verifyTargetCapabilities(capabilities: unknown): void;
 export function verifyTargetProductProfile(profile: unknown, contract: ReleaseContract): void;
 export function targetReadinessFailures(checks: unknown): string[];
-export function requireSyntheticStagingEmail(value: string | undefined): string;
-export function verifySyntheticSessionEmail(actualValue: unknown, expectedEmail: string): void;

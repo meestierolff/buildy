@@ -56,7 +56,7 @@ const Favorites = () => {
         <EmptyState
           icon={Heart}
           title="Je volgt nog niks"
-          description="Volg een bouwer om nieuwe bouwmomenten hier terug te zien."
+          description="Volg een verbouwing via de knop bij het verhaal. Nieuwe Bouwmomenten vind je hier terug."
         />
       ) : (
         <Tabs defaultValue="feed">
