@@ -5,7 +5,7 @@ import { createPostgresAuthIdentityProvisioner } from "../../server/auth/identit
 import type { AuthEngine } from "../../server/auth/factory";
 import type { BuildyDatabase } from "../../server/db/client";
 import {
-  GoogleOidcSubjectResolver,
+  SessionSubjectResolver,
   PostgresActiveAppUserLookup,
 } from "../../server/projects/authActor";
 
@@ -27,11 +27,11 @@ describe("privileged auth identity database boundary", () => {
     const provisioner = createPostgresAuthIdentityProvisioner();
 
     await provisioner.provisionForAuthUser(transaction, {
-      email: "bewoner@example.test",
-      id: "google-auth-user",
-      name: "Bewoner",
+      email: null,
+      id: "password-auth-user",
+      name: "verbouwer",
     });
-    await provisioner.ensureForSession(transaction, "google-auth-user");
+    await provisioner.ensureForSession(transaction, "password-auth-user");
 
     expect(execute).toHaveBeenCalledTimes(2);
     await expect(provisioner.ensureForSession(transaction, "x".repeat(513))).rejects.toMatchObject({
@@ -45,22 +45,22 @@ describe("privileged auth identity database boundary", () => {
     } as unknown as BuildyDatabase;
     const lookup = new PostgresActiveAppUserLookup(database);
 
-    await expect(lookup.findActiveAppUserId("google-auth-user")).resolves.toBe(APP_USER_ID);
+    await expect(lookup.findActiveAppUserId("password-auth-user")).resolves.toBe(APP_USER_ID);
     await expect(lookup.findActiveAppUserId("x".repeat(513))).resolves.toBeNull();
   });
 
-  it("derives the subject from the server-owned OIDC session rather than client headers", async () => {
+  it("derives the subject from the server-owned password session rather than client headers", async () => {
     const engine = {
       account,
       handler: async () => new Response(),
-      resolveAuthUserId: vi.fn(async () => "google-auth-user"),
+      resolveAuthUserId: vi.fn(async () => "password-auth-user"),
     } satisfies AuthEngine;
-    const resolver = new GoogleOidcSubjectResolver(() => engine);
+    const resolver = new SessionSubjectResolver(() => engine);
     const request = new Request("https://app.buildy.test/api/projects", {
       headers: { "x-user-id": "forged-app-user" },
     });
 
-    await expect(resolver.resolveAuthUserId(request)).resolves.toBe("google-auth-user");
+    await expect(resolver.resolveAuthUserId(request)).resolves.toBe("password-auth-user");
     expect(engine.resolveAuthUserId).toHaveBeenCalledWith(request);
   });
 });

@@ -22,11 +22,9 @@
     "api/**/*.ts",
     "db/**/*.ts",
     "server/**/*.ts",
-    "scripts/migration/**/*.ts",
     "scripts/moderation/**/*.ts",
     "shared/**/*.ts",
     "tests/db/**/*.ts",
-    "tests/migration/**/*.ts",
     "tests/server/**/*.ts",
     "vite.config.ts"
   ]

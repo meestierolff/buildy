@@ -3,7 +3,6 @@ import { apiSuccessSchema } from "./api.js";
 
 export const projectRoutes = {
   collection: "/api/projects",
-  discovery: "/api/discovery",
   following: "/api/following",
   detail: "/api/projects/:projectId",
   follow: "/api/projects/:projectId/follow",
@@ -318,7 +317,6 @@ export const projectFollowMutationResultSchema = z.object({
 });
 
 export const dashboardResponseSchema = apiSuccessSchema(projectPageSchema);
-export const discoveryResponseSchema = apiSuccessSchema(projectPageSchema);
 export const followingFeedResponseSchema = apiSuccessSchema(followingFeedSchema);
 export const projectFollowMutationResponseSchema = apiSuccessSchema(projectFollowMutationResultSchema);
 export const projectOverviewResponseSchema = apiSuccessSchema(projectOverviewSchema);

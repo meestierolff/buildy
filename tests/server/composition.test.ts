@@ -11,7 +11,6 @@ import { handleDefaultAuthRequest } from "../../server/auth";
 import { getCapabilities, resetRuntimeConfigForTests } from "../../server/config/runtime";
 import { closeBuildyDatabaseForTests } from "../../server/db/client";
 import * as databaseClient from "../../server/db/client";
-import { handleDefaultModerationRequest } from "../../server/moderation/runtime";
 import { PostgresPhotobookRepository } from "../../server/photobooks/repository";
 import * as photobookRuntime from "../../server/photobooks/runtime";
 import { PhotobookProofWorker } from "../../server/photobooks/worker";
@@ -38,20 +37,20 @@ function stubBaseEnvironment(): void {
   vi.stubEnv("APP_ENV", "test");
   vi.stubEnv("APP_ORIGIN", "https://app.buildy.test");
   vi.stubEnv("DATABASE_URL", "");
-  vi.stubEnv("GOOGLE_CLIENT_ID", "");
-  vi.stubEnv("GOOGLE_CLIENT_SECRET", "");
   vi.stubEnv("PII_ENCRYPTION_KEYS", "");
   vi.stubEnv("PII_ENCRYPTION_CURRENT_VERSION", "");
   vi.stubEnv("PII_BLIND_INDEX_KEY", "");
   vi.stubEnv("BLOB_READ_WRITE_TOKEN", "");
-  vi.stubEnv("CHECKOUT_MODE", "off");
+  vi.stubEnv("DATABASE_ACCOUNT_WORKER_URL", "");
+  vi.stubEnv("DATABASE_MEDIA_WORKER_URL", "");
   vi.stubEnv("DATABASE_PHOTOBOOK_WORKER_URL", "");
+  vi.stubEnv("ACCOUNT_RETENTION_POLICY_VERSION", "");
+  vi.stubEnv("ACCOUNT_RETENTION_POLICY_APPROVED_AT", "");
+  vi.stubEnv("CRON_SECRET", "");
 }
 
 function stubAuthEnvironment(): void {
   vi.stubEnv("DATABASE_URL", "postgresql://buildy:buildy@127.0.0.1:5432/buildy");
-  vi.stubEnv("GOOGLE_CLIENT_ID", "google-client");
-  vi.stubEnv("GOOGLE_CLIENT_SECRET", "google-secret");
   vi.stubEnv("PII_ENCRYPTION_KEYS", JSON.stringify({ 1: randomBytes(32).toString("base64") }));
   vi.stubEnv("PII_ENCRYPTION_CURRENT_VERSION", "1");
   vi.stubEnv("PII_BLIND_INDEX_KEY", randomBytes(32).toString("base64"));
@@ -87,40 +86,32 @@ describe("server composition", () => {
     expect(capturedBlobConfigurations).toHaveLength(0);
   });
 
-  it("composes only anonymous support while authenticated runtimes remain dormant", async () => {
+  it("composes password sessions and protects the project API for signed-out visitors", async () => {
     stubAuthEnvironment();
-    vi.stubEnv("PRODUCT_PROFILE", "public_demo");
     vi.stubEnv("BLOB_READ_WRITE_TOKEN", `vercel_blob_rw_${"b".repeat(48)}`);
     resetRuntimeConfigForTests();
 
     expect(ensureServerComposition()).toBe("ready");
     expect(ensureServerComposition()).toBe("ready");
-    expect(capturedBlobConfigurations).toHaveLength(0);
+    expect(capturedBlobConfigurations).toHaveLength(1);
 
     const requestId = "00000000-0000-4000-8000-000000000000";
-    const support = await handleDefaultModerationRequest(
-      new Request("https://app.buildy.test/api/support"),
-      requestId,
-    );
     const auth = await handleDefaultAuthRequest(
       new Request("https://app.buildy.test/api/auth/session"),
       requestId,
     );
-    const projects = await handleDefaultProjectRequest(
+    await expect(handleDefaultProjectRequest(
       new Request("https://app.buildy.test/api/projects"),
       requestId,
-    );
+    )).rejects.toMatchObject({ status: 401, code: "UNAUTHENTICATED" });
 
-    expect(support.status).toBe(404);
-    expect(auth.status).toBe(503);
-    expect(projects.status).toBe(503);
+    expect(auth.status).toBe(200);
+    await expect(auth.json()).resolves.toMatchObject({ data: { session: null, user: null } });
   });
 
   it("remembers malformed key configuration as failed without retrying initialization", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.stubEnv("DATABASE_URL", "postgresql://buildy:buildy@127.0.0.1:5432/buildy");
-    vi.stubEnv("GOOGLE_CLIENT_ID", "google-client");
-    vi.stubEnv("GOOGLE_CLIENT_SECRET", "google-secret");
     vi.stubEnv("PII_ENCRYPTION_KEYS", "not-json");
     vi.stubEnv("PII_ENCRYPTION_CURRENT_VERSION", "1");
     vi.stubEnv("PII_BLIND_INDEX_KEY", randomBytes(32).toString("base64"));
@@ -143,10 +134,9 @@ describe("server composition", () => {
   });
 
   it.each([true, false])(
-    "keeps checkout off while PDF rendering follows its dedicated worker configuration (%s)",
+    "scopes PDF rendering to its dedicated worker configuration (%s)",
     async (workerConfigured) => {
       stubAuthEnvironment();
-      vi.stubEnv("PRODUCT_PROFILE", "feedback_beta");
       vi.stubEnv("BLOB_READ_WRITE_TOKEN", "synthetic-private-blob-token");
       const workerUrl = "postgresql://photobook:synthetic@127.0.0.1:5432/buildy_test";
       vi.stubEnv("DATABASE_PHOTOBOOK_WORKER_URL", workerConfigured ? workerUrl : "");
@@ -178,7 +168,7 @@ describe("server composition", () => {
       const configure = vi.spyOn(photobookRuntime, "configureDefaultPhotobookRuntime");
 
       expect(ensureServerComposition()).toBe("ready");
-      expect(getCapabilities().payments).toBe("disabled");
+      expect(getCapabilities().photobooks).toBe("ready");
       const service = configure.mock.calls[0]![0].service;
       const editor = await service.editor(actorId, projectId);
       const proof = service.requestProof(actorId, projectId, {
@@ -201,7 +191,7 @@ describe("server composition", () => {
     },
   );
 
-  it("shares one private Vercel Blob adapter across web, workers and guarded order admin", () => {
+  it("shares one private Vercel Blob adapter across web and the core workers", () => {
     stubAuthEnvironment();
     vi.stubEnv("DATABASE_ACCOUNT_WORKER_URL", "postgresql://account:secret@127.0.0.1:5432/buildy");
     vi.stubEnv("DATABASE_MEDIA_WORKER_URL", "postgresql://media:secret@127.0.0.1:5432/buildy");

@@ -26,7 +26,6 @@ import {
   photobookAssetSetChecksum,
 } from "./pdfRenderer.js";
 import type {
-  ApprovePhotobookProofCommand,
   FinalizePhotobookProofCommand,
   PhotobookProofAsset,
   PhotobookProofMutation,
@@ -175,12 +174,10 @@ function isProofPayload(value: unknown): value is {
     && typeof payload.requestHash === "string";
 }
 
-async function replayedProofMutation(
+async function replayedProofRequest(
   transaction: DatabaseTransaction,
   idempotencyKey: string,
-  eventType: "photobook.proof.requested.v1" | "photobook.proof.approved.v1",
   requestHash: string,
-  status: "rendering" | "approved",
 ): Promise<PhotobookProofMutation | null> {
   const rows = await transaction
     .select({
@@ -194,12 +191,12 @@ async function replayedProofMutation(
   const existing = rows[0];
   if (!existing) return null;
   if (
-    existing.eventType !== eventType
+    existing.eventType !== "photobook.proof.requested.v1"
     || !isProofPayload(existing.payload)
     || existing.payload.requestHash !== requestHash
     || existing.payload.revisionId !== existing.aggregateId
   ) throw new PhotobookError("IDEMPOTENCY_CONFLICT");
-  return { revisionId: existing.aggregateId, status, replayed: true };
+  return { revisionId: existing.aggregateId, status: "rendering", replayed: true };
 }
 
 export class PostgresPhotobookRepository implements PhotobookRepository {
@@ -629,12 +626,10 @@ export class PostgresPhotobookRepository implements PhotobookRepository {
       return await this.database.transaction(async (transaction) => {
         await setActor(transaction, command.actorId);
         await transaction.execute(sql`select pg_advisory_xact_lock(hashtextextended(${command.idempotencyKey}, 0))`);
-        const replayed = await replayedProofMutation(
+        const replayed = await replayedProofRequest(
           transaction,
           command.idempotencyKey,
-          "photobook.proof.requested.v1",
           command.requestHash,
-          "rendering",
         );
         if (replayed) return replayed;
 
@@ -783,104 +778,6 @@ export class PostgresPhotobookRepository implements PhotobookRepository {
             eq(photobookDrafts.version, command.expectedDraftVersion),
           ));
         return { revisionId: command.revisionId, status: "rendering", replayed: false };
-      });
-    } catch (error) {
-      translateDatabaseError(error);
-    }
-  }
-
-  async approveProof(command: ApprovePhotobookProofCommand): Promise<PhotobookProofMutation> {
-    try {
-      return await this.database.transaction(async (transaction) => {
-        await setActor(transaction, command.actorId);
-        await transaction.execute(sql`select pg_advisory_xact_lock(hashtextextended(${command.idempotencyKey}, 0))`);
-        const replayed = await replayedProofMutation(
-          transaction,
-          command.idempotencyKey,
-          "photobook.proof.approved.v1",
-          command.requestHash,
-          "approved",
-        );
-        if (replayed) return replayed;
-
-        const result = await transaction.execute<{
-          project_id: string;
-          status: PhotobookProofStatus;
-          document: unknown;
-          document_sha256: string;
-          pdf_sha256: string | null;
-          project_revision: number | string;
-          current_project_revision: number | string;
-          current_draft_sha256: string | null;
-          asset_sha256: string | null;
-          asset_status: string;
-          font_set_sha256: string | null;
-        }>(sql`
-          select
-            revision.project_id,
-            revision.status,
-            revision.document,
-            revision.document_sha256,
-            revision.pdf_sha256,
-            revision.project_revision,
-            project.content_revision as current_project_revision,
-            draft.document_sha256 as current_draft_sha256,
-            asset.sha256 as asset_sha256,
-            asset.status as asset_status,
-            revision.font_set_sha256
-          from public.photobook_revisions revision
-          join public.projects project on project.id = revision.project_id
-          join public.photobook_drafts draft on draft.id = revision.draft_id
-          join public.media_assets asset on asset.id = revision.pdf_asset_id
-          where revision.id = ${command.revisionId}::uuid
-            and revision.owner_id = ${command.actorId}::uuid
-            and project.lifecycle_status = 'active'
-            and project.deleted_at is null
-          for update of revision, draft, project
-        `);
-        const proof = result.rows[0];
-        if (!proof) throw new PhotobookError("PHOTOBOOK_NOT_FOUND");
-        if (proof.status !== "ready") throw new PhotobookError("PROOF_NOT_APPROVABLE");
-        const document = photobookDocumentSchema.parse(objectValue(proof.document));
-        if (
-          proof.document_sha256 !== command.documentSha256
-          || proof.pdf_sha256 !== command.pdfSha256
-          || proof.asset_sha256 !== command.pdfSha256
-          || proof.asset_status !== "ready"
-          || proof.font_set_sha256 === null
-        ) throw new PhotobookError("STALE_DRAFT");
-        if (
-          numberValue(proof.project_revision) !== numberValue(proof.current_project_revision)
-          || proof.current_draft_sha256 !== proof.document_sha256
-        ) throw new PhotobookError("STALE_DRAFT");
-        if (document.warnings.some((warning) => warning.severity === "blocking")) {
-          throw new PhotobookError("PROOF_BLOCKED");
-        }
-
-        await transaction.update(photobookRevisions)
-          .set({
-            status: "approved",
-            approvedById: command.actorId,
-            approvedAt: command.approvedAt,
-          })
-          .where(and(
-            eq(photobookRevisions.id, command.revisionId),
-            eq(photobookRevisions.status, "ready"),
-          ));
-        await transaction.insert(outboxEvents).values({
-          aggregateType: "photobook_proof",
-          aggregateId: command.revisionId,
-          eventType: "photobook.proof.approved.v1",
-          idempotencyKey: command.idempotencyKey,
-          payload: {
-            schemaVersion: 1,
-            projectId: proof.project_id,
-            revisionId: command.revisionId,
-            requestHash: command.requestHash,
-            requestHashVersion: command.requestHashVersion,
-          },
-        });
-        return { revisionId: command.revisionId, status: "approved", replayed: false };
       });
     } catch (error) {
       translateDatabaseError(error);

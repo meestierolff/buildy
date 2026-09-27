@@ -32,7 +32,6 @@ export interface ProjectHttpService {
     replayed: boolean;
   }>;
   dashboard(actorId: string, query: unknown): Promise<ProjectPage>;
-  discovery(viewer: ProjectActor, query: unknown): Promise<ProjectPage>;
   following(actor: AuthenticatedProjectActor, query: unknown): Promise<FollowingFeed>;
   setProjectFollow(actor: AuthenticatedProjectActor, projectId: string, following: boolean): Promise<ProjectFollowMutationResult>;
   overview(viewer: ProjectActor, projectId: string): Promise<ProjectOverview>;
@@ -145,9 +144,6 @@ export function createProjectHttpHandler(dependencies: ProjectHttpDependencies) 
           await jsonInput(request),
         );
         return jsonSuccess(result, requestId, { status: result.replayed ? 200 : 201 });
-      }
-      if (request.method === "GET" && pathname === "/api/discovery") {
-        return jsonSuccess(await dependencies.service.discovery(actor, queryInput(url)), requestId);
       }
       if (request.method === "GET" && pathname === "/api/following") {
         return jsonSuccess(

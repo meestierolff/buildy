@@ -24,7 +24,6 @@ import {
   editProjectUpdate,
   getFollowingFeed,
   getProjectDashboard,
-  getProjectDiscovery,
   getProjectOverview,
   getProjectTimeline,
   setProjectFollow,
@@ -36,7 +35,6 @@ import type { CreateProjectFlowCommand } from "@/lib/projectWriteFlow";
 export const projectQueryKeys = {
   all: ["projects"] as const,
   dashboard: ["projects", "dashboard"] as const,
-  discovery: ["projects", "discovery"] as const,
   following: ["projects", "following"] as const,
   overview: (projectId: string) => ["projects", "overview", projectId] as const,
   timeline: (projectId: string) => ["projects", "timeline", projectId] as const,
@@ -46,19 +44,6 @@ export function useProjectDashboard(enabled = true) {
   return useInfiniteQuery({
     queryKey: projectQueryKeys.dashboard,
     queryFn: ({ pageParam, signal }) => getProjectDashboard(
-      pageParam ? { cursor: pageParam, limit: 50 } : { limit: 50 },
-      signal,
-    ),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    enabled,
-  });
-}
-
-export function useProjectDiscovery(enabled = true) {
-  return useInfiniteQuery({
-    queryKey: projectQueryKeys.discovery,
-    queryFn: ({ pageParam, signal }) => getProjectDiscovery(
       pageParam ? { cursor: pageParam, limit: 50 } : { limit: 50 },
       signal,
     ),

@@ -5,7 +5,7 @@ import { createBuildyAuth, type CreateBuildyAuthInput } from "../../server/auth/
 import { hashPassword, verifyPassword, isWeakPassword } from "../../server/auth/password";
 import { UsernameUnavailableError, type PasswordAuthRepository, type PasswordSessionRecord } from "../../server/auth/passwordRepository";
 import type { BuildyDatabase } from "../../server/db/client";
-import { DataProtectionKeyring, PrivacyBlindIndex } from "../../server/security/dataProtection";
+import { PrivacyBlindIndex } from "../../server/security/dataProtection";
 import { authSessionResponseSchema, usernameSignUpInputSchema } from "../../shared/contracts/auth";
 
 const NOW = new Date("2026-09-08T12:00:00.000Z");
@@ -31,16 +31,15 @@ function harness(overrides: Partial<CreateBuildyAuthInput> = {}) {
   };
   const rateLimitStorage = { consume: vi.fn(async (_key: string, _rule: { max: number; window: number }) => ({ allowed: true, retryAfter: null as number | null })) };
   const input: CreateBuildyAuthInput = {
-    config: { appOrigin: "https://app.buildy.test", betaMode: false,
+    config: { appOrigin: "https://app.buildy.test",
       databaseUrl: "postgresql://web:secret@localhost/buildy", secureCookies: true,
       trustedOrigins: ["https://app.buildy.test"] },
     database: {} as BuildyDatabase,
     identityProvisioner: { provisionForAuthUser: vi.fn(), ensureForSession: vi.fn() },
     blindIndex: new PrivacyBlindIndex(Buffer.alloc(32, 2).toString("base64")),
-    keyring: new DataProtectionKeyring({ currentVersion: 1, keys: { 1: Buffer.alloc(32, 1).toString("base64") } }),
     repository, rateLimitStorage, now: () => NOW, randomSessionToken: () => TOKEN, ...overrides,
   };
-  return { engine: createBuildyAuth(input), repository, rateLimitStorage, input };
+  return { engine: createBuildyAuth(input), repository, rateLimitStorage };
 }
 function request(path = "/api/auth/sign-in", body: unknown = { username: "Verbouwer", password: PASSWORD, next: "/verbouwing/nieuw" }, headers = {}) {
   return new Request(`https://app.buildy.test${path}`, { method: "POST", body: JSON.stringify(body),
@@ -125,11 +124,10 @@ describe("username and password authentication", () => {
     }
     expect(repository.register).not.toHaveBeenCalled();
   });
-  it("rejects predictable passwords and does not bypass email-bound beta invitations", async () => {
-    const { engine, input } = harness();
+  it("rejects predictable passwords before persistence", async () => {
+    const { engine, repository } = harness();
     expect((await engine.handler(request("/api/auth/sign-up", { username: "valid", password: "password123456789" }))).status).toBe(400);
-    input.config.betaMode = true;
-    expect((await engine.handler(request("/api/auth/sign-up"))).status).toBe(503);
+    expect(repository.register).not.toHaveBeenCalled();
   });
   it("never starts Google OAuth or accepts callbacks", async () => {
     const { engine } = harness();

@@ -65,7 +65,7 @@ const Notifications = () => {
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Jouw activiteit</p>
           <h1 className="font-serif text-4xl leading-tight md:text-5xl">Notificaties</h1>
           <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
-            Verzoeken, reacties, Bouwmomenten en Bouwboekbestellingen voor jouw account.
+            Verzoeken, reacties en Bouwmomenten voor jouw account.
           </p>
         </div>
         {unreadCount > 0 ? (

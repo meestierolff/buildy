@@ -23,11 +23,12 @@ const SHELL = `<!doctype html><html lang="nl"><head>
 </head><body><div id="root"></div></body></html>`;
 
 describe("server-generated public project metadata", () => {
-  it("does not query or expose live project metadata in public_demo", async () => {
-    const config = {
-      PRODUCT_PROFILE: "public_demo",
-      DATABASE_URL: "postgresql://must-not-connect.invalid/buildy",
-    } as RuntimeConfig;
+  it("does not query or expose project metadata without a configured database", async () => {
+    const config: RuntimeConfig = {
+      APP_ENV: "test",
+      APP_ORIGIN: "https://app.buildy.test",
+      NODE_ENV: "test",
+    };
 
     await expect(readAnonymousPublicProject(PROJECT_ID, config)).resolves.toBeNull();
   });

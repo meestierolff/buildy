@@ -1,93 +1,67 @@
 # Backup and restore
 
-Status: actuele procedure; een echte restore rehearsal en goedgekeurde RPO/RTO
-zijn nog launchblokkades.
-
-## Scope
-
-Herstel omvat:
-
-- Neon data, migrationledger, RLS en role grants;
-- private Vercel Blob-objecten die door het databaseassetmanifest worden
-  gerefereerd;
-- Vercel environment-/domainconfiguratie en de ene account-lifecyclecron als
-  afzonderlijke inventory;
-- server-owned order-, payment-, proof- en fulfilmentledgers;
-- reconciliatie met Stripe als bron van provider-events en met het handmatig
-  gecontroleerde drukkerrecord.
-
-Een Neonbackup is geen Blobbackup en vervangt geen Stripe- of handmatige
-drukkerreconciliatie. De eigenaar moet vóór productie RPO, RTO, Neon-plan/
-retentie, Blob-herstelstrategie en wettelijke/contractuele bewaartermijnen
-goedkeuren; code verzint die waarden niet.
-
-Er is geen R2-, Brevo- of Peecho-API-backupstap.
+Herstel beschermt Neon-data, migrationledger, RLS/grants, private Blob-assets,
+Vercel-configuratie en de encryptiesleutels waarmee bewaarde PII leesbaar blijft.
+Een databaseherstelpunt is geen Blob-backup. De huidige deployment en bekend
+herstelbewijs staan in [STATE](architecture/STATE.md).
 
 ## Voor een risicovolle wijziging
 
-1. Leg environment, release-SHA, migrationledgerhashes en change-ID vast.
-2. Maak volgens het werkelijke Neon-plan een branch/herstelpunt; noteer alleen
-   provider-ID en UTC-tijd, geen connection string.
-3. Maak een geminimaliseerde inventory van private Blob-assets: interne asset-ID,
-   purpose, gehashte objectkey, bytes en SHA-256. Exporteer geen provider-URL.
-4. Leg Stripe order-/paymenttellingen en totalen per valuta/status vast; geen
-   customer- of providerpayload.
-5. Leg locked proof-/orderaantallen en handmatige fulfilmentstatus/externe
-   referentie-aanwezigheid vast, zonder adres/tracking/notes.
-6. Bevestig write freeze, rollback/forward-fixkeuze, eigenaar en stopcriteria.
+Leg omgeving, release-SHA, change-ID en migrationledger vast. Gebruik binnen de
+geautoriseerde wijziging een herstelpunt of geïsoleerde branch volgens het
+beschikbare Neon-plan; noteer alleen provider-ID en UTC-tijd, geen connection
+string. Leg vast welke writes tijdens een herstel verloren kunnen gaan en wie
+het herstel uitvoert.
 
-## Niet-productie restore rehearsal
+Bewaar een geminimaliseerde inventaris van benodigde private assets: interne
+asset-ID, purpose, bytes en SHA-256. Provider-URL's, objectkeys en inhoud horen
+niet in het wijzigingsverslag. Bewaar Vercel-configuratie, domeininstellingen en
+de account-lifecyclecron afzonderlijk en houd secrets in beveiligde opslag.
+Historische records en hun retentie blijven onderdeel van het herstel.
 
-1. Herstel naar een nieuwe, geïsoleerde Neon-branch. Schrijf nooit over
-   Production heen.
-2. Maak tijdelijke least-privilegerollen voor migrator, web, account, media,
-   payment en photobook; gebruik uitsluitend synthetische data/providerconfig.
-3. Voer check, plan, apply, role configure/verify, `db/verify`, no-op replay en
-   opnieuw `db/verify` uit.
-4. Vergelijk ledger, tellingen, constraints, ownership, canonical social,
-   projectvisibility, orders/bedragen en auditrelaties met de broninventory.
-5. Herstel of kopieer een representatieve, toegestane private Blob-steekproef
-   naar een afzonderlijke rehearsalstore/prefix. Verifieer bytes/SHA-256,
-   geautoriseerde read en anonieme/blocked denial.
-6. Reconcileer Stripe testevents met interne orders en controleer dat geen
-   browserredirect betaling bevestigt. Maak geen live payment/refund.
-7. Controleer de handmatige orderqueue en exact-PDF-hash; plaats geen externe
-   drukkerorder.
-8. Start de productiebuild tegen rehearsal en voer health/readiness, Google-
-   testidentity, private media, owner/follower/block, proof/orderread en deletion
-   smokes uit.
-9. Meet werkelijk dataverliesvenster en herstelduur. Claim RPO/RTO alleen met
-   timestamps en bewijs.
-10. Verwijder tijdelijke branch, store-assets en credentials pas na review en
-    volgens het goedgekeurde retentiebeleid.
+Kies hersteltermijnen op basis van het werkelijke plan en een gemeten herstel.
+Dit document verzint geen RPO, RTO of wettelijke bewaartermijn.
 
-## Production restore
+## Geïsoleerd herstel
 
-Een production restore vereist incidentbesluit, write freeze, snapshot van de
-beschadigde toestand en expliciete keuze tussen forward repair, point-in-time
-restore of selectief herstel. Bepaal vooraf welke geldige writes na het
-herstelpunt verloren kunnen gaan.
+1. Herstel naar een nieuwe, geïsoleerde database. Overschrijf geen bestaande
+   omgeving om een herstelprocedure uit te proberen.
+2. Configureer de bestaande migrator-, web-, account-, media- en
+   photobookrollen met de [rolscripts](../scripts/setup/configure-database-roles.sql).
+   Houd broncredentials buiten logs en commandoregels.
+3. Vergelijk ledger/schema met de bedoelde code. De beschikbare commando's zijn
+   `bun run db:migrate:check`, `bun run db:migrate:dry`, `bun run db:migrate` en
+   `bun run db:verify`. Pas alleen ontbrekende, bedoelde migrations toe;
+   toegepaste migrations blijven onveranderd. Gebruik de
+   [rolcontrole](../scripts/setup/verify-database-roles.sql) voor grants.
+4. Reconcileer de private objecten met de databaserelaties. Herstel alleen
+   toegestane assets naar de bedoelde private store; controleer bytes en SHA-256.
+   Een correcte database met ontbrekende Blobbytes is geen volledig herstel.
+5. Bevestig voor de getroffen flow dat een eigenaar kan lezen en een niet
+   geautoriseerde actor wordt geweigerd. Gebruik eigen synthetische fixtures
+   waar mogelijk; publiceer geen herstelde klantinhoud als bewijs.
+6. Noteer werkelijk dataverliesvenster, herstelduur en resterende verschillen.
+   Ruim tijdelijke toegang en fixtures op volgens het afgesproken beleid.
 
-Na restore:
+## Productie herstellen of code terugzetten
 
-- roteer tijdelijke credentials;
-- verifieer ledger/schema/RLS/rollen en no-op replay;
-- reconcileer Stripe-events idempotent vanaf het herstelpunt;
-- reconcileer private Blob-assets tegen het databaseassetmanifest;
-- reconcileer handmatige drukkerreferenties zonder tweede order te plaatsen;
-- test Google sessions, privacy/access, proof/order en cleanup;
-- hervat de ene account-lifecyclequeue gecontroleerd; laat media/proofs alleen
-  via een owner-geautoriseerde request voor exact het asset/de revisie opnieuw
-  verwerken en activeer geen verwijderde cronroute;
-- leg werkelijk RPO/RTO en alle restverschillen vast.
+Kies bij een incident expliciet tussen een forward fix, code rollback,
+point-in-time restore of selectief dataherstel. Beperk betrokken writes en
+bewaar de beschadigde toestand voor onderzoek. Een code rollback gebruikt een
+bekend deployment dat met het actuele schema werkt; een rollback van code draait
+geen toegepaste migration terug.
 
-## Gatebewijs
+Controleer na dataherstel ledger/RLS/rollen, encryptieversies en het private
+assetmanifest. Bevestig de getroffen account-, toegang- of PDF-flow. Hervat de
+account-lifecyclequeue via de bestaande leases. Media en PDF's worden alleen
+via hun geautoriseerde request voor het exacte asset of de exacte revisie
+hervat; voeg geen cron of generieke claimroute toe.
 
-Bewaar providerbranch/herstelpunt-ID, UTC-tijden, bron/doeltellingen,
-migrationresultaten, checksumsteekproef, privacyprobes, gemeten RPO/RTO,
-uitvoerders en opruimbewijs. Geen secret, PII, object-/Checkout-URL of volledige
-providerresponse.
+Trek tijdelijke credentials na gebruik in. Roteer bestaande encryptiesleutels
+niet als bijwerking van herstel: bewaarde ciphertext heeft de oorspronkelijke
+sleutelversies nodig. Bij een werkelijke credentialblootstelling geldt het
+[incidentrunbook](INCIDENT_RUNBOOK.md).
 
-Deze rehearsal is voor de huidige release niet bewezen. Production blijft
-**NO-GO**; de verplichte Browser MCP-runtime was door de huidige Codex-
-gebruikslimiet geblokkeerd.
+Bewijs bestaat uit herstelpunt-ID, UTC-tijden, tellingen, ledgerresultaat,
+checksumuitkomst, toegangscontrole en gemeten verlies/herstelduur. Claim alleen
+wat daadwerkelijk is uitgevoerd; neem geen PII, private URL of secret op.

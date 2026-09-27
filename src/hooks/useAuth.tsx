@@ -62,26 +62,17 @@ export function mapAuthSession(session: AuthClientSession): AuthSession {
 
 export const AuthProvider = ({
   children,
-  enabled = true,
 }: {
   children: ReactNode;
-  enabled?: boolean;
 }) => {
   const [data, setData] = useState<AuthSessionData>({ session: null, user: null });
   const [error, setError] = useState<Error | null>(null);
-  const [loading, setLoading] = useState(enabled);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const requestSequence = useRef(0);
   const previousIdentity = useRef<string | null | undefined>(undefined);
 
   const refetchSession = useCallback(async () => {
-    if (!enabled) {
-      setData({ session: null, user: null });
-      setError(null);
-      setLoading(false);
-      setRefreshing(false);
-      return { session: null, user: null };
-    }
     const sequence = ++requestSequence.current;
     setRefreshing(true);
     try {
@@ -100,17 +91,9 @@ export const AuthProvider = ({
         setRefreshing(false);
       }
     }
-  }, [enabled]);
+  }, []);
 
   useEffect(() => {
-    if (!enabled) {
-      requestSequence.current += 1;
-      setData({ session: null, user: null });
-      setError(null);
-      setLoading(false);
-      setRefreshing(false);
-      return undefined;
-    }
     void refetchSession();
     const interval = window.setInterval(() => void refetchSession(), 5 * 60 * 1_000);
     const onFocus = () => void refetchSession();
@@ -120,7 +103,7 @@ export const AuthProvider = ({
       window.removeEventListener("focus", onFocus);
       requestSequence.current += 1;
     };
-  }, [enabled, refetchSession]);
+  }, [refetchSession]);
 
   useEffect(() => {
     if (loading) return;
@@ -138,7 +121,6 @@ export const AuthProvider = ({
     [data.session],
   );
   const signOut = useCallback(async () => {
-    if (!enabled) return true;
     let signedOut = false;
     try {
       await authClient.signOut();
@@ -154,7 +136,7 @@ export const AuthProvider = ({
       if (refreshed && !refreshed.session && !refreshed.user) signedOut = true;
     }
     return signedOut;
-  }, [enabled, refetchSession]);
+  }, [refetchSession]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

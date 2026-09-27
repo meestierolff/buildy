@@ -27,7 +27,6 @@ import { ApiClientError } from "@/lib/apiClient";
 import { useAppFeatures } from "@/lib/appFeatures";
 import { LANDING_PHOTO_INTENT } from "@/lib/landingPhotoHandoffStore";
 import { PRODUCT_ROUTES } from "@/lib/productNavigation";
-import { recordProductEvent } from "@/lib/betaApi";
 import { Link, Navigate, useLocation, useNavigate, useParams } from "@/lib/router";
 import type { ProjectUpdate, ProjectVisibility } from "../../shared/contracts/projects";
 
@@ -185,13 +184,7 @@ const TripDetail = () => {
     if (navigator.share) {
       try {
         await navigator.share(shareData);
-        void recordProductEvent({
-          eventName: "project_shared",
-          properties: {
-            schemaVersion: 1,
-            visibility: project?.visibility ?? "private",
-          },
-        }).catch(() => undefined);
+
         toast.success("Verbouwing gedeeld");
         return;
       } catch (error) {
@@ -215,13 +208,7 @@ const TripDetail = () => {
         if (!copied) throw new Error("Clipboard fallback failed");
       }
       toast.success("Link naar de verbouwing gekopieerd");
-      void recordProductEvent({
-        eventName: "project_shared",
-        properties: {
-          schemaVersion: 1,
-          visibility: project?.visibility ?? "private",
-        },
-      }).catch(() => undefined);
+
     } catch (error) {
       console.error("Project share failed", error);
       toast.error("Delen mislukt. Kopieer de link uit je adresbalk.");
@@ -574,12 +561,6 @@ const TripDetail = () => {
         <ShareLinkDialog
           open={shareDialogOpen}
           onOpenChange={setShareDialogOpen}
-          onCopied={() => {
-            void recordProductEvent({
-              eventName: "project_shared",
-              properties: { schemaVersion: 1, visibility: "unlisted" },
-            }).catch(() => undefined);
-          }}
           projectId={project.id}
           projectTitle={project.title}
         />

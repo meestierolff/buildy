@@ -39,7 +39,7 @@ import {
   type ProjectRepository,
   type UpdateProjectCommand,
 } from "../../server/projects/types";
-import type { DashboardCursor, DiscoveryCursor, TimelineCursor } from "../../server/projects/cursor";
+import type { DashboardCursor, TimelineCursor } from "../../server/projects/cursor";
 
 const ACTOR_ID = "11111111-1111-4111-8111-111111111111";
 const OTHER_ID = "22222222-2222-4222-8222-222222222222";
@@ -122,7 +122,6 @@ class FakeProjectRepository implements ProjectRepository {
   readonly projects = new Map<string, ProjectOverview>([[PROJECT_ID, overview()]]);
   readonly updates = new Map<string, ProjectUpdate>([[UPDATE_ID, update()]]);
   dashboardRows: ProjectCard[] = [];
-  discoveryRows: ProjectCard[] = [];
   followingProjectRows: ProjectCard[] = [];
   followingActivityRows: FollowingActivity[] = [];
   timelineRows: ProjectUpdate[] | null = [];
@@ -171,14 +170,6 @@ class FakeProjectRepository implements ProjectRepository {
   ): Promise<ProjectCard[]> {
     this.dashboardCalls.push({ actorId, cursor, limit });
     return this.dashboardRows.slice(0, limit);
-  }
-
-  async listDiscovery(
-    _viewer: ProjectActor,
-    _cursor: DiscoveryCursor | undefined,
-    limit: number,
-  ): Promise<ProjectCard[]> {
-    return this.discoveryRows.slice(0, limit);
   }
 
   async listFollowingProjects(_actor: AuthenticatedProjectActor, limit: number): Promise<ProjectCard[]> {
@@ -324,7 +315,7 @@ describe("project repository security rules", () => {
       appUsers,
     );
 
-    await expect(resolver.resolve(new Request("https://buildy.test/api/discovery")))
+    await expect(resolver.resolve(new Request(`https://buildy.test/api/projects/${PROJECT_ID}`)))
       .resolves.toBe(ANONYMOUS_PROJECT_ACTOR);
     expect(appUsers.findActiveAppUserId).not.toHaveBeenCalled();
   });
@@ -365,7 +356,7 @@ describe("project repository security rules", () => {
       id: PROJECT_ID,
     });
     expect(decodeProjectCursor(cursor, "dashboard")?.id).toBe(PROJECT_ID);
-    expect(() => decodeProjectCursor(cursor, "discovery")).toThrowError(
+    expect(() => decodeProjectCursor(cursor, "timeline")).toThrowError(
       expect.objectContaining({ reason: "INVALID_CURSOR" }),
     );
     expect(() => decodeProjectCursor("not-base64-json", "dashboard")).toThrowError(

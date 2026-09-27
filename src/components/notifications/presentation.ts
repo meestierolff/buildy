@@ -62,7 +62,7 @@ export function notificationMessage(notification: EngagementNotification): strin
 }
 
 export function notificationHref(notification: EngagementNotification): string {
-  if (notification.orderId) return PRODUCT_ROUTES.order(notification.orderId);
+  if (notification.orderId) return "/support";
   if (notification.projectId && notification.updateId) {
     return PRODUCT_ROUTES.projectUpdate(notification.projectId, notification.updateId);
   }

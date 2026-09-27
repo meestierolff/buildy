@@ -1,153 +1,112 @@
-# Sociaal state machine
+# Delen, volgen en profielconnecties
 
-Status: canoniek zichtbaar model. Autorisatie blijft server-side en de database
-is beslissend.
+Een project volgen en een profielconnectie hebben verschillende functies.
+Volgen abonneert de gebruiker op precies één verbouwing. Profielconnecties
+bepalen wie een verbouwing met visibility `followers` mag lezen. Autorisatie
+blijft server-side; volgen verleent geen extra lees- of schrijfrecht.
 
-## Eén relatie
+## Eén verbouwing volgen
 
-Profile following is de enige zichtbare volgrelatie tussen personen. De actieve
-API heeft geen project-follow- of project-accessrequestroutes. Historische
-tabellen zoals `project_followers` en `project_access_requests` blijven voor
-append-only data-integriteit bestaan, maar verlenen geen zichtbare nieuwe
-capability en geven geen toegang tot een privéverbouwing.
+De ingelogde kijker gebruikt idempotente `PUT`/`DELETE`
+`/api/projects/:projectId/follow`. De server leidt de gebruiker en eventuele
+deellinkcontext af uit vertrouwde sessiecookies. Follow vereist een actieve
+gebruiker, actuele leesrechten en een andere eigenaar.
 
-De relatie is gericht: de requester/follower is `source_user_id`, de eigenaar
-van het gevolgde profiel is `target_user_id`.
+| Handeling | Duurzame status | Resultaat |
+| --- | --- | --- |
+| Volgen | `active` | `following` |
+| Dezelfde follow herhalen | ongewijzigd | `following`, `replayed=true` |
+| Een muted subscription opnieuw volgen | `active` | `following` |
+| Ontvolgen | `revoked` | `none` |
+| Ontvolgen terwijl al ingetrokken | ongewijzigd | `none`, `replayed=true` |
 
-## Followtransities
+`viewerFollowStatus` in het projectoverzicht is `self`, `following` of `none`.
+Zowel `active` als `muted` telt als following; alleen `active` ontvangt
+publicatienotificaties. Een gebruiker kan zijn eigen subscription ook beëindigen
+na verlies van leesrecht, zonder daarmee verborgen projectinformatie te krijgen.
 
-| Actie | Voorwaarde | Nieuwe duurzame status | API-resultaat |
-|---|---|---|---|
-| Volg openbaar profiel | geen actieve block in beide richtingen | `active` | `following` |
-| Volg privéprofiel | geen actieve block in beide richtingen | `pending` | `pending` |
-| Herhaal dezelfde follow | relatie heeft gewenste status | ongewijzigd | zelfde state, `replayed=true` |
-| Requester annuleert verzoek | eigen status `pending` | `revoked` | `cancelled` |
-| Volger ontvolgt | eigen status `active` | `revoked` | `none` |
-| Eigenaar accepteert | inkomend verzoek `pending` | `active` | `following` |
-| Eigenaar wijst af | inkomend verzoek `pending` | `rejected` | `rejected` |
-| Eigenaar verwijdert volger | inkomende status `active` | `revoked` | `revoked` |
+`/volgend` gebruikt `/api/following` voor uitsluitend de gekozen, nog toegankelijke
+verbouwingen en hun gepubliceerde Bouwmomenten. De andere projecten van dezelfde
+eigenaar verschijnen niet automatisch. Er is geen brede discoveryfeed.
 
-Een afwijzing of intrekking kan later door een nieuwe expliciete followactie
-worden vervangen. Self-follow is ongeldig. Mutaties zijn actor-scoped en
-herhaalde gelijkwaardige verzoeken zijn idempotent.
+## Profielconnecties
 
-## Blocking
+De gerichte relatie loopt van `source_user_id` naar `target_user_id`.
+`/connecties` beheert profielrelaties, verzoeken en blokkades; deze lijst staat
+los van de projectfeed.
 
-| Actie | Effect |
-|---|---|
-| Blokkeren | maakt of activeert de gerichte blockrelatie en trekt actieve of pending follows in beide richtingen direct in |
-| Opnieuw blokkeren | laat dezelfde block staan en retourneert een replay |
-| Deblokkeren | trekt alleen de blockrelatie in |
-| Opnieuw deblokkeren | verandert niets en retourneert een replay |
+| Handeling | Voorwaarde | Nieuwe status |
+| --- | --- | --- |
+| Openbaar profiel volgen | geen block | `active` |
+| Privéprofiel volgen | geen block | `pending` |
+| Eigen verzoek annuleren | `pending` | `revoked` |
+| Profiel ontvolgen | `active` | `revoked` |
+| Inkomend verzoek accepteren | `pending` | `active` |
+| Verzoek afwijzen | `pending` | `rejected` |
+| Eigen volger verwijderen | `active` | `revoked` |
 
-Deblokkeren herstelt nooit oude follows, requests of historische projecttoegang.
-Een gebruiker moet daarna opnieuw een bewuste followactie starten.
+Gelijke verzoeken zijn idempotent. Self-follow is ongeldig. Een private
+profielpagina is alleen volledig zichtbaar voor de eigenaar en actieve
+profielconnecties; anderen kunnen bij expliciet zoeken de minimale identiteit
+zien om een verzoek te doen. Pending is geen leesrecht.
 
-Een actieve block heeft voorrang op:
+De gepagineerde API-views zijn `following`, `followers`, `incoming`, `outgoing`
+en `blocked`; `total` komt uit dezelfde databasequery als de lijst. Een
+notificatie kan naar een view linken maar is niet de bron van relatiestatus.
 
-- profielzoekresultaat en volledige profielinhoud;
-- follow-, follower- en requeststatus;
-- Verbouwing- en Bouwmomentreads;
-- comments, reacties en mentions;
-- media- en Bouwboekreads;
-- notificatiedoelen.
+## Blokkeren en intrekken
 
-## Connecties
+Blokkeren trekt actieve/pending profielrelaties en projectsubscriptions in beide
+richtingen in. Het sluit ook betrokken historische accessrecords. Ontvolgen of
+verwijderen van een profielconnectie trekt de projectsubscriptions in de
+betrokken richting in. De database serialiseert mutaties voor hetzelfde paar.
 
-`/connecties` is de enige beheerplek voor relaties. De server biedt vijf
-gepaginaeerde relatieviews plus zoeken:
+Deblokkeren trekt alleen de block in; het herstelt geen eerdere follows,
+verzoeken of toegang. Een actieve block gaat voor op profiel- en projectreads,
+engagement, private media en notificatiedoelen. Een nieuwe relatie vraagt een
+nieuwe expliciete handeling.
 
-| UI | API-view | Inhoud |
-|---|---|---|
-| Zoeken | profielsearch | openbare profielen en minimale vindbare identiteit van privéprofielen |
-| Volgend | `following` | profielen die de actor actief volgt |
-| Volgers | `followers` | actieve volgers van de actor |
-| Inkomende verzoeken | `incoming` | pending requests naar de actor |
-| Uitgaande verzoeken | `outgoing` | pending requests van de actor |
-| Geblokkeerd | `blocked` | door de actor actief geblokkeerde profielen |
+## Zichtbaarheid en deellinks
 
-`total` komt uit dezelfde canonieke databasequery als de lijst; de UI mag geen
-gedeeltelijk geladen paginalengte als totaal presenteren. Notificaties mogen
-naar de juiste Connecties-view deep-linken, maar zijn niet de beheerbron.
+| Databasewaarde | Wie kan lezen? |
+| --- | --- |
+| `private` | alleen de eigenaar |
+| `followers` | eigenaar en actieve profielconnecties van de eigenaar |
+| `unlisted` | eigenaar en ontvanger met een geldige owner-issued deellink |
+| `public` | iedereen, zolang publicatie/lifecycle/moderatie dit toestaat |
 
-## Profielprivacy
+Niet-eigenaren zien alleen gepubliceerde inhoud. Een gewone project-URL geeft
+geen recht op een private of unlisted verbouwing. De eigenaar maakt een
+willekeurige tijdelijke deellink en kan deze roteren of intrekken. De raw token
+wordt vóór React uit het URL-fragment verwijderd, via een POST-body ingewisseld
+en vervangen door een signed HttpOnly cookie met link-ID. PostgreSQL bewaart
+alleen de keyed tokenhash.
 
-- Openbaar profiel: zichtbaar voor iedereen; een follow wordt direct actief.
-- Privéprofiel: volledig zichtbaar voor eigenaar en actieve volgers; anderen
-  zien bij expliciet zoeken alleen genoeg identiteit om een verzoek te sturen.
-- Pending is geen leesrecht.
-- Blocking en account/moderatiestatus gaan vóór profielprivacy.
+De capability geeft leesrecht op het gedeelde verhaal, geen edits, originele
+media of owner-only Bouwboekdownload. Expiry, rotatie, intrekking en een
+visibilitywijziging worden bij volgende reads gecontroleerd. Een profielconnectie
+geeft geen recht op `private`; een projectsubscription of historisch geaccepteerd
+accessrequest evenmin.
 
-## Zichtbaarheid van een Verbouwing
+## Reads, reacties en notificaties
 
-| Optie in UI | Databasewaarde | Wie kan lezen? | Discovery |
-|---|---|---|---|
-| Alleen ik | `private` | alleen de eigenaar | nooit |
-| Mijn volgers | `followers` | eigenaar en actieve profielvolgers van de eigenaar | niet voor anderen |
-| Iedereen met de link | `unlisted` | eigenaar en ontvanger met een geldige, niet verlopen/ingetrokken owner-issued share capability | niet als openbaar resultaat aanbieden |
-| Openbaar | `public` | iedereen | toegestaan |
+Iedere read controleert bestaan, actieve eigenaar/account, lifecycle,
+moderatie, blocks en actuele visibility of deellink. Dezelfde grens geldt voor
+Bouwmomenten, comments, reacties en media. Clientcache-invalidatie helpt de UI,
+maar vervangt geen servercontrole.
 
-Niet-private Verbouwingen moeten gepubliceerd zijn. De eigenaar kan daarnaast
-eigen drafts zien; andere viewers zien alleen gepubliceerde Bouwmomenten.
-`unlisted` is een read-only vindbaarheidsmodus, geen editgrant en geen aparte
-projectrelatie. De gewone project-URL verleent geen toegang. De eigenaar maakt
-een high-entropy tijdelijke deellink, kan die roteren/intrekken, of trekt alle
-linktoegang in door de zichtbaarheid te wijzigen. De raw token wordt vóór React
-uit het fragment verwijderd, uitsluitend in een POST-body ingewisseld en daarna
-vervangen door een signed HttpOnly link-ID-cookie; PostgreSQL bewaart alleen de
-keyed hash. De capability geeft geen budget-, Bouwboek-, original-media- of
-schrijfrechten.
+Comments en reacties vereisen een ingelogde actor met actuele leesrechten.
+Commentauteur en projecteigenaar hebben de bestaande verwijderrechten. Mentions
+en notificaties zijn beperkt tot nog toegankelijke doelen. Er zijn geen
+e-mailnotificaties.
 
-Een actieve profile-follow geeft alleen leesrecht voor de optie Mijn volgers.
-Hij geeft geen toegang tot Alleen ik en nooit schrijf- of beheerrechten. Een
-historisch geaccepteerd project-accessrequest geeft evenmin toegang tot Alleen
-ik.
+Project ontvolgen verwijdert de verbouwing uit Volgend, maar maakt een verder
+openbare of nog geldig gedeelde verbouwing niet privé. Verlies van de benodigde
+profielconnectie, linkintrekking, block of verwijdering ontneemt wel het
+bijbehorende leesrecht. Al gedownloade bytes zijn niet terug te roepen.
 
-## Autorisatievolgorde
-
-Voor iedere profiel-, Verbouwing-, Bouwmoment-, engagement-, media- en
-Bouwboekread controleert de server in essentie:
-
-1. bestaat het object en is eigenaar/account actief;
-2. is het object niet verwijderd of door moderatie verborgen;
-3. bestaat er geen block in een van beide richtingen;
-4. is de actor eigenaar, of staat de actuele visibility de read toe;
-5. is het Bouwmoment voor een niet-eigenaar gepubliceerd;
-6. valt de specifieke media- of engagementread onder exact dezelfde toegang.
-
-Een wijziging van Openbaar naar Mijn volgers, van Mijn volgers naar Alleen ik,
-van Iedereen met de link naar Alleen ik, share-link expiry/rotate/revoke, een
-unfollow, follower removal of block
-moet daarom bij de eerstvolgende read project, update, comment, reactie, gallery,
-media en Bouwboek afschermen. De client invalideert betrokken caches na mutaties;
-de server vertrouwt nooit alleen op die invalidatie.
-
-## Volgend, engagement en notificaties
-
-- Volgend is chronologisch en gebaseerd op gevolgde profielen, niet op een
-  tweede project-follow of engagementranking.
-- Alleen zichtbare, gepubliceerde Bouwmomenten mogen in de feed staan.
-- Comments en reacties vereisen actuele leesrechten; de auteur of
-  Verbouwingseigenaar kan een comment verwijderen volgens de serverregels.
-- Mentions worden server-side beperkt tot gebruikers die het doel nog mogen
-  zien.
-- Notificaties worden niet getoond wanneer het doel voor de ontvanger niet meer
-  toegankelijk is.
-- E-mailnotificaties zijn geen onderdeel van de MVP.
-
-## Actieve HTTP-grens
-
-De sociale runtime registreert alleen profielroutes voor search/detail,
-connections, follow/unfollow, accept/reject, follower removal en block/unblock.
-Voormalige `/api/social/projects/:id/follow`, `state`, `access` en
-`access-requests` routes zijn niet actief. Historische SQL is geen publiek
-API-contract.
-
-## Bewijs en resterende releasegate
-
-Server-, contract- en clean-room PostgreSQL-tests bewijzen de centrale
-transities, de vier visibilitymodi, blokkades en onmiddellijke revoke op
-databasegrenzen. De volledige multi-actor browserjourneys blijven een harde
-releasegate: de verplichte Playwright MCP-runtime was op 23 augustus 2026 door
-de huidige Codex-gebruikslimiet geblokkeerd en kon geen interactieve state
-verifiëren.
+De profielroutes staan onder `/api/social`; project volgen staat onder
+`/api/projects/:projectId/follow`. Voormalige `/api/social/projects/...`
+follow-/accessrequestroutes zijn niet actief. Zie [F3/F4](architecture/FLOWS.md)
+voor het gebruikersresultaat en [STATE](architecture/STATE.md) voor werkelijk
+uitgevoerd bewijs.

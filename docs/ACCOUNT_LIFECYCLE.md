@@ -1,123 +1,89 @@
 # Account lifecycle
 
-Status: actieve Google OIDC-/Neon-/Vercel Blob-runtime.
-
-Buildy behandelt sessies, data-export en accountverwijdering als server-owned
-flows. De browser ontvangt geen providercredentials, sessietoken voor eigen
-opslag, Blob-objectkey of permanente download-URL.
+De accountflow gebruikt gebruikersnaam/wachtwoord, Neon en private Vercel Blob.
+Zie [F6](architecture/FLOWS.md) voor het contract en [STATE](architecture/STATE.md)
+voor werkelijk uitgevoerd bewijs. Een geaccepteerd verwijderverzoek is geen
+bewijs dat fysieke cleanup al klaar is.
 
 ## Sessies
 
-Google OpenID Connect is de enige loginmethode. Na de geverifieerde callback
-maakt Buildy een opaque, high-entropy sessie aan; alleen de tokenhash staat in
-Neon. De cookie is `HttpOnly`, `SameSite=Lax` en op HTTPS `Secure`.
+Wachtwoorden worden met scrypt en een eigen salt gehasht. Buildy bewaart alleen
+de hash van een willekeurig sessietoken in Neon. De sessiecookie is `HttpOnly`,
+`SameSite=Lax` en op HTTPS `Secure`. De server bepaalt de actieve gebruiker;
+clientheaders, profieldata of requestbody kunnen geen identiteit kiezen.
+Gebruikersnaamaccounts verzamelen geen e-mailadres. Wachtwoordherstel bestaat
+niet; beloof geen reset- of recoveryflow.
 
-Actieve routes:
-
-- `GET /api/account/sessions` — maximaal de eigen server-owned sessies;
-- `DELETE /api/account/sessions/:sessionId` — trekt alleen een eigen sessie in.
-
-De server leidt de actor af uit de cookie en identity mapping. Clientheaders,
-profiledata of requestbody kunnen geen gebruiker kiezen. Er is geen Better
-Auth, wachtwoord, magic link, e-mailverificatie, resetflow of `SESSION_SECRET`.
+- `GET /api/account/sessions` toont alleen eigen sessies.
+- `DELETE /api/account/sessions/:sessionId` trekt alleen een eigen sessie in.
+- Uitloggen trekt de huidige sessie in. Mutaties behouden origin/CSRF-controles
+  en rate limiting.
 
 ## Data-export
 
-Actieve routes:
+`GET /api/account/exports` toont eigen aanvragen. `POST /api/account/exports`
+gebruikt een gebruikersgebonden idempotencykey en kan actuele media meenemen.
+`GET|HEAD /api/account/exports/:jobId/download` is alleen voor de eigenaar.
 
-- `GET /api/account/exports`;
-- `POST /api/account/exports` met actor-scoped idempotencykey en optionele media;
-- `GET|HEAD /api/account/exports/:jobId/download`.
+De accountworker maakt een ZIP met `data.json`, optionele media en
+`manifest.json`, maximaal 250 MiB. PII wordt alleen binnen de worker ontsleuteld.
+Media moet bij de exacte geconfigureerde private Blob-store horen. Bron- en
+archiefchecksums worden gecontroleerd. Download vereist overeenkomende
+bytegrootte/SHA-256 en gebruikt `private, no-store` via de same-origin route;
+de browser krijgt geen permanente Blob-download-URL.
 
-De dedicated accountworker claimt begrensd één job, maakt een ZIP met
-`data.json`, optionele actuele media en `manifest.json`, ontsleutelt PII alleen
-binnen de worker en controleert bron- en archiefchecksums. Media wordt alleen
-geaccepteerd wanneer `storageProvider=vercel_blob` en bucket/object exact bij de
-geconfigureerde private store horen.
-
-Download is owner-only, `private, no-store`, same-origin en pas mogelijk nadat
-bytegrootte en SHA-256 van het private Blob-object overeenkomen. Het contract
-begrensd een archief tot 250 MiB. Exportstatus is een van `requested`,
-`processing`, `retry_scheduled`, `ready`, `expired`, `failed`, `dead_letter` of
-`deleted`.
+Exportstatussen zijn `requested`, `processing`, `retry_scheduled`, `ready`,
+`expired`, `failed`, `dead_letter` en `deleted`. Controleer status en veilige
+foutcode voordat een operator een probleem als opgelost meldt.
 
 ## Accountverwijdering
 
-`POST /api/account/deletion` vereist:
+`POST /api/account/deletion` vereist een actieve gebruiker, de exacte bevestiging
+`VERWIJDEREN`, een gebruikersgebonden idempotencykey en een huidige sessie die
+maximaal tien minuten geleden is aangemaakt. Bij een oudere sessie logt de
+gebruiker opnieuw in met gebruikersnaam en wachtwoord.
 
-- een ingelogde actor;
-- exact de bevestiging `VERWIJDEREN`;
-- een actor-scoped idempotencykey;
-- een huidige sessie die maximaal tien minuten geleden is aangemaakt.
+De aanvraag trekt sessies in en maakt account/projectinhoud direct onzichtbaar.
+Langdurige cleanup gebeurt via de accountworker. Die verwijdert uitsluitend
+geïnventariseerde private assets en controleert na iedere delete of het object
+afwezig is. Redactie en tombstoning volgen pas wanneer de manifestcontroles en
+retentievoorwaarden slagen.
 
-Is die sessie ouder, dan moet de gebruiker opnieuw via Google inloggen. Er is
-geen wachtwoord-step-up. De requestfunctie voert de langdurige cleanup niet in
-de browserrequest uit.
+Historische niet-afgeronde orders kunnen finalisatie blokkeren, ook al is
+bestellen uit de app verwijderd. Noodzakelijke historische order-, payment- en
+auditbewijzen blijven volgens het goedgekeurde retentiebeleid behouden. Omzeil
+deze bescherming niet door statussen handmatig te wijzigen.
 
-De database inventariseert private assets en maakt de Verbouwing/accountdata
-fail-closed onzichtbaar. Actieve Bouwboekorders blokkeren finalisatie. De worker
-verwijdert vervolgens alleen geïnventariseerde private Blob-objecten, controleert
-na iedere delete dat het object afwezig is en rondt redactie/tombstoning pas af
-wanneer de order- en storagegates opnieuw slagen.
+Deletionstatussen zijn `requested`, `blocked_active_order`, `deletion_pending`,
+`database_redaction`, `storage_cleanup`, `verification`, `completed`,
+`retry_scheduled`, `manual_review` en `dead_letter`.
 
-Mogelijke deletionstatussen zijn `requested`, `blocked_active_order`,
-`deletion_pending`, `database_redaction`, `storage_cleanup`, `verification`,
-`completed`, `retry_scheduled`, `manual_review` en `dead_letter`. Wettelijk of
-contractueel noodzakelijke order-, payment-, fulfilment- en append-only
-auditbewijzen kunnen onder het goedgekeurde retentiebeleid blijven; gewone
-projectinhoud en directe account-PII worden verwijderd of geredigeerd.
-
-Wanneer gekoppelde feedback/support bij finalisatie wordt geanonimiseerd, wist
-de databasegrens in dezelfde update eerst bericht- en contactciphertext,
-contact-/request-/sourcehashes, idempotencyveld, route, screenshotrelatie en
-user-agentfamilie. Alleen een inzending waarvan `submitted_by_id` exact het te
-verwijderen account is wordt geraakt; reeds anonieme inzendingen van anderen
-blijven ongewijzigd. De trigger draait pas bij finale anonimisering, niet bij
-export of het eerste verwijderverzoek, zodat export-before-delete intact blijft.
+Bij finale anonimisering van gekoppelde feedback/support worden bericht- en
+contactciphertext, contact-/request-/sourcehashes, idempotencyveld, route,
+screenshotrelatie en user-agentfamilie samen gewist. Dit raakt alleen inzendingen
+waarvan `submitted_by_id` exact het verwijderde account is. Reeds anonieme of
+andermans inzendingen blijven ongemoeid. Dit gebeurt niet bij export of het
+initiële verzoek, zodat export vóór verwijdering mogelijk blijft.
 
 ## Worker en configuratie
 
 De dagelijkse Vercel-cron `GET /api/internal/cron/account-lifecycle` vereist
-`Authorization: Bearer $CRON_SECRET`. De endpoint verwerkt een strikt op
-claimaantal en tijd begrensde accountbatch en reserveert binnen de
-Vercel-functieduur een aparte slice voor orphan-mediaonderhoud. Het
-response-overzicht bevat alleen operationele aantallen, interne job-ID's van
-nieuwe dead letters en veilige foutcodes, nooit PII of objectkeys. Retries
-gebruiken leases en begrensde backoff; na uitgeputte of niet-retryable fouten
-volgt `dead_letter`/menselijke beoordeling. Statusrijen worden niet handmatig
-overgeslagen.
+Bearer `CRON_SECRET`. Deze verwerkt een begrensde accountbatch en een aparte
+begrensde slice orphan-mediaonderhoud. Leases, backoff en dead letters maken
+hervatting mogelijk; sla geen statussen of manifestitems handmatig over.
 
-Orphan-cleanup is geen tweede mediaverwerkingspad. Alleen oude private Blob-
-objecten zonder beschermende databaserelatie komen in aanmerking. De drie
-privacyvrije `temporary`/`originals`/`display`-cursors leven als geleasede
-maintenance-events in de bestaande outbox, zodat iedere dagelijkse begrensde
-slice hervat en deletefouten retry/dead-letterbaar blijven. Deze cleanup draait
-alleen wanneer ook de geïsoleerde mediaworkerrol is geconfigureerd.
+Orphan-cleanup verwijdert alleen oude private objecten zonder beschermende
+databaserelatie. De hervatbare `temporary`/`originals`/`display`-cursors staan als
+geleasede maintenance-events in de outbox. Hiervoor is ook de mediaworkerrol
+nodig. Dit is geen tweede pad voor mediaverwerking.
 
-Benodigd voor de capability:
+Benodigd zijn `DATABASE_URL`, de afzonderlijke `DATABASE_ACCOUNT_WORKER_URL`,
+de PII-keyring/current version/blind-index, `ACCOUNT_RETENTION_POLICY_VERSION`,
+`ACCOUNT_RETENTION_POLICY_APPROVED_AT`, `BLOB_READ_WRITE_TOKEN` en `CRON_SECRET`.
+Bewaar bestaande encryptiesleutels zolang bewaarde gegevens ze nodig hebben.
 
-- `DATABASE_URL`;
-- een unieke `DATABASE_ACCOUNT_WORKER_URL`;
-- Google OIDC en de PII-keyring/blind-index;
-- `ACCOUNT_RETENTION_POLICY_VERSION` en een geldige
-  `ACCOUNT_RETENTION_POLICY_APPROVED_AT`;
-- private `BLOB_READ_WRITE_TOKEN`;
-- `CRON_SECRET`.
-
-De accountworker heeft geen table-DML en alleen execute op zijn eigen
-`app_account_worker_*`-functies. Configureer en verifieer samen met de vier
-andere actieve rollen via `scripts/setup/configure-database-roles.sql` en
-`scripts/setup/verify-database-roles.sql`. Er is geen e-mailworkerrol.
-
-## Operationele gates
-
-Vóór productie moeten op een tijdelijke clean room en daarna Preview zijn
-bewezen: session listing/revocation, reauth, idempotente export/deletion,
-inclusieve exportchecksum, private denial, expiry/cleanup, active-order block,
-retry/dead-letter, Blob delete-readback en finale PII-redactie. Gebruik alleen
-synthetische data en leg geen export of persoonsgegevens als testartifact vast.
-
-Een echte Google-, Blob- en Preview-rondreis is in de huidige release-snapshot
-niet bewezen. De verplichte Browser MCP-runtime was door de huidige Codex-
-gebruikslimiet geblokkeerd; interactieve accountverificatie en productie
-blijven **NO-GO**.
+De accountworker heeft geen algemene table-DML, alleen execute op eigen
+begrensde functies. De bestaande [rolconfiguratie](../scripts/setup/configure-database-roles.sql)
+en [rolcontrole](../scripts/setup/verify-database-roles.sql) leggen deze grens vast.
+Bewaar bij onderzoek alleen omgeving, SHA, job-ID, aantallen en veilige
+foutcodes. Deel geen exports, persoonsgegevens, cookies of objectkeys.

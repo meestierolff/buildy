@@ -10,7 +10,6 @@ import {
   editProjectUpdate,
   getFollowingFeed,
   getProjectDashboard,
-  getProjectDiscovery,
   getProjectOverview,
   getProjectTimeline,
   setProjectFollow,
@@ -310,7 +309,7 @@ describe("project API write flow", () => {
     );
   });
 
-  it("reads dashboard, discovery and following through bounded typed endpoints", async () => {
+  it("reads dashboard and following through bounded typed endpoints", async () => {
     const card = {
       ...overview("public"),
       startDate: undefined,
@@ -326,17 +325,14 @@ describe("project API write flow", () => {
     );
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(success({ items: [normalizedCard], nextCursor: null }))
-      .mockResolvedValueOnce(success({ items: [normalizedCard], nextCursor: null }))
       .mockResolvedValueOnce(success({ projects: [normalizedCard], activity: [] }));
     vi.stubGlobal("fetch", fetchMock);
 
     await getProjectDashboard({ limit: 50 });
-    await getProjectDiscovery({ limit: 50 });
     await getFollowingFeed({ projectLimit: 20, activityLimit: 10 });
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "/api/projects?limit=50",
-      "/api/discovery?limit=50",
       "/api/following?projectLimit=20&activityLimit=10",
     ]);
   });

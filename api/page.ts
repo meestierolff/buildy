@@ -34,10 +34,6 @@ export async function readAnonymousPublicProject(
   projectId: string,
   config: RuntimeConfig = getRuntimeConfig(),
 ): Promise<PublicProjectPageData | null> {
-  // public_demo is a fully static surface. A direct /project/<uuid> request
-  // must not query or inject metadata from the live social product before the
-  // client-side deferred route takes over.
-  if (config.PRODUCT_PROFILE === "public_demo") return null;
   if (!config.DATABASE_URL) return null;
   const project = await new PostgresProjectRepository(getBuildyDatabase(config.DATABASE_URL))
     .getOverview(ANONYMOUS_PROJECT_ACTOR, projectId);

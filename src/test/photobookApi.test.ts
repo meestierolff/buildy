@@ -4,7 +4,6 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  approvePhotobookProof,
   getPhotobookDraft,
   replacePhotobookExclusions,
   requestPhotobookProof,
@@ -138,10 +137,9 @@ describe("photobook API client", () => {
     });
   });
 
-  it("bindt aanvragen en goedkeuren aan de exacte document- en PDF-hashes", async () => {
+  it("bindt PDF-aanvragen aan het actuele document en de versie", async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(successResponse({ revisionId: REVISION_ID, status: "rendering", replayed: false }))
-      .mockResolvedValueOnce(successResponse({ revisionId: REVISION_ID, status: "approved", replayed: false }));
+      .mockResolvedValueOnce(successResponse({ revisionId: REVISION_ID, status: "rendering", replayed: false }));
     vi.stubGlobal("fetch", fetchMock);
 
     await requestPhotobookProof(PROJECT_ID, {
@@ -149,22 +147,9 @@ describe("photobook API client", () => {
       expectedDraftVersion: 5,
       expectedDocumentSha256: DOCUMENT_SHA,
     });
-    await approvePhotobookProof(REVISION_ID, {
-      idempotencyKey: REQUEST_ID,
-      documentSha256: DOCUMENT_SHA,
-      pdfSha256: PDF_SHA,
-      proofViewed: true,
-    });
-
     expect(JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body))).toMatchObject({
       expectedDocumentSha256: DOCUMENT_SHA,
       expectedDraftVersion: 5,
-    });
-    expect(fetchMock.mock.calls[1]?.[0]).toBe(`/api/photobooks/proofs/${REVISION_ID}/approve`);
-    expect(JSON.parse(String((fetchMock.mock.calls[1]?.[1] as RequestInit).body))).toMatchObject({
-      documentSha256: DOCUMENT_SHA,
-      pdfSha256: PDF_SHA,
-      proofViewed: true,
     });
   });
 });

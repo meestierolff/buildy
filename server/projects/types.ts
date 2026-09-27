@@ -13,7 +13,7 @@ import type {
   ProjectDeletionStatus,
   UpdateProjectInput,
 } from "../../shared/contracts/projects.js";
-import type { DashboardCursor, DiscoveryCursor, TimelineCursor } from "./cursor.js";
+import type { DashboardCursor, TimelineCursor } from "./cursor.js";
 import type { AuthenticatedProjectActor, ProjectActor } from "./actor.js";
 
 export const STANDARD_PROJECT_PHASES = [
@@ -117,7 +117,6 @@ export interface ProjectRepository {
   createProject(command: CreateProjectCommand): Promise<MutationReference>;
   updateProject(command: UpdateProjectCommand): Promise<void>;
   listDashboard(actorId: string, cursor: DashboardCursor | undefined, limit: number): Promise<ProjectCard[]>;
-  listDiscovery(viewer: ProjectActor, cursor: DiscoveryCursor | undefined, limit: number): Promise<ProjectCard[]>;
   listFollowingProjects(actor: AuthenticatedProjectActor, limit: number): Promise<ProjectCard[]>;
   listFollowingActivity(actor: AuthenticatedProjectActor, limit: number): Promise<FollowingActivity[]>;
   setProjectFollow(actor: AuthenticatedProjectActor, projectId: string, following: boolean): Promise<ProjectFollowMutationResult>;

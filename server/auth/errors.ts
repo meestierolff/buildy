@@ -16,12 +16,3 @@ export class AuthUnavailableError extends Error {
     this.reason = reason;
   }
 }
-
-export class AuthRegistrationRejectedError extends Error {
-  readonly code = "BETA_INVITE_REQUIRED";
-
-  constructor(options?: ErrorOptions) {
-    super("Voor een nieuw account is een geldige bèta-uitnodiging nodig.", options);
-    this.name = "AuthRegistrationRejectedError";
-  }
-}

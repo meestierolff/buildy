@@ -1,107 +1,78 @@
 # Incident runbook
 
-Status: actuele procedure; namen, contactkanalen en formele meldplichtbesluiten
-zijn nog externe launchinputs.
-
-## Classificatie
+Gebruik de [architectuur](architecture/GRAPH.md) voor de grenzen en
+[STATE](architecture/STATE.md) voor de actuele deployment. Dit document beschrijft
+handelingen bij een incident en voegt geen releasevoorwaarden toe.
 
 | Niveau | Voorbeeld | Reactie |
 | --- | --- | --- |
-| SEV-1 | private media/proof openbaar, credentialexfiltratie, verkeerde ontvanger/drukorder, dubbele betaling | directe containment; commander + security/privacy |
-| SEV-2 | Google auth, database, Stripe of kernflow breed uit; datacorruptie zonder bewezen lek | betrokken capability fail-closed; technische/providerescalatie |
-| SEV-3 | individuele order, begrensde jobachterstand of niet-kritieke UI-fout | ticket, veilige workaround, volgen tot herstelbewijs |
+| SEV-1 | private media/PDF openbaar, credentiallek, ongeautoriseerde toegang | directe beperking van het lek; verantwoordelijke voor techniek en privacy inschakelen |
+| SEV-2 | login, database of kernflow breed uit; datacorruptie | betrokken writes/flow begrenzen en oorzaak herstellen |
+| SEV-3 | individuele jobachterstand of beperkte UI-fout | ticket, gerichte oplossing en uitkomst volgen |
 
-Severity bepaalt geen wettelijke meldplicht. Privacy/security en bevoegde
-eigenaar beslissen op basis van werkelijke impact en toepasselijke regels.
+De bevoegde eigenaar beoordeelt privacy-impact en eventuele meldplicht op basis
+van het werkelijke incident.
 
-## Eerste vijftien minuten
+## Eerste acties
 
-1. Open één incidentrecord met UTC-start, environment, release-SHA, request-ID en
-   intern incident-ID.
-2. Wijs commander, onderzoeker en notulist aan.
-3. Stop alleen de getroffen capability fail-closed. Bij paymenttwijfel:
-   `CHECKOUT_MODE=off`; maak geen nieuwe Checkout of drukkerorder.
-4. Roteer vermoedelijk gelekte secrets bij bronprovider en Vercel; commit of
-   deel ze nooit. Trek oude credentials aantoonbaar in.
-5. Bewaar begrensde immutable provider/deploy/auditlogs conform retentie. Geen
-   volledige database, PII, object-URL of providerpayload in tickets.
-6. Scheid hypothese van bewijs; scope met interne IDs, hashes en tellingen.
-7. Communiceer alleen bevestigde impact en het volgende updatemoment.
+Leg UTC-start, omgeving, release-SHA, request-ID en incident-ID vast. Wijs een
+verantwoordelijke aan en beperk alleen de getroffen toegang of verwerking.
+Bewaar relevante logs en auditmetadata zonder inhoud, persoonsgegevens,
+cookies, objectkeys of private URL's. Scheid vermoedens van vastgestelde impact.
+Roteer en trek daadwerkelijk verdachte credentials in via de bronprovider en
+de betreffende omgeving; maak geen algemene keyrotatie van een gewone storing.
 
-## Scenario's
+## Gerichte scenario's
 
-### Private Blob-media of proof zichtbaar
+### Private media of PDF zichtbaar
 
-- Stop de betrokken delivery/upload/proofflow; Blob-store blijft private.
-- Controleer serverautorisatie, objecthost/path, cacheheaders, checksum en
-  visibility/blockstatus; er hoort geen permanente signed URL te bestaan.
-- Bepaal betrokken interne asset-ID's/tijdspanne zonder URLs te loggen.
-- Roteer Blob-token bij credentialtwijfel en test anonymous, outsider, follower,
-  blocked en owner opnieuw.
+Beperk de getroffen delivery/uploadflow en houd de Blob-store private.
+Controleer autorisatie, exact objecthost/path, cacheheaders, bytes/SHA-256 en
+actuele visibility/blockstatus. Bepaal betrokken interne asset-ID's en tijdvak
+zonder URL's te loggen. Controleer na herstel de betrokken eigenaar en een actor
+zonder toegang. Al gedownloade bytes kunnen niet worden teruggeroepen.
 
-### Google/sessionincident
+### Wachtwoord of sessie
 
-- Controleer exacte origin/callback, Google issuer/client en releaseconfig.
-- Trek verdachte server-owned sessies in; alleen hashes staan in Neon.
-- Bewijs PKCE/state/nonce, veilige `next` en identity mapping vóór heropenen.
-- Schakel geen wachtwoord/e-mailfallback in; die bestaat niet.
+Controleer origin/CSRF, cookiebeleid, rate limiting en de server-owned
+identiteitskoppeling. Trek verdachte sessies in; alleen tokenhashes horen in de
+database. Controleer de scrypt-verificatie bij een loginprobleem. Schakel geen
+authenticatie uit en maak geen gedeeld account als workaround. Er is geen
+wachtwoordherstel om een gebruiker naar te verwijzen.
 
-### Stripe paymentincident
+### Database of migration
 
-- Zet checkout `off` bij key/account/environment/signature/prijs/bedragtwijfel.
-- Vergelijk interne order, environment/account, Checkout Session/Payment Intent,
-  event-ID, metadata, bedrag en valuta. Geen PII in incidentrecord.
-- Replay uitsluitend via de idempotente webhook/databaseboundary.
-- Een successredirect is geen betaalbewijs; maak geen tweede session zolang de
-  eerste status onzeker is.
+Beperk betrokken writes en bewaar de toestand. Wijzig een toegepaste migration
+nooit; herstel schema met een append-only wijziging. Gebruik voor rollback of
+restore [BACKUP_AND_RESTORE](BACKUP_AND_RESTORE.md) en bepaal vooraf welke geldige
+writes een herstelpunt zou verliezen.
 
-### Handmatige drukkerorder
+### Account/projectverwijdering
 
-- Zet order `manual_review`/`refund_review`; plaats geen tweede externe order.
-- Controleer exact-PDF SHA/bytes, interne order en externe referentie handmatig.
-- Een Stripe-refund annuleert geen drukkerorder en drukkerstatus wijzigt geen
-  paymentledger. Beslis/reconcileer beide kanten afzonderlijk.
+Laat de target onzichtbaar en herstel via de bestaande job/lease. Vergelijk het
+manifest met Blob delete-readback. Markeer niets voltooid zonder bevestigde
+afwezigheid. Historische retentievoorwaarden blijven gelden; activeer geen
+verwijderde bestelruntime om een blokkade te omzeilen.
 
-### Database/migration
+### Request-driven media of Bouwboek
 
-- Freeze betrokken writes en maak de toestand beschikbaar voor onderzoek.
-- Wijzig een toegepaste migration nooit; maak een forward fix op een aparte
-  branch en test apply/verify/replay.
-- Restore alleen volgens [BACKUP_AND_RESTORE.md](BACKUP_AND_RESTORE.md) na
-  expliciet besluit.
+Er is geen media- of photobookcron om te pauzeren. Controleer eigenaar, exact
+asset-/revisie-ID, lease, beperkte workerrol, Blobbytes/checksum en veilige
+foutcode. Hervat via dezelfde geautoriseerde completion/editorpoll; wijzig geen
+jobstatus of lease handmatig en start geen algemene queueclaim.
 
-### Account/projectdelete of cleanup
+### Delen, volgen of blokkeren
 
-- Laat target fail-closed onzichtbaar en herstel via bestaande lease/job.
-- Vergelijk deletion manifest met private Blob delete-readback.
-- Markeer niets voltooid zonder aantoonbare afwezigheid; actieve orders blijven
-  een blokkade volgens het goedgekeurde retentiebeleid.
+Controleer de exacte zichtbaarheid, deellink en blockstatus in API en database.
+Een project volgen verleent geen leesrecht. Intrekken van deellinks, verwijderen
+van profielconnecties en blokkeren moeten bij de volgende read doorwerken naar
+project, Bouwmoment, reacties en private media. Deblokkeren herstelt geen
+verwijderde relatie. Zie [SOCIAL_STATE_MACHINE](SOCIAL_STATE_MACHINE.md).
 
-### Request-driven media of Bouwboekproof
+## Herstel vastleggen
 
-- Stop alleen de getroffen completion-/proofflow; er is geen media- of
-  photobookcron om te pauzeren.
-- Controleer actor/owner, exact asset-/revisie-ID, lease, workerrol, Blobbytes/
-  checksum en veilige failurecode zonder objectkey of PII te loggen.
-- Hervat alleen via dezelfde owner-geautoriseerde completion/editorpoll. Start
-  geen generieke queueclaim en wijzig geen jobstatus of lease handmatig.
-
-### Social/privacylek
-
-- Blokkeer affected reads en bewijs profiel-follow, vier visibilities, moderation
-  overrides en block-revocation in database én API.
-- Unblock of visibilityreset herstelt geen eerder ingetrokken relatie op aanname.
-
-Er is geen e-mailworker of Peecho API om te pauzeren/replayen.
-
-## Heropenen en afsluiten
-
-Heropen pas wanneer oorzaak begrensd, secrets/config correct, readiness groen,
-relevante regressies plus synthetische provider/rolsmokes geslaagd en queues
-normaal zijn. Sluit met tijdlijn, impact, oorzaak, containment/herstelbewijs,
-detectiegat, eigenaar en concrete opvolging. Verwijder tijdelijke toegang en
-gevoelige artifacts.
-
-Een production smoke of mutatie vereist aparte release-authorisatie. Gebruik de
-status/contacts uit [OPERATOR_ACTIONS_REQUIRED.md](OPERATOR_ACTIONS_REQUIRED.md);
-dit runbook claimt niet dat ze al zijn ingericht.
+Bevestig de getroffen flow en de relevante toegang na herstel. Noteer oorzaak,
+impact, tijdlijn, uitvoerder en resterende actie; een groene healthresponse alleen
+bewijst geen herstelde gegevens of private toegang. Verwijder tijdelijke toegang
+en gevoelige artifacts. Werk [STATE](architecture/STATE.md) bij als deployment of
+bekend runtimebewijs verandert.

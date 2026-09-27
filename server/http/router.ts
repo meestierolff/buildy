@@ -6,7 +6,6 @@ import {
   getProductProfile,
   getRuntimeConfig,
   getTrustedOrigins,
-  publicDemoSupportConfigured,
 } from "../config/runtime.js";
 import { getBuildyDatabase, getBuildyWorkerDatabase, type BuildyDatabase } from "../db/client.js";
 import { HttpError } from "./errors.js";
@@ -17,18 +16,13 @@ import { handleDefaultProjectRequest } from "../projects/runtime.js";
 import { handleDefaultMediaRequest } from "../media/runtime.js";
 import { getServerCompositionStatus } from "../composition.js";
 import { handleDefaultEngagementRequest } from "../engagement/runtime.js";
-import { handleDefaultPlanningRequest } from "../planning/runtime.js";
 import { handleDefaultSocialRequest } from "../social/runtime.js";
 import { handleDefaultPhotobookRequest } from "../photobooks/runtime.js";
 import { handleDefaultProfileRequest } from "../profiles/runtime.js";
-import { handleDefaultOrderRequest } from "../orders/runtime.js";
-import { handleDefaultStripePaymentWebhook } from "../orders/paymentWebhookRuntime.js";
 import { handleDefaultAccountRequest } from "../account/runtime.js";
 import { handleDefaultAccountCronRequest } from "../account/cron.js";
 import { handleDefaultModerationRequest } from "../moderation/runtime.js";
 import { handleDefaultModerationAdminRequest } from "../moderation/adminRuntime.js";
-import { handleDefaultBetaRequest } from "../beta/runtime.js";
-import { handleDefaultOrderAdminRequest } from "../orders/adminRuntime.js";
 import { handleDefaultProjectShareRequest } from "../projectShares/runtime.js";
 import { handleDefaultFeedbackAdminRequest } from "../feedbackAdmin/runtime.js";
 
@@ -123,40 +117,6 @@ function findPrefixHandler(pathname: string): RouteHandler | undefined {
     .find(([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`))?.[1];
 }
 
-function handleProfileBoundedModerationRequest(
-  request: Request,
-  requestId: string,
-): Response | Promise<Response> {
-  const pathname = new URL(request.url).pathname.replace(/\/$/, "") || "/";
-  if (
-    getRuntimeConfig().PRODUCT_PROFILE === "public_demo"
-    && pathname !== "/api/support"
-  ) {
-    return jsonError(
-      503,
-      "AUTH_UNAVAILABLE",
-      "Deze functie is niet beschikbaar in de openbare demo.",
-      requestId,
-    );
-  }
-  return handleDefaultModerationRequest(request, requestId);
-}
-
-function handleProfileBoundedAccountCronRequest(
-  request: Request,
-  requestId: string,
-): Response | Promise<Response> {
-  if (getRuntimeConfig().PRODUCT_PROFILE === "public_demo") {
-    return jsonError(
-      503,
-      "AUTH_UNAVAILABLE",
-      "Accountonderhoud is niet actief in de openbare demo.",
-      requestId,
-    );
-  }
-  return handleDefaultAccountCronRequest(request, requestId);
-}
-
 async function workerHasNoTableDml(database: BuildyDatabase): Promise<boolean> {
   const result = await database.execute<{ isolated: boolean }>(sql`
     select not exists (
@@ -211,25 +171,6 @@ async function photobookWorkerBoundaryReady(database: BuildyDatabase): Promise<b
   return result.rows[0]?.ready === true && await workerHasNoTableDml(database);
 }
 
-async function paymentWorkerBoundaryReady(database: BuildyDatabase): Promise<boolean> {
-  const result = await database.execute<{ ready: boolean }>(sql`
-    select
-      has_function_privilege(
-        current_user,
-        'public.app_apply_stripe_payment_event(text,text,text,text,timestamptz,uuid,text,text,text,text,text,text,integer,integer,text,text)',
-        'EXECUTE'
-      )
-      and not has_function_privilege(current_user, 'public.app_resolve_active_user(text)', 'EXECUTE')
-      and not has_function_privilege(current_user, 'public.app_claim_outbox_event(text,text,integer)', 'EXECUTE')
-      and not has_function_privilege(current_user, 'public.app_claim_media_processing_asset(text,uuid,integer)', 'EXECUTE')
-      and not has_function_privilege(current_user, 'public.app_media_worker_claim_orphan_cleanup(text,text,integer)', 'EXECUTE')
-      and not has_function_privilege(current_user, 'public.app_photobook_worker_claim(text,integer)', 'EXECUTE')
-      and not has_function_privilege(current_user, 'public.app_photobook_worker_claim_revision(text,uuid,integer)', 'EXECUTE')
-      as ready
-  `);
-  return result.rows[0]?.ready === true && await workerHasNoTableDml(database);
-}
-
 async function accountWorkerBoundaryReady(database: BuildyDatabase): Promise<boolean> {
   const result = await database.execute<{ ready: boolean }>(sql`
     select
@@ -277,30 +218,21 @@ registerRoute("GET", "/api/product-profile", (_request, requestId) => {
 registerRoute("GET", "/api/readiness", async (_request, requestId) => {
   const config = getRuntimeConfig();
   const capabilities = getCapabilities(config);
-  const publicDemo = config.PRODUCT_PROFILE === "public_demo";
-  const publicDemoSupport = publicDemoSupportConfigured(config);
-  const authenticatedConfigurationReady = !publicDemo &&
-    capabilities.database === "ready" &&
-    capabilities.authentication === "ready" &&
-    getServerCompositionStatus() === "ready";
-  const configurationReady = publicDemo
-    ? !publicDemoSupport || getServerCompositionStatus() === "ready"
-    : authenticatedConfigurationReady;
+  const configurationReady = capabilities.database === "ready"
+    && capabilities.authentication === "ready"
+    && getServerCompositionStatus() === "ready";
   let database: "pass" | "fail" | "not_checked" = "not_checked";
   let accountWorker: "pass" | "fail" | "not_checked" = "not_checked";
   let mediaWorker: "pass" | "fail" | "not_checked" = "not_checked";
-  let paymentWorker: "pass" | "fail" | "not_checked" = "not_checked";
   let photobookWorker: "pass" | "fail" | "not_checked" = "not_checked";
 
-  const databaseRequired = !publicDemo || publicDemoSupport;
-  if (databaseRequired && configurationReady && config.DATABASE_URL) {
+  if (configurationReady && config.DATABASE_URL) {
     try {
       const result = await getBuildyDatabase(config.DATABASE_URL).execute<{ ready: boolean }>(sql`
         select
           row_security_active('public.projects'::regclass)
           and row_security_active('public.project_share_links'::regclass)
           and row_security_active('public.auth_identity_mappings'::regclass)
-          and row_security_active('public.product_events'::regclass)
           and not exists (
             select 1 from (values ('public.password_credentials'), ('public.password_sessions')) required_table(name)
             cross join (values ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE')) required_privilege(name)
@@ -350,15 +282,8 @@ registerRoute("GET", "/api/readiness", async (_request, requestId) => {
           and has_function_privilege(current_user, 'public.app_admin_load_feedback_submission(uuid)', 'EXECUTE')
           and has_function_privilege(current_user, 'public.app_admin_list_feedback_reviews(uuid)', 'EXECUTE')
           and has_function_privilege(current_user, 'public.app_admin_update_feedback_status(uuid,uuid,text,integer,text,text,text)', 'EXECUTE')
-          and has_function_privilege(current_user, 'public.app_admin_list_paid_orders(text,timestamptz,uuid,integer)', 'EXECUTE')
-          and has_function_privilege(current_user, 'public.app_admin_load_paid_order(uuid)', 'EXECUTE')
-          and has_function_privilege(current_user, 'public.app_admin_list_order_events(uuid)', 'EXECUTE')
-          and has_function_privilege(current_user, 'public.app_admin_apply_manual_fulfilment(uuid,integer,text,text,text,text,text,text,text)', 'EXECUTE')
           and not has_function_privilege(current_user, 'public.app_migration_grant_role(uuid,uuid,text,text,text,timestamptz,timestamptz)', 'EXECUTE')
           and not has_function_privilege(current_user, 'public.app_migration_revoke_role(uuid,uuid,text,text)', 'EXECUTE')
-          and has_function_privilege(current_user, 'public.app_reserve_beta_invite(text,text,text,text,text,text)', 'EXECUTE')
-          and has_function_privilege(current_user, 'public.app_complete_beta_signup(text,text,text,text)', 'EXECUTE')
-          and has_function_privilege(current_user, 'public.app_record_client_product_event(uuid,text,text,jsonb)', 'EXECUTE')
           and not has_function_privilege(current_user, 'public.app_create_beta_invite(uuid,text,text,integer,timestamptz,text,text)', 'EXECUTE')
           and not has_function_privilege(current_user, 'public.app_revoke_beta_invite(text,text)', 'EXECUTE')
           and not has_function_privilege(current_user, 'public.app_claim_outbox_event(text,text,integer)', 'EXECUTE')
@@ -426,25 +351,10 @@ registerRoute("GET", "/api/readiness", async (_request, requestId) => {
     }
   }
 
-  if (capabilities.payments === "ready" && config.DATABASE_PAYMENT_WORKER_URL) {
-    try {
-      paymentWorker = await paymentWorkerBoundaryReady(
-        getBuildyWorkerDatabase(config.DATABASE_PAYMENT_WORKER_URL, "payment"),
-      ) ? "pass" : "fail";
-    } catch (error) {
-      paymentWorker = "fail";
-      logEvent("error", "database.payment_worker_readiness_failed", {
-        requestId,
-        ...safeErrorFields(error),
-      });
-    }
-  }
-
   const ready = configurationReady
-    && (!databaseRequired || database === "pass")
+    && database === "pass"
     && accountWorker !== "fail"
     && mediaWorker !== "fail"
-    && paymentWorker !== "fail"
     && photobookWorker !== "fail";
   return jsonSuccess(
     {
@@ -454,7 +364,6 @@ registerRoute("GET", "/api/readiness", async (_request, requestId) => {
         database,
         accountWorker,
         mediaWorker,
-        paymentWorker,
         photobookWorker,
       },
     },
@@ -464,15 +373,10 @@ registerRoute("GET", "/api/readiness", async (_request, requestId) => {
 });
 
 registerPrefixRoute("/api/auth", handleDefaultAuthRequest);
-registerRoute("GET", "/api/beta/status", handleDefaultBetaRequest);
-registerRoute("POST", "/api/beta/reservations", handleDefaultBetaRequest);
-registerRoute("POST", "/api/product-events", handleDefaultBetaRequest);
-registerRoute("GET", "/api/internal/cron/account-lifecycle", handleProfileBoundedAccountCronRequest);
-registerExternalRoute("POST", "/api/webhooks/stripe", handleDefaultStripePaymentWebhook);
+registerRoute("GET", "/api/internal/cron/account-lifecycle", handleDefaultAccountCronRequest);
 registerRoute("POST", "/api/project-share-links/redeem", handleDefaultProjectShareRequest);
 registerRoute("GET", "/api/projects", handleDefaultProjectRequest);
 registerRoute("POST", "/api/projects", handleDefaultProjectRequest);
-registerRoute("GET", "/api/discovery", handleDefaultProjectRequest);
 registerRoute("GET", "/api/following", handleDefaultProjectRequest);
 registerPatternRoute("GET", "/api/projects/:projectId/share-link", handleDefaultProjectShareRequest);
 registerPatternRoute("POST", "/api/projects/:projectId/share-link", handleDefaultProjectShareRequest);
@@ -534,37 +438,17 @@ registerPatternRoute("DELETE", "/api/projects/:projectId/updates/:updateId/react
 registerRoute("GET", "/api/notifications", handleDefaultEngagementRequest);
 registerRoute("PATCH", "/api/notifications", handleDefaultEngagementRequest);
 registerPatternRoute("PATCH", "/api/notifications/:notificationId", handleDefaultEngagementRequest);
-registerPatternRoute("GET", "/api/projects/:projectId/floorplans", handleDefaultPlanningRequest);
-registerPatternRoute("POST", "/api/projects/:projectId/floorplans", handleDefaultPlanningRequest);
-registerPatternRoute("PATCH", "/api/projects/:projectId/floorplans/:floorplanId", handleDefaultPlanningRequest);
-registerPatternRoute("DELETE", "/api/projects/:projectId/floorplans/:floorplanId", handleDefaultPlanningRequest);
-registerPatternRoute("POST", "/api/projects/:projectId/floorplans/:floorplanId/pins", handleDefaultPlanningRequest);
-registerPatternRoute("PATCH", "/api/projects/:projectId/floorplans/:floorplanId/pins/:pinId", handleDefaultPlanningRequest);
-registerPatternRoute("DELETE", "/api/projects/:projectId/floorplans/:floorplanId/pins/:pinId", handleDefaultPlanningRequest);
-registerPatternRoute("GET", "/api/projects/:projectId/budget", handleDefaultPlanningRequest);
-registerPatternRoute("POST", "/api/projects/:projectId/budget", handleDefaultPlanningRequest);
-registerPatternRoute("PATCH", "/api/projects/:projectId/budget", handleDefaultPlanningRequest);
-registerPatternRoute("DELETE", "/api/projects/:projectId/budget", handleDefaultPlanningRequest);
-registerPatternRoute("POST", "/api/projects/:projectId/budget/items", handleDefaultPlanningRequest);
-registerPatternRoute("PATCH", "/api/projects/:projectId/budget/items/:itemId", handleDefaultPlanningRequest);
-registerPatternRoute("DELETE", "/api/projects/:projectId/budget/items/:itemId", handleDefaultPlanningRequest);
 registerPatternRoute("GET", "/api/projects/:projectId/photobook", handleDefaultPhotobookRequest);
 registerPatternRoute("PUT", "/api/projects/:projectId/photobook/settings", handleDefaultPhotobookRequest);
 registerPatternRoute("PUT", "/api/projects/:projectId/photobook/exclusions", handleDefaultPhotobookRequest);
 registerPatternRoute("POST", "/api/projects/:projectId/photobook/proofs", handleDefaultPhotobookRequest);
-registerPatternRoute("POST", "/api/photobooks/proofs/:revisionId/approve", handleDefaultPhotobookRequest);
 registerPatternRoute("GET", "/api/photobooks/proofs/:revisionId/pdf", handleDefaultPhotobookRequest);
 registerPatternRoute("HEAD", "/api/photobooks/proofs/:revisionId/pdf", handleDefaultPhotobookRequest);
-registerPatternRoute("POST", "/api/photobooks/proofs/:revisionId/quote", handleDefaultOrderRequest);
-registerPatternRoute("POST", "/api/photobooks/proofs/:revisionId/checkout", handleDefaultOrderRequest);
-registerRoute("GET", "/api/orders", handleDefaultOrderRequest);
-registerPatternRoute("GET", "/api/orders/:orderId", handleDefaultOrderRequest);
-registerRoute("POST", "/api/moderation/reports", handleProfileBoundedModerationRequest);
+registerRoute("POST", "/api/moderation/reports", handleDefaultModerationRequest);
 registerPrefixRoute("/api/moderation/admin", handleDefaultModerationAdminRequest);
 registerPrefixRoute("/api/admin/feedback", handleDefaultFeedbackAdminRequest);
-registerPrefixRoute("/api/admin/orders", handleDefaultOrderAdminRequest);
-registerRoute("POST", "/api/feedback", handleProfileBoundedModerationRequest);
-registerRoute("POST", "/api/support", handleProfileBoundedModerationRequest);
+registerRoute("POST", "/api/feedback", handleDefaultModerationRequest);
+registerRoute("POST", "/api/support", handleDefaultModerationRequest);
 
 export async function handleApiRequest(request: Request): Promise<Response> {
   const incomingRequestId = request.headers.get("x-request-id");

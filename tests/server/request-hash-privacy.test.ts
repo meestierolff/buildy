@@ -6,7 +6,6 @@ import { engagementRequestHash } from "../../server/engagement/idempotency";
 import { mediaRequestHash } from "../../server/media/idempotency";
 import { submissionRequestHash } from "../../server/moderation/idempotency";
 import { photobookProofRequestHash } from "../../server/photobooks/repository";
-import { planningRequestHash } from "../../server/planning/idempotency";
 import { profileRequestHash } from "../../server/profiles/idempotency";
 import { projectRequestHash } from "../../server/projects/idempotency";
 import { PrivacyBlindIndex } from "../../server/security/dataProtection";
@@ -32,11 +31,6 @@ describe("keyed request-hash privacy", () => {
       (index: PrivacyBlindIndex) => engagementRequestHash(
         "comment.create",
         { body: PRIVATE_TEXT },
-        index,
-      ),
-      (index: PrivacyBlindIndex) => planningRequestHash(
-        "budget-item.create",
-        { description: PRIVATE_TEXT },
         index,
       ),
       (index: PrivacyBlindIndex) => mediaRequestHash(

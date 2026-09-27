@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import {
-  approvePhotobookProofInputSchema,
   replacePhotobookExclusionsInputSchema,
   requestPhotobookProofInputSchema,
   updatePhotobookSettingsInputSchema,
@@ -18,7 +17,6 @@ import {
 } from "./typography.js";
 import type { PrivacyBlindIndex } from "../security/dataProtection.js";
 import type {
-  PhotobookClock,
   PhotobookEditorState,
   PhotobookIdFactory,
   PhotobookProofMutation,
@@ -39,35 +37,15 @@ function resolveTypography(): Promise<PdfKitPhotobookTypography> {
 }
 
 function scopedIdempotencyKey(
-  operation: "request" | "approve",
   actorId: string,
   clientKey: string,
 ): string {
   return createHash("sha256")
-    .update(`photobook.proof.${operation}:v1\0`)
+    .update("photobook.proof.request:v1\0")
     .update(actorId)
     .update("\0")
     .update(clientKey)
     .digest("hex");
-}
-
-function approvalRequestHash(input: {
-  blindIndex: PrivacyBlindIndex;
-  revisionId: string;
-  documentSha256: string;
-  pdfSha256: string;
-}): string {
-  const canonicalDigest = createHash("sha256")
-    .update("buildy-photobook-proof-approval-payload:v2\0")
-    .update(input.revisionId)
-    .update("\0")
-    .update(input.documentSha256)
-    .update("\0")
-    .update(input.pdfSha256)
-    .update("\0")
-    .update("true")
-    .digest("hex");
-  return input.blindIndex.create("photobook-proof-approval-v2", canonicalDigest);
 }
 
 function exclusionSets(source: PhotobookSource) {
@@ -89,7 +67,6 @@ export class PhotobookService {
     private readonly repository: PhotobookRepository,
     private readonly bucket: string,
     private readonly blindIndex: PrivacyBlindIndex,
-    private readonly clock: PhotobookClock = () => new Date(),
     private readonly createId: PhotobookIdFactory = () => crypto.randomUUID(),
     private readonly typography: () => Promise<PhotobookTextMeasurer> = resolveTypography,
     private readonly proofProcessor?: PhotobookProofProcessor,
@@ -216,7 +193,7 @@ export class PhotobookService {
       pdfAssetId,
       pdfObjectKey: expectedPhotobookPdfObjectKey(pdfAssetId),
       bucket: this.bucket,
-      idempotencyKey: scopedIdempotencyKey("request", actorId, input.idempotencyKey),
+      idempotencyKey: scopedIdempotencyKey(actorId, input.idempotencyKey),
       requestHash: photobookProofRequestHash(this.blindIndex, editor.document),
       requestHashVersion: 2,
     });
@@ -225,30 +202,6 @@ export class PhotobookService {
     if (processed?.status === "rendered") return { ...mutation, status: "ready" };
     if (processed?.status === "failed") return { ...mutation, status: "failed" };
     return mutation;
-  }
-
-  async approveProof(
-    actorId: string,
-    revisionId: string,
-    rawInput: unknown,
-  ): Promise<PhotobookProofMutation> {
-    const input = approvePhotobookProofInputSchema.parse(rawInput);
-    return this.repository.approveProof({
-      actorId,
-      revisionId,
-      documentSha256: input.documentSha256,
-      pdfSha256: input.pdfSha256,
-      proofViewed: input.proofViewed,
-      idempotencyKey: scopedIdempotencyKey("approve", actorId, input.idempotencyKey),
-      requestHash: approvalRequestHash({
-        blindIndex: this.blindIndex,
-        revisionId,
-        documentSha256: input.documentSha256,
-        pdfSha256: input.pdfSha256,
-      }),
-      requestHashVersion: 2,
-      approvedAt: this.clock(),
-    });
   }
 
   async proofObject(actorId: string, revisionId: string): Promise<PhotobookProofObject> {

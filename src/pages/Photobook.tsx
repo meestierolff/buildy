@@ -44,7 +44,6 @@ import {
   useUpdatePhotobookSettings,
 } from "@/hooks/usePhotobook";
 import { ApiClientError } from "@/lib/apiClient";
-import { recordProductEvent } from "@/lib/betaApi";
 import {
   createPhotobookIdempotencyKey,
   loadPhotobookProofView,
@@ -126,7 +125,6 @@ const Photobook = () => {
   const pdfController = useRef<AbortController | null>(null);
   const pdfRequest = useRef<RequestPhotobookProofInput | null>(null);
   const pdfObjectUrls = useRef(new Set<string>());
-  const openedEventSent = useRef(false);
   const appliedSettingsVersion = useRef<number | null>(null);
 
   const draft = draftQuery.data;
@@ -159,15 +157,6 @@ const Photobook = () => {
     path: validProjectId ? `/project/${id}/bouwboek` : undefined,
     noIndex: true,
   });
-
-  useEffect(() => {
-    if (!user || !validProjectId || openedEventSent.current) return;
-    openedEventSent.current = true;
-    void recordProductEvent({
-      eventName: "photobook_opened",
-      properties: { schemaVersion: 1 },
-    }).catch(() => undefined);
-  }, [user, validProjectId]);
 
   useEffect(() => {
     if (!authLoading && !user) {

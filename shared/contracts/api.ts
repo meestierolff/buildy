@@ -13,8 +13,6 @@ export const apiErrorCodeSchema = z.enum([
   "USERNAME_UNAVAILABLE",
   "WEAK_PASSWORD",
   "PROVIDER_UNAVAILABLE",
-  "BETA_INVITE_REQUIRED",
-  "BETA_INVITE_INVALID",
   "INTERNAL_ERROR",
 ]);
 
@@ -65,7 +63,6 @@ export const readinessResponseSchema = z.object({
       database: z.enum(["pass", "fail", "not_checked"]),
       accountWorker: z.enum(["pass", "fail", "not_checked"]),
       mediaWorker: z.enum(["pass", "fail", "not_checked"]),
-      paymentWorker: z.enum(["pass", "fail", "not_checked"]),
       photobookWorker: z.enum(["pass", "fail", "not_checked"]),
     }),
   }),

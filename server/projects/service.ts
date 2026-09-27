@@ -172,28 +172,6 @@ export class ProjectService {
     };
   }
 
-  async discovery(viewer: ProjectActor, rawQuery: unknown): Promise<ProjectPage> {
-    const query: ProjectPageQuery = projectPageQuerySchema.parse(rawQuery);
-    const cursor = decodeProjectCursor(query.cursor, "discovery");
-    const rows = await this.repository.listDiscovery(viewer, cursor, query.limit + 1);
-    const items = rows.slice(0, query.limit);
-    const last = items.at(-1);
-    if (rows.length > query.limit && last && !last.publishedAt) {
-      throw new ProjectError("PROJECT_NOT_FOUND");
-    }
-    return {
-      items,
-      nextCursor: rows.length > query.limit && last?.publishedAt
-        ? encodeProjectCursor({
-            version: 1,
-            kind: "discovery",
-            timestamp: last.publishedAt,
-            id: last.id,
-          })
-        : null,
-    };
-  }
-
   async following(actor: AuthenticatedProjectActor, rawQuery: unknown): Promise<FollowingFeed> {
     const query = followingFeedQuerySchema.parse(rawQuery);
     const [projects, activity] = await Promise.all([

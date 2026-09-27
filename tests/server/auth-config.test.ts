@@ -10,8 +10,6 @@ function runtime(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
     APP_ENV: "test",
     APP_ORIGIN: "https://app.buildy.test",
     DATABASE_URL: "postgresql://buildy:buildy@127.0.0.1:5432/buildy",
-    GOOGLE_CLIENT_ID: "google-client",
-    GOOGLE_CLIENT_SECRET: "google-secret",
     NODE_ENV: "test",
     ...overrides,
   };
@@ -68,16 +66,10 @@ describe("auth configuration", () => {
     expect(() => resolveAuthConfiguration(runtime(overrides))).toThrow(AuthUnavailableError);
   });
 
-  it("fails closed when a required secret or database URL is absent", () => {
+  it("fails closed when the database URL is absent", () => {
     expect(() => resolveAuthConfiguration(runtime({ DATABASE_URL: undefined }))).toThrowError(
       expect.objectContaining({ reason: "configuration_missing" }),
     );
-  });
-
-  it("works without a Google client or callback", () => {
-    expect(resolveAuthConfiguration(runtime({
-      GOOGLE_CLIENT_ID: undefined, GOOGLE_CLIENT_SECRET: undefined,
-    })).databaseUrl).toContain("postgresql:");
   });
 
   it("requires TLS for a remote PostgreSQL connection", () => {

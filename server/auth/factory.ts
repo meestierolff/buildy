@@ -4,9 +4,9 @@ import { usernameSignInInputSchema, usernameSignUpInputSchema, type AuthSessionD
 import type { AccountAuthGateway, AccountAuthSession } from "../account/types.js";
 import type { BuildyDatabase } from "../db/client.js";
 import { jsonError, jsonSuccess } from "../http/responses.js";
-import type { DataProtectionKeyring, PrivacyBlindIndex } from "../security/dataProtection.js";
+import type { PrivacyBlindIndex } from "../security/dataProtection.js";
 import type { AuthConfiguration } from "./config.js";
-import type { AuthIdentityProvisioner, AuthNewUserAuthorizer } from "./identity.js";
+import type { AuthIdentityProvisioner } from "./identity.js";
 import { PostgresPasswordAuthRepository, UsernameUnavailableError, type PasswordAuthRepository, type PasswordSessionRecord } from "./passwordRepository.js";
 import { hashPassword, isWeakPassword, verifyPassword } from "./password.js";
 
@@ -18,9 +18,6 @@ const MAX_AUTH_BODY_BYTES = 4 * 1_024;
 export type AuthRateLimitStorage = {
   consume(key: string, rule: { max: number; window: number }): Promise<{ allowed: boolean; retryAfter: number | null }>;
 };
-export interface AuthRegistrationGate extends AuthNewUserAuthorizer {
-  withRequest<Result>(request: Request, next: () => Promise<Result>): Promise<Result>;
-}
 export interface AuthEngine {
   handler(request: Request): Promise<Response>;
   resolveAuthUserId(request: Request): Promise<string | null>;
@@ -30,10 +27,8 @@ export interface CreateBuildyAuthInput {
   config: AuthConfiguration;
   database: BuildyDatabase;
   identityProvisioner: AuthIdentityProvisioner;
-  keyring: DataProtectionKeyring;
   blindIndex: PrivacyBlindIndex;
   rateLimitStorage: AuthRateLimitStorage;
-  registrationGate?: AuthRegistrationGate;
   repository?: PasswordAuthRepository;
   now?: () => Date;
   randomSessionToken?: () => string;
@@ -223,10 +218,6 @@ export function createBuildyAuth(input: CreateBuildyAuthInput): AuthEngine {
       parsed = await authInput(request, signup);
     } catch {
       return jsonError(400, "BAD_REQUEST", "Controleer je gebruikersnaam en wachtwoord.", id);
-    }
-    // Email-bound invitations cannot silently authorize a username-only account.
-    if (signup && input.config.betaMode !== false) {
-      return jsonError(503, "AUTH_UNAVAILABLE", "Account maken is tijdelijk niet beschikbaar.", id);
     }
     const subjects = [
       { name: signup ? "password-sign-up-network" : "password-sign-in-network", value: networkIdentifier(request), max: signup ? 5 : 30 },

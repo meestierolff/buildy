@@ -84,8 +84,7 @@ describe("project share owner UI", () => {
   afterEach(cleanup);
 
   it("creates and copies the fragment link without exposing it as a project URL", async () => {
-    const onCopied = vi.fn();
-    render(<ShareLinkDialog open onOpenChange={vi.fn()} onCopied={onCopied} projectId={PROJECT_ID} projectTitle="Ons huis" />);
+    render(<ShareLinkDialog open onOpenChange={vi.fn()} projectId={PROJECT_ID} projectTitle="Ons huis" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Deellink maken" }));
     expect(await screen.findByText("Je nieuwe link staat klaar")).toBeInTheDocument();
@@ -94,17 +93,15 @@ describe("project share owner UI", () => {
     fireEvent.click(screen.getByRole("button", { name: "Link kopiëren" }));
 
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(SHARE_URL));
-    expect(onCopied).toHaveBeenCalledOnce();
   });
 
   it("biedt native delen én kopiëren zonder de bearerlink te renderen", async () => {
     const nativeShare = vi.fn().mockResolvedValue(undefined);
-    const onCopied = vi.fn();
     Object.defineProperty(navigator, "share", {
       configurable: true,
       value: nativeShare,
     });
-    render(<ShareLinkDialog open onOpenChange={vi.fn()} onCopied={onCopied} projectId={PROJECT_ID} projectTitle="Ons huis" />);
+    render(<ShareLinkDialog open onOpenChange={vi.fn()} projectId={PROJECT_ID} projectTitle="Ons huis" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Deellink maken" }));
     await screen.findByText("Je nieuwe link staat klaar");
@@ -118,7 +115,6 @@ describe("project share owner UI", () => {
       text: "Bekijk het verbouwingsverhaal van Ons huis.",
       url: SHARE_URL,
     }));
-    expect(onCopied).toHaveBeenCalledOnce();
   });
 
   it("offers rotate and revoke for an existing grant and explains that the old secret is unrecoverable", async () => {

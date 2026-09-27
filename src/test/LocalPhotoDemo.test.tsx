@@ -82,30 +82,8 @@ describe("lokale foto-demo", () => {
     expect(screen.queryByRole("link", { name: /inloggen en bewaren/i })).not.toBeInTheDocument();
   });
 
-  it("houdt de public-demo foto volledig lokaal zonder accountvervolg", () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-    render(<BrowserRouter><LocalPhotoDemo feedbackEnabled publicDemo /></BrowserRouter>);
-    const photo = new File(["lokale foto"], "privenaam-en-adres.png", { type: "image/png" });
-
-    fireEvent.change(screen.getByLabelText("Kies een verbouwfoto van dit apparaat"), {
-      target: { files: [photo] },
-    });
-
-    expect(screen.getByText("Je foto blijft op dit apparaat en wordt niet geüpload.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Probeer een andere foto" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Geef feedback" })).toHaveAttribute("href", "/support");
-    expect(screen.queryByRole("link", { name: /google|bewaar dit/i })).not.toBeInTheDocument();
-    expect(mocks.saveLandingPhoto).not.toHaveBeenCalled();
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(document.body.textContent).not.toContain(photo.name);
-
-    fireEvent.click(screen.getByRole("button", { name: "Verwijder foto" }));
-    expect(screen.queryByAltText("Jouw gekozen verbouwfoto in de lokale voorbeeldweergave")).not.toBeInTheDocument();
-  });
-
   it("geeft een afzonderlijke fout voor een foto groter dan 50 MB", () => {
-    render(<BrowserRouter><LocalPhotoDemo publicDemo /></BrowserRouter>);
+    render(<BrowserRouter><LocalPhotoDemo /></BrowserRouter>);
     const photo = new File(["x"], "te-groot.jpg", { type: "image/jpeg" });
     Object.defineProperty(photo, "size", { configurable: true, value: 50 * 1024 * 1024 + 1 });
 

@@ -82,18 +82,6 @@ export type RequestPhotobookProofCommand = {
   requestHashVersion: 2;
 };
 
-export type ApprovePhotobookProofCommand = {
-  actorId: string;
-  revisionId: string;
-  documentSha256: string;
-  pdfSha256: string;
-  proofViewed: true;
-  idempotencyKey: string;
-  requestHash: string;
-  requestHashVersion: 2;
-  approvedAt: Date;
-};
-
 export type PhotobookProofMutation = {
   revisionId: string;
   status: "rendering" | "ready" | "approved" | "locked" | "invalidated" | "failed";
@@ -163,7 +151,6 @@ export interface PhotobookRepository {
   saveDraft(command: SavePhotobookDraftCommand): Promise<{ draftId: string; version: number }>;
   latestProof(actorId: string, projectId: string): Promise<PhotobookProofSummary | null>;
   requestProof(command: RequestPhotobookProofCommand): Promise<PhotobookProofMutation>;
-  approveProof(command: ApprovePhotobookProofCommand): Promise<PhotobookProofMutation>;
   resolveProofObject(actorId: string, revisionId: string): Promise<PhotobookProofObject | null>;
   claimRenderJob(workerId: string, leaseSeconds: number): Promise<PhotobookRenderJob | null>;
   claimRenderJobForRevision(
@@ -185,5 +172,4 @@ export type PhotobookWorkerRepository = Pick<
 >;
 
 export type PhotobookIdFactory = () => string;
-export type PhotobookClock = () => Date;
 export type PhotobookPreferencesInput = PhotobookPreferences;

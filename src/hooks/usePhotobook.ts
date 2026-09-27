@@ -1,11 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  approvePhotobookProof,
   getPhotobookDraft,
   replacePhotobookExclusions,
   requestPhotobookProof,
   updatePhotobookSettings,
-  type ApprovePhotobookProofInput,
   type ReplacePhotobookExclusionsInput,
   type RequestPhotobookProofInput,
   type UpdatePhotobookSettingsInput,
@@ -53,19 +51,6 @@ export function useRequestPhotobookProof(projectId: string) {
   return useMutation({
     mutationFn: (input: RequestPhotobookProofInput) =>
       requestPhotobookProof(projectId, input),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: photobookQueryKeys.project(projectId) });
-    },
-  });
-}
-
-export function useApprovePhotobookProof(projectId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ revisionId, input }: {
-      revisionId: string;
-      input: ApprovePhotobookProofInput;
-    }) => approvePhotobookProof(revisionId, input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: photobookQueryKeys.project(projectId) });
     },

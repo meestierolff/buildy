@@ -68,7 +68,6 @@ async function copyText(value: string): Promise<void> {
 type ShareLinkDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCopied?: () => void;
   projectId: string;
   projectTitle: string;
 };
@@ -76,7 +75,6 @@ type ShareLinkDialogProps = {
 export function ShareLinkDialog({
   open,
   onOpenChange,
-  onCopied,
   projectId,
   projectTitle,
 }: ShareLinkDialogProps) {
@@ -138,7 +136,6 @@ export function ShareLinkDialog({
     try {
       await copyText(freshShareUrl);
       toast.success("Deellink gekopieerd");
-      onCopied?.();
     } catch {
       toast.error("Kopiëren lukt niet. Probeer het opnieuw.");
     }
@@ -152,7 +149,6 @@ export function ShareLinkDialog({
         text: `Bekijk het verbouwingsverhaal van ${projectTitle}.`,
         url: freshShareUrl,
       });
-      onCopied?.();
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       toast.error("Delen lukt niet. Je kunt de link wel kopiëren.");

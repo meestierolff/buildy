@@ -4,13 +4,8 @@ import { configureDefaultAuthRuntime, resetDefaultAuthRuntimeForTests, resolveDe
 import { resolveAuthConfiguration } from "./auth/config.js";
 import { createPostgresAuthIdentityProvisioner } from "./auth/identity.js";
 import { PostgresAuthRateLimitStorage } from "./auth/postgresRateLimitStorage.js";
-import { BetaRegistrationGate } from "./beta/authGate.js";
-import { PostgresBetaRepository } from "./beta/repository.js";
-import { configureDefaultBetaRuntime, resetDefaultBetaRuntimeForTests } from "./beta/runtime.js";
-import { BetaService } from "./beta/service.js";
 import {
   getRuntimeConfig,
-  publicDemoSupportConfigured,
   type RuntimeConfig,
 } from "./config/runtime.js";
 import { getBuildyDatabase, getBuildyWorkerDatabase } from "./db/client.js";
@@ -26,12 +21,6 @@ import {
   resetDefaultEngagementRuntimeForTests,
 } from "./engagement/runtime.js";
 import { EngagementService } from "./engagement/service.js";
-import { PostgresPlanningRepository } from "./planning/repository.js";
-import {
-  configureDefaultPlanningRuntime,
-  resetDefaultPlanningRuntimeForTests,
-} from "./planning/runtime.js";
-import { PlanningService } from "./planning/service.js";
 import { PostgresProfileRepository } from "./profiles/repository.js";
 import {
   configureDefaultProfileRuntime,
@@ -39,14 +28,12 @@ import {
 } from "./profiles/runtime.js";
 import { ProfileService } from "./profiles/service.js";
 import { logEvent, safeErrorFields } from "./observability/logger.js";
-import { StripePaymentProvider } from "./payments/stripePaymentProvider.js";
-import { GoogleOidcSubjectResolver, PostgresActiveAppUserLookup } from "./projects/authActor.js";
+import { SessionSubjectResolver, PostgresActiveAppUserLookup } from "./projects/authActor.js";
 import { KeyringProjectPrivateDetailsProtector } from "./projects/protector.js";
 import { PostgresProjectRepository } from "./projects/repository.js";
 import { configureDefaultProjectRuntime, resetDefaultProjectRuntimeForTests } from "./projects/runtime.js";
 import { ProjectService } from "./projects/service.js";
 import {
-  FailClosedProjectActorResolver,
   StrictMappedProjectActorResolver,
 } from "./projects/actor.js";
 import { resolveRuntimeDataProtection } from "./security/runtimeDataProtection.js";
@@ -68,20 +55,6 @@ import {
   configureDefaultPhotobookRuntime,
   resetDefaultPhotobookRuntimeForTests,
 } from "./photobooks/runtime.js";
-import { ApprovedPriceMatrixQuoteProvider, parseApprovedPriceMatrix } from "./orders/approvedPriceMatrix.js";
-import { hasCompleteOrderRuntime, parseSellerConfiguration } from "./orders/config.js";
-import { KeyringOrderPiiProtector } from "./orders/pii.js";
-import { PostgresOrderRepository } from "./orders/repository.js";
-import { configureDefaultOrderRuntime, resetDefaultOrderRuntimeForTests } from "./orders/runtime.js";
-import { OrderService } from "./orders/service.js";
-import {
-  PostgresStripePaymentEventRepository,
-  stripeWebhookApplicationEnvironment,
-} from "./orders/paymentWebhook.js";
-import {
-  configureDefaultStripePaymentWebhookRuntime,
-  resetDefaultStripePaymentWebhookRuntimeForTests,
-} from "./orders/paymentWebhookRuntime.js";
 import { PostgresAccountRepository } from "./account/repository.js";
 import { AccountService } from "./account/service.js";
 import { AccountLifecycleWorker } from "./account/worker.js";
@@ -111,12 +84,6 @@ import {
   resetDefaultFeedbackAdminRuntimeForTests,
 } from "./feedbackAdmin/runtime.js";
 import { FeedbackAdminService } from "./feedbackAdmin/service.js";
-import { PostgresOrderAdminRepository } from "./orders/adminRepository.js";
-import {
-  configureDefaultOrderAdminRuntime,
-  resetDefaultOrderAdminRuntimeForTests,
-} from "./orders/adminRuntime.js";
-import { OrderAdminService } from "./orders/adminService.js";
 import { ProjectShareCookieContext } from "./projectShares/cookie.js";
 import { HmacProjectShareTokens } from "./projectShares/crypto.js";
 import { PostgresProjectShareRepository } from "./projectShares/repository.js";
@@ -211,31 +178,6 @@ export function ensureServerComposition(): ServerCompositionStatus {
   if (status) return status;
 
   const runtime = getRuntimeConfig();
-  if (runtime.PRODUCT_PROFILE === "public_demo") {
-    if (!publicDemoSupportConfigured(runtime)) {
-      status = "unconfigured";
-      return status;
-    }
-    try {
-      const protection = resolveRuntimeDataProtection(runtime);
-      const database = getBuildyDatabase(runtime.DATABASE_URL!);
-      const rateLimits = new PostgresAuthRateLimitStorage(database, protection.blindIndex);
-      configureDefaultModerationRuntime({
-        actors: new FailClosedProjectActorResolver(),
-        service: new ModerationService(
-          new PostgresModerationRepository(database),
-          rateLimits,
-          protection.keyring,
-          protection.blindIndex,
-        ),
-      });
-      status = "ready";
-    } catch (error) {
-      status = "failed";
-      logEvent("error", "server.composition_failed", safeErrorFields(error));
-    }
-    return status;
-  }
   if (!hasCompleteAuthRuntime(runtime)) {
     status = "unconfigured";
     return status;
@@ -252,22 +194,13 @@ export function ensureServerComposition(): ServerCompositionStatus {
     };
 
     const rateLimitStorage = new PostgresAuthRateLimitStorage(database, protection.blindIndex);
-    const betaService = new BetaService(
-      authConfig.betaMode !== false,
-      new PostgresBetaRepository(database),
-      rateLimitStorage,
-      protection.blindIndex,
-    );
-    const registrationGate = new BetaRegistrationGate(betaService);
     configureDefaultAuthRuntime({
       blindIndex: protection.blindIndex,
       identityProvisioner: createPostgresAuthIdentityProvisioner(),
-      keyring: protection.keyring,
       rateLimitStorage,
-      registrationGate,
     });
 
-    const subjects = new GoogleOidcSubjectResolver(resolveDefaultAuthEngine);
+    const subjects = new SessionSubjectResolver(resolveDefaultAuthEngine);
     const appUsers = new PostgresActiveAppUserLookup(database);
     const shareTokens = new HmacProjectShareTokens(runtime.PII_BLIND_INDEX_KEY);
     const actors = new StrictMappedProjectActorResolver(
@@ -284,11 +217,6 @@ export function ensureServerComposition(): ServerCompositionStatus {
         shareTokens,
         authConfig.appOrigin,
       ),
-    });
-    configureDefaultBetaRuntime({
-      actors,
-      secureCookies: authConfig.secureCookies,
-      service: betaService,
     });
     const protector = new KeyringProjectPrivateDetailsProtector(
       protection.keyring,
@@ -310,13 +238,6 @@ export function ensureServerComposition(): ServerCompositionStatus {
       actors,
       service: new EngagementService(
         new PostgresEngagementRepository(database),
-        protection.blindIndex,
-      ),
-    });
-    configureDefaultPlanningRuntime({
-      actors,
-      service: new PlanningService(
-        new PostgresPlanningRepository(database),
         protection.blindIndex,
       ),
     });
@@ -398,42 +319,6 @@ export function ensureServerComposition(): ServerCompositionStatus {
       });
     }
 
-    if (hasCompleteOrderRuntime(runtime)) {
-      const payments = new StripePaymentProvider({
-        secretKey: runtime.STRIPE_SECRET_KEY,
-        webhookSecret: runtime.STRIPE_WEBHOOK_SECRET,
-        expectedAccountId: runtime.STRIPE_EXPECTED_ACCOUNT_ID,
-        environment: runtime.STRIPE_ENVIRONMENT,
-      });
-      configureDefaultOrderRuntime({
-        actors,
-        service: new OrderService(
-          new PostgresOrderRepository(database),
-          new ApprovedPriceMatrixQuoteProvider(
-            parseApprovedPriceMatrix(runtime.ORDER_PRICE_MATRIX_JSON),
-            runtime.STRIPE_ENVIRONMENT,
-          ),
-          payments,
-          new KeyringOrderPiiProtector(
-            protection.keyring,
-            runtime.PII_ENCRYPTION_CURRENT_VERSION,
-          ),
-          protection.blindIndex,
-          parseSellerConfiguration(runtime.ORDER_SELLER_JSON, runtime.CHECKOUT_MODE),
-          runtime.APP_ORIGIN,
-          runtime.ORDER_TERMS_VERSION,
-          true,
-        ),
-      });
-      configureDefaultStripePaymentWebhookRuntime({
-        applicationEnvironment: stripeWebhookApplicationEnvironment(runtime.APP_ENV),
-        payments,
-        repository: new PostgresStripePaymentEventRepository(
-          getBuildyWorkerDatabase(runtime.DATABASE_PAYMENT_WORKER_URL, "payment"),
-        ),
-      });
-    }
-
     if (mediaComposition) {
       configureDefaultMediaRuntime({
         actors,
@@ -469,22 +354,8 @@ export function ensureServerComposition(): ServerCompositionStatus {
           protection.blindIndex,
           undefined,
           undefined,
-          undefined,
           photobookWorker,
           Boolean(photobookWorker),
-        ),
-        storage,
-      });
-    }
-
-    if (runtime.BLOB_READ_WRITE_TOKEN) {
-      const storage = resolveBlobStorage(runtime as ConfiguredBlobRuntime);
-      configureDefaultOrderAdminRuntime({
-        actors: adminActors,
-        service: new OrderAdminService(
-          new PostgresOrderAdminRepository(database),
-          protection.keyring,
-          protection.blindIndex,
         ),
         storage,
       });
@@ -506,19 +377,14 @@ export function getServerCompositionStatus(): ServerCompositionStatus {
 export function resetServerCompositionForTests(): void {
   status = undefined;
   resetDefaultAuthRuntimeForTests();
-  resetDefaultBetaRuntimeForTests();
   resetDefaultProjectRuntimeForTests();
   resetDefaultProjectShareRuntimeForTests();
   resetDefaultMediaRuntimeForTests();
   resetDefaultSocialRuntimeForTests();
   resetDefaultEngagementRuntimeForTests();
-  resetDefaultPlanningRuntimeForTests();
   resetDefaultProfileRuntimeForTests();
   resetDefaultPhotobookRuntimeForTests();
-  resetDefaultOrderRuntimeForTests();
-  resetDefaultStripePaymentWebhookRuntimeForTests();
   resetDefaultAccountRuntimeForTests();
-  resetDefaultOrderAdminRuntimeForTests();
   resetDefaultModerationRuntimeForTests();
   resetDefaultModerationAdminRuntimeForTests();
   resetDefaultFeedbackAdminRuntimeForTests();

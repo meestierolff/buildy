@@ -19,5 +19,6 @@ Two real users on one verified deployment can create a private renovation, save 
 A static example, local-only photo demo, a green build, or fixture-backed tests alone does not satisfy this goal.
 
 Do not rewrite working services, change auth/storage providers, or expand the social product before that journey succeeds.
-The existing Google OIDC implementation still requires owner-approved configuration and a real login test. Skipping setup does not remove this dependency.
-No Computer Use. No credentials in chat. No production changes or paid upgrades without authorization.
+Accounts use username/password. No email provider, OAuth, demo profile, invitations, checkout or printing runtime.
+Computer Use and normal commit/push/deploy are authorized. Keep credentials private.
+CI and slow test infrastructure were removed at the owner's request; use proportionate manual verification.

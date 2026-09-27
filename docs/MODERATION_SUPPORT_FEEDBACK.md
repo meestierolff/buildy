@@ -19,10 +19,10 @@ Na intake toont Buildy een niet-geheime ontvangstcode `MELD-…` of `HELP-…` i
 UI. Er wordt geen responstijd, verwijdertermijn of uitkomst beloofd. Het formulier
 is geen noodkanaal.
 
-Er is geen e-mailprovider. De actieve runtime verstuurt dus geen ontvangst-,
-support- of moderatiemail; historische outbox/e-mailmigrations zijn geen
-deliveryclaim. Een opgegeven replyadres wordt alleen versleuteld opgeslagen
-zodat een bevoegde operator buiten deze automatische runtime kan reageren.
+Buildy verstuurt geen automatische ontvangst-, support- of moderatiemail.
+Een opgegeven replyadres wordt versleuteld opgeslagen voor handmatige
+afhandeling door een bevoegde operator. Dit staat los van registratie met
+gebruikersnaam/wachtwoord, die geen e-mailadres verzamelt.
 
 ## HTTP- en trustgrenzen
 
@@ -43,7 +43,7 @@ zodat een bevoegde operator buiten deze automatische runtime kan reageren.
 De intake accepteert uitsluitend JSON zonder queryparameters en begrenst de body
 op 32 KiB; moderatie-adminmutaties op 16 KiB en feedback-adminmutaties op 8 KiB.
 De server leidt de actor af uit de
-Google/server-session en hercontroleert targetvisibility in de database. Een
+wachtwoordsessie en hercontroleert targetvisibility in de database. Een
 anonieme actor kan alleen publieke content melden. Support en bezwaar blijven
 bereikbaar na accountschorsing; andere routes falen gesloten.
 
@@ -94,19 +94,16 @@ mag deze PII-bevattende supportstroom openen. Wachtrijresultaten bevatten geen
 bericht, contact, ciphertext, actor-ID, route of hashes; het detail ontsleutelt
 bericht/contact pas nadat HTTP, service én SQL de adminrol hebben bevestigd.
 
-## Operationele gates
+## Operationele afhandeling
 
-Vóór brede publieke posting zijn minimaal nodig:
+Wijs iedere melding toe aan een verantwoordelijke en behandel urgente open
+meldingen via het afgesproken escalatiepad. Bewaar voor opvolging ontvangstcode,
+status, versie en veilige auditmetadata; kopieer geen inhoud naar logs of tickets.
+Een ontvangstcode geeft nooit toegang tot meldingstekst en het formulier is geen
+noodkanaal. Handmatige opvolging mag geen automatische e-mail of vaste
+antwoordtermijn beloven.
 
-1. benoemde moderatie-, support-, privacy- en escalatie-eigenaars;
-2. goedgekeurd content-/minderjarigen-/privacy-/bezwaar-/evidencebeleid;
-3. geteste rolgrants, ordinary-user denial, queuefilters/cursors en iedere actie;
-4. complete targetvisibility-, block-, restore- en session-revocationprobes;
-5. abuse-, lange/random-input-, keyboard-, mobile- en screenreaderreizen;
-6. een handmatig supportproces dat geen automatische e-mail belooft;
-7. alerting voor urgente open meldingen zonder meldingstekst te loggen.
-
-Gebruik alleen synthetische data. Op deze release-snapshot ontbreekt Preview- en
-role-journeybewijs en was de verplichte Browser MCP-runtime door de huidige
-Codex-gebruikslimiet geblokkeerd. De publieke bèta en productie blijven daarom
-**NO-GO**.
+Zie [MODERATION_ADMIN_RBAC](MODERATION_ADMIN_RBAC.md) voor rolbeheer,
+[FEEDBACK_OPERATIONS](FEEDBACK_OPERATIONS.md) voor productfeedback en
+[ACCOUNT_LIFECYCLE](ACCOUNT_LIFECYCLE.md) voor export/verwijdering. De huidige
+deployment en uitgevoerd bewijs staan in [STATE](architecture/STATE.md).

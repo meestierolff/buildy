@@ -20,7 +20,7 @@ import type {
 import { projectFollowMutationResultSchema } from "../../shared/contracts/projects.js";
 import type { BuildyDatabase } from "../db/client.js";
 import type { AuthenticatedProjectActor, ProjectActor } from "./actor.js";
-import type { DashboardCursor, DiscoveryCursor, TimelineCursor } from "./cursor.js";
+import type { DashboardCursor, TimelineCursor } from "./cursor.js";
 import { ProjectError } from "./errors.js";
 import type {
   CreateProjectCommand,
@@ -578,79 +578,6 @@ export class PostgresProjectRepository implements ProjectRepository {
           and project.lifecycle_status = 'active'
           ${cursorFilter}
         order by project.updated_at desc, project.id desc
-        limit ${limit}
-      `);
-      return typedRows<RawProjectCard>(result.rows).map(mapProjectCard);
-    });
-  }
-
-  async listDiscovery(
-    viewer: ProjectActor,
-    cursor: DiscoveryCursor | undefined,
-    limit: number,
-  ): Promise<ProjectCard[]> {
-    return this.database.transaction(async (transaction) => {
-      const actorId = actorIdFor(viewer);
-      await setActor(transaction, actorId);
-      const cursorFilter = cursor
-        ? sql`and (project.published_at, project.id) < (${cursor.timestamp}::timestamptz, ${cursor.id}::uuid)`
-        : sql``;
-      const result = await transaction.execute(sql<RawProjectCard>`
-        select
-          project.id,
-          project.slug,
-          project.title,
-          project.description,
-          project.project_type,
-          project.visibility,
-          project.progress_percentage,
-          project.version,
-          project.updated_at,
-          project.published_at,
-          project.owner_id,
-          coalesce(owner_profile.display_name, 'Buildy-bouwer') as owner_display_name,
-          coalesce(owner_profile.slug, 'gebruiker-' || left(project.owner_id::text, 8)) as owner_slug,
-          coalesce(update_stats.update_count, 0) as update_count,
-          update_stats.last_update_at,
-          cover.id as cover_id,
-          cover.detected_content_type as cover_content_type,
-          cover.width_pixels as cover_width,
-          cover.height_pixels as cover_height
-        from projects project
-        left join profiles owner_profile on owner_profile.user_id = project.owner_id
-        left join lateral (
-          select count(*)::integer as update_count, max(item.updated_at) as last_update_at
-          from updates item
-          where item.project_id = project.id
-            and item.status = 'published'
-        ) update_stats on true
-        left join lateral (
-          select asset.id, asset.detected_content_type, asset.width_pixels, asset.height_pixels
-          from media_assets asset
-          where asset.project_id = project.id
-            and asset.owner_id = project.owner_id
-            and asset.purpose = 'project_cover'
-            and asset.status = 'ready'
-            and asset.is_current
-          order by asset.updated_at desc, asset.id desc
-          limit 1
-        ) cover on true
-        where project.visibility = 'public'
-          and project.lifecycle_status = 'active'
-          and project.published_at is not null
-          and (${actorId}::uuid is null or project.owner_id <> ${actorId}::uuid)
-          and not exists (
-            select 1
-            from user_relationships relationship
-            where relationship.kind = 'block'
-              and relationship.status = 'active'
-              and (
-                (relationship.source_user_id = ${actorId}::uuid and relationship.target_user_id = project.owner_id)
-                or (relationship.target_user_id = ${actorId}::uuid and relationship.source_user_id = project.owner_id)
-              )
-          )
-          ${cursorFilter}
-        order by project.published_at desc, project.id desc
         limit ${limit}
       `);
       return typedRows<RawProjectCard>(result.rows).map(mapProjectCard);

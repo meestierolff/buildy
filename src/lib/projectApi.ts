@@ -3,7 +3,6 @@ import {
   dashboardResponseSchema,
   deleteProjectMutationResponseSchema,
   deleteUpdateMutationResponseSchema,
-  discoveryResponseSchema,
   followingFeedQuerySchema,
   followingFeedResponseSchema,
   projectFollowMutationResponseSchema,
@@ -83,30 +82,18 @@ export type ProjectPhaseMutationResult = {
   replayed: boolean;
 };
 
-async function getProjectPage(
-  path: "/api/projects" | "/api/discovery",
-  input: Partial<ProjectPageQuery>,
+export async function getProjectDashboard(
+  input: Partial<ProjectPageQuery> = {},
   signal?: AbortSignal,
 ): Promise<ProjectPage> {
   const parsed = projectPageQuerySchema.parse(input);
   const query = new URLSearchParams({ limit: String(parsed.limit) });
   if (parsed.cursor) query.set("cursor", parsed.cursor);
-  const schema = path === "/api/projects" ? dashboardResponseSchema : discoveryResponseSchema;
-  return (await apiRequest(`${path}?${query.toString()}`, schema, { signal })).data as ProjectPage;
-}
-
-export function getProjectDashboard(
-  input: Partial<ProjectPageQuery> = {},
-  signal?: AbortSignal,
-): Promise<ProjectPage> {
-  return getProjectPage("/api/projects", input, signal);
-}
-
-export function getProjectDiscovery(
-  input: Partial<ProjectPageQuery> = {},
-  signal?: AbortSignal,
-): Promise<ProjectPage> {
-  return getProjectPage("/api/discovery", input, signal);
+  return (await apiRequest(
+    `/api/projects?${query.toString()}`,
+    dashboardResponseSchema,
+    { signal },
+  )).data as ProjectPage;
 }
 
 export async function getFollowingFeed(

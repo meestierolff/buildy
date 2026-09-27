@@ -9,15 +9,10 @@ import TripDetail from "@/pages/TripDetail";
 
 vi.mock("@/lib/appFeatures", () => ({
   useAppFeatures: () => ({
-    profile: "feedback_beta",
-    betaMode: true,
-    inviteRequiredForNewAccounts: true,
-    emailAuthEnabled: false,
     passwordSignInEnabled: true,
     accountLifecycleEnabled: true,
     mediaFeaturesEnabled: true,
     photobooksEnabled: true,
-    checkoutEnabled: false,
     isPending: false,
     isError: false,
     query: null,

@@ -15,21 +15,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
-const categories: Array<{ value: SupportCategory; label: string; publicDemo?: boolean }> = [
+const categories: Array<{ value: SupportCategory; label: string }> = [
   { value: "account", label: "Account of inloggen" },
-  { value: "privacy", label: "Privacy of verzoek van een derde", publicDemo: true },
-  { value: "safety", label: "Veiligheid of misbruik", publicDemo: true },
-  { value: "technical", label: "Technisch probleem", publicDemo: true },
+  { value: "privacy", label: "Privacy of verzoek van een derde" },
+  { value: "safety", label: "Veiligheid of misbruik" },
+  { value: "technical", label: "Technisch probleem" },
   { value: "content_appeal", label: "Bezwaar over content" },
-  { value: "other", label: "Bètafeedback of vroege toegang", publicDemo: true },
+  { value: "other", label: "Andere vraag of feedback" },
 ];
 
 export default function SupportForm({
   initialKind = "support",
-  publicDemo = false,
 }: {
   initialKind?: SupportKind;
-  publicDemo?: boolean;
 }) {
   const mutation = useSubmitSupportMutation();
   const [kind, setKind] = useState<SupportKind>(initialKind);
@@ -85,19 +83,18 @@ export default function SupportForm({
 
   return (
     <form onSubmit={(event) => { event.preventDefault(); void submit(); }} className="grid gap-5" aria-label="Contact met Buildy">
-      {!publicDemo ? <div className="grid gap-2">
+      <div className="grid gap-2">
         <Label htmlFor="support-kind">Soort verzoek</Label>
         <select id="support-kind" value={kind} onChange={(event) => { setKind(event.target.value as SupportKind); changed(); }} className="min-h-11 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <option value="support">Supportvraag</option>
           <option value="third_party_request">Verzoek over mij of mijn gegevens</option>
           <option value="appeal">Bezwaar tegen een contentbesluit</option>
         </select>
-      </div> : null}
+      </div>
       <div className="grid gap-2">
         <Label htmlFor="support-category">Onderwerp</Label>
         <select id="support-category" value={category} onChange={(event) => { setCategory(event.target.value as SupportCategory); changed(); }} className="min-h-11 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           {categories
-            .filter((item) => !publicDemo || item.publicDemo)
             .map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
         </select>
       </div>

@@ -20,8 +20,6 @@ function generate(output: string, environment: NodeJS.ProcessEnv = {}) {
     env: {
       ...process.env,
       APP_ORIGIN: "",
-      SITEMAP_SOURCE_TOKEN: "",
-      SITEMAP_SOURCE_URL: "",
       VITE_SITE_URL: "",
       ...environment,
     },
@@ -52,31 +50,14 @@ describe("provider-neutral sitemap generation", () => {
     expect(robots).not.toContain("/meldingen");
   });
 
-  it("publishes projects by validated UUID and profiles by validated slug", () => {
+  it("publishes only static public pages for the configured origin", () => {
     const output = outputDirectory();
-    const projectId = "11111111-1111-4111-8111-111111111111";
-    const source = encodeURIComponent(JSON.stringify({
-      projects: [
-        { id: projectId, slug: "must-not-be-used", updatedAt: "2026-08-03T10:00:00.000Z" },
-        { id: "not-a-uuid", slug: "unsafe-project" },
-      ],
-      profiles: [
-        { slug: "noor-bouwt", updatedAt: "2026-08-04T10:00:00.000Z" },
-        { slug: "../private" },
-      ],
-    }));
-    const result = generate(output, {
-      APP_ORIGIN: "https://preview.example.test",
-      SITEMAP_SOURCE_URL: `data:application/json,${source}`,
-    });
-
+    const result = generate(output, { APP_ORIGIN: "https://preview.example.test" });
     expect(result.status, result.stderr).toBe(0);
     const sitemap = readFileSync(join(output, "sitemap.xml"), "utf8");
-    expect(sitemap).toContain(`https://preview.example.test/project/${projectId}`);
-    expect(sitemap).toContain("https://preview.example.test/profiel/noor-bouwt");
-    expect(sitemap).not.toContain("must-not-be-used");
-    expect(sitemap).not.toContain("unsafe-project");
-    expect(sitemap).not.toContain("../private");
+    expect(sitemap).toContain("https://preview.example.test/privacy");
+    expect(sitemap).not.toContain("/project/");
+    expect(sitemap).not.toContain("/profiel/");
   });
 
   it("rejects an origin with credentials, a path or insecure remote HTTP", () => {

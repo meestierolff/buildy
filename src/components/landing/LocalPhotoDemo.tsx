@@ -17,8 +17,6 @@ export const LOCAL_PHOTO_AUTH_PATH = `/auth?${new URLSearchParams({
 }).toString()}`;
 
 interface LocalPhotoDemoProps {
-  feedbackEnabled?: boolean;
-  publicDemo?: boolean;
   saveHref?: string;
 }
 
@@ -33,8 +31,6 @@ const PreviewImage = ({ src, className = "" }: { src: string; className?: string
 );
 
 const LocalPhotoDemo = ({
-  feedbackEnabled = false,
-  publicDemo = false,
   saveHref = LOCAL_PHOTO_AUTH_PATH,
 }: LocalPhotoDemoProps) => {
   const inputId = useId();
@@ -144,9 +140,7 @@ const LocalPhotoDemo = ({
 
       <div className="flex items-start gap-3 bg-[#F7F2E9] px-4 py-4 text-sm leading-6 text-[#26231F] sm:px-6">
         <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-[#A94E36]" aria-hidden="true" />
-        <p>{publicDemo
-          ? "Je foto blijft op dit apparaat en wordt niet geüpload."
-          : "Je foto blijft op dit apparaat totdat je hem bewaart. Pas na het inloggen en wanneer jij het Bouwmoment plaatst, wordt hij privé geüpload."}</p>
+        <p>{"Je foto blijft op dit apparaat totdat je hem bewaart. Pas na het inloggen en wanneer jij het Bouwmoment plaatst, wordt hij privé geüpload."}</p>
       </div>
 
       {error ? <p className="border-t border-[#D8CFC1] px-4 py-3 text-sm text-destructive sm:px-6" role="alert">{error}</p> : null}
@@ -214,30 +208,9 @@ const LocalPhotoDemo = ({
       {previewUrl ? (
         <div className="animate-in fade-in border-t border-[#D8CFC1] px-4 py-5 duration-500 motion-reduce:animate-none sm:flex sm:items-center sm:justify-between sm:gap-6 sm:px-6">
           <p className="max-w-xl text-sm leading-6 text-[#655F57]">
-            {publicDemo
-              ? "Dit is een lokale voorvertoning. Sluit of vernieuw je deze pagina, dan verdwijnt de foto uit de demo."
-              : "Dit is een lokale voorvertoning. We bewaren de foto alleen op dit apparaat terwijl je inlogt en je privéverbouwing start."}
+            {"Dit is een lokale voorvertoning. We bewaren de foto alleen op dit apparaat terwijl je inlogt en je privéverbouwing start."}
           </p>
-          {publicDemo ? (
-            <div className="mt-4 flex w-full flex-col gap-2 sm:mt-0 sm:w-auto sm:flex-row sm:items-center">
-              {feedbackEnabled ? (
-                <Link
-                  to="/support"
-                  className="inline-flex min-h-11 items-center justify-center px-4 text-sm font-semibold text-[#655F57] underline decoration-[#D8CFC1] underline-offset-4 hover:text-[#26231F] hover:decoration-[#A94E36] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                >
-                  Geef feedback
-                </Link>
-              ) : null}
-              <Button
-                type="button"
-                className="min-h-11 w-full bg-[#A94E36] text-white hover:bg-[#8F3F2C] sm:w-auto"
-                onClick={() => inputRef.current?.click()}
-              >
-                <ImagePlus aria-hidden="true" /> Probeer een andere foto
-              </Button>
-            </div>
-          ) : (
-            <Button asChild className="mt-4 min-h-11 w-full bg-[#A94E36] text-white hover:bg-[#8F3F2C] sm:mt-0 sm:w-auto">
+          <Button asChild className="mt-4 min-h-11 w-full bg-[#A94E36] text-white hover:bg-[#8F3F2C] sm:mt-0 sm:w-auto">
               <Link
                 to={saveHref}
                 onClick={(event) => void preservePhoto(event)}
@@ -250,7 +223,6 @@ const LocalPhotoDemo = ({
                     : "Bewaar dit Bouwmoment"} <ArrowRight aria-hidden="true" />
               </Link>
             </Button>
-          )}
         </div>
       ) : null}
     </section>

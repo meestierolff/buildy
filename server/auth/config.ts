@@ -7,7 +7,6 @@ const TLS_DATABASE_MODES = new Set(["require", "verify-ca", "verify-full"]);
 
 export interface AuthConfiguration {
   appOrigin: string;
-  betaMode?: boolean;
   databaseUrl: string;
   secureCookies: boolean;
   trustedOrigins: readonly string[];
@@ -96,7 +95,6 @@ export function resolveAuthConfiguration(runtime: RuntimeConfig): AuthConfigurat
 
   return {
     appOrigin,
-    betaMode: runtime.BETA_MODE !== false,
     databaseUrl: runtime.DATABASE_URL,
     secureCookies: new URL(appOrigin).protocol === "https:",
     trustedOrigins,

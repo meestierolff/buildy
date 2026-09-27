@@ -56,9 +56,6 @@ vi.mock("@/lib/photobookApi", async (importOriginal) => ({
   createPhotobookIdempotencyKey: () => "55555555-5555-4555-8555-555555555555",
   loadPhotobookProofView: state.loadProof,
 }));
-vi.mock("@/lib/betaApi", () => ({
-  recordProductEvent: vi.fn().mockResolvedValue(undefined),
-}));
 vi.mock("@/lib/router", () => ({
   useNavigate: () => state.navigate,
   useParams: () => ({ id: PROJECT_ID }),

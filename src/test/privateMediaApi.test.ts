@@ -6,7 +6,6 @@ import {
   configureVercelBlobClientUpload,
   PrivateMediaUploadError,
   resetVercelBlobClientUploadForTests,
-  uploadFloorplanImage,
   uploadProjectImage,
   waitForProjectMediaReady,
   type PreparedProjectImage,
@@ -138,83 +137,6 @@ describe("private project media client", () => {
     expect(JSON.parse(String((completionCall?.[1] as RequestInit).body))).toEqual({});
     expect(completionCalls).toBe(3);
     expect(readinessChecks).toBe(1);
-  });
-
-  it("pins floorplan uploads to their dedicated purpose and rejects a cross-purpose response", async () => {
-    const prepared = preparedImage();
-    let responsePurpose: "floorplan" | "project_media" = "floorplan";
-    const fetchMock = vi.fn(async (resource: string | URL | Request, _init?: RequestInit) => {
-      if (String(resource) !== "/api/media/upload-intents") throw new Error("Unexpected upload call");
-      return success({
-        asset: {
-          id: ASSET_ID,
-          projectId: PROJECT_ID,
-          purpose: responsePurpose,
-          status: "ready",
-        },
-        upload: null,
-        replayed: responsePurpose === "project_media",
-      });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(uploadFloorplanImage({
-      projectId: PROJECT_ID,
-      idempotencyKey: UPLOAD_KEY,
-      prepared,
-    }, { fetch: fetchMock as typeof fetch })).resolves.toMatchObject({
-      purpose: "floorplan",
-      status: "ready",
-    });
-    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
-    expect(JSON.parse(String(request.body))).toMatchObject({
-      projectId: PROJECT_ID,
-      purpose: "floorplan",
-    });
-
-    responsePurpose = "project_media";
-    await expect(uploadFloorplanImage({
-      projectId: PROJECT_ID,
-      idempotencyKey: UPLOAD_KEY,
-      prepared,
-    }, { fetch: fetchMock as typeof fetch })).rejects.toMatchObject({
-      code: "UNSAFE_UPLOAD_GRANT",
-    } satisfies Partial<PrivateMediaUploadError>);
-  });
-
-  it("rejects a completion response that switches a floorplan asset to another purpose", async () => {
-    const prepared = preparedImage();
-    const blobUpload = vi.fn(async () => blobUploadResult());
-    const fetchMock = vi.fn(async (resource: string | URL | Request) => {
-      const url = String(resource);
-      if (url === "/api/media/upload-intents") {
-        return success({
-          asset: { id: ASSET_ID, projectId: PROJECT_ID, purpose: "floorplan", status: "pending_upload" },
-          upload: blobUploadGrant(),
-          replayed: false,
-        });
-      }
-      if (url === `/api/media/${ASSET_ID}/complete`) {
-        return success({
-          asset: { id: ASSET_ID, projectId: PROJECT_ID, purpose: "project_media", status: "uploaded" },
-          replayed: false,
-        });
-      }
-      throw new Error(`Unexpected fetch: ${url}`);
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(uploadFloorplanImage({
-      projectId: PROJECT_ID,
-      idempotencyKey: UPLOAD_KEY,
-      prepared,
-    }, {
-      fetch: fetchMock as typeof fetch,
-      blobUpload,
-      now: () => Date.parse("2026-08-04T12:00:00.000Z"),
-    })).rejects.toMatchObject({
-      code: "UNSAFE_UPLOAD_GRANT",
-    } satisfies Partial<PrivateMediaUploadError>);
   });
 
   it("rejects a client-upload grant for another server pathname before any provider upload", async () => {

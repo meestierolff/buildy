@@ -26,8 +26,6 @@ describe("API router", () => {
     vi.stubEnv("APP_ENV", "test");
     vi.stubEnv("APP_ORIGIN", "https://test.buildy.example");
     vi.stubEnv("DATABASE_URL", "");
-    vi.stubEnv("GOOGLE_CLIENT_ID", "");
-    vi.stubEnv("GOOGLE_CLIENT_SECRET", "");
     resetRuntimeConfigForTests();
     resetServerCompositionForTests();
   });
@@ -64,88 +62,22 @@ describe("API router", () => {
     await expect(response.json()).resolves.toMatchObject({ data: { release: releaseSha } });
   });
 
-  it("reports the provider-independent public demo ready without database or Google auth", async () => {
-    vi.stubEnv("PRODUCT_PROFILE", "public_demo");
-    resetRuntimeConfigForTests();
-    resetServerCompositionForTests();
-
-    const response = await handleApiRequest(
-      new Request("https://test.buildy.example/api/readiness"),
-    );
+  it("serves the fixed account-product compatibility response", async () => {
+    const response = await handleApiRequest(new Request("https://test.buildy.example/api/product-profile"));
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
       data: {
-        ready: true,
-        checks: {
-          configuration: "pass",
-          database: "not_checked",
-          accountWorker: "not_checked",
-          mediaWorker: "not_checked",
-          paymentWorker: "not_checked",
-          photobookWorker: "not_checked",
-        },
+        profile: "feedback_beta",
+        checkoutMode: "off",
+        betaMode: false,
+        inviteRequiredForNewAccounts: false,
+        capabilities: { emailAuth: false, checkout: false },
       },
     });
   });
 
-  it("exposes only anonymous support from the composed moderation surface in public_demo", async () => {
-    vi.stubEnv("PRODUCT_PROFILE", "public_demo");
-    resetRuntimeConfigForTests();
-    resetServerCompositionForTests();
-
-    for (const path of ["/api/moderation/reports", "/api/feedback"]) {
-      const response = await handleApiRequest(new Request(`https://test.buildy.example${path}`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          origin: "https://test.buildy.example",
-        },
-        body: "{}",
-      }));
-
-      expect(response.status).toBe(503);
-      await expect(response.json()).resolves.toMatchObject({
-        error: {
-          code: "AUTH_UNAVAILABLE",
-          message: "Deze functie is niet beschikbaar in de openbare demo.",
-        },
-      });
-    }
-
-    const support = await handleApiRequest(new Request("https://test.buildy.example/api/support", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        origin: "https://test.buildy.example",
-      },
-      body: "{}",
-    }));
-    await expect(support.json()).resolves.toMatchObject({
-      error: { code: "AUTH_UNAVAILABLE" },
-    });
-  });
-
-  it("keeps scheduled account maintenance deliberately dormant in public_demo", async () => {
-    vi.stubEnv("PRODUCT_PROFILE", "public_demo");
-    resetRuntimeConfigForTests();
-    resetServerCompositionForTests();
-
-    const response = await handleApiRequest(new Request(
-      "https://test.buildy.example/api/internal/cron/account-lifecycle",
-    ));
-
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
-      error: {
-        code: "AUTH_UNAVAILABLE",
-        message: "Accountonderhoud is niet actief in de openbare demo.",
-      },
-    });
-  });
-
-  it("keeps feedback_beta readiness closed without its authenticated runtime", async () => {
-    vi.stubEnv("PRODUCT_PROFILE", "feedback_beta");
+  it("keeps readiness closed without the authenticated core runtime", async () => {
     resetRuntimeConfigForTests();
     resetServerCompositionForTests();
 
@@ -162,54 +94,47 @@ describe("API router", () => {
     });
   });
 
-  it.each(["off", "test", "live"] as const)(
-    "checks a failing configured PDF worker independently of checkout (%s)",
-    async (checkoutMode) => {
-      const proofDatabaseUrl = "postgresql://proof:synthetic@127.0.0.1:5432/buildy_test";
-      const environment = {
-        PRODUCT_PROFILE: "feedback_beta",
-        BETA_MODE: "false",
-        CHECKOUT_MODE: checkoutMode,
-        DATABASE_URL: "postgresql://web:synthetic@127.0.0.1:5432/buildy_test",
-        DATABASE_ACCOUNT_WORKER_URL: "postgresql://account:synthetic@127.0.0.1:5432/buildy_test",
-        DATABASE_MEDIA_WORKER_URL: "postgresql://media:synthetic@127.0.0.1:5432/buildy_test",
-        DATABASE_PHOTOBOOK_WORKER_URL: proofDatabaseUrl,
-        PII_ENCRYPTION_KEYS: JSON.stringify({ 1: Buffer.alloc(32, 1).toString("base64") }),
-        PII_ENCRYPTION_CURRENT_VERSION: "1",
-        PII_BLIND_INDEX_KEY: Buffer.alloc(32, 2).toString("base64"),
-        BLOB_READ_WRITE_TOKEN: "synthetic-blob-token",
-        ACCOUNT_RETENTION_POLICY_VERSION: "synthetic-test-policy",
-        ACCOUNT_RETENTION_POLICY_APPROVED_AT: "2026-01-01T00:00:00Z",
-        CRON_SECRET: "synthetic-cron-secret-for-test-only",
-      };
-      for (const [key, value] of Object.entries(environment)) vi.stubEnv(key, value);
-      resetRuntimeConfigForTests();
-      vi.spyOn(composition, "getServerCompositionStatus").mockReturnValue("ready");
-      vi.spyOn(console, "error").mockImplementation(() => undefined);
-      coreDatabaseExecute.mockResolvedValue({ rows: [{ ready: true, isolated: true }] });
-      photobookDatabaseExecute.mockRejectedValue(new Error("Synthetic proof database unavailable"));
-      workerDatabase.mockImplementation((_url: string, role: string) => ({
-        execute: role === "photobook" ? photobookDatabaseExecute : coreDatabaseExecute,
-      }));
+  it("fails readiness when the configured PDF worker is unavailable", async () => {
+    const proofDatabaseUrl = "postgresql://proof:synthetic@127.0.0.1:5432/buildy_test";
+    const environment = {
+      DATABASE_URL: "postgresql://web:synthetic@127.0.0.1:5432/buildy_test",
+      DATABASE_ACCOUNT_WORKER_URL: "postgresql://account:synthetic@127.0.0.1:5432/buildy_test",
+      DATABASE_MEDIA_WORKER_URL: "postgresql://media:synthetic@127.0.0.1:5432/buildy_test",
+      DATABASE_PHOTOBOOK_WORKER_URL: proofDatabaseUrl,
+      PII_ENCRYPTION_KEYS: JSON.stringify({ 1: Buffer.alloc(32, 1).toString("base64") }),
+      PII_ENCRYPTION_CURRENT_VERSION: "1",
+      PII_BLIND_INDEX_KEY: Buffer.alloc(32, 2).toString("base64"),
+      BLOB_READ_WRITE_TOKEN: "synthetic-blob-token",
+      ACCOUNT_RETENTION_POLICY_VERSION: "synthetic-test-policy",
+      ACCOUNT_RETENTION_POLICY_APPROVED_AT: "2026-01-01T00:00:00Z",
+      CRON_SECRET: "synthetic-cron-secret-for-test-only",
+    };
+    for (const [key, value] of Object.entries(environment)) vi.stubEnv(key, value);
+    resetRuntimeConfigForTests();
+    vi.spyOn(composition, "getServerCompositionStatus").mockReturnValue("ready");
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    coreDatabaseExecute.mockResolvedValue({ rows: [{ ready: true, isolated: true }] });
+    photobookDatabaseExecute.mockRejectedValue(new Error("Synthetic proof database unavailable"));
+    workerDatabase.mockImplementation((_url: string, role: string) => ({
+      execute: role === "photobook" ? photobookDatabaseExecute : coreDatabaseExecute,
+    }));
 
-      const response = await handleApiRequest(new Request("https://test.buildy.example/api/readiness"));
-      const body = readinessResponseSchema.parse(await response.json());
-      expect.soft(response.status).toBe(503);
-      expect.soft(body.data).toEqual({
-        ready: false,
-        checks: {
-          configuration: "pass",
-          database: "pass",
-          accountWorker: "pass",
-          mediaWorker: "pass",
-          paymentWorker: "not_checked",
-          photobookWorker: "fail",
-        },
-      });
-      expect.soft(photobookDatabaseExecute).toHaveBeenCalledOnce();
-      expect(workerDatabase).toHaveBeenCalledWith(proofDatabaseUrl, "photobook");
-    },
-  );
+    const response = await handleApiRequest(new Request("https://test.buildy.example/api/readiness"));
+    const body = readinessResponseSchema.parse(await response.json());
+    expect.soft(response.status).toBe(503);
+    expect.soft(body.data).toEqual({
+      ready: false,
+      checks: {
+        configuration: "pass",
+        database: "pass",
+        accountWorker: "pass",
+        mediaWorker: "pass",
+        photobookWorker: "fail",
+      },
+    });
+    expect.soft(photobookDatabaseExecute).toHaveBeenCalledOnce();
+    expect(workerDatabase).toHaveBeenCalledWith(proofDatabaseUrl, "photobook");
+  });
 
   it("returns a stable Dutch not-found error with a request id", async () => {
     const response = await handleApiRequest(new Request("https://test.buildy.example/api/nope"));
@@ -223,8 +148,6 @@ describe("API router", () => {
   it("keeps readiness closed when present auth key material is malformed", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     vi.stubEnv("DATABASE_URL", "postgresql://buildy:buildy@127.0.0.1:5432/buildy");
-    vi.stubEnv("GOOGLE_CLIENT_ID", "google-client");
-    vi.stubEnv("GOOGLE_CLIENT_SECRET", "google-secret");
     vi.stubEnv("PII_ENCRYPTION_KEYS", "not-json");
     vi.stubEnv("PII_ENCRYPTION_CURRENT_VERSION", "1");
     vi.stubEnv("PII_BLIND_INDEX_KEY", Buffer.alloc(32, 1).toString("base64"));
@@ -270,49 +193,18 @@ describe("API router", () => {
     await expect(response.json()).resolves.toMatchObject({ data: { accepted: true } });
   });
 
-  it("dispatches the checkout pattern but stays closed while commerce is unconfigured", async () => {
-    const revisionId = "17ac5c61-5b78-4dd7-b78e-3f7a5c96ecaf";
-    const response = await handleApiRequest(new Request(
-      `https://test.buildy.example/api/photobooks/proofs/${revisionId}/quote`,
-      {
-        method: "POST",
-        headers: {
-          origin: "https://test.buildy.example",
-          "content-type": "application/json",
-        },
-        body: "{}",
-      },
-    ));
-
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
-      error: { code: "PROVIDER_UNAVAILABLE" },
-    });
-  });
-
-  it("registers the authenticated customer order collection route", async () => {
-    const response = await handleApiRequest(new Request(
-      "https://test.buildy.example/api/orders",
-    ));
-
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
-      error: { code: "PROVIDER_UNAVAILABLE" },
-    });
-  });
-
-  it("registers guarded bestellingbeheer but keeps it unavailable without server composition", async () => {
-    const response = await handleApiRequest(new Request(
-      "https://test.buildy.example/api/admin/orders",
-    ));
-
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
-      error: { code: "AUTH_UNAVAILABLE" },
-    });
-  });
-
   it.each([
+    ["GET", "/api/discovery"],
+    ["GET", "/api/projects/00000000-0000-4000-8000-000000000101/budget"],
+    ["GET", "/api/projects/00000000-0000-4000-8000-000000000101/floorplans"],
+    ["POST", "/api/photobooks/proofs/00000000-0000-4000-8000-000000000101/quote"],
+    ["POST", "/api/photobooks/proofs/00000000-0000-4000-8000-000000000101/checkout"],
+    ["GET", "/api/orders"],
+    ["GET", "/api/admin/orders"],
+    ["GET", "/api/beta/status"],
+    ["POST", "/api/beta/reservations"],
+    ["POST", "/api/product-events"],
+    ["POST", "/api/webhooks/stripe"],
     ["GET", "/api/internal/cron/email"],
     ["GET", "/api/internal/cron/peecho-fulfilment"],
     ["POST", "/api/webhooks/brevo"],

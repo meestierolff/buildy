@@ -5,7 +5,6 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   useFollowingFeed,
   useProjectDashboard,
-  useProjectDiscovery,
 } from "@/hooks/useProjectApi";
 import { BrowserRouter } from "@/lib/router";
 import Favorites from "@/pages/Favorites";
@@ -17,7 +16,6 @@ vi.mock("@/hooks/usePageMeta", () => ({ usePageMeta: vi.fn() }));
 vi.mock("@/hooks/useProjectApi", () => ({
   useFollowingFeed: vi.fn(),
   useProjectDashboard: vi.fn(),
-  useProjectDiscovery: vi.fn(),
 }));
 
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
@@ -74,7 +72,7 @@ function infiniteResult(items: ProjectCard[] = [], error = false) {
   };
 }
 
-describe("typed discovery browser states", () => {
+describe("landing and project dashboard browser states", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.history.replaceState({}, "", "/");
@@ -82,56 +80,15 @@ describe("typed discovery browser states", () => {
     vi.mocked(useProjectDashboard).mockReturnValue(
       infiniteResult() as unknown as ReturnType<typeof useProjectDashboard>,
     );
-    vi.mocked(useProjectDiscovery).mockReturnValue(
-      infiniteResult([project]) as unknown as ReturnType<typeof useProjectDiscovery>,
-    );
   });
 
-  it("renders only the typed public discovery DTO", () => {
-    window.history.replaceState({}, "", "/ontdekken");
-    render(<BrowserRouter><Index /></BrowserRouter>);
-    expect(screen.getAllByText("Veilige keuken").length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Door Noor/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Openbaar").length).toBeGreaterThan(0);
-  });
-
-  it("fails closed when discovery cannot be verified", () => {
-    window.history.replaceState({}, "", "/ontdekken");
-    vi.mocked(useProjectDiscovery).mockReturnValue(
-      infiniteResult([], true) as unknown as ReturnType<typeof useProjectDiscovery>,
-    );
-    render(<BrowserRouter><Index /></BrowserRouter>);
-    expect(screen.getByText("Openbare verbouwingen zijn even niet bereikbaar")).toBeInTheDocument();
-    expect(screen.queryByText("Veilige keuken")).not.toBeInTheDocument();
-  });
-
-  it("keeps the landing route marketing-only while discovery has its own canonical page", () => {
+  it("keeps the landing route focused on starting a renovation", () => {
     render(<BrowserRouter><Index /></BrowserRouter>);
 
     expect(screen.getByRole("heading", { level: 1, name: "Maak van je verbouwing een verhaal om te bewaren." })).toBeInTheDocument();
     expect(screen.getByText("Van bouwplaats naar blijvend verhaal")).toBeInTheDocument();
     expect(screen.getByText("Leg foto’s en updates vast, laat vrienden en familie meekijken en maak er na afloop een persoonlijk Bouwboek van.")).toBeInTheDocument();
     expect(screen.queryByText("Veilige keuken")).not.toBeInTheDocument();
-    expect(vi.mocked(useProjectDiscovery)).toHaveBeenCalledWith(false);
-    expect(vi.mocked(useProjectDashboard)).toHaveBeenCalledWith(false);
-  });
-
-  it("renders the exact public-demo outcome without discovery or account promises", () => {
-    render(<BrowserRouter><Index feedbackEnabled publicDemo /></BrowserRouter>);
-
-    expect(screen.getByText("Het dagboek voor je verbouwing")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1, name: "Maak van je verbouwing een verhaal om te bewaren." })).toBeInTheDocument();
-    expect(screen.getByText("Zie hoe losse bouwfoto’s veranderen in een rustig verbouwverhaal en een persoonlijk Bouwboek.")).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "Probeer met je bouwfoto" })).toHaveLength(2);
-    expect(screen.getAllByRole("link", { name: "Probeer met je bouwfoto" })[0]).toHaveAttribute("href", "#probeer-buildy");
-    expect(screen.getByRole("link", { name: "Bekijk een voorbeeld" })).toHaveAttribute("href", "#voorbeeld");
-    expect(screen.getByText("Voorbeeldverbouwing", { selector: "figcaption span" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /voorbeeld-Bouwboek/i })).toHaveAttribute(
-      "href",
-      "/project/voorbeeldverbouwing/bouwboek",
-    );
-    expect(screen.queryByText(/Google-login|start je account|inloggen/i)).not.toBeInTheDocument();
-    expect(vi.mocked(useProjectDiscovery)).toHaveBeenCalledWith(false);
     expect(vi.mocked(useProjectDashboard)).toHaveBeenCalledWith(false);
   });
 
@@ -145,7 +102,6 @@ describe("typed discovery browser states", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: "Mijn verbouwingen" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /maak van je verbouwing/i })).not.toBeInTheDocument();
-    expect(vi.mocked(useProjectDiscovery)).toHaveBeenCalledWith(false);
     expect(vi.mocked(useProjectDashboard)).toHaveBeenCalledWith(true);
   });
 });

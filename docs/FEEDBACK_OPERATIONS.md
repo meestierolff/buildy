@@ -1,75 +1,42 @@
 # Feedback operations
 
-Status: actieve, privacybewuste productfeedback-intake; handmatige opvolging.
+Productfeedback loopt via `/feedback` en `POST /api/feedback` voor een actieve,
+ingelogde gebruiker. De accountapp gebruikt gebruikersnaam/wachtwoord.
+Support en privacyverzoeken lopen via `/support`, contentmeldingen via `/melden`.
 
-## Actieve gebruikersflow
+## Intake
 
-- Alleen een ingelogde Google OIDC-gebruiker kan via `/feedback` versturen.
-- De typed same-origin route is `POST /api/feedback`.
-- De enige categorieën zijn:
-  - `bug` — **Iets werkt niet**;
-  - `usability` — **Iets is onduidelijk**;
-  - `idea` — **Ik heb een idee**;
-  - `other` — **Andere feedback**.
-- Het bericht bevat na trimmen 3–5.000 tekens.
-- De client stuurt een veilige route, de actuele privacyverklaringversie, een
-  actor-gebonden idempotencykey en een lege honeypot mee.
-- De gebruiker bevestigt in de UI dat het bericht geen adres, e-mailadres,
-  namen, fotolinks of andere gevoelige informatie bevat.
-- Een geslaagde intake toont alleen een `HELP-XXXXXXXX`-ontvangstcode. Er wordt
-  geen e-mail, responstijd of uitkomst beloofd.
+De categorieën zijn `bug` (**Iets werkt niet**), `usability` (**Iets is
+onduidelijk**), `idea` (**Ik heb een idee**) en `other` (**Andere feedback**).
+Het getrimde bericht bevat 3–5.000 tekens. De client stuurt een veilige route,
+privacyverklaringversie, gebruikersgebonden idempotencykey en lege honeypot mee.
+Er is geen rating, screenshotupload of contactadres in dit feedbackcontract.
 
-Er is geen rating, screenshotupload, contactadres of vrije categorie in het
-actieve feedbackcontract. Support en privacyverzoeken lopen afzonderlijk via
-`/support`; contentmeldingen via `/melden`.
+De UI vraagt gevoelige gegevens uit het bericht te houden. Succes geeft een
+`HELP-XXXXXXXX`-ontvangstcode, zonder toezegging over antwoordtijd of uitkomst.
+Buildy verstuurt geen automatische e-mail.
 
-## Server- en datagrens
+De server bepaalt de gebruiker, valideert schema/bodylimiet en behoudt
+origin/CSRF, rate limiting en idempotencyconflicten. Exacte replay levert hetzelfde
+ontvangstbewijs. Het bericht wordt contextgebonden versleuteld; overige metadata
+is beperkt tot intake, status en abusecontrole. Berichttekst, IP, namen,
+contactgegevens en media-URL's horen niet in logs of auditmetadata.
 
-De server leidt de actor af uit de server-owned sessie en weigert anonieme of
-inactieve feedbackactors. Schema-validatie, origin/CSRF, bodylimiet,
-idempotencyconflict en rate limiting falen gesloten. Exacte replay van dezelfde
-opdracht levert hetzelfde ontvangstbewijs op.
+## Handmatige opvolging
 
-Het bericht wordt contextgebonden versleuteld opgeslagen. De actieve record
-bevat daarnaast alleen wat de server voor intake en abusecontrole nodig heeft,
-waaronder actor-ID, categorie, veilige route, privacyversie, ontvangstcode,
-status, timestamps en gehashte request/sourcekenmerken. Berichttekst, IP,
-e-mail, naam, media-URL en andere PII horen nooit in logs, URLs,
-idempotencykeys, productevents of vrije auditmetadata.
+Alleen een server-side geverifieerde `admin` opent `/beheer/feedback` of het
+detail. Een moderatorgrant geeft geen toegang. De wachtrij toont ontvangstcode,
+type/categorie, status/versie, contact-/authenticatiebooleans en timestamps.
+Bericht en eventueel supportcontact worden alleen op de geautoriseerde
+detailroute ontsleuteld. De ontvangstcode is geen authenticatiemiddel.
 
-Historische tabellen/migrations kunnen verwijderde e-mail-outboxvelden of oude
-kolommen bevatten. Zij activeren geen e-mailprovider en zijn geen bewijs van
-delivery.
+Statussen zijn `new`, `triaged` (**In behandeling**), `planned`, `resolved` en
+`closed`. Iedere overgang vereist de verwachte versie en gebruikersgebonden
+idempotencykey en krijgt een append-only auditrecord zonder PII. Gebruik alleen
+de velden die voor afhandeling nodig zijn; publiceer geen feedbackinhoud.
 
-## Operatorwerk
-
-1. Wijs vóór de bèta een eigenaar en escalatiepad voor feedback toe.
-2. Alleen een server-side geverifieerde `admin` opent
-   `/beheer/feedback` of `/beheer/feedback/:submissionId`; een moderatorgrant
-   geeft geen toegang tot support-, privacy- of bezwaar-PII.
-3. De gepagineerde wachtrij toont alleen ontvangstcode, gecontroleerd type en
-   categorie, status/versie, contact-/authenticatiebooleans en timestamps.
-   Bericht en contactadres worden pas op de geautoriseerde detailroute met de
-   bestaande PII-keyring ontsleuteld.
-4. Gebruik de ontvangstcode voor interne correlatie, nooit als
-   authenticatiemiddel.
-5. Werk `new` eerst bij naar `triaged` (**In behandeling**) en daarna waar
-   passend naar `planned`, `resolved` of `closed`. Elke overgang vereist de
-   verwachte versie en een actor-gebonden idempotencykey en krijgt een
-   append-only, PII-vrij auditrecord.
-6. Exporteer uitsluitend de minimale velden die voor triage nodig zijn, gebruik
-   alleen synthetische data bij tests en publiceer feedback nooit.
-7. Reageer zo nodig handmatig via een expliciet afgesproken supportkanaal. Voeg
-   geen Brevo, transactionele mail, callback, worker of cron toe.
-8. Volg voor dataverzoeken en verwijdering de account-/privacyrunbooks; wijzig
-   geen historische migrations of records ad hoc.
-
-## Releasebewijs
-
-De huidige component/client/server/migrationtests voor feedbackintake en admin-
-review zijn groen. De 205-test browsermatrix is alleen geïnventariseerd en niet
-uitgevoerd; ook de actuele PostgreSQL-integratie, echte Previewdatabase,
-operationele triage en interactieve productieflow zijn niet bewezen. De
-verplichte Browser MCP-runtime was door de huidige Codex-gebruikslimiet
-geblokkeerd; Preview en productie blijven voor deze flow **BLOCKED/NO-GO** totdat de releasegates uit
-[`PRODUCTION_RELEASE.md`](PRODUCTION_RELEASE.md) aantoonbaar groen zijn.
+Volg dataverzoeken via [ACCOUNT_LIFECYCLE](ACCOUNT_LIFECYCLE.md) en beheergrants
+via [MODERATION_ADMIN_RBAC](MODERATION_ADMIN_RBAC.md). Wijzig records of
+historische migrations niet ad hoc. Het runtimebewijs staat in
+[STATE](architecture/STATE.md); dit runbook claimt geen uitgevoerde triage of
+nieuwe releasecontrole.

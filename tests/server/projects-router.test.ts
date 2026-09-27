@@ -92,7 +92,6 @@ function service(overrides: Partial<ProjectHttpService> = {}): ProjectHttpServic
       replayed: false,
     }),
     dashboard: async () => ({ items: [], nextCursor: null }),
-    discovery: async () => ({ items: [], nextCursor: null }),
     following: async () => ({ projects: [], activity: [] }),
     setProjectFollow: async (_actor, _projectId, following) => ({
       state: following ? "following" : "none", replayed: false,
@@ -126,8 +125,6 @@ describe("project HTTP routes", () => {
     vi.stubEnv("APP_ENV", "test");
     vi.stubEnv("APP_ORIGIN", REQUEST_ORIGIN);
     vi.stubEnv("DATABASE_URL", "");
-    vi.stubEnv("GOOGLE_CLIENT_ID", "");
-    vi.stubEnv("GOOGLE_CLIENT_SECRET", "");
     resetRuntimeConfigForTests();
     resetDefaultProjectRuntimeForTests();
   });
@@ -138,7 +135,7 @@ describe("project HTTP routes", () => {
     resetRuntimeConfigForTests();
   });
 
-  it("fails closed while the Google OIDC app-user mapping is not composed", async () => {
+  it("fails closed while the password-session app-user mapping is not composed", async () => {
     const response = await handleApiRequest(new Request(`${REQUEST_ORIGIN}/api/projects`));
 
     expect(response.status).toBe(503);
@@ -158,27 +155,6 @@ describe("project HTTP routes", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: { code: "UNAUTHENTICATED" },
     });
-  });
-
-  it.each([
-    ["anonymous", null, ANONYMOUS_PROJECT_ACTOR],
-    ["authenticated", ACTOR_ID, { kind: "authenticated", appUserId: ACTOR_ID }],
-  ] as const)("serves discovery to an %s viewer", async (_label, appUserId, expectedViewer) => {
-    const discoverySpy = vi.fn(async (viewer: ProjectActor) => {
-      expect(viewer).toEqual(expectedViewer);
-      return { items: [], nextCursor: null };
-    });
-    configureDefaultProjectRuntime({
-      actors: actorResolver(appUserId),
-      service: service({ discovery: discoverySpy }),
-    });
-
-    const response = await handleApiRequest(new Request(`${REQUEST_ORIGIN}/api/discovery`, {
-      headers: { "x-user-id": FORGED_USER_ID },
-    }));
-
-    expect(response.status).toBe(200);
-    expect(discoverySpy).toHaveBeenCalledOnce();
   });
 
   it("requires authentication for the following feed and ignores forged identity headers", async () => {

@@ -338,11 +338,11 @@ function assertScopedAsset(
   }
 }
 
-async function uploadPrivateProjectImage(
-  purpose: "project_media" | "floorplan",
+export async function uploadProjectImage(
   input: PrivateProjectImageUploadInput,
   runtime: MediaUploadRuntime = {},
 ): Promise<MediaAssetState> {
+  const purpose = "project_media";
   if (
     input.prepared.file.size !== input.prepared.sizeBytes ||
     input.prepared.file.type !== input.prepared.contentType ||
@@ -461,20 +461,4 @@ async function uploadPrivateProjectImage(
   }
   input.onStage?.("ready");
   return asset;
-}
-
-/** Uploads update media with a caller-invariant purpose. */
-export function uploadProjectImage(
-  input: PrivateProjectImageUploadInput,
-  runtime: MediaUploadRuntime = {},
-): Promise<MediaAssetState> {
-  return uploadPrivateProjectImage("project_media", input, runtime);
-}
-
-/** Uploads a floorplan without exposing a caller-controlled media purpose. */
-export function uploadFloorplanImage(
-  input: PrivateProjectImageUploadInput,
-  runtime: MediaUploadRuntime = {},
-): Promise<MediaAssetState> {
-  return uploadPrivateProjectImage("floorplan", input, runtime);
 }

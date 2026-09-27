@@ -1,94 +1,24 @@
-# Buildy MVP-scope
+# Buildy MVP
 
-Scope van de gratis Buildy-MVP. [GRAPH](architecture/GRAPH.md),
-[FLOWS](architecture/FLOWS.md) en [STATE](architecture/STATE.md) zijn leidend
-voor grenzen, acceptatie en actueel bewijs.
+**Maak van je verbouwing een verhaal om te bewaren.**
 
-## Belofte
+Een eigenaar maakt een account met gebruikersnaam/wachtwoord, begint een
+privéverbouwing en bewaart foto's, datum en tekst als Bouwmomenten. Dezelfde
+chronologische inhoud vormt het Verhaal en het digitale Bouwboek met PDF-download.
+De eigenaar kiest titel, cover en welke inhoud in het boek komt.
 
-> Maak van je verbouwing een verhaal om te bewaren.
+Vrienden en familie lezen via een intrekbare deellink. Ingelogde kijkers kunnen
+precies die verbouwing volgen, reageren en opmerkingen plaatsen. Dat geeft geen
+extra kijk- of schrijfrechten. Profielconnecties behouden hun rol in zichtbaarheid.
 
-Buildy brengt voortgangsfoto's en korte verhalen samen in één rustig,
-chronologisch verbouwingsdagboek. Hetzelfde bronmateriaal groeit automatisch
-uit tot een digitaal Bouwboek. Een fysiek exemplaar is voor later.
+Feedback, hulp, profielinstellingen, blokkeren, sessiebeheer, accountexport en
+verwijdering ondersteunen de kern. Nieuwe accounts vragen geen e-mailadres.
+Wachtwoordherstel is niet geïmplementeerd.
 
-## Kernreizen
+Budget, plattegronden, brede ontdekfeeds, bèta-uitnodigingen, OAuth, demomodi,
+prijzen, betalen en fysieke bestellingen zijn verwijderd. Historische gegevens
+en toegepaste migraties blijven behouden. Verwijderde code staat in Gitgeschiedenis.
 
-### Bezoeker
-
-- begrijpt het product via de landing en lokale fotodemo;
-- bekijkt een gedeelde verbouwing via een tijdelijke deellink;
-- heeft zonder account uitsluitend leesrechten;
-- maakt een account met gebruikersnaam en wachtwoord om zelf te bouwen of te reageren.
-
-### Eigenaar
-
-- registreert en logt in met gebruikersnaam en wachtwoord, zonder invite of e-mailvraag;
-- kiest een naam en optioneel een type verbouwing;
-- begint met een privéverbouwing;
-- voegt een foto en korte tekst toe als Bouwmoment;
-- ziet Bouwmomenten terug in het chronologische Verhaal;
-- maakt, roteert of trekt een veilige deellink in;
-- bekijkt en verfijnt het digitale Bouwboek;
-- deelt algemene feedback.
-
-### Ingelogde kijker
-
-- bekijkt toegankelijke Bouwmomenten;
-- kan liken en reageren binnen de server-side toegangsregels;
-- krijgt door een deellink nooit eigenaar- of schrijfrechten.
-
-## In scope
-
-- publieke landing, voorbeeld en lokale fotodemo;
-- gebruikersnaam/wachtwoord, scrypt-hashes en server-owned sessies;
-- profiel en eenvoudige onboarding;
-- privé als standaard voor nieuwe verbouwingen;
-- private foto-upload en request-driven mediaverwerking;
-- maken, bewerken en verwijderen van Bouwmomenten;
-- chronologisch Verhaal met reacties;
-- intrekbare, high-entropy deellinks met alleen-lezen gasttoegang;
-- digitaal Bouwboek met cover, indeling, volgorde en inhoudsselectie;
-- feedback- en supportformulieren;
-- accountinzage, export en verwijdering;
-- privacy-, voorwaarden- en supportpagina's.
-
-De primaire navigatie is:
-
-- desktop: `Mijn verbouwing`, `Bouwmoment toevoegen`, `Bouwboek`, `Profiel`;
-- mobiel: `Verhaal`, `Toevoegen`, `Bouwboek`, `Profiel`.
-
-## Bewust niet in scope
-
-- Stripe, betalingen, checkout, prijzen, bestellingen en refunds;
-- printproofs, fysieke Bouwboeken, handmatige of automatische printfulfilment;
-- Peecho of een andere actieve printproviderintegratie;
-- transactionele e-mail of een AI-provider;
-- OAuth, magic links, e-maillogin en wachtwoordherstel;
-- budget, plattegronden, een openbare discoveryfeed, projectmanagementsuite of
-  marktplaats;
-- een tweede zichtbaar follow- of projecttoegangsmodel;
-- geautomatiseerde media- of Bouwboekcrons.
-
-Historische routes, databasevelden en commercecode mogen voor compatibiliteit
-dormant blijven. Ze introduceren geen tweede zichtbaar productmodel of
-alternatieve providerflow en zijn geen releaseafhankelijkheid.
-
-## Operationeel contract
-
-- `PRODUCT_PROFILE=feedback_beta`;
-- `BETA_MODE=false`;
-- lokaal, Preview, staging en Production gebruiken `CHECKOUT_MODE=off`;
-- `public_demo` is een veilige rollbackoptie en nooit bewijs dat het
-  accountgebaseerde MVP-doel is behaald;
-- Neon is de database en private Vercel Blob bewaart customer-media;
-- browsercode gebruikt uitsluitend de typed same-origin API;
-- autorisatie en capabilities komen van de server;
-- het digitale Bouwboek vereist geen payment-, printproof- of printworker;
-- alleen account lifecycle heeft één dagelijkse cron.
-
-De MVP is pas vrij te geven nadat één vastgezette Preview-build de echte owner-,
-deel-, kijker-, Bouwboek-, feedback- en accountverwijderreizen uit F1–F6
-aantoonbaar doorloopt, de vereiste CI groen is en de toepasselijke hosting-,
-privacy- en providervoorwaarden feitelijk zijn bevestigd. Zie
-[releaseprocedure](PRODUCTION_RELEASE.md).
+[GRAPH](architecture/GRAPH.md) beschrijft de code en grenzen,
+[FLOWS](architecture/FLOWS.md) het gedrag en [STATE](architecture/STATE.md) de
+feitelijke deployment. Er is geen CI- of testmatrix als releasevoorwaarde.

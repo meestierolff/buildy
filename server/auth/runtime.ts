@@ -5,18 +5,15 @@ import { AuthUnavailableError } from "./errors.js";
 import {
   createBuildyAuth,
   type AuthEngine,
-  type AuthRegistrationGate,
   type AuthRateLimitStorage,
 } from "./factory.js";
 import type { AuthIdentityProvisioner } from "./identity.js";
-import type { DataProtectionKeyring, PrivacyBlindIndex } from "../security/dataProtection.js";
+import type { PrivacyBlindIndex } from "../security/dataProtection.js";
 
 export interface DefaultAuthDependencies {
   blindIndex: PrivacyBlindIndex;
   identityProvisioner: AuthIdentityProvisioner;
-  keyring: DataProtectionKeyring;
   rateLimitStorage: AuthRateLimitStorage;
-  registrationGate: AuthRegistrationGate;
 }
 
 let dependencies: DefaultAuthDependencies | undefined;
@@ -30,15 +27,9 @@ export function configureDefaultAuthRuntime(next: DefaultAuthDependencies): void
   if (
     !next.blindIndex ||
     typeof next.blindIndex.create !== "function" ||
-    !next.keyring ||
-    typeof next.keyring.encrypt !== "function" ||
-    typeof next.keyring.decrypt !== "function" ||
     !next.identityProvisioner ||
     typeof next.identityProvisioner.provisionForAuthUser !== "function" ||
     typeof next.identityProvisioner.ensureForSession !== "function" ||
-    !next.registrationGate ||
-    typeof next.registrationGate.authorizeNewUser !== "function" ||
-    typeof next.registrationGate.withRequest !== "function" ||
     !next.rateLimitStorage ||
     typeof next.rateLimitStorage.consume !== "function"
   ) {
@@ -58,9 +49,7 @@ export function resolveDefaultAuthEngine(): AuthEngine {
       database: getBuildyDatabase(config.databaseUrl),
       blindIndex: dependencies.blindIndex,
       identityProvisioner: dependencies.identityProvisioner,
-      keyring: dependencies.keyring,
       rateLimitStorage: dependencies.rateLimitStorage,
-      registrationGate: dependencies.registrationGate,
     });
     return engine;
   } catch (error) {

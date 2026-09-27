@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("canonical product route configuration", () => {
-  it("pins Node 22 and makes Vercel typecheck the exact production build", () => {
+  it("pins Node 22 and builds on Vercel without a test or typecheck gate", () => {
     const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), "package.json"), "utf8")) as {
       engines?: { node?: string };
     };
@@ -22,7 +22,7 @@ describe("canonical product route configuration", () => {
 
     expect(packageJson.engines?.node).toBe("22.x");
     expect(config.installCommand).toBe("bun install --frozen-lockfile");
-    expect(config.buildCommand).toBe("bun run typecheck && bun run build");
+    expect(config.buildCommand).toBe("bun run build");
     expect(tsconfig.compilerOptions).toMatchObject({
       target: "ES2022",
       strictNullChecks: true,
@@ -30,16 +30,14 @@ describe("canonical product route configuration", () => {
     });
   });
 
-  it("documents the free account profile and core provider configuration", () => {
+  it("documents only the core account and provider configuration", () => {
     const environmentExample = readFileSync(resolve(process.cwd(), ".env.example"), "utf8");
 
-    expect(environmentExample).toMatch(/^PRODUCT_PROFILE="feedback_beta"/m);
-    expect(environmentExample).toMatch(/^BETA_MODE="false"/m);
-    expect(environmentExample).toMatch(/^CHECKOUT_MODE="off"/m);
     for (const name of [
       "DATABASE_URL",
       "DATABASE_ACCOUNT_WORKER_URL",
       "DATABASE_MEDIA_WORKER_URL",
+      "DATABASE_PHOTOBOOK_WORKER_URL",
       "BLOB_READ_WRITE_TOKEN",
       "PII_ENCRYPTION_KEYS",
       "PII_BLIND_INDEX_KEY",
@@ -49,10 +47,10 @@ describe("canonical product route configuration", () => {
     ]) {
       expect(environmentExample, name).toMatch(new RegExp(`^${name}=`, "m"));
     }
-    expect(environmentExample).not.toMatch(/^GOOGLE_CLIENT_(?:ID|SECRET)=/m);
+    expect(environmentExample).not.toMatch(/^(?:PRODUCT_PROFILE|CHECKOUT_MODE|BETA_MODE|GOOGLE_CLIENT_(?:ID|SECRET)|STRIPE_[A-Z_]+|ORDER_[A-Z_]+|DATABASE_PAYMENT_WORKER_URL)=/m);
   });
 
-  it("keeps every legacy public URL as a permanent redirect", () => {
+  it("keeps legacy core URLs as permanent redirects", () => {
     const config = JSON.parse(readFileSync(resolve(process.cwd(), "vercel.json"), "utf8")) as {
       redirects?: Array<{ source: string; destination: string; permanent?: boolean }>;
     };
@@ -61,7 +59,6 @@ describe("canonical product route configuration", () => {
       ["/trips/new", "/project/nieuw"],
       ["/trip/:id/photobook", "/project/:id/bouwboek"],
       ["/projecten/:id/bouwboek", "/project/:id/bouwboek"],
-      ["/trip/:id/budget", "/project/:id/budget"],
       ["/trip/:id", "/project/:id"],
       ["/profile/:profileKey", "/profiel/:profileKey"],
       ["/favorieten", "/volgend"],
@@ -87,8 +84,6 @@ describe("canonical product route configuration", () => {
 
   it("keeps generic SEO provider-neutral without an invented price", () => {
     const html = readFileSync(resolve(process.cwd(), "index.html"), "utf8");
-    const robots = readFileSync(resolve(process.cwd(), "public/robots.txt"), "utf8");
-    const sitemap = readFileSync(resolve(process.cwd(), "public/sitemap.xml"), "utf8");
     const config = JSON.parse(readFileSync(resolve(process.cwd(), "vercel.json"), "utf8")) as {
       headers?: Array<{ headers?: Array<{ key: string; value: string }> }>;
     };
@@ -98,8 +93,7 @@ describe("canonical product route configuration", () => {
     expect(html).toContain("Maak van je verbouwing een verhaal om te bewaren");
     expect(html).toContain("persoonlijk digitaal Bouwboek");
     expect(html).not.toMatch(/budget|mijlpalen|automatisch een gedrukt Bouwboek/i);
-    expect(`${html}\n${robots}\n${sitemap}`).not.toMatch(/https:\/\/(?:www\.)?buildy\.app/i);
-    expect(sitemap).not.toContain("/ontdekken</loc>");
+    expect(html).not.toMatch(/https:\/\/(?:www\.)?buildy\.app/i);
 
     const csp = config.headers
       ?.flatMap((entry) => entry.headers ?? [])

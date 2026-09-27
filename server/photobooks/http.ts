@@ -1,5 +1,4 @@
 import type { PhotobookEditorState, PhotobookProofMutation } from "./types.js";
-import { approvePhotobookProofInputSchema } from "../../shared/contracts/photobooks.js";
 import { HttpError } from "../http/errors.js";
 import { jsonError, jsonSuccess } from "../http/responses.js";
 import {
@@ -20,7 +19,6 @@ export interface PhotobookHttpService {
   updateSettings(actorId: string, projectId: string, input: unknown): Promise<PhotobookEditorState>;
   replaceExclusions(actorId: string, projectId: string, input: unknown): Promise<PhotobookEditorState>;
   requestProof(actorId: string, projectId: string, input: unknown): Promise<PhotobookProofMutation>;
-  approveProof(actorId: string, revisionId: string, input: unknown): Promise<PhotobookProofMutation>;
   proofObject(actorId: string, revisionId: string): ReturnType<import("./service.js").PhotobookService["proofObject"]>;
 }
 
@@ -116,45 +114,6 @@ function rethrowPhotobookError(error: unknown): never {
   throw error;
 }
 
-async function consumeExactProofObject(input: {
-  storage: ObjectStorage;
-  proof: Awaited<ReturnType<PhotobookHttpService["proofObject"]>>;
-}): Promise<void> {
-  try {
-    const object = await input.storage.streamObject({
-      key: input.proof.objectKey,
-      maximumBytes: input.proof.sizeBytes,
-    });
-    const metadataChecksum = object.metadata.checksumSha256Base64;
-    const expectedChecksumBase64 = Buffer.from(input.proof.sha256, "hex").toString("base64");
-    if (
-      object.metadata.key !== input.proof.objectKey
-      || object.metadata.sizeBytes !== input.proof.sizeBytes
-      || object.metadata.contentType !== input.proof.contentType
-      || (metadataChecksum !== undefined && metadataChecksum !== expectedChecksumBase64)
-      || object.contentLength !== input.proof.sizeBytes
-      || object.range !== undefined
-    ) throw new PhotobookError("INVALID_STATE");
-
-    const guarded = guardObjectStream({
-      stream: object.stream,
-      expectedBytes: input.proof.sizeBytes,
-      expectedSha256Hex: input.proof.sha256,
-    });
-    const reader = guarded.getReader();
-    try {
-      while (!(await reader.read()).done) {
-        // Intentionally consume without buffering; approval is allowed only after verified EOF.
-      }
-    } finally {
-      reader.releaseLock();
-    }
-  } catch (error) {
-    if (error instanceof PhotobookError) throw error;
-    throw new PhotobookError("INVALID_STATE", { cause: error });
-  }
-}
-
 export function createPhotobookHttpHandler(dependencies: PhotobookHttpDependencies) {
   return async (
     request: Request,
@@ -191,20 +150,6 @@ export function createPhotobookHttpHandler(dependencies: PhotobookHttpDependenci
         return jsonSuccess(result, requestId, {
           status: result.replayed || result.status !== "rendering" ? 200 : 202,
         });
-      }
-      if (revisionId && pathname.endsWith("/approve") && request.method === "POST") {
-        const input = approvePhotobookProofInputSchema.parse(await jsonInput(request));
-        const proof = await dependencies.service.proofObject(actorId, revisionId);
-        if (
-          proof.revisionId !== revisionId
-          || proof.documentSha256 !== input.documentSha256
-          || proof.sha256 !== input.pdfSha256
-        ) throw new PhotobookError("STALE_DRAFT");
-        await consumeExactProofObject({ storage: dependencies.storage, proof });
-        return jsonSuccess(
-          await dependencies.service.approveProof(actorId, revisionId, input),
-          requestId,
-        );
       }
       if (revisionId && pathname.endsWith("/pdf") && ["GET", "HEAD"].includes(request.method)) {
         const proof = await dependencies.service.proofObject(actorId, revisionId);

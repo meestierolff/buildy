@@ -37,11 +37,6 @@
       "permanent": true
     },
     {
-      "source": "/trip/:id/budget",
-      "destination": "/project/:id/budget",
-      "permanent": true
-    },
-    {
       "source": "/trip/:id",
       "destination": "/project/:id",
       "permanent": true

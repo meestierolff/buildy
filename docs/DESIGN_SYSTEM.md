@@ -383,7 +383,7 @@ WCAG 2.2 AA is het doel. Voor een component of flow “done” is:
 De geautomatiseerde visuele regressies zijn geen interactieve releaseclaim. De
 verplichte Browser MCP-audit is op deze snapshot geblokkeerd door de huidige
 Codex-gebruikslimiet. De expliciet superseded historische nulmeting staat in
-[`DESIGN_AUDIT.md`](DESIGN_AUDIT.md); zij is geen actuele releaseclaim.
+de Gitgeschiedenis; zij is geen actuele releaseclaim.
 
 ## 14. Migratieregel
 

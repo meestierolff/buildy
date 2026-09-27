@@ -33,7 +33,7 @@ function notification(
 }
 
 describe("product notification presentation", () => {
-  it("links every order state to the canonical customer order route", () => {
+  it("keeps historical order notifications reachable through support", () => {
     const messages: Record<EngagementNotificationType, string> = {
       "profile.follow.requested": "",
       "profile.followed": "",
@@ -66,7 +66,7 @@ describe("product notification presentation", () => {
     for (const [type, fragment] of Object.entries(messages)) {
       if (!type.startsWith("order.")) continue;
       const item = notification(type as EngagementNotificationType, { orderId: ORDER_ID });
-      expect(notificationHref(item)).toBe(`/bestellingen/${ORDER_ID}`);
+      expect(notificationHref(item)).toBe("/support");
       expect(notificationMessage(item).toLowerCase()).toContain(fragment);
     }
   });

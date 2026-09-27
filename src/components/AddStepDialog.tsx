@@ -743,9 +743,6 @@ const AddStepDialog = ({
               </div>
             </section>
 
-            {/* SECURITY: update-level contractor and budget fields stay hidden until typed,
-                transactional server contracts exist; there is deliberately no browser-side provider fallback. */}
-
             {projectQuery.isError && <p role="alert" className="text-sm text-destructive">De verbouwing kon niet veilig worden geladen. Probeer het Bouwmoment opnieuw te plaatsen.</p>}
             {saveStatus && <p role="status" aria-live="polite" className={`text-sm ${saveError ? "text-destructive" : "text-muted-foreground"}`}>{saveStatus}</p>}
             {draftPersistenceError && <p role="alert" className="text-sm text-destructive">{draftPersistenceError}</p>}

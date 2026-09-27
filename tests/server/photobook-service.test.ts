@@ -6,7 +6,6 @@ import { PhotobookError } from "../../server/photobooks/errors";
 import { PhotobookService } from "../../server/photobooks/service";
 import { PrivacyBlindIndex } from "../../server/security/dataProtection";
 import type {
-  ApprovePhotobookProofCommand,
   FinalizePhotobookProofCommand,
   PhotobookProofMutation,
   PhotobookProofProcessor,
@@ -53,7 +52,6 @@ function source(overrides: Partial<PhotobookSource> = {}): PhotobookSource {
 class MemoryPhotobookRepository implements PhotobookRepository {
   savedDraft: SavePhotobookDraftCommand | null = null;
   requested: RequestPhotobookProofCommand | null = null;
-  approved: ApprovePhotobookProofCommand | null = null;
   currentProof: PhotobookProofSummary | null = null;
 
   constructor(public currentSource: PhotobookSource = source()) {}
@@ -84,11 +82,6 @@ class MemoryPhotobookRepository implements PhotobookRepository {
     return { revisionId: command.revisionId, status: "rendering", replayed: false };
   }
 
-  async approveProof(command: ApprovePhotobookProofCommand): Promise<PhotobookProofMutation> {
-    this.approved = command;
-    return { revisionId: command.revisionId, status: "approved", replayed: false };
-  }
-
   async resolveProofObject() { return null; }
   async claimRenderJob(): Promise<PhotobookRenderJob | null> { return null; }
   async claimRenderJobForRevision(): Promise<PhotobookRenderJob | null> { return null; }
@@ -101,9 +94,9 @@ const measurer = {
 };
 
 describe("PhotobookService", () => {
-  it("builds and saves one canonical owner draft with the launch SKU", async () => {
+  it("builds and saves one canonical owner draft with its page format", async () => {
     const repository = new MemoryPhotobookRepository();
-    const service = new PhotobookService(repository, "buildy-private", blindIndex, undefined, undefined, async () => measurer);
+    const service = new PhotobookService(repository, "buildy-private", blindIndex, undefined, async () => measurer);
 
     const editor = await service.editor(ACTOR_ID, PROJECT_ID);
 
@@ -124,7 +117,6 @@ describe("PhotobookService", () => {
       repository,
       "buildy-private",
       blindIndex,
-      undefined,
       () => ids.shift() ?? crypto.randomUUID(),
       async () => measurer,
     );
@@ -166,7 +158,6 @@ describe("PhotobookService", () => {
       repository,
       "buildy-private",
       blindIndex,
-      undefined,
       () => ids.shift() ?? crypto.randomUUID(),
       async () => measurer,
       processor,
@@ -216,7 +207,6 @@ describe("PhotobookService", () => {
       "buildy-private",
       blindIndex,
       undefined,
-      undefined,
       async () => measurer,
       processor,
     );
@@ -233,7 +223,7 @@ describe("PhotobookService", () => {
 
   it("rejects a stale browser snapshot before enqueueing expensive work", async () => {
     const repository = new MemoryPhotobookRepository();
-    const service = new PhotobookService(repository, "buildy-private", blindIndex, undefined, undefined, async () => measurer);
+    const service = new PhotobookService(repository, "buildy-private", blindIndex, undefined, async () => measurer);
     const editor = await service.editor(ACTOR_ID, PROJECT_ID);
 
     await expect(service.requestProof(ACTOR_ID, PROJECT_ID, {
@@ -244,13 +234,12 @@ describe("PhotobookService", () => {
     expect(repository.requested).toBeNull();
   });
 
-  it("keeps printproof requests dormant for the free digital Bouwboek", async () => {
+  it("rejects PDF requests when the dedicated worker is unavailable", async () => {
     const repository = new MemoryPhotobookRepository();
     const service = new PhotobookService(
       repository,
       "buildy-private",
       blindIndex,
-      undefined,
       undefined,
       async () => measurer,
       undefined,
@@ -266,39 +255,12 @@ describe("PhotobookService", () => {
     expect(repository.requested).toBeNull();
   });
 
-  it("approves only the explicitly hashed revision and never trusts a redirect", async () => {
-    const repository = new MemoryPhotobookRepository();
-    const service = new PhotobookService(
-      repository,
-      "buildy-private",
-      blindIndex,
-      () => new Date("2026-08-04T12:00:00Z"),
-    );
-    const result = await service.approveProof(ACTOR_ID, REVISION_ID, {
-      idempotencyKey: "60000000-0000-4000-8000-000000000003",
-      documentSha256: "a".repeat(64),
-      pdfSha256: "b".repeat(64),
-      proofViewed: true,
-    });
-
-    expect(result.status).toBe("approved");
-    expect(repository.approved).toMatchObject({
-      actorId: ACTOR_ID,
-      revisionId: REVISION_ID,
-      documentSha256: "a".repeat(64),
-      pdfSha256: "b".repeat(64),
-      proofViewed: true,
-      approvedAt: new Date("2026-08-04T12:00:00Z"),
-    });
-  });
-
   it("fails closed for an inaccessible project", async () => {
     const processed: string[] = [];
     const service = new PhotobookService(
       new MemoryPhotobookRepository(),
       "buildy-private",
       blindIndex,
-      undefined,
       undefined,
       undefined,
       { async processRevision(revisionId) { processed.push(revisionId); return { status: "idle" }; } },

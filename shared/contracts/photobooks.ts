@@ -72,13 +72,6 @@ export const requestPhotobookProofInputSchema = z.object({
   expectedDocumentSha256: sha256Schema,
 }).strict();
 
-export const approvePhotobookProofInputSchema = z.object({
-  idempotencyKey: z.string().uuid(),
-  documentSha256: sha256Schema,
-  pdfSha256: sha256Schema,
-  proofViewed: z.literal(true),
-}).strict();
-
 const blockFrameSchema = z.object({
   xMm: millimetresSchema,
   yMm: millimetresSchema,

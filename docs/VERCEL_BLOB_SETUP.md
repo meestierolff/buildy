@@ -1,40 +1,38 @@
-# Vercel Blob setup
+# Private Vercel Blob
 
-## Doel
+Buildy bewaart media, avatars, exports en digitale Bouwboeken in een private
+Blob-store. De browser uploadt alleen na server-issued, beperkte autorisatie;
+reads lopen via Buildy en de actuele toegangscontrole.
 
-Gebruik private Vercel Blob voor Buildy-media, avatars, exports en Bouwboekproofs.
+## Configuratie en verwerking
 
-## Minimale env var
+Gebruik `BLOB_READ_WRITE_TOKEN` uitsluitend server-side voor de bedoelde private
+store. De runtime gebruikt daarnaast de beperkte databaseverbindingen
+`DATABASE_MEDIA_WORKER_URL`, `DATABASE_PHOTOBOOK_WORKER_URL` en voor
+export/cleanup `DATABASE_ACCOUNT_WORKER_URL`. Zie [.env.example](../.env.example)
+voor de volledige huidige configuratie zonder werkelijke secrets.
 
-- `BLOB_READ_WRITE_TOKEN`
+Media-completion verwerkt alleen het exacte asset onder de mediaworkerrol.
+Bouwboekrequests verwerken alleen de exacte revisie onder de photobookworkerrol.
+Begrensde owner-polling kan dezelfde geleasede, idempotente verwerking hervatten.
+Beide kernflows zijn request-driven; ze hebben geen cron of afhankelijkheid van
+`CRON_SECRET`. De account-lifecyclecron doet export, verwijdering en begrensd
+orphan-mediaonderhoud, beschreven in [ACCOUNT_LIFECYCLE](ACCOUNT_LIFECYCLE.md).
 
-## Vereisten
+## Grenzen bij gebruik en onderzoek
 
-- private store
-- server-gecontroleerde uploadautorisatie
-- geen permanente publieke media-URL's
-- iedere private read via Buildy-autorisatie
-- delete of directe ontoegankelijkheid bij account- of projectverwijdering
-- exacte private Blob-host/path, bytegrootte en SHA-256 controleren
-- geen Cloudflare R2/AWS S3 runtime of providerfallback
-- media-completion verwerkt direct alleen het exacte asset onder de
-  mediaworkerrol; begrensde owner-polling kan dezelfde leased/idempotente claim
-  hervatten
-- Bouwboekproofrequests verwerken op dezelfde manier exact één revisie onder
-  de photobookworkerrol
-- media en Bouwboek vereisen hun worker-DB-URL plus Blob, niet `CRON_SECRET`;
-  er zijn geen bijbehorende cronroutes of Vercel schedules
+Controleer exact provider/store, objecthost/path, bytegrootte en SHA-256. Een
+uploadcallback of object-URL is geen bewijs van eigenaarschap of leesrecht.
+Publiceer geen permanente media-URL en log geen token, objectkey of privébeeld.
 
-## Verificatie
+Autoriseer iedere read opnieuw volgens projectvisibility, linkstatus, blokkades,
+moderatie en lifecycle. Een privéasset blijft onbereikbaar voor een actor zonder
+leesrecht. Deellinkintrekking, verlies van een benodigde profielconnectie,
+blokkeren en verwijdering werken door naar mediareads. Een project ontvolgen
+beëindigt de subscription; het trekt op zichzelf geen apart leesrecht in.
 
-- synthetische upload, exact-asset processing en begrensde owner-retry slagen
-- anonieme read faalt
-- owner-read slaagt via Buildy-route
-- visibilitywijziging, unfollow of block trekt media-toegang direct in
-- delete maakt media direct onbereikbaar
-
-Bewijs daarnaast corrupte/mismatched bytes, retry/leaseverlies,
-wrong-store/path, exact-revision proofprocessing, proof-/exportread en cleanup
-op Preview. Een echte providerroundtrip is in de huidige release niet bewezen;
-Browser MCP was door de huidige Codex-gebruikslimiet geblokkeerd en productie
-blijft **NO-GO**.
+Gebruik voor een gerichte operationele controle eigen synthetische content:
+verifieer upload/verwerking, geautoriseerde read en de relevante weigering.
+Bij checksum-, store- of leasefouten blijft het asset onbruikbaar tot de bestaande
+retryflow slaagt. Een delete geldt pas als fysieke cleanup na bevestigde
+Blob-afwezigheid. Bekend hosted bewijs staat in [STATE](architecture/STATE.md).

@@ -6,8 +6,7 @@ Load only the affected section of [FLOWS](../docs/architecture/FLOWS.md) and its
 Work on one end-to-end flow at a time. State the flow ID and affected dependency edges before editing.
 Preserve the current design, data and stack; fix demonstrated blockers rather than rebuilding the application.
 Keep accounts, private renovations, photo updates, sharing, likes/comments and a digital Bouwboek as the small MVP.
-Stripe, Peecho, physical ordering and unrelated platform features are not release requirements. Keep checkout off.
-`public_demo` and `feedback_beta` are existing runtime profiles; do not confuse the deployed demo with the target app.
+Budget, floorplans, discovery, demo profiles, invitations and physical-ordering runtime have been removed. Do not reintroduce them into the core.
 Missing provider credentials require an owner action, not an authentication bypass or another auth architecture.
 Use CLI/API or Computer Use for the task. The owner performs personal login and secret entry when needed.
 

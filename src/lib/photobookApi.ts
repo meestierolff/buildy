@@ -1,6 +1,5 @@
 import { z } from "zod";
 import {
-  approvePhotobookProofInputSchema,
   photobookDraftResponseSchema,
   photobookProofMutationResponseSchema,
   replacePhotobookExclusionsInputSchema,
@@ -19,7 +18,6 @@ export type PhotobookProofMutation = z.infer<typeof photobookProofMutationRespon
 export type UpdatePhotobookSettingsInput = z.input<typeof updatePhotobookSettingsInputSchema>;
 export type ReplacePhotobookExclusionsInput = z.input<typeof replacePhotobookExclusionsInputSchema>;
 export type RequestPhotobookProofInput = z.input<typeof requestPhotobookProofInputSchema>;
-export type ApprovePhotobookProofInput = z.input<typeof approvePhotobookProofInputSchema>;
 export type LoadedPhotobookProof = {
   blob: Blob;
   revisionId: string;
@@ -82,18 +80,6 @@ export async function requestPhotobookProof(
   )).data;
 }
 
-export async function approvePhotobookProof(
-  revisionId: string,
-  input: ApprovePhotobookProofInput,
-): Promise<PhotobookProofMutation> {
-  const parsed = approvePhotobookProofInputSchema.parse(input);
-  return (await apiRequest(
-    `/api/photobooks/proofs/${encodedId(revisionId)}/approve`,
-    photobookProofMutationResponseSchema,
-    { method: "POST", body: parsed },
-  )).data;
-}
-
 function invalidProofResponse(message: string, response: Response): ApiClientError {
   return new ApiClientError({
     status: response.status,
@@ -108,7 +94,7 @@ async function browserSha256Hex(bytes: ArrayBuffer): Promise<string> {
     throw new ApiClientError({
       status: 0,
       code: "INTERNAL_ERROR",
-      message: "Deze browser kan de printproof niet veilig controleren.",
+      message: "Deze browser kan de PDF niet veilig controleren.",
     });
   }
   const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
@@ -145,7 +131,7 @@ export async function loadPhotobookProofView(input: {
         fieldErrors: parsed.data.error.fieldErrors,
       });
     }
-    throw invalidProofResponse("De private printproof kon niet worden geladen.", response);
+    throw invalidProofResponse("De private PDF kon niet worden geladen.", response);
   }
 
   const contentLength = Number(response.headers.get("content-length"));
@@ -155,7 +141,7 @@ export async function loadPhotobookProofView(input: {
     || !Number.isSafeInteger(contentLength)
     || contentLength < 1
     || contentLength > MAX_PROOF_BYTES
-  ) throw invalidProofResponse("De printproofresponse is ongeldig.", response);
+  ) throw invalidProofResponse("De PDF-response is ongeldig.", response);
 
   const responseRevisionId = uuidSchema.safeParse(response.headers.get("x-buildy-proof-revision"));
   const responseDocumentSha256 = sha256Schema.safeParse(response.headers.get("x-buildy-proof-document-sha256"));
@@ -167,15 +153,15 @@ export async function loadPhotobookProofView(input: {
     || responseRevisionId.data !== revisionId
     || responseDocumentSha256.data !== documentSha256
     || responsePdfSha256.data !== pdfSha256
-  ) throw invalidProofResponse("De printproof hoort niet bij de actuele revisie.", response);
+  ) throw invalidProofResponse("De PDF hoort niet bij de actuele revisie.", response);
 
   const bytes = await response.arrayBuffer();
   const magic = new TextDecoder("ascii").decode(bytes.slice(0, 5));
   if (bytes.byteLength !== contentLength || magic !== "%PDF-") {
-    throw invalidProofResponse("De geladen printproof is geen volledige PDF.", response);
+    throw invalidProofResponse("De geladen PDF is geen volledige PDF.", response);
   }
   if (await browserSha256Hex(bytes) !== pdfSha256) {
-    throw invalidProofResponse("De checksum van de geladen printproof wijkt af.", response);
+    throw invalidProofResponse("De checksum van de geladen PDF wijkt af.", response);
   }
 
   return {

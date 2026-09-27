@@ -1,59 +1,46 @@
 # Verbouwing verwijderen
 
-Status: actieve Neon + private Vercel Blob lifecycle.
+Een eigenaar gebruikt `DELETE /api/projects/:projectId` met de actuele versie,
+een idempotencykey en exact `VERWIJDER VERBOUWING`. De server bepaalt actor en
+project; de database controleert eigenaarschap en optimistic concurrency.
 
-## Aanvraag
+## Directe intrekking
 
-Een eigenaar vraagt verwijdering aan via `DELETE /api/projects/:projectId` met
-actuele projectversie, client-idempotencykey en exact `VERWIJDER PROJECT`.
-Historische route/databasenaam `project` blijft intern; zichtbare copy gebruikt
-Verbouwing.
+Een geaccepteerd verzoek zet de verbouwing atomair op `deletion_pending` en
+`private`. Project-, Bouwmoment-, media-, social- en Bouwboekreads mogen vanaf
+dat moment geen inhoud tonen. Dit is directe toegangsintrekking, nog geen
+voltooide fysieke verwijdering.
 
-De server leidt actor/project/key zelf af. De database lockt, controleert owner
-en optimistic concurrency en zet de Verbouwing atomair op `deletion_pending` en
-`private`. Vanaf dat moment lekken project-, Bouwmoment-, media-, social- en
-Bouwboekreadmodels geen inhoud.
+## Historische retentie
 
-## Order- en retentiegate
+Bestellen is uit de app verwijderd. Bestaande retentiecontroles blijven wel
+intact voor historische data: een niet aantoonbaar terminale order kan de
+verwijdering blokkeren. Omzeil dat conflict niet met een handmatige statusupdate.
+Onderzoek uitsluitend de betrokken historische records en noodzakelijke
+retentievoorwaarden.
 
-Een checkout, betaling of fysieke order die niet aantoonbaar terminaal is
-blokkeert fail-closed met conflict. De check gebeurt bij aanvraag en vóór finale
-redactie. Support/admin moet de echte order eerst veilig afronden; een klant-
-of providerbericht volstaat niet.
-
-Voor veilig terminale, bestelde orders blijven alleen de technisch/juridisch
-noodzakelijke order/payment/fulfilmentledger, gebruikte locked proofketen en
-private PDF behouden volgens het goedgekeurde retentiebeleid. De code claimt
-geen universele wettelijke termijn.
+Alleen noodzakelijke historische order-/payment-/auditrelaties en de daarbij
+behorende locked revisie/PDF kunnen bewaard blijven. Het beleid bepaalt de
+bewaartermijn; dit document introduceert geen universele wettelijke termijn.
 
 ## Private Blob-cleanup
 
-De aanvraag bevriest niet-bestelde proofjobs en schrijft een deterministisch
-manifest voor verwijderbare private Vercel Blob-objecten. De accountworker:
+De aanvraag bevriest verwijderbare renderjobs en schrijft een deterministisch
+manifest. De accountworker claimt een begrensde lease en verwerkt per invocation
+maximaal één geïnventariseerd object. Het object moet exact bij de private
+Blob-provider/store horen. Na delete controleert de worker afwezigheid; pas dan
+wordt het manifestitem verified.
 
-1. claimt één job met begrensde lease;
-2. verwijdert maximaal één geïnventariseerd object per invocation;
-3. accepteert alleen de exacte geconfigureerde private Blob provider/store;
-4. controleert na delete dat het object afwezig is;
-5. markeert het manifestitem pas daarna verified;
-6. plant transient fouten begrensd opnieuw en zet uitgeput/permanent falen in
-   dead letter/manual review;
-7. start databaseredactie pas wanneer alle vereiste assets verified zijn.
+Tijdelijke fouten krijgen begrensde retries; permanente of uitgeputte fouten
+worden dead letter/manual review. Databaseredactie begint pas als de vereiste
+assets verified zijn. Finalisatie trekt actieve relaties in en verwijdert of
+redigeert inhoud, met noodzakelijke tombstones voor auditreferenties.
+Historische revoked follow-/accessrecords geven nooit toegang.
 
-Finalisatie trekt actieve visibility/social/mediarelaties in, verwijdert of
-redigeert niet-bewaarde inhoud en houdt noodzakelijke interne tombstones zodat
-audit/orderreferenties niet breken. Historische project-follow/accessrecords
-mogen als revoked historie blijven; zij geven nooit toegang.
+De webrol kan alleen de owner-bound aanvraag uitvoeren. De accountworker heeft
+execute op zijn lease/verify/retry/finalizefuncties, geen algemene table-DML.
+Browserpayload kiest geen finalizer en een operator slaat geen jobstatus over.
 
-## Privilege- en releasegrens
-
-De webrol kan alleen de owner-bound requestfunctie uitvoeren. De accountworker
-heeft geen table-DML en alleen execute op lease/verify/retry/finalizefuncties.
-Browser- of workerpayload kiest nooit de finalizer.
-
-Vóór productie moeten IDOR, confirmation, idempotency, version conflict,
-active-order block, visibilityrevocation, Blob delete-readback, retry/dead-letter
-en finale redactie op clean room én Preview worden bewezen. Een echte Preview-
-Blob fault/recovery en interactieve journey zijn nog niet bewezen; Browser MCP
-was door de huidige Codex-gebruikslimiet geblokkeerd. Production blijft
-**NO-GO**.
+Zie [ACCOUNT_LIFECYCLE](ACCOUNT_LIFECYCLE.md) voor de worker en
+[STATE](architecture/STATE.md) voor werkelijk bewijs. Rapporteer een geaccepteerde
+aanvraag als in behandeling totdat cleanup en finalisatie bevestigd zijn.

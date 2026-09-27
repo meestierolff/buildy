@@ -8,8 +8,6 @@ function configured(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
     NODE_ENV: "test",
     APP_ENV: "test",
     APP_ORIGIN: "https://app.buildy.test",
-    PRODUCT_PROFILE: "feedback_beta",
-    CHECKOUT_MODE: "off",
     DATABASE_URL: "postgresql://web:secret@127.0.0.1:5432/buildy_test",
     DATABASE_ACCOUNT_WORKER_URL: "postgresql://account:secret@127.0.0.1:5432/buildy_test",
     DATABASE_MEDIA_WORKER_URL: "postgresql://media:secret@127.0.0.1:5432/buildy_test",
@@ -26,7 +24,7 @@ function configured(overrides: Partial<RuntimeConfig> = {}): RuntimeConfig {
 }
 
 describe("private Vercel Blob runtime configuration", () => {
-  it("reports Blob-backed feedback-beta capabilities as ready", () => {
+  it("reports core Blob-backed capabilities as ready", () => {
     const capabilities = getCapabilities(configured());
 
     expect(capabilities.accountLifecycle).toBe("ready");
@@ -52,7 +50,7 @@ describe("private Vercel Blob runtime configuration", () => {
     expect(capabilities.photobooks).toBe("ready");
   });
 
-  it("keeps the digital Bouwboek ready without the dormant print worker", () => {
+  it("keeps the digital preview available without its PDF rendering worker", () => {
     const capabilities = getCapabilities(configured({ DATABASE_PHOTOBOOK_WORKER_URL: undefined }));
 
     expect(capabilities.photobooks).toBe("ready");
