@@ -64,7 +64,25 @@ removed. Production application used buildy_migrator_app, an advisory transactio
 lock and comparison of all 54 prior hashes before DDL+ledger insertion. All 55
 hashes match; function owner/ACL/SECURITY DEFINER/search_path stayed unchanged.
 Rollback branch `br-calm-hall-b1shoixi` at LSN `0/345BFB8` is READY without compute.
-Final follow-up publication and synthetic-account cleanup are pending.
+PR #6 merged as `a2b98c5395c95188f66ea99539e551e124e3b85d`. That app revision
+is READY in production deployment `dpl_42qe6NWZUEQuCgAYg1GhE3KfeDzj` at
+https://buildy-gamma.vercel.app. Ordinary public health returned the exact SHA;
+configuration, database and all three workers passed readiness. Product profile
+remains `feedback_beta` with beta mode, invitations and checkout disabled.
+
+On this final app revision, dashboard, following and profile project lists each
+returned a real automatic cover and its authorized private media read succeeded.
+The viewer feed contained exactly the two published updates and no draft.
+Both synthetic accounts then requested deletion with a fresh ordinary login and
+immediately lost access. Physical background cleanup is not asserted.
+
+Computer Use later became unavailable even after a runtime reset. The additional
+book-palette change and final cover fix were checked through focused tests/build
+and actual hosted APIs respectively; no final screenshot of those two follow-up
+changes is claimed. Mobile camera hardware and offline-native behavior are not
+verified. This app implements the requested Buildy social/book core, not full
+Polarsteps feature parity (travel tracking/planning and physical orders remain
+outside scope).
 
 ## Published mobile core — 2026-09-30
 
