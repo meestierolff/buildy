@@ -117,7 +117,7 @@ describe("project share owner UI", () => {
     }));
   });
 
-  it("offers rotate and revoke for an existing grant and explains that the old secret is unrecoverable", async () => {
+  it("requires explicit confirmation before replacing an active link and lets the owner keep it", async () => {
     const rotate = vi.fn().mockResolvedValue({ link: { ...link, version: 2 }, shareUrl: SHARE_URL, replayed: false });
     const revoke = vi.fn().mockResolvedValue({ projectId: PROJECT_ID, linkId: LINK_ID, version: 2, revoked: true, replayed: false });
     vi.mocked(useProjectShareLink).mockReturnValue({
@@ -133,9 +133,35 @@ describe("project share owner UI", () => {
     expect(screen.getByText(/bewaart de geheime link niet/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Nieuwe link maken" }));
+    expect(screen.getByRole("alertdialog", { name: "Actieve link vervangen?" })).toBeInTheDocument();
+    expect(rotate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Huidige link behouden" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(rotate).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Nieuwe link maken" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ja, link vervangen" }));
     await waitFor(() => expect(rotate).toHaveBeenCalledWith(expect.objectContaining({ expectedVersion: 1 })));
     fireEvent.click(screen.getByRole("button", { name: "Link intrekken" }));
     await waitFor(() => expect(revoke).toHaveBeenCalledWith(expect.objectContaining({ expectedVersion: 1 })));
+  });
+
+  it("replaces an expired link directly because no active access is being revoked", async () => {
+    const rotate = vi.fn().mockResolvedValue({ link: { ...link, version: 2 }, shareUrl: SHARE_URL, replayed: false });
+    vi.mocked(useProjectShareLink).mockReturnValue({
+      data: { projectId: PROJECT_ID, link: { ...link, state: "expired" } },
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useProjectShareLink>);
+    vi.mocked(useRotateProjectShareLink).mockReturnValue(mutation(rotate) as unknown as ReturnType<typeof useRotateProjectShareLink>);
+
+    render(<ShareLinkDialog open onOpenChange={vi.fn()} projectId={PROJECT_ID} projectTitle="Ons huis" />);
+    fireEvent.click(screen.getByRole("button", { name: "Nieuwe link maken" }));
+
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(rotate).toHaveBeenCalledWith(expect.objectContaining({ expectedVersion: 1 })));
+    expect(await screen.findByText("Je nieuwe link staat klaar")).toBeInTheDocument();
   });
 });
 

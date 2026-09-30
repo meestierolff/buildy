@@ -5,6 +5,7 @@ import {
   Images,
   Plus,
   UserCircle2,
+  Users,
 } from "lucide-react";
 import { NavLink } from "@/lib/router";
 
@@ -20,10 +21,11 @@ const NAVIGATION_ICONS: Record<ProductNavigationIcon, LucideIcon> = {
   book: BookOpen,
   add: Plus,
   profile: UserCircle2,
+  following: Users,
 };
 
 const PRODUCT_LABELS: Readonly<Record<string, string>> = {
-  story: "Verhaal",
+  story: "Verhalen",
   update: "Toevoegen",
   photobook: "Bouwboek",
 };

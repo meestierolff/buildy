@@ -85,7 +85,7 @@ describe("private project onboarding", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it.each(["/delen", `/project/${PROJECT_ID}`, "/project/nieuw", "/profiel"])(
+  it.each(["/delen", `/project/${PROJECT_ID}`, "/project/nieuw", "/profiel", "/volgend", "/notificaties"])(
     "onderbreekt %s niet en bewaart onboarding voor het eigen dashboard",
     (pathname) => {
       mocks.location.pathname = pathname;
@@ -136,5 +136,33 @@ describe("private project onboarding", () => {
     ));
     expect(mocks.createProject).not.toHaveBeenCalled();
     expect(mocks.updateProfile).toHaveBeenCalledOnce();
+  });
+
+  it("voltooit de kijkerkeuze zonder een lege verbouwing te maken", async () => {
+    render(<OnboardingDialog enabled />);
+    fireEvent.click(screen.getByRole("button", { name: "Ik kijk mee" }));
+
+    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith("/volgend"));
+    expect(mocks.createProject).not.toHaveBeenCalled();
+    expect(mocks.updateProfile).toHaveBeenCalledWith(expect.objectContaining({
+      expectedVersion: 3,
+      onboardingCompleted: true,
+    }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("bewaart bij een onzekere kijkerkeuze dezelfde opdracht voor opnieuw proberen", async () => {
+    mocks.updateProfile.mockRejectedValueOnce(new TypeError("Response lost"));
+    render(<OnboardingDialog enabled />);
+    fireEvent.click(screen.getByRole("button", { name: "Ik kijk mee" }));
+
+    await screen.findByText("Je keuze kon niet worden bewaard. Probeer het opnieuw.");
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    const firstCommand = mocks.updateProfile.mock.calls[0]?.[0];
+    fireEvent.click(screen.getByRole("button", { name: "Ik kijk mee" }));
+
+    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith("/volgend"));
+    expect(mocks.updateProfile.mock.calls[1]?.[0]).toBe(firstCommand);
+    expect(mocks.createProject).not.toHaveBeenCalled();
   });
 });

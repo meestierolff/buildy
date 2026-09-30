@@ -105,7 +105,7 @@ describe("PhotobookService", () => {
       projectId: PROJECT_ID,
       projectRevision: 3,
       selectedFormat: "a4-landscape-hardcover-v1",
-      pageCount: 24,
+      pageCount: 2,
     });
     expect(repository.savedDraft?.document.checksumSha256).toBe(editor.document.checksumSha256);
   });
@@ -149,7 +149,7 @@ describe("PhotobookService", () => {
         return {
           status: "rendered",
           revisionId,
-          pageCount: 24,
+          pageCount: 2,
           pdfSha256: "f".repeat(64),
         };
       },
@@ -192,12 +192,12 @@ describe("PhotobookService", () => {
           status: "ready",
           documentSha256: "a".repeat(64),
           pdfSha256: "b".repeat(64),
-          pageCount: 24,
+          pageCount: 2,
         };
         return {
           status: "rendered",
           revisionId,
-          pageCount: 24,
+          pageCount: 2,
           pdfSha256: "b".repeat(64),
         };
       },

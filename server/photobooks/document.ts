@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   LAUNCH_PHOTOBOOK_FORMAT,
-  LAUNCH_PHOTOBOOK_MIN_PAGES,
+  PHOTOBOOK_MIN_PAGES,
   photobookDocumentSchema,
   type PhotobookCrop,
   type PhotobookDocument,
@@ -321,8 +321,8 @@ function textBlock(input: {
 }
 
 export function buildPhotobookDocument(input: BuildPhotobookDocumentInput): PhotobookDocument {
-  if (!Number.isSafeInteger(input.maximumPages) || input.maximumPages < LAUNCH_PHOTOBOOK_MIN_PAGES || input.maximumPages > 400) {
-    throw new RangeError("maximumPages moet tussen 24 en 400 liggen.");
+  if (!Number.isSafeInteger(input.maximumPages) || input.maximumPages < PHOTOBOOK_MIN_PAGES || input.maximumPages > 400) {
+    throw new RangeError("maximumPages moet tussen 2 en 400 liggen.");
   }
 
   const pages: PhotobookPage[] = [];
@@ -710,19 +710,7 @@ export function buildPhotobookDocument(input: BuildPhotobookDocumentInput): Phot
     }
   }
 
-  // Reserve the final PDF page for the back cover; padding belongs inside it.
-  while (pages.length + 1 < LAUNCH_PHOTOBOOK_MIN_PAGES || (pages.length + 1) % 2 !== 0) {
-    pages.push({
-      id: `blank:${pages.length + 1}`,
-      number: pages.length + 1,
-      kind: "blank",
-      chapterId: null,
-      updateId: null,
-      background: "#ffffff",
-      overlay: null,
-      blocks: [],
-    });
-  }
+  // Digital books contain their real content and covers, without print padding.
   pages.push({
     id: "back-cover",
     number: pages.length + 1,

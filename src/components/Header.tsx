@@ -1,4 +1,5 @@
 import BrandLogo from "@/components/BrandLogo";
+import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { PRODUCT_ROUTES } from "@/lib/productNavigation";
@@ -10,15 +11,13 @@ type HeaderProps = {
 
 const Header = ({ activeProjectId }: HeaderProps) => {
   const { user } = useAuth();
-  const storyHref = activeProjectId
-    ? PRODUCT_ROUTES.project(activeProjectId)
-    : PRODUCT_ROUTES.newProject;
+  const storyHref = PRODUCT_ROUTES.projects;
   const updateHref = activeProjectId
     ? PRODUCT_ROUTES.projectUpdateComposer(activeProjectId)
     : PRODUCT_ROUTES.newProject;
   const photobookHref = activeProjectId
     ? PRODUCT_ROUTES.projectPhotobook(activeProjectId)
-    : PRODUCT_ROUTES.newProject;
+    : PRODUCT_ROUTES.projects;
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     `relative inline-flex min-h-11 items-center px-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none ${
@@ -32,13 +31,15 @@ const Header = ({ activeProjectId }: HeaderProps) => {
   return (
     <div className="mx-auto flex min-h-[4.5rem] max-w-7xl flex-wrap items-center justify-between gap-x-3 px-4 text-foreground sm:px-6 md:px-8">
       <BrandLogo
+        href={user ? PRODUCT_ROUTES.projects : PRODUCT_ROUTES.landing}
         imageClassName="h-8 w-8 rounded-md shadow-none"
         textClassName="hidden min-[360px]:inline"
       />
 
       {user ? (
         <nav className="hidden items-center gap-2 lg:flex" aria-label="Hoofdnavigatie">
-          <NavLink to={storyHref} end className={navLinkClass}>Mijn verbouwing</NavLink>
+          <NavLink to={storyHref} end className={navLinkClass}>Verhalen</NavLink>
+          <NavLink to={PRODUCT_ROUTES.following} end className={navLinkClass}>Volgend</NavLink>
           <Link to={updateHref} className={quietLinkClass}>Bouwmoment toevoegen</Link>
           <NavLink to={photobookHref} end className={navLinkClass}>Bouwboek</NavLink>
           <NavLink to={PRODUCT_ROUTES.ownProfile} end className={navLinkClass}>Profiel</NavLink>
@@ -52,6 +53,12 @@ const Header = ({ activeProjectId }: HeaderProps) => {
           <Link to="/#voorbeeld" className={quietLinkClass}>Bekijk voorbeeld</Link>
         </nav>
       )}
+
+      {user ? (
+        <Link to={PRODUCT_ROUTES.notifications} aria-label="Meldingen" className="flex h-11 w-11 items-center justify-center rounded-full border border-border hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Bell className="h-5 w-5" aria-hidden="true" />
+        </Link>
+      ) : null}
 
       {!user ? (
         <div className="flex items-center gap-1 sm:gap-2">

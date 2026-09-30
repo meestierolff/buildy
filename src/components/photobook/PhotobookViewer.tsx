@@ -42,7 +42,7 @@ export const PhotobookViewer = ({
   const desktopSpread = useDesktopSpread();
   const [thumbnailCount, setThumbnailCount] = useState(10);
   const loadMoreRef = useRef<HTMLButtonElement>(null);
-  const touchStartX = useRef<number | null>(null);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
   const current = normalizedPageIndex(activePage, document.pageCount, desktopSpread);
   const visibleCount = desktopSpread && current > 0 ? 2 : 1;
   const visiblePages = useMemo(
@@ -109,47 +109,24 @@ export const PhotobookViewer = ({
       }}
       tabIndex={0}
     >
-      <div className="mb-4 flex items-center justify-center gap-2">
-        <Button
-          aria-label="Vorige pagina"
-          className="rounded-full"
-          disabled={current === 0}
-          onClick={() => move(-1)}
-          size="icon"
-          type="button"
-          variant="ghost"
-        >
-          <ChevronLeft aria-hidden="true" />
-        </Button>
-        <p aria-live="polite" className="min-w-40 text-center text-xs font-semibold tabular-nums text-[#655F57] dark:text-muted-foreground">
-          {pageLabel}
-        </p>
-        <Button
-          aria-label="Volgende pagina"
-          className="rounded-full"
-          disabled={current + visiblePages.length >= document.pageCount}
-          onClick={() => move(1)}
-          size="icon"
-          type="button"
-          variant="ghost"
-        >
-          <ChevronRight aria-hidden="true" />
-        </Button>
-      </div>
-
       <p className="sr-only">Gebruik de pijltjestoetsen om te bladeren en Home of End voor het begin of einde.</p>
       <div
         className="overflow-hidden rounded-lg"
+        style={{ touchAction: "pan-y" }}
+        onTouchCancel={() => { touchStart.current = null; }}
         onTouchEnd={(event) => {
-          const start = touchStartX.current;
-          touchStartX.current = null;
-          if (desktopSpread || start === null) return;
-          const end = event.changedTouches[0]?.clientX;
-          if (end === undefined || Math.abs(start - end) < 48) return;
-          move(start > end ? 1 : -1);
+          const start = touchStart.current;
+          touchStart.current = null;
+          const end = event.changedTouches[0];
+          if (desktopSpread || !start || !end) return;
+          const horizontal = start.x - end.clientX;
+          const vertical = start.y - (end.clientY ?? 0);
+          if (Math.abs(horizontal) < 48 || Math.abs(horizontal) <= Math.abs(vertical)) return;
+          move(horizontal > 0 ? 1 : -1);
         }}
         onTouchStart={(event) => {
-          touchStartX.current = event.touches[0]?.clientX ?? null;
+          const touch = event.touches[0];
+          touchStart.current = touch ? { x: touch.clientX, y: touch.clientY ?? 0 } : null;
         }}
       >
         <div
@@ -165,6 +142,36 @@ export const PhotobookViewer = ({
           ))}
         </div>
       </div>
+
+      <div className="mt-4 flex items-center justify-center gap-2">
+        <Button
+          aria-label="Vorige pagina"
+          className="h-11 w-11 rounded-full"
+          disabled={current === 0}
+          onClick={() => move(-1)}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <ChevronLeft aria-hidden="true" />
+        </Button>
+        <p aria-live="polite" className="min-w-40 text-center text-xs font-semibold tabular-nums text-[#655F57] dark:text-muted-foreground">
+          {pageLabel}
+        </p>
+        <Button
+          aria-label="Volgende pagina"
+          className="h-11 w-11 rounded-full"
+          disabled={current + visiblePages.length >= document.pageCount}
+          onClick={() => move(1)}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <ChevronRight aria-hidden="true" />
+        </Button>
+      </div>
+
+      <p className="mt-1 text-center text-xs text-[#655F57] dark:text-muted-foreground md:hidden">Veeg om door je verhaal te bladeren</p>
 
       <nav aria-label="Bladzijden" className="mt-5 flex gap-2 overflow-x-auto pb-2">
         {document.pages.slice(0, thumbnailCount).map((page, index) => {

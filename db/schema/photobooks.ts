@@ -196,7 +196,7 @@ export const photobookRevisions = pgTable(
     check("photobook_revisions_pdf_size_ck", sql`${table.pdfSizeBytes} IS NULL OR ${table.pdfSizeBytes} > 0`),
     check(
       "photobook_revisions_ready_proof_ck",
-      sql`${table.status} NOT IN ('ready', 'approved', 'locked') OR (${table.pdfAssetId} IS NOT NULL AND ${table.pdfSha256} IS NOT NULL AND ${table.pdfSizeBytes} IS NOT NULL AND ${table.pageCount} IS NOT NULL AND ${table.fontSetSha256} IS NOT NULL AND ${table.pageCount} >= 24 AND mod(${table.pageCount}, 2) = 0)`,
+      sql`${table.status} NOT IN ('ready', 'approved', 'locked') OR (${table.pdfAssetId} IS NOT NULL AND ${table.pdfSha256} IS NOT NULL AND ${table.pdfSizeBytes} IS NOT NULL AND ${table.pageCount} IS NOT NULL AND ${table.fontSetSha256} IS NOT NULL AND ${table.pageCount} BETWEEN 2 AND 400)`,
     ),
     check(
       "photobook_revisions_approval_ck",
