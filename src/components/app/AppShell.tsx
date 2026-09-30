@@ -40,7 +40,7 @@ const AppShell = ({
     {header ? (
       <header
         className={cn(
-          "z-40 border-b border-border/80 bg-background/95 pt-[env(safe-area-inset-top)] backdrop-blur supports-[backdrop-filter]:bg-background/[0.85]",
+          "z-40 border-b border-border/70 bg-card/95 pt-[env(safe-area-inset-top)] backdrop-blur",
           stickyHeader && "sticky top-0",
           headerClassName,
         )}

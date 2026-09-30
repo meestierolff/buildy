@@ -4,6 +4,7 @@ import { apiSuccessSchema } from "./api.js";
 export const projectRoutes = {
   collection: "/api/projects",
   following: "/api/following",
+  profileProjects: "/api/social/profiles/:profileId/projects",
   detail: "/api/projects/:projectId",
   follow: "/api/projects/:projectId/follow",
   updates: "/api/projects/:projectId/updates",
@@ -234,6 +235,8 @@ export const projectOwnerSummarySchema = z.object({
   slug: z.string(),
 });
 
+export const projectFollowSourceSchema = z.enum(["project", "user", "both"]);
+
 export const projectCardSchema = z.object({
   id: uuidSchema,
   slug: z.string(),
@@ -248,6 +251,7 @@ export const projectCardSchema = z.object({
   updateCount: z.number().int().nonnegative(),
   lastUpdateAt: z.string().datetime().nullable(),
   owner: projectOwnerSummarySchema,
+  followSource: projectFollowSourceSchema.optional(),
   cover: mediaDescriptorSchema.nullable(),
 });
 
@@ -302,6 +306,8 @@ export const followingActivitySchema = z.object({
   project: z.object({
     id: uuidSchema,
     title: z.string(),
+    owner: projectOwnerSummarySchema.optional(),
+    followSource: projectFollowSourceSchema.optional(),
   }),
   update: projectUpdateSchema,
 });

@@ -149,7 +149,7 @@ const CommentsSheet = ({
             <button
               type="button"
               onClick={() => setReplyTo(comment)}
-              className="hover:text-accent flex items-center gap-1"
+              className="flex min-h-11 items-center gap-1 hover:text-primary"
               aria-label={`Antwoord op ${comment.author.displayName}`}
             >
               <Reply className="h-3 w-3" aria-hidden="true" /> Antwoord
@@ -160,7 +160,7 @@ const CommentsSheet = ({
               type="button"
               onClick={() => remove(comment)}
               disabled={deleteComment.isPending}
-              className="hover:text-destructive flex items-center gap-1"
+              className="flex min-h-11 min-w-11 items-center justify-center gap-1 hover:text-destructive"
               aria-label={`Reactie van ${comment.author.displayName} verwijderen`}
             >
               <Trash2 className="h-3 w-3" aria-hidden="true" />
@@ -189,7 +189,7 @@ const CommentsSheet = ({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-md flex flex-col">
+      <SheetContent side="right" className="flex h-dvh w-full flex-col bg-card px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-6 sm:max-w-md sm:px-6">
         <SheetHeader>
           <SheetTitle>Reacties</SheetTitle>
         </SheetHeader>
@@ -252,7 +252,7 @@ const CommentsSheet = ({
             {replyTo && (
               <div className="text-xs text-muted-foreground flex items-center justify-between bg-muted/50 px-2 py-1 rounded">
                 <span>Antwoord op {replyTo.author.displayName}</span>
-                <button type="button" onClick={() => setReplyTo(null)} className="text-accent" aria-label="Antwoord annuleren">×</button>
+                <button type="button" onClick={() => setReplyTo(null)} className="min-h-11 min-w-11 text-accent" aria-label="Antwoord annuleren">×</button>
               </div>
             )}
             <Textarea
@@ -260,6 +260,7 @@ const CommentsSheet = ({
               onChange={(event) => setText(event.target.value)}
               placeholder="Schrijf een reactie… gebruik @gebruikersnaam om iemand te noemen"
               aria-label="Nieuwe reactie"
+              className="text-base sm:text-sm"
               rows={2}
               maxLength={2_000}
             />
@@ -269,7 +270,7 @@ const CommentsSheet = ({
               onClick={submit}
               disabled={createComment.isPending || !text.trim()}
               size="sm"
-              className="w-full bg-accent text-accent-foreground hover:bg-accent/90"
+              className="min-h-11 w-full bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {createComment.isPending ? "Plaatsen…" : "Plaatsen"}
             </Button>

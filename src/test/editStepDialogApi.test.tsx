@@ -187,6 +187,23 @@ describe("EditStepDialog typed update mutations", () => {
     await waitFor(() => expect(mocks.onClose).toHaveBeenCalledOnce());
   });
 
+  it("saves the chosen opening photo and milestone while retaining media captions and roles", async () => {
+    render(<EditStepDialog projectId={PROJECT_ID} update={update} onClose={mocks.onClose} onUpdated={mocks.onUpdated} />);
+    fireEvent.click(screen.getByRole("button", { name: "Media 2 naar voren" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Dit is een mijlpaal" }));
+    fireEvent.click(screen.getByRole("button", { name: "Wijzigingen opslaan" }));
+
+    await waitFor(() => expect(mocks.editUpdate).toHaveBeenCalledOnce());
+    expect(mocks.editUpdate.mock.calls[0]?.[0]).toMatchObject({
+      expectedVersion: 3, isMilestone: true,
+      media: [
+        { assetId: SECOND_MEDIA_ID, role: "after", sortOrder: 0, caption: "Na" },
+        { assetId: FIRST_MEDIA_ID, role: "before", sortOrder: 1 },
+      ],
+    });
+    expect(mocks.uploadMedia).not.toHaveBeenCalled();
+  });
+
   it("requires a second confirmed action before sending the soft-delete command", async () => {
     render(
       <EditStepDialog

@@ -20,7 +20,7 @@ import type {
 import { projectFollowMutationResultSchema } from "../../shared/contracts/projects.js";
 import type { BuildyDatabase } from "../db/client.js";
 import type { AuthenticatedProjectActor, ProjectActor } from "./actor.js";
-import type { DashboardCursor, TimelineCursor } from "./cursor.js";
+import type { DashboardCursor, ProfileProjectsCursor, TimelineCursor } from "./cursor.js";
 import { ProjectError } from "./errors.js";
 import type {
   CreateProjectCommand,
@@ -79,6 +79,7 @@ type RawProjectCard = {
   cover_content_type: string | null;
   cover_width: number | null;
   cover_height: number | null;
+  follow_source?: ProjectCard["followSource"];
 };
 
 type RawProjectOverview = RawProjectCard & {
@@ -120,6 +121,10 @@ type RawProjectUpdate = {
 type RawFollowingActivity = {
   project_id: string;
   project_title: string;
+  owner_id: string;
+  owner_display_name: string;
+  owner_slug: string;
+  follow_source: ProjectCard["followSource"];
   document: RawProjectUpdate;
 };
 
@@ -137,6 +142,7 @@ function typedRows<T>(rows: unknown[]): T[] {
 
 function mapProjectCard(row: RawProjectCard): ProjectCard {
   return {
+    ...(row.follow_source ? { followSource: row.follow_source } : {}),
     id: row.id,
     slug: row.slug,
     title: row.title,
@@ -529,8 +535,27 @@ export class PostgresProjectRepository implements ProjectRepository {
     cursor: DashboardCursor | undefined,
     limit: number,
   ): Promise<ProjectCard[]> {
+    return this.listOwnerProjects({ kind: "authenticated", appUserId: actorId }, actorId, cursor, limit, true);
+  }
+
+  async listProfileProjects(
+    viewer: ProjectActor,
+    ownerId: string,
+    cursor: ProfileProjectsCursor | undefined,
+    limit: number,
+  ): Promise<ProjectCard[]> {
+    return this.listOwnerProjects(viewer, ownerId, cursor, limit, false);
+  }
+
+  private async listOwnerProjects(
+    viewer: ProjectActor,
+    ownerId: string,
+    cursor: DashboardCursor | ProfileProjectsCursor | undefined,
+    limit: number,
+    includeDrafts: boolean,
+  ): Promise<ProjectCard[]> {
     return this.database.transaction(async (transaction) => {
-      await setActor(transaction, actorId);
+      await setActor(transaction, actorIdFor(viewer), viewer.shareLinkId);
       const cursorFilter = cursor
         ? sql`and (project.updated_at, project.id) < (${cursor.timestamp}::timestamptz, ${cursor.id}::uuid)`
         : sql``;
@@ -561,7 +586,7 @@ export class PostgresProjectRepository implements ProjectRepository {
           select count(*)::integer as update_count, max(item.updated_at) as last_update_at
           from updates item
           where item.project_id = project.id
-            and item.status in ('draft', 'published')
+            and ${includeDrafts ? sql`item.status in ('draft', 'published')` : sql`item.status = 'published'`}
         ) update_stats on true
         left join lateral (
           select asset.id, asset.detected_content_type, asset.width_pixels, asset.height_pixels
@@ -574,8 +599,10 @@ export class PostgresProjectRepository implements ProjectRepository {
           order by asset.updated_at desc, asset.id desc
           limit 1
         ) cover on true
-        where project.owner_id = ${actorId}::uuid
+        where project.owner_id = ${ownerId}::uuid
           and project.lifecycle_status = 'active'
+          and app_can_view_project(project.id)
+          ${includeDrafts ? sql`` : sql`and project.visibility in ('public', 'followers')`}
           ${cursorFilter}
         order by project.updated_at desc, project.id desc
         limit ${limit}
@@ -624,6 +651,8 @@ export class PostgresProjectRepository implements ProjectRepository {
           project.updated_at,
           project.published_at,
           project.owner_id,
+          case when viewer_project_follow.project_id is not null and viewer_profile_follow.id is not null then 'both'
+            when viewer_project_follow.project_id is not null then 'project' else 'user' end as follow_source,
           coalesce(owner_profile.display_name, 'Buildy-bouwer') as owner_display_name,
           coalesce(owner_profile.slug, 'gebruiker-' || left(project.owner_id::text, 8)) as owner_slug,
           coalesce(update_stats.update_count, 0) as update_count,
@@ -634,6 +663,15 @@ export class PostgresProjectRepository implements ProjectRepository {
           cover.height_pixels as cover_height
         from projects project
         left join profiles owner_profile on owner_profile.user_id = project.owner_id
+        left join project_followers viewer_project_follow
+          on viewer_project_follow.project_id = project.id
+          and viewer_project_follow.follower_id = ${actorId}::uuid
+          and viewer_project_follow.status in ('active', 'muted')
+        left join user_relationships viewer_profile_follow
+          on viewer_profile_follow.source_user_id = ${actorId}::uuid
+          and viewer_profile_follow.target_user_id = project.owner_id
+          and viewer_profile_follow.kind = 'follow'
+          and viewer_profile_follow.status = 'active'
         left join lateral (
           select count(*)::integer as update_count, max(item.updated_at) as last_update_at
           from updates item
@@ -653,13 +691,7 @@ export class PostgresProjectRepository implements ProjectRepository {
         ) cover on true
         where project.lifecycle_status = 'active'
           and app_can_view_project(project.id)
-          and exists (
-            select 1
-            from project_followers project_follow
-            where project_follow.follower_id = ${actorId}::uuid
-              and project_follow.project_id = project.id
-              and project_follow.status in ('active', 'muted')
-          )
+          and (viewer_project_follow.project_id is not null or viewer_profile_follow.id is not null)
           and not exists (
             select 1
             from user_relationships block
@@ -685,6 +717,11 @@ export class PostgresProjectRepository implements ProjectRepository {
         select
           project.id as project_id,
           project.title as project_title,
+          project.owner_id,
+          coalesce(owner_profile.display_name, 'Buildy-bouwer') as owner_display_name,
+          coalesce(owner_profile.slug, 'gebruiker-' || left(project.owner_id::text, 8)) as owner_slug,
+          case when viewer_project_follow.project_id is not null and viewer_profile_follow.id is not null then 'both'
+            when viewer_project_follow.project_id is not null then 'project' else 'user' end as follow_source,
           jsonb_build_object(
             'id', item.id,
             'projectId', item.project_id,
@@ -709,6 +746,16 @@ export class PostgresProjectRepository implements ProjectRepository {
           ) as document
         from updates item
         join projects project on project.id = item.project_id
+        left join profiles owner_profile on owner_profile.user_id = project.owner_id
+        left join project_followers viewer_project_follow
+          on viewer_project_follow.project_id = project.id
+          and viewer_project_follow.follower_id = ${actorId}::uuid
+          and viewer_project_follow.status in ('active', 'muted')
+        left join user_relationships viewer_profile_follow
+          on viewer_profile_follow.source_user_id = ${actorId}::uuid
+          and viewer_profile_follow.target_user_id = project.owner_id
+          and viewer_profile_follow.kind = 'follow'
+          and viewer_profile_follow.status = 'active'
         left join project_phases phase
           on phase.id = item.phase_id and phase.project_id = item.project_id
         left join lateral (
@@ -732,13 +779,7 @@ export class PostgresProjectRepository implements ProjectRepository {
         where item.status = 'published'
           and project.lifecycle_status = 'active'
           and app_can_view_project(project.id)
-          and exists (
-            select 1
-            from project_followers project_follow
-            where project_follow.follower_id = ${actorId}::uuid
-              and project_follow.project_id = project.id
-              and project_follow.status in ('active', 'muted')
-          )
+          and (viewer_project_follow.project_id is not null or viewer_profile_follow.id is not null)
           and not exists (
             select 1
             from user_relationships block
@@ -753,7 +794,12 @@ export class PostgresProjectRepository implements ProjectRepository {
         limit ${limit}
       `);
       return typedRows<RawFollowingActivity>(result.rows).map((row) => ({
-        project: { id: row.project_id, title: row.project_title },
+        project: {
+          id: row.project_id,
+          title: row.project_title,
+          owner: { id: row.owner_id, displayName: row.owner_display_name, slug: row.owner_slug },
+          followSource: row.follow_source,
+        },
         update: mapProjectUpdate(row.document),
       }));
     });

@@ -2,6 +2,8 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { ZodError } from "zod";
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
 import type {
   FollowingActivity,
   ProjectCard,
@@ -174,6 +176,10 @@ class FakeProjectRepository implements ProjectRepository {
 
   async listFollowingProjects(_actor: AuthenticatedProjectActor, limit: number): Promise<ProjectCard[]> {
     return this.followingProjectRows.slice(0, limit);
+  }
+
+  async listProfileProjects(_viewer: ProjectActor, _ownerId: string, _cursor: unknown, limit: number): Promise<ProjectCard[]> {
+    return this.dashboardRows.slice(0, limit);
   }
 
   async listFollowingActivity(_actor: AuthenticatedProjectActor, limit: number): Promise<FollowingActivity[]> {
@@ -424,9 +430,64 @@ describe("project repository security rules", () => {
     });
     expect(JSON.stringify(result)).not.toMatch(/bucket|object_key|original\.jpg/);
   });
+
+  it("retains access and published-content filters for both ways of following", async () => {
+    const execute = vi.fn().mockResolvedValue({ rows: [] });
+    const database = {
+      transaction: async (callback: (transaction: { execute: typeof execute }) => Promise<unknown>) => callback({ execute }),
+    } as unknown as BuildyDatabase;
+    const repository = new PostgresProjectRepository(database);
+    const actor: AuthenticatedProjectActor = { kind: "authenticated", appUserId: ACTOR_ID };
+    await repository.listFollowingProjects(actor, 12);
+    await repository.listFollowingActivity(actor, 21);
+
+    const dialect = new PgDialect();
+    for (const index of [1, 3]) {
+      const query = dialect.sqlToQuery(execute.mock.calls[index][0] as SQL);
+      const sql = query.sql.replace(/\s+/g, " ");
+      expect(sql).toContain("app_can_view_project(project.id)");
+      expect(sql).toContain("viewer_profile_follow.status = 'active'");
+      expect(sql).toContain("viewer_profile_follow.kind = 'follow'");
+      expect(sql).toContain("viewer_project_follow.project_id is not null or viewer_profile_follow.id is not null");
+      expect(sql).toContain("block.status = 'active'");
+      expect(sql).toContain("item.status = 'published'");
+      expect(query.params).toContain(ACTOR_ID);
+      expect(query.params.at(-1)).toBe(index === 1 ? 12 : 21);
+    }
+  });
+
+  it("does not turn a profile project list into discovery of private or link-only projects", async () => {
+    const execute = vi.fn().mockResolvedValue({ rows: [] });
+    const database = {
+      transaction: async (callback: (transaction: { execute: typeof execute }) => Promise<unknown>) => callback({ execute }),
+    } as unknown as BuildyDatabase;
+    await new PostgresProjectRepository(database).listProfileProjects(ANONYMOUS_PROJECT_ACTOR, OTHER_ID, undefined, 11);
+    const query = new PgDialect().sqlToQuery(execute.mock.calls[1][0] as SQL);
+    const sql = query.sql.replace(/\s+/g, " ");
+    expect(sql).toContain("project.owner_id = $1::uuid");
+    expect(sql).toContain("app_can_view_project(project.id)");
+    expect(sql).toContain("project.visibility in ('public', 'followers')");
+    expect(sql).toContain("item.status = 'published'");
+    expect(query.params).toEqual([OTHER_ID, 11]);
+  });
 });
 
 describe("project service", () => {
+  it("binds profile project pagination to its owner and keeps the viewer unchanged", async () => {
+    const repository = new FakeProjectRepository();
+    repository.dashboardRows = [card({ visibility: "public" }), card({ id: UPDATE_ID, visibility: "public" })];
+    const read = vi.spyOn(repository, "listProfileProjects");
+    const service = new ProjectService(repository, new RecordingProtector(), BLIND_INDEX);
+    const page = await service.profileProjects(ANONYMOUS_PROJECT_ACTOR, OTHER_ID, { limit: 1 });
+    expect(page.items).toHaveLength(1);
+    expect(read).toHaveBeenCalledExactlyOnceWith(ANONYMOUS_PROJECT_ACTOR, OTHER_ID, undefined, 2);
+    expect(decodeProjectCursor(page.nextCursor!, "profile-projects")).toMatchObject({ ownerId: OTHER_ID, id: PROJECT_ID });
+    await expect(service.profileProjects(ANONYMOUS_PROJECT_ACTOR, ACTOR_ID, { cursor: page.nextCursor }))
+      .rejects.toMatchObject({ reason: "INVALID_CURSOR" });
+    expect(read).toHaveBeenCalledTimes(1);
+    await expect(service.profileProjects(ANONYMOUS_PROJECT_ACTOR, OTHER_ID, { limit: 51 })).rejects.toBeInstanceOf(ZodError);
+  });
+
   it("builds the authenticated following feed from bounded project and activity reads", async () => {
     const repository = new FakeProjectRepository();
     repository.followingProjectRows = [card({ visibility: "public" })];

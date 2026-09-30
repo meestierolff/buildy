@@ -1,80 +1,52 @@
 import BrandLogo from "@/components/BrandLogo";
-import { Bell } from "lucide-react";
+import { Bell, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
+import { useInfiniteNotifications } from "@/hooks/useEngagement";
 import { PRODUCT_ROUTES } from "@/lib/productNavigation";
 import { Link, NavLink } from "@/lib/router";
 
-type HeaderProps = {
-  activeProjectId?: string;
-};
-
-const Header = ({ activeProjectId }: HeaderProps) => {
+const Header = ({ activeProjectId, updateHref: preferredUpdateHref }: { activeProjectId?: string; updateHref?: string }) => {
   const { user } = useAuth();
-  const storyHref = PRODUCT_ROUTES.projects;
-  const updateHref = activeProjectId
-    ? PRODUCT_ROUTES.projectUpdateComposer(activeProjectId)
-    : PRODUCT_ROUTES.newProject;
-  const photobookHref = activeProjectId
-    ? PRODUCT_ROUTES.projectPhotobook(activeProjectId)
-    : PRODUCT_ROUTES.projects;
-
-  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-    `relative inline-flex min-h-11 items-center px-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none ${
-      isActive
-        ? "text-foreground after:absolute after:inset-x-2 after:bottom-1 after:h-0.5 after:bg-accent"
-        : "text-muted-foreground hover:text-foreground"
-    }`;
-  const quietLinkClass =
-    "inline-flex min-h-11 items-center px-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none";
+  const notifications = useInfiniteNotifications(Boolean(user));
+  const unread = notifications.isError ? 0 : notifications.data?.pages[0]?.unreadCount ?? 0;
+  const updateHref = preferredUpdateHref ?? (activeProjectId ? PRODUCT_ROUTES.projectUpdateComposer(activeProjectId) : PRODUCT_ROUTES.createUpdate);
+  const navClass = ({ isActive }: { isActive: boolean }) =>
+    `inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold transition-colors ${isActive ? "bg-secondary text-primary" : "text-muted-foreground hover:text-primary"}`;
 
   return (
-    <div className="mx-auto flex min-h-[4.5rem] max-w-7xl flex-wrap items-center justify-between gap-x-3 px-4 text-foreground sm:px-6 md:px-8">
-      <BrandLogo
-        href={user ? PRODUCT_ROUTES.projects : PRODUCT_ROUTES.landing}
-        imageClassName="h-8 w-8 rounded-md shadow-none"
-        textClassName="hidden min-[360px]:inline"
-      />
-
+    <div className="mx-auto flex min-h-14 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:min-h-16 lg:px-8">
+      <BrandLogo href={user ? PRODUCT_ROUTES.following : PRODUCT_ROUTES.landing} imageClassName="h-8 w-8 rounded-lg shadow-none" textClassName="text-xl tracking-tight" />
       {user ? (
-        <nav className="hidden items-center gap-2 lg:flex" aria-label="Hoofdnavigatie">
-          <NavLink to={storyHref} end className={navLinkClass}>Verhalen</NavLink>
-          <NavLink to={PRODUCT_ROUTES.following} end className={navLinkClass}>Volgend</NavLink>
-          <Link to={updateHref} className={quietLinkClass}>Bouwmoment toevoegen</Link>
-          <NavLink to={photobookHref} end className={navLinkClass}>Bouwboek</NavLink>
-          <NavLink to={PRODUCT_ROUTES.ownProfile} end className={navLinkClass}>Profiel</NavLink>
-        </nav>
+        <>
+          <nav className="hidden items-center gap-1 lg:flex" aria-label="Hoofdnavigatie">
+            <NavLink to={PRODUCT_ROUTES.following} className={navClass}>Tijdlijn</NavLink>
+            <NavLink to={PRODUCT_ROUTES.projects} className={navClass}>Projecten</NavLink>
+            <NavLink to={PRODUCT_ROUTES.books} className={navClass}>Bouwboeken</NavLink>
+            <NavLink to={PRODUCT_ROUTES.ownProfile} className={navClass}>Profiel</NavLink>
+            <Button asChild size="sm" className="ml-3 min-h-11 rounded-full bg-accent px-5 text-white hover:bg-accent/90"><Link to={updateHref}>Bouwmoment toevoegen</Link></Button>
+          </nav>
+          <div className="flex items-center gap-1">
+            <Link to={PRODUCT_ROUTES.connections} aria-label="Bouwers zoeken" className="flex h-11 w-11 items-center justify-center rounded-full text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Search className="h-5 w-5" aria-hidden="true" /></Link>
+            <Link to={PRODUCT_ROUTES.notifications} aria-label={unread ? `Meldingen, ${unread} ongelezen` : "Meldingen"} className="relative flex h-11 w-11 items-center justify-center rounded-full text-foreground hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <Bell className="h-5 w-5" aria-hidden="true" />
+              {unread > 0 ? <span aria-hidden="true" className="absolute right-1 top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-bold text-white">{unread > 99 ? "99+" : unread}</span> : null}
+            </Link>
+          </div>
+        </>
       ) : (
-        <nav
-          className="order-3 flex w-full items-center justify-center gap-3 border-t border-border/60 py-1 sm:order-none sm:w-auto sm:border-0 sm:py-0"
-          aria-label="Hoofdnavigatie"
-        >
-          <Link to="/#zo-werkt-het" className={quietLinkClass}>Hoe werkt het</Link>
-          <Link to="/#voorbeeld" className={quietLinkClass}>Bekijk voorbeeld</Link>
-        </nav>
+        <>
+          <nav className="hidden items-center gap-6 text-sm font-medium text-muted-foreground md:flex" aria-label="Hoofdnavigatie">
+            <Link to="/#zo-werkt-het" className="inline-flex min-h-11 items-center hover:text-primary">Hoe werkt het</Link>
+            <Link to="/#voorbeeld" className="inline-flex min-h-11 items-center hover:text-primary">Het Bouwboek</Link>
+          </nav>
+          <div className="flex items-center gap-2">
+            <Link to="/auth" className="inline-flex min-h-11 items-center px-2 text-sm font-semibold">Inloggen</Link>
+            <Button asChild className="min-h-11 rounded-full px-4 text-sm"><Link to="/auth">Begin gratis</Link></Button>
+          </div>
+        </>
       )}
-
-      {user ? (
-        <Link to={PRODUCT_ROUTES.notifications} aria-label="Meldingen" className="flex h-11 w-11 items-center justify-center rounded-full border border-border hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <Bell className="h-5 w-5" aria-hidden="true" />
-        </Link>
-      ) : null}
-
-      {!user ? (
-        <div className="flex items-center gap-1 sm:gap-2">
-          <Link
-            to="/auth"
-            className="inline-flex min-h-11 items-center px-2 text-xs font-semibold text-foreground underline decoration-[#D8CFC1] underline-offset-4 transition-colors hover:decoration-[#A94E36] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:text-sm"
-          >
-            Inloggen
-          </Link>
-          <Button asChild className="min-h-11 bg-[#A94E36] px-3 text-xs text-white hover:bg-[#8F3F2C] sm:px-4 sm:text-sm">
-            <Link to="/auth">Start je verbouwverhaal</Link>
-          </Button>
-        </div>
-      ) : null}
     </div>
   );
 };
-
 export default Header;

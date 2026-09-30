@@ -240,10 +240,7 @@ describe("TripDetail typed project-readflow", () => {
 
     expect(screen.getByRole("heading", { name: "Ons huis" })).toBeInTheDocument();
     expect(screen.getByLabelText("Eigenaarsweergave")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Bouwboek/i })).toHaveAttribute(
-      "href",
-      `/project/${PROJECT_ID}/bouwboek`,
-    );
+    expect(screen.getByTestId("growing-book")).toHaveAttribute("data-project-id", PROJECT_ID);
     expect(screen.getByRole("button", { name: "Bouwmoment toevoegen" })).toBeInTheDocument();
     expect(screen.getByTestId("typed-timeline")).toHaveTextContent(`/api/media/${MEDIA_ID}`);
     expect(screen.queryByRole("button", { name: /update bewerken|update verwijderen/i })).not.toBeInTheDocument();

@@ -14,6 +14,7 @@ import {
 import {
   followSocialProfile,
   getSocialProfile,
+  getProfileProjects,
   resolveVisibleMentionSlugs,
   searchSocialProfiles,
 } from "@/lib/socialApi";
@@ -80,6 +81,15 @@ describe("social API client", () => {
     expect((fetchMock.mock.calls[1]?.[1] as RequestInit).headers).not.toEqual(
       expect.objectContaining({ authorization: expect.anything() }),
     );
+  });
+
+  it("leest gepagineerde projecten van één profiel met de bestaande sessiecookie", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(successResponse({ items: [], nextCursor: null }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(getProfileProjects(PROFILE_ID, { limit: 10, cursor: "next-page" }))
+      .resolves.toEqual({ items: [], nextCursor: null });
+    expect(fetchMock).toHaveBeenCalledWith(`/api/social/profiles/${PROFILE_ID}/projects?limit=10&cursor=next-page`,
+      expect.objectContaining({ credentials: "include", method: "GET" }));
   });
 
   it("resolveert mentions alleen op een exacte zichtbare slug", async () => {

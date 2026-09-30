@@ -74,15 +74,14 @@ const BeforeAfterSlider = ({ beforeUrl, afterUrl, className = "", onBeforeClick,
     >
       <ResilientImage src={afterUrl} alt="Na" fallbackLabel="Na-foto niet beschikbaar" className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
       <div
-        className="absolute inset-y-0 left-0 overflow-hidden pointer-events-none"
-        style={{ width: `${pos}%` }}
+        className="absolute inset-0 overflow-hidden pointer-events-none"
+        style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }}
       >
         <ResilientImage
           src={beforeUrl}
           alt="Voor"
           fallbackLabel="Voor-foto niet beschikbaar"
-          className="absolute inset-0 h-full object-cover"
-          style={{ width: ref.current?.offsetWidth || "100%" }}
+          className="absolute inset-0 h-full w-full object-cover"
         />
       </div>
       {/* Labels — bottom corners to avoid overlap with card header actions */}
@@ -91,7 +90,19 @@ const BeforeAfterSlider = ({ beforeUrl, afterUrl, className = "", onBeforeClick,
       {/* Slider line + handle */}
       <div className="absolute inset-y-0 w-0.5 bg-white shadow-lg pointer-events-none" style={{ left: `${pos}%` }} />
       <div
-        className="absolute inset-y-0 -translate-x-1/2 w-12 cursor-ew-resize touch-none"
+        className="absolute inset-y-0 -translate-x-1/2 w-12 cursor-ew-resize touch-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        role="slider"
+        tabIndex={0}
+        aria-label="Vergelijk voor en na"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(pos)}
+        aria-valuetext={`${Math.round(pos)} procent voor-foto`}
+        onKeyDown={(event) => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          setPos(current => event.key === "Home" ? 0 : event.key === "End" ? 100 : Math.max(0, Math.min(100, current + (event.key === "ArrowRight" ? 5 : -5))));
+        }}
         style={{ left: `${pos}%` }}
         onClick={(e) => {
           e.stopPropagation();

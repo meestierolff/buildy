@@ -27,6 +27,8 @@ const mocks = vi.hoisted(() => ({
     mutateAsync: vi.fn(),
   },
   ownProfile: vi.fn(),
+  profileProjects: vi.fn(),
+  projectDashboard: vi.fn(),
   publicProfile: vi.fn(),
   revokeSessionMutation: {
     isPending: false,
@@ -35,6 +37,8 @@ const mocks = vi.hoisted(() => ({
   },
   socialProfile: vi.fn(),
   socialProfiles: vi.fn(),
+  socialConnections: vi.fn(),
+  requestDecision: vi.fn(),
   updateMutation: {
     isPending: false,
     mutateAsync: vi.fn(),
@@ -70,13 +74,18 @@ vi.mock("@/hooks/useProfiles", () => ({
 }));
 
 vi.mock("@/hooks/useSocial", () => ({
-  useInfiniteSocialConnections: () => ({ data: { pages: [{ items: [], total: 0 }] } }),
+  useInfiniteSocialConnections: (...arguments_: unknown[]) => mocks.socialConnections(...arguments_),
   useInfiniteSocialProfiles: (...arguments_: unknown[]) => mocks.socialProfiles(...arguments_),
   useProfileBlockMutation: () => mocks.blockMutation,
   useProfileFollowMutation: () => mocks.followMutation,
   useRemoveProfileFollowerMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
-  useSocialRequestDecisionMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useSocialRequestDecisionMutation: () => ({ isPending: false, mutateAsync: mocks.requestDecision }),
   useSocialProfile: (...arguments_: unknown[]) => mocks.socialProfile(...arguments_),
+  useProfileProjects: (...arguments_: unknown[]) => mocks.profileProjects(...arguments_),
+}));
+
+vi.mock("@/hooks/useProjectApi", () => ({
+  useProjectDashboard: (...arguments_: unknown[]) => mocks.projectDashboard(...arguments_),
 }));
 
 vi.mock("@/components/moderation/ReportDialog", () => ({
@@ -116,6 +125,18 @@ function socialProfile() {
   };
 }
 
+function projectCard() {
+  return {
+    id: "22222222-2222-4222-8222-222222222222",
+    title: "Ons klushuis",
+    projectType: "Woning",
+    visibility: "public",
+    progressPercentage: 40,
+    updateCount: 3,
+    cover: null,
+  };
+}
+
 describe("profile browser flow", () => {
   beforeEach(() => {
     mocks.user = { email: "ada@example.test", id: "session-auth-user" };
@@ -148,6 +169,11 @@ describe("profile browser flow", () => {
       isPending: false,
       refetch: vi.fn(),
     });
+    const emptyProjects = { data: { pages: [{ items: [], nextCursor: null }] }, isPending: false, isError: false, refetch: vi.fn() };
+    mocks.profileProjects.mockReset().mockReturnValue(emptyProjects);
+    mocks.projectDashboard.mockReset().mockReturnValue(emptyProjects);
+    mocks.socialConnections.mockReset().mockReturnValue({ data: { pages: [{ items: [], total: 0 }] }, isPending: false, isError: false });
+    mocks.requestDecision.mockReset().mockResolvedValue({ state: "following", replayed: false });
     mocks.accountExports.mockReset().mockReturnValue({
       data: [],
       isError: false,
@@ -186,8 +212,9 @@ describe("profile browser flow", () => {
     expect(mocks.publicProfile).toHaveBeenCalledWith("ada-bouwer", true);
     expect(mocks.socialProfile).toHaveBeenCalledWith(PROFILE_ID, true);
     expect(mocks.socialProfile).not.toHaveBeenCalledWith("session-auth-user", true);
-    expect(screen.queryByRole("link", { name: /connecties|ontdekken/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Terug naar Buildy" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "Bouwers" })).toHaveAttribute("href", "/connecties");
+    expect(mocks.profileProjects).toHaveBeenCalledWith(PROFILE_ID, true);
+    expect(screen.getByRole("button", { name: "Volgen" })).toBeInTheDocument();
   });
 
   it("blokkeert een ander profiel pas na bevestiging en biedt direct deblokkeerherstel", async () => {
@@ -202,7 +229,7 @@ describe("profile browser flow", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Blokkeren" }));
     const dialog = screen.getByRole("alertdialog");
-    expect(within(dialog).getByText(/bestaande profielconnecties worden ingetrokken/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/jullie volgen elkaar daarna niet meer/i)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Blokkeren" }));
 
     await waitFor(() => expect(mocks.blockMutation.mutateAsync).toHaveBeenCalledWith({
@@ -214,6 +241,7 @@ describe("profile browser flow", () => {
     expect(screen.getByText(/profielgegevens en verbouwingen zijn verborgen/i)).toBeInTheDocument();
     expect(screen.queryByText("Ada Bouwer")).not.toBeInTheDocument();
     expect(screen.queryByText("Utrecht")).not.toBeInTheDocument();
+    expect(mocks.profileProjects).toHaveBeenLastCalledWith(PROFILE_ID, false);
     expect(screen.queryByRole("link", { name: /Log in om te verbinden/i })).not.toBeInTheDocument();
   });
 
@@ -236,13 +264,68 @@ describe("profile browser flow", () => {
     expect(screen.queryByRole("button", { name: /blokkeren/i })).not.toBeInTheDocument();
   });
 
-  it("benoemt een bestaande profielconnectie in zoeken als verwijderen en verstuurt die actie", async () => {
+  it("toont de toegankelijke projectkaartjes op een bouwersprofiel en laadt volgende pagina's", () => {
+    const fetchNextPage = vi.fn();
+    mocks.profileProjects.mockReturnValue({
+      data: { pages: [{ items: [projectCard()], nextCursor: "next" }] },
+      isPending: false, isError: false, hasNextPage: true, isFetchingNextPage: false, fetchNextPage,
+    });
+    window.history.replaceState({}, "", "/profiel/ada-bouwer");
+    render(<BrowserRouter><Routes><Route path="/profiel/:profileKey" element={<Profile />} /></Routes></BrowserRouter>);
+
+    expect(screen.getByRole("link", { name: /Ons klushuis bekijken/ })).toHaveAttribute("href", "/project/22222222-2222-4222-8222-222222222222");
+    fireEvent.click(screen.getByRole("button", { name: "Meer verbouwingen" }));
+    expect(fetchNextPage).toHaveBeenCalledOnce();
+  });
+
+  it("gebruikt op het eigen profiel het private dashboard en verwijst voor bewerken naar instellingen", () => {
+    mocks.socialProfile.mockReturnValue({ data: { ...socialProfile(), viewerFollowStatus: "self", viewerAccess: "owner" }, isPending: false, isError: false });
+    mocks.projectDashboard.mockReturnValue({ data: { pages: [{ items: [{ ...projectCard(), visibility: "private" }] }] }, isPending: false, isError: false });
+    window.history.replaceState({}, "", "/profiel");
+    render(<BrowserRouter><Profile /></BrowserRouter>);
+
+    expect(mocks.ownProfile).toHaveBeenCalledWith(true);
+    expect(mocks.projectDashboard).toHaveBeenCalledWith(true);
+    expect(mocks.profileProjects).toHaveBeenCalledWith(PROFILE_ID, false);
+    expect(screen.getByRole("heading", { name: "Mijn verbouwingen" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Profiel bewerken" })).toHaveAttribute("href", "/account");
+    expect(screen.getByRole("link", { name: /Ons klushuis bekijken/ })).toBeInTheDocument();
+  });
+
+  it("toont geen projectdata zolang een privéprofiel alleen om toegang kan worden gevraagd", () => {
+    mocks.socialProfile.mockReturnValue({ data: { ...socialProfile(), viewerAccess: "requestable", isPrivate: true }, isPending: false, isError: false });
+    mocks.profileProjects.mockReturnValue({ data: { pages: [{ items: [projectCard()] }] }, isPending: false, isError: false });
+    window.history.replaceState({}, "", `/profiel/${PROFILE_ID}`);
+    render(<BrowserRouter><Routes><Route path="/profiel/:profileKey" element={<Profile />} /></Routes></BrowserRouter>);
+
+    expect(mocks.profileProjects).toHaveBeenCalledWith(PROFILE_ID, false);
+    expect(screen.queryByRole("link", { name: /Ons klushuis/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Een privéverhaal" })).toBeInTheDocument();
+  });
+
+  it("verwerkt inkomende volgverzoeken onder Verzoeken met het bestaande contract", async () => {
+    mocks.socialConnections.mockImplementation((view) => ({
+      data: { pages: [{ items: view === "incoming" ? [socialProfile()] : [], total: view === "incoming" ? 1 : 0 }] },
+      isPending: false, isError: false,
+    }));
+    window.history.replaceState({}, "", "/connecties?view=incoming");
+    render(<BrowserRouter><Friends /></BrowserRouter>);
+
+    expect(screen.getByRole("tab", { name: /Verzoeken/ })).toHaveAttribute("data-state", "active");
+    fireEvent.click(screen.getByRole("button", { name: "Accepteren" }));
+    await waitFor(() => expect(mocks.requestDecision).toHaveBeenCalledWith({ actorId: PROFILE_ID, decision: "accept", kind: "profile" }));
+  });
+
+  it("zoekt pas vanaf twee tekens en laat een bestaande bouwer ontvolgen", async () => {
     mocks.followMutation.mutateAsync.mockResolvedValue({ state: "cancelled", replayed: false });
     window.history.replaceState({}, "", "/connecties");
     render(<BrowserRouter><Friends /></BrowserRouter>);
 
-    expect(screen.queryByRole("button", { name: "Profiel verbinden" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Verbinding verwijderen" }));
+    expect(mocks.socialProfiles).toHaveBeenLastCalledWith("", false);
+    expect(screen.queryByText("Ada Bouwer")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "Zoek bouwers op naam of gebruikersnaam" }), { target: { value: "Ada" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Ontvolgen" }));
+    expect(mocks.socialProfiles).toHaveBeenLastCalledWith("Ada", true);
 
     await waitFor(() => expect(mocks.followMutation.mutateAsync).toHaveBeenCalledWith({
       action: "remove",

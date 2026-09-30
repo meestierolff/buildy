@@ -14,6 +14,7 @@ import {
   followSocialProfile,
   getSocialConnections,
   getSocialProfile,
+  getProfileProjects,
   rejectSocialFollowRequest,
   removeSocialFollower,
   removeSocialProfileFollow,
@@ -26,7 +27,21 @@ export const socialQueryKeys = {
   profiles: (query: string) => ["social", "profiles", query] as const,
   connections: (view: SocialConnectionView) => ["social", "connections", view] as const,
   profile: (profileId: string) => ["social", "profile", profileId] as const,
+  profileProjects: (profileId: string) => ["projects", "profile", profileId] as const,
 };
+
+export function useProfileProjects(profileId: string, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: socialQueryKeys.profileProjects(profileId),
+    queryFn: ({ pageParam, signal }) => getProfileProjects(profileId, {
+      ...(pageParam ? { cursor: pageParam } : {}),
+      limit: 20,
+    }, signal),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    enabled: enabled && Boolean(profileId),
+  });
+}
 
 export function useSocialProfile(profileId: string, enabled = true) {
   return useQuery({
@@ -79,8 +94,16 @@ export function useProfileFollowMutation() {
     mutationFn: ({ action, profileId }) => action === "follow"
       ? followSocialProfile(profileId)
       : removeSocialProfileFollow(profileId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: socialQueryKeys.all });
+    onSuccess: async (_result, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: socialQueryKeys.all }),
+        variables.action === "remove"
+          ? queryClient.resetQueries({ queryKey: ["projects"] })
+          : queryClient.invalidateQueries({ queryKey: ["projects"] }),
+        variables.action === "remove"
+          ? queryClient.resetQueries({ queryKey: ["engagement"] })
+          : queryClient.invalidateQueries({ queryKey: ["engagement"] }),
+      ]);
     },
   });
 }
@@ -90,7 +113,11 @@ export function useRemoveProfileFollowerMutation() {
   return useMutation<SocialMutationResult, Error, { followerId: string }>({
     mutationFn: ({ followerId }) => removeSocialFollower(followerId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: socialQueryKeys.all });
+      await Promise.all([
+        queryClient.resetQueries({ queryKey: ["projects"] }),
+        queryClient.resetQueries({ queryKey: ["engagement"] }),
+        queryClient.invalidateQueries({ queryKey: socialQueryKeys.all }),
+      ]);
     },
   });
 }
@@ -108,10 +135,12 @@ export function useProfileBlockMutation() {
       : unblockSocialProfile(profileId),
     onSuccess: async (_result, variables) => {
       if (variables.action === "block") {
-        // A block revokes follows and project access server-side. Drop cached
-        // project/activity DTOs immediately so they cannot survive that boundary.
-        queryClient.removeQueries({ queryKey: ["projects"] });
-        queryClient.removeQueries({ queryKey: ["engagement"] });
+        // Clear old private content and refetch mounted readers with the new
+        // access state; removing a query alone can leave an active observer stale.
+        await Promise.all([
+          queryClient.resetQueries({ queryKey: ["projects"] }),
+          queryClient.resetQueries({ queryKey: ["engagement"] }),
+        ]);
       } else {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ["projects"] }),
@@ -135,8 +164,16 @@ export function useSocialRequestDecisionMutation() {
     mutationFn: (variables) => variables.decision === "accept"
       ? acceptSocialFollowRequest(variables.actorId)
       : rejectSocialFollowRequest(variables.actorId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: socialQueryKeys.all });
+    onSuccess: async (_result, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: socialQueryKeys.all }),
+        variables.decision === "reject"
+          ? queryClient.resetQueries({ queryKey: ["projects"] })
+          : queryClient.invalidateQueries({ queryKey: ["projects"] }),
+        variables.decision === "reject"
+          ? queryClient.resetQueries({ queryKey: ["engagement"] })
+          : queryClient.invalidateQueries({ queryKey: ["engagement"] }),
+      ]);
     },
   });
 }

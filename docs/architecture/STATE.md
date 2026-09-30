@@ -2,6 +2,33 @@
 
 Scope: [GRAPH](GRAPH.md). Behavior: [FLOWS](FLOWS.md).
 
+## Social mobile redesign — 2026-09-30
+
+Local implementation now combines accepted user follows and explicit project
+follows in the timeline, with owner profile links, deduplication and unchanged
+server access checks. Profile project listing excludes private/unlisted projects.
+Migration 0055 adds user followers to first-publication notifications; explicit
+project mutes suppress both notification paths.
+
+The mobile app uses photo-led cards, a compact chronological project story,
+Tijdlijn/Projecten/Toevoegen/Boeken/Profiel navigation, builder search and actual
+unread notification counts. Camera/library capture, photo ordering, milestone
+editing, comments, emoji and automatic canonical books reuse the existing flows.
+The landing and own/public profile screens share the new forest/white design.
+Settings are at /account and the project book shelf at /bouwboeken.
+
+Focused project/social/router/migration checks passed (125 cases); focused
+profile, navigation/auth/photo-handoff, capture, timeline/card and engagement
+checks also passed. Typecheck, changed-file lint and the app build passed.
+These are local checks, not hosted evidence. Computer Use inspected a public
+Polarsteps timeline and the actual local landing at 390×844 CSS pixels; no
+horizontal overflow was present. Reference screenshots remain outside Git.
+
+The previous deployed main release was confirmed as
+`6251b1dae86994563f61d83907573cc1384093e4` in READY production deployment
+`dpl_2exYu6rmLbhATr918srucwTUY4AP`. It remains the application rollback.
+Publication and hosted verification of this redesign are pending.
+
 ## Published mobile core — 2026-09-30
 
 Production deployment `dpl_GEzPH8GpDx2MHXYDzjiigjeR9j7L` is READY at
@@ -74,7 +101,7 @@ Revoking the share link denied the follower's project and media reads
 accounts requested deletion and immediately lost access. The follower's first
 request correctly required a recent login; re-login then allowed
 `deletion_pending` and immediate access denial. Physical cleanup is not asserted.
-Only final merged/published main-SHA verification remains pending.
+Final main publication was subsequently verified at `6251b1dae86994563f61d83907573cc1384093e4`, deployment `dpl_2exYu6rmLbhATr918srucwTUY4AP`, with public health/readiness/profile checks.
 
 ## Published baseline — 2026-09-27
 
