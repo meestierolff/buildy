@@ -114,7 +114,7 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
   const [description, setDescription] = useState(update.description ?? "");
   const [updateDate, setUpdateDate] = useState(update.updateDate);
   const [phaseId, setPhaseId] = useState(update.phase?.id ?? "");
-  const [isMilestone] = useState(update.isMilestone);
+  const [isMilestone, setIsMilestone] = useState(update.isMilestone);
   const [media, setMedia] = useState<EditorMedia[]>(() => initialMedia(update));
   const [isDirty, setIsDirty] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -477,141 +477,137 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
     <>
       <Dialog open onOpenChange={(open) => { if (!open) requestClose(); }}>
         <DialogContent
-          className="z-[1000] h-[100dvh] w-screen max-w-none overflow-y-auto overscroll-contain rounded-none p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] [&>button]:flex [&>button]:h-11 [&>button]:w-11 [&>button]:items-center [&>button]:justify-center sm:h-auto sm:max-h-[90dvh] sm:max-w-2xl sm:rounded-lg sm:p-6"
+          className="z-[1000] flex h-[100dvh] w-screen max-w-none flex-col gap-0 overflow-hidden rounded-none bg-card p-0 [&>button]:flex [&>button]:h-11 [&>button]:w-11 [&>button]:items-center [&>button]:justify-center sm:h-auto sm:max-h-[90dvh] sm:max-w-2xl sm:rounded-2xl"
           aria-busy={loading || deleteMutation.isPending}
         >
-          <DialogHeader className="pr-8 text-left">
+          <DialogHeader className="shrink-0 border-b border-border px-4 py-4 pr-16 text-left sm:px-6 sm:pr-16">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Bouwmoment</p>
-            <DialogTitle className="font-sans text-2xl">Bouwmoment bewerken</DialogTitle>
+            <DialogTitle className="font-sans text-xl font-semibold tracking-tight">Bouwmoment bewerken</DialogTitle>
             <DialogDescription>
-              Wijzig verhaal, fase en media. Losgekoppelde foto&apos;s worden niet uit je opslag verwijderd.
+              Pas je foto’s en herinneringen aan. Je Bouwboek groeit mee.
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="mt-2 space-y-7">
-            <section aria-labelledby="edit-media-title">
-              <div className="flex items-end justify-between gap-4">
-                <div>
-                  <Label id="edit-media-title" className="text-base font-semibold">Media</Label>
-                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                    De volgorde hieronder wordt in één keer veilig opgeslagen.
-                  </p>
+          <form onSubmit={handleSubmit} className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div className="min-h-0 min-w-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
+              <section aria-labelledby="edit-media-title">
+                <div className="flex items-end justify-between gap-4">
+                  <div>
+                    <Label id="edit-media-title" className="text-base font-semibold">Foto’s</Label>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                      De eerste foto opent je Bouwmoment. Kies met de pijlen je volgorde.
+                    </p>
+                  </div>
+                  <span className="text-xs tabular-nums text-muted-foreground">{media.length}/50</span>
                 </div>
-                <span className="text-xs tabular-nums text-muted-foreground">{media.length}/50</span>
-              </div>
-              <ProjectImagePicker
-                currentCount={media.length}
-                disabled={formLocked}
-                onFiles={addSelectedFiles}
-              />
+                <ProjectImagePicker
+                  currentCount={media.length}
+                  disabled={formLocked}
+                  onFiles={addSelectedFiles}
+                />
 
-              {media.length > 0 && (
-                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {media.map((item, index) => {
-                    return (
-                      <div key={item.key} className="border bg-background p-2">
-                        <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-                          {item.contentType === "application/pdf" ? (
-                            <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
-                              <FileText className="h-8 w-8" aria-hidden="true" />
-                              <span className="text-xs font-semibold">PDF-document</span>
-                            </div>
-                          ) : item.contentType?.startsWith("video/") ? (
-                            <ResilientVideo src={item.previewUrl} className="h-full w-full object-cover" aria-label={`Video ${index + 1}`} />
-                          ) : (
-                            <ResilientImage src={item.previewUrl} alt={`Media ${index + 1}`} className="h-full w-full object-cover" />
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => removeMedia(item.key)}
-                            className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center bg-background/90 hover:text-destructive"
-                            aria-label={`Media ${index + 1} uit update halen`}
-                            disabled={formLocked}
-                          >
-                            <X className="h-4 w-4" aria-hidden="true" />
-                          </button>
-                        </div>
-                        {item.assetId ? (
-                          <p className="mt-2 text-xs font-medium text-emerald-700" role="status">Privé verwerkt</p>
-                        ) : activeUploadKey === item.key ? (
-                          <p className="mt-2 text-xs text-muted-foreground" role="status">
-                            {saveStage === "processing" ? "Veilig verwerken…" : "Privé uploaden…"}
-                          </p>
-                        ) : failedUploadKey === item.key ? (
-                          <div className="mt-2 border-l-2 border-destructive pl-2">
-                            <p className="text-xs leading-5 text-destructive" role="alert">Deze foto kon niet worden bewaard. Je tekst is niet verloren.</p>
+                {media.length > 0 && (
+                  <div className="mt-4 grid snap-x snap-proximity auto-cols-[10.5rem] grid-flow-col gap-3 overflow-x-auto pb-2" role="list" aria-label="Fotovolgorde">
+                    {media.map((item, index) => {
+                      return (
+                        <div key={item.key} role="listitem" className="min-w-0 snap-start rounded-2xl border border-border bg-card p-2">
+                          <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-muted">
+                            {item.contentType === "application/pdf" ? (
+                              <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
+                                <FileText className="h-8 w-8" aria-hidden="true" />
+                                <span className="text-xs font-semibold">PDF-document</span>
+                              </div>
+                            ) : item.contentType?.startsWith("video/") ? (
+                              <ResilientVideo src={item.previewUrl} className="h-full w-full object-cover" aria-label={`Video ${index + 1}`} />
+                            ) : (
+                              <ResilientImage src={item.previewUrl} alt={`Media ${index + 1}`} className="h-full w-full object-cover" />
+                            )}
                             <button
                               type="button"
-                              className="mt-1 min-h-11 text-left text-xs font-semibold text-accent underline underline-offset-4"
-                              onClick={() => void retryMediaUpload(item.key)}
+                              onClick={() => removeMedia(item.key)}
+                              className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center rounded-bl-xl bg-card/95 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                              aria-label={`Media ${index + 1} uit update halen`}
                               disabled={formLocked}
-                              aria-label={`${item.file?.name ?? `Media ${index + 1}`} opnieuw uploaden`}
                             >
-                              Deze foto opnieuw
+                              <X className="h-4 w-4" aria-hidden="true" />
                             </button>
                           </div>
-                        ) : null}
-                        <div className="mt-2 grid grid-cols-2 gap-1">
-                          <button type="button" onClick={() => moveMedia(item.key, -1)} disabled={index === 0 || formLocked} className="flex min-h-11 items-center justify-center border disabled:opacity-30" aria-label={`Media ${index + 1} naar voren`}><ArrowLeft className="h-4 w-4" /></button>
-                          <button type="button" onClick={() => moveMedia(item.key, 1)} disabled={index === media.length - 1 || formLocked} className="flex min-h-11 items-center justify-center border disabled:opacity-30" aria-label={`Media ${index + 1} naar achteren`}><ArrowRight className="h-4 w-4" /></button>
+                          <p className="mt-2 text-xs font-semibold text-foreground">{index === 0 ? "Openingsbeeld" : `Beeld ${index + 1}`}</p>
+                          {item.assetId ? (
+                            <p className="mt-2 text-xs font-medium text-emerald-700" role="status">Privé verwerkt</p>
+                          ) : activeUploadKey === item.key ? (
+                            <p className="mt-2 text-xs text-muted-foreground" role="status">
+                              {saveStage === "processing" ? "Veilig verwerken…" : "Privé uploaden…"}
+                            </p>
+                          ) : failedUploadKey === item.key ? (
+                            <div className="mt-2 border-l-2 border-destructive pl-2">
+                              <p className="text-xs leading-5 text-destructive" role="alert">Deze foto kon niet worden bewaard. Je tekst is niet verloren.</p>
+                              <button
+                                type="button"
+                                className="mt-1 min-h-11 text-left text-xs font-semibold text-accent underline underline-offset-4"
+                                onClick={() => void retryMediaUpload(item.key)}
+                                disabled={formLocked}
+                                aria-label={`${item.file?.name ?? `Media ${index + 1}`} opnieuw uploaden`}
+                              >
+                                Deze foto opnieuw
+                              </button>
+                            </div>
+                          ) : null}
+                          <div className="mt-2 grid grid-cols-2 gap-1">
+                            <button type="button" onClick={() => moveMedia(item.key, -1)} disabled={index === 0 || formLocked} className="flex min-h-11 items-center justify-center rounded-lg border border-border text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30" aria-label={`Media ${index + 1} naar voren`}><ArrowLeft className="h-4 w-4" aria-hidden="true" /></button>
+                            <button type="button" onClick={() => moveMedia(item.key, 1)} disabled={index === media.length - 1 || formLocked} className="flex min-h-11 items-center justify-center rounded-lg border border-border text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30" aria-label={`Media ${index + 1} naar achteren`}><ArrowRight className="h-4 w-4" aria-hidden="true" /></button>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
 
-            <section className="space-y-4 border-t border-border pt-6" aria-labelledby="edit-story-title">
-              <h3 id="edit-story-title" className="font-sans text-base font-semibold">Het verhaal</h3>
-              <div className="space-y-2">
-                <Label htmlFor="edit-update-title">Titel</Label>
-                <Input id="edit-update-title" value={title} onChange={(event) => { setTitle(event.target.value); markDirty(); }} maxLength={120} className="min-h-11" disabled={formLocked} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-update-description">Vertel wat je wilt onthouden</Label>
-                <Textarea id="edit-update-description" value={description} onChange={(event) => { setDescription(event.target.value); markDirty(); }} maxLength={10000} rows={5} className="min-h-32 resize-y" disabled={formLocked} />
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <section className="space-y-4 border-t border-border pt-6" aria-labelledby="edit-story-title">
+                <h3 id="edit-story-title" className="font-sans text-base font-semibold">Het verhaal</h3>
                 <div className="space-y-2">
-                  <Label>Fase</Label>
-                  <PhaseSelect
-                    value={phaseId}
-                    onChange={(value) => { setPhaseId(value); markDirty(); }}
-                    options={phaseOptions}
-                    onAddCustom={addCustomPhase}
-                    disabled={formLocked || projectQuery.isLoading || projectQuery.isError}
-                  />
+                  <Label htmlFor="edit-update-title">Titel</Label>
+                  <Input id="edit-update-title" value={title} onChange={(event) => { setTitle(event.target.value); markDirty(); }} maxLength={120} className="h-12 rounded-xl bg-background text-base" disabled={formLocked} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-update-description">Vertel wat je wilt onthouden</Label>
+                  <Textarea id="edit-update-description" value={description} onChange={(event) => { setDescription(event.target.value); markDirty(); }} maxLength={10000} rows={3} className="min-h-28 resize-y rounded-xl bg-background text-base leading-6" disabled={formLocked} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="edit-update-date">Datum</Label>
-                  <Input id="edit-update-date" type="date" value={updateDate} onChange={(event) => { setUpdateDate(event.target.value); markDirty(); }} required className="min-h-11" disabled={formLocked} />
+                  <Input id="edit-update-date" type="date" value={updateDate} onChange={(event) => { setUpdateDate(event.target.value); markDirty(); }} required className="h-12 rounded-xl bg-background text-base" disabled={formLocked} />
                 </div>
-              </div>
-            </section>
+                <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border border-border bg-secondary/30 px-3 py-3 has-[:checked]:border-accent/40 has-[:checked]:bg-accent/5">
+                  <input type="checkbox" aria-label="Dit is een mijlpaal" checked={isMilestone} onChange={(event) => { setIsMilestone(event.target.checked); markDirty(); }} disabled={formLocked} className="h-5 w-5 shrink-0 accent-[hsl(var(--accent))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
+                  <span><span className="block text-sm font-semibold">Dit is een mijlpaal</span><span className="block text-xs text-muted-foreground">Een bijzonder moment in je verbouwing</span></span>
+                </label>
+                <details className="rounded-xl border border-border px-3">
+                  <summary className="flex min-h-12 cursor-pointer items-center text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{phaseId ? `Fase: ${phaseOptions.find((phase) => phase.value === phaseId)?.label ?? "gekozen"}` : "Fase toevoegen (optioneel)"}</summary>
+                  <div className="space-y-2 pb-3 [&_input]:text-base [&_button]:min-h-11">
+                    <Label>Fase</Label>
+                    <PhaseSelect value={phaseId} onChange={(value) => { setPhaseId(value); markDirty(); }} options={phaseOptions} onAddCustom={addCustomPhase} disabled={formLocked || projectQuery.isLoading || projectQuery.isError} />
+                  </div>
+                </details>
+              </section>
 
-            {projectQuery.isError && (
-              <p role="alert" className="text-sm text-destructive">Rechten voor deze verbouwing konden niet veilig worden gecontroleerd.</p>
-            )}
-            {saveStatus && (
-              <p role={saveError ? "alert" : "status"} aria-live="polite" className={`text-sm ${saveError ? "text-destructive" : "text-muted-foreground"}`}>{saveStatus}</p>
-            )}
+              {projectQuery.isError && (
+                <p role="alert" className="text-sm text-destructive">Rechten voor deze verbouwing konden niet veilig worden gecontroleerd.</p>
+              )}
+              {saveStatus && (
+                <p role={saveError ? "alert" : "status"} aria-live="polite" className={`text-sm ${saveError ? "text-destructive" : "text-muted-foreground"}`}>{saveStatus}</p>
+              )}
 
-            <div className="flex flex-col-reverse gap-3 border-t border-border pt-4 sm:flex-row sm:items-center">
-              <Button type="button" variant="outline" onClick={() => setShowDeletePrompt(true)} className="min-h-11 gap-2 text-destructive hover:text-destructive" disabled={formLocked || !canEdit}>
+              <Button type="button" variant="ghost" onClick={() => setShowDeletePrompt(true)} className="min-h-11 gap-2 text-destructive hover:text-destructive" disabled={formLocked || !canEdit}>
                 <Trash2 className="h-4 w-4" aria-hidden="true" /> Bouwmoment verwijderen
               </Button>
-              <div className="flex flex-1 gap-3 sm:justify-end">
-                <Button type="button" variant="ghost" onClick={requestClose} className="min-h-11 flex-1 sm:flex-none" disabled={loading}>Annuleren</Button>
-                <Button
-                  type="submit"
-                  className="min-h-11 flex-[2] bg-accent text-accent-foreground hover:bg-accent/90 sm:flex-none"
-                  disabled={loading || deleteMutation.isPending || deleteRetryLocked || !isDirty || !canEdit}
-                >
-                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
-                  {retryLocked ? "Zelfde wijziging opnieuw" : loading ? "Opslaan…" : "Wijzigingen opslaan"}
-                </Button>
-              </div>
+            </div>
+            <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-card px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] min-[360px]:flex-row sm:justify-end sm:px-6">
+              <Button type="button" variant="ghost" onClick={requestClose} className="min-h-11 flex-1 sm:flex-none" disabled={loading}>Annuleren</Button>
+              <Button type="submit" className="min-h-11 flex-[2] bg-accent text-accent-foreground hover:bg-accent/90 sm:flex-none" disabled={loading || deleteMutation.isPending || deleteRetryLocked || !isDirty || !canEdit}>
+                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
+                {retryLocked ? "Zelfde wijziging opnieuw" : loading ? "Opslaan…" : "Wijzigingen opslaan"}
+              </Button>
             </div>
           </form>
         </DialogContent>

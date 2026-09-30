@@ -1,19 +1,6 @@
-import { type ReactNode } from "react";
-import {
-  ArrowRight,
-  BookOpen,
-  Camera,
-  Eye,
-  Heart,
-  MessageCircle,
-  Plus,
-  ShieldCheck,
-  Users,
-  type LucideIcon,
-} from "lucide-react";
-
+import { ArrowRight, BookOpen, Camera, Check, Plus, ShieldCheck, Users } from "lucide-react";
 import AsyncState from "@/components/app/AsyncState";
-import PrivacyBadge from "@/components/app/PrivacyBadge";
+import BeforeAfterSlider from "@/components/BeforeAfterSlider";
 import ProjectCard from "@/components/ProjectCard";
 import LocalPhotoDemo, { LOCAL_PHOTO_AUTH_PATH } from "@/components/landing/LocalPhotoDemo";
 import { Button } from "@/components/ui/button";
@@ -21,524 +8,101 @@ import { useAuth } from "@/hooks/useAuth";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { useProjectDashboard } from "@/hooks/useProjectApi";
 import { authPagePath } from "@/lib/authClient";
-import { LANDING_PHOTO_INTENT } from "@/lib/landingPhotoHandoffStore";
 import { PRODUCT_ROUTES } from "@/lib/productNavigation";
 import { Link, Navigate, useLocation } from "@/lib/router";
-import type { ProjectCard as Project } from "../../shared/contracts/projects";
-
-interface Principle {
-  icon: LucideIcon;
-  title: string;
-  description: string;
-}
-
-const CORE_STEPS: Principle[] = [
-  {
-    icon: Camera,
-    title: "Vastleggen",
-    description: "Voeg foto’s en een korte update toe.",
-  },
-  {
-    icon: Users,
-    title: "Samen beleven",
-    description: "Deel je verbouwing met vrienden en familie.",
-  },
-  {
-    icon: BookOpen,
-    title: "Bewaren",
-    description: "Zie automatisch een persoonlijk Bouwboek ontstaan.",
-  },
-];
-
-const PRIVACY_LEVELS = [
-  {
-    level: "private" as const,
-    title: "Alleen ik",
-    description: "De standaard. Alleen jij ziet je verbouwing totdat je bewust gaat delen.",
-  },
-  {
-    level: "shared" as const,
-    title: "Iedereen met de link",
-    description: "Vrienden en familie kijken mee via een beveiligde link die je weer kunt intrekken.",
-  },
-  {
-    level: "public" as const,
-    title: "Openbaar",
-    description: "Alleen als jij dat kiest, kan iedereen je gepubliceerde Verhaal bekijken.",
-  },
-];
-
-const ProjectSkeleton = ({ feature = false }: { feature?: boolean }) => (
-  <div className={feature ? "lg:col-span-7" : "lg:col-span-5"} aria-hidden="true">
-    <div className={`${feature ? "aspect-[16/10]" : "aspect-[4/5]"} animate-pulse rounded-sm bg-muted motion-reduce:animate-none`} />
-    <div className="mt-4 h-px bg-border" />
-    <div className="mt-4 h-7 w-2/3 animate-pulse bg-muted motion-reduce:animate-none" />
-    <div className="mt-3 h-4 w-1/3 animate-pulse bg-muted motion-reduce:animate-none" />
-  </div>
-);
-
-const ProjectCollection = ({
-  projects,
-  loading,
-  emptyState,
-}: {
-  projects: Project[];
-  loading: boolean;
-  emptyState: ReactNode;
-}) => {
-  if (loading) {
-    return (
-      <div
-        className="grid grid-cols-1 gap-x-8 gap-y-12 md:grid-cols-2 lg:grid-cols-12"
-        role="status"
-        aria-live="polite"
-        aria-busy="true"
-        aria-label="Verbouwingen laden"
-      >
-        <ProjectSkeleton feature />
-        <ProjectSkeleton />
-        <span className="sr-only">Verbouwingen laden…</span>
-      </div>
-    );
-  }
-
-  if (projects.length === 0) return <>{emptyState}</>;
-
-  const projectGroups = Array.from(
-    { length: Math.ceil(projects.length / 5) },
-    (_, groupIndex) => projects.slice(groupIndex * 5, groupIndex * 5 + 5),
-  );
-
-  const getLayout = (groupLength: number, index: number) => {
-    if (groupLength === 1) return { className: "lg:col-span-8 lg:col-start-3", feature: true };
-    if (groupLength === 2) {
-      return index === 0
-        ? { className: "lg:col-span-7", feature: true }
-        : { className: "lg:col-span-5", feature: false };
-    }
-    if (groupLength === 3) {
-      return index === 0
-        ? { className: "lg:col-span-6", feature: true }
-        : { className: "lg:col-span-3", feature: false };
-    }
-    if (groupLength === 4) {
-      const feature = index === 0 || index === 3;
-      return {
-        className: feature ? "lg:col-span-8" : "lg:col-span-4",
-        feature,
-      };
-    }
-    return index === 0
-      ? { className: "lg:col-span-7", feature: true }
-      : index === 1
-        ? { className: "lg:col-span-5", feature: false }
-        : { className: "lg:col-span-4", feature: false };
-  };
-
-  return (
-    <div className="space-y-14">
-      {projectGroups.map((group) => (
-        <div key={group[0].id} className="grid grid-cols-1 gap-x-8 gap-y-14 md:grid-cols-2 lg:grid-cols-12">
-          {group.map((project, index) => {
-            const layout = getLayout(group.length, index);
-            return (
-              <div key={project.id} className={layout.className}>
-                <ProjectCard
-                  id={project.id}
-                  title={project.title}
-                  projectType={project.projectType}
-                  progressPercentage={project.progressPercentage}
-                  coverUrl={project.cover?.proxyPath}
-                  coverMediaType={project.cover?.contentType}
-                  profileName={project.owner.displayName}
-                  updateCount={project.updateCount}
-                  visibility={project.visibility}
-                  variant={layout.feature ? "feature" : "standard"}
-                />
-              </div>
-            );
-          })}
-        </div>
-      ))}
-    </div>
-  );
-};
-
-const ExampleRenovation = () => (
-  <figure className="overflow-hidden rounded-[1.5rem] border border-[#D8CFC1] bg-[#FFFDF8] shadow-[0_24px_70px_rgba(38,35,31,0.08)]">
-    <figcaption className="flex min-h-12 items-center justify-between gap-4 border-b border-[#D8CFC1] px-4 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-[#655F57] sm:px-6">
-      <span className="text-[#A94E36]">{"Volgerweergave"}</span>
-      <span>{"De benedenverdieping"}</span>
-    </figcaption>
-    <div className="grid lg:grid-cols-[minmax(0,1.25fr)_minmax(19rem,0.75fr)]">
-      <img
-        src="/images/buildy-renovation-progress.webp"
-        alt="Een Nederlandse benedenverdieping tijdens de verbouwing"
-        className="aspect-[4/3] h-full w-full object-cover lg:aspect-auto"
-      />
-      <div className="flex flex-col p-5 sm:p-8">
-        <>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#A94E36]">Bouwmoment · 12 mei</p>
-            <h3 className="mt-3 font-serif text-4xl leading-[0.95] text-[#26231F]">De achtergevel is open.</h3>
-            <p className="mt-5 text-sm leading-6 text-[#655F57]">
-              Na weken slopen komt er eindelijk daglicht binnen. Vandaag stond het nieuwe houten frame.
-            </p>
-            <div className="mt-auto pt-8">
-              <div className="border-t border-[#D8CFC1] pt-4">
-                <div className="flex flex-wrap gap-2">
-                  <span className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[#D8CFC1] px-3 text-sm text-[#26231F]">
-                    <Heart className="h-4 w-4 text-[#A94E36]" aria-hidden="true" /> 8 reacties
-                  </span>
-                  <span className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[#D8CFC1] px-3 text-sm text-[#26231F]">
-                    <MessageCircle className="h-4 w-4" aria-hidden="true" /> 3 opmerkingen
-                  </span>
-                </div>
-                <p className="mt-4 flex items-center gap-2 text-xs leading-5 text-[#655F57]">
-                  <Eye className="h-4 w-4 text-[#A94E36]" aria-hidden="true" /> Alleen kijken; de eigenaar houdt de regie.
-                </p>
-              </div>
-            </div>
-          </>
-      </div>
-    </div>
-  </figure>
-);
-
-const ExampleBookSpread = () => (
-  <figure>
-    <div className="overflow-hidden rounded-[1.5rem] border border-[#D8CFC1] bg-[#FFFDF8] shadow-[0_24px_70px_rgba(38,35,31,0.12)]">
-      <img
-        src="/images/buildy-bouwboek-preview.webp"
-        alt="Voorbeeld van een open Buildy Bouwboek met dezelfde kamer tijdens en na de verbouwing"
-        className="aspect-[3/2] w-full object-cover"
-      />
-    </div>
-  </figure>
-);
-
-const HeroProductPreview = () => (
-  <div className="relative mx-auto w-full max-w-[34rem] lg:ml-auto">
-    <div className="overflow-hidden rounded-[1.6rem] border border-white/30 bg-[#FFFDF8] shadow-[0_30px_90px_rgba(0,0,0,0.34)]">
-      <div className="flex h-11 items-center justify-between border-b border-[#D8CFC1] px-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#655F57]">
-        <span>De benedenverdieping</span>
-        <span className="text-[#A94E36]">{"Alleen ik"}</span>
-      </div>
-      <img
-        src="/images/buildy-renovation-complete.webp"
-        alt="Buildy-productvoorbeeld met een afgeronde Nederlandse woonkamerverbouwing"
-        className="aspect-[16/10] w-full object-cover"
-      />
-      <div className="grid grid-cols-[1.2rem_1fr] gap-3 px-4 py-4 sm:px-5">
-        <span className="relative mt-1 h-full min-h-16 before:absolute before:bottom-0 before:left-[5px] before:top-2 before:w-px before:bg-[#D8CFC1] after:absolute after:left-0 after:top-1 after:h-3 after:w-3 after:rounded-full after:bg-[#A94E36]" aria-hidden="true" />
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#A94E36]">Bouwmoment · Vandaag</p>
-          <p className="mt-1 font-serif text-2xl leading-none text-[#26231F]">We wonen weer beneden.</p>
-          <p className="mt-2 flex items-center gap-3 text-xs text-[#655F57]"><Heart className="h-3.5 w-3.5" aria-hidden="true" /> 8 <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" /> 3</p>
-        </div>
-      </div>
-    </div>
-    <div className="absolute -bottom-5 -left-3 rounded-full border border-white/25 bg-[#26231F] px-4 py-2 text-xs font-semibold text-white shadow-lg sm:-left-8">
-      Je Bouwboek groeit mee
-    </div>
-  </div>
-);
-
-const SectionLabel = ({ children }: { children: ReactNode }) => (
-  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[#A94E36]">{children}</p>
-);
 
 const Index = () => {
   const { user, loading: authLoading } = useAuth();
   const { pathname, search } = useLocation();
-  const view = pathname === PRODUCT_ROUTES.projects ? "projects" : "landing";
-  const isLanding = view === "landing";
-  usePageMeta({
-    title: view === "projects"
-      ? "Mijn verbouwingen — Buildy"
-      : "Buildy — Maak van je verbouwing een verhaal om te bewaren",
-    description: view === "projects"
-      ? "Bekijk en beheer je eigen verbouwingen."
-      : "Leg ieder bouwmoment vast, laat vrienden en familie meekijken en maak er later een persoonlijk Bouwboek van.",
-    path: view === "projects"
-      ? PRODUCT_ROUTES.projects
-      : PRODUCT_ROUTES.landing,
-    noIndex: view === "projects",
-  });
+  const isLanding = pathname !== PRODUCT_ROUTES.projects;
+  const dashboard = useProjectDashboard(!isLanding && Boolean(user));
+  const projects = Array.from(new Map((dashboard.data?.pages ?? []).flatMap(page => page.items).map(project => [project.id, project])).values());
+  usePageMeta({ title: isLanding ? "Buildy — Maak van je verbouwing een verhaal om te bewaren" : "Jouw projecten — Buildy", description: "Leg je bouwproject vast, volg andere bouwers en zie automatisch je eigen fotoboek ontstaan.", path: isLanding ? PRODUCT_ROUTES.landing : PRODUCT_ROUTES.projects, noIndex: !isLanding });
+  if (isLanding && user) return <Navigate to={`${search ? PRODUCT_ROUTES.projects : PRODUCT_ROUTES.following}${search}`} replace />;
+  if (!isLanding && authLoading) return <main className="min-h-[55vh]"><AsyncState status="loading" title="Account controleren" /></main>;
+  if (!isLanding && !user) return <Navigate to={authPagePath(PRODUCT_ROUTES.projects)} replace />;
 
-  const dashboardQuery = useProjectDashboard(view === "projects" && Boolean(user));
-  const mine = Array.from(new Map(
-    (dashboardQuery.data?.pages ?? []).flatMap((page) => page.items).map((project) => [project.id, project]),
-  ).values());
-  const loadingMine = dashboardQuery.isPending;
-  const mineError = dashboardQuery.isError;
-
-  if (isLanding && user) return <Navigate to={`${PRODUCT_ROUTES.projects}${search}`} replace />;
-
-  if (view === "projects" && authLoading) {
-    return (
-      <main className="flex min-h-[55vh] items-center justify-center" role="status">
-        <span className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-foreground" aria-hidden="true" />
-        <span className="sr-only">Account controleren…</span>
-      </main>
-    );
-  }
-
-  if (view === "projects" && !user) {
-    return <Navigate to={authPagePath(PRODUCT_ROUTES.projects)} replace />;
-  }
+  if (!isLanding) return (
+    <main className="mx-auto max-w-6xl px-4 py-7 sm:px-6 lg:py-12">
+      <header className="mb-7 flex flex-wrap items-start justify-between gap-5">
+        <div><p className="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-accent">Hier gebeurt het</p><h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Jouw projecten</h1><p className="mt-2 text-sm leading-6 text-muted-foreground">Van eerste idee tot de laatste verfstreek.</p></div>
+        <Button asChild variant="outline" className="min-h-11 rounded-full bg-card"><Link to={PRODUCT_ROUTES.newProject}><Plus className="mr-2 h-4 w-4" aria-hidden="true" /> Nieuw project</Link></Button>
+      </header>
+      {dashboard.isPending ? <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3" role="status" aria-label="Verbouwingen laden">{[0,1,2].map(i => <div key={i} className="aspect-[4/3] animate-pulse rounded-3xl bg-muted motion-reduce:animate-none" />)}</div> : dashboard.isError ? (
+        <AsyncState status="error" title="Je projecten zijn even niet bereikbaar" description="Controleer je verbinding en probeer het opnieuw." action={<Button variant="outline" onClick={() => void dashboard.refetch()}>Opnieuw proberen</Button>} />
+      ) : projects.length === 0 ? (
+        <section className="grid overflow-hidden rounded-3xl border border-border bg-card md:grid-cols-2">
+          <img src="/images/buildy-renovation-progress.webp" alt="Een huis in verbouwing, klaar voor een nieuw verhaal" className="aspect-[16/9] h-full w-full object-cover" />
+          <div className="flex flex-col items-start justify-center p-6 sm:p-9"><Camera className="mb-4 h-7 w-7 text-accent" aria-hidden="true" /><h2 className="text-2xl font-bold tracking-tight">Dit is het begin van jouw verhaal.</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">Een kleine klus of een heel nieuw huis. Bewaar de foto’s, de keuzes en de momenten waar je trots op bent.</p><Button asChild className="mt-6 min-h-12 rounded-full bg-accent px-6 text-white hover:bg-accent/90"><Link to={PRODUCT_ROUTES.newProject}>Begin je eerste project <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" /></Link></Button><Link to={PRODUCT_ROUTES.connections} className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-primary">Liever eerst bij anderen meekijken</Link></div>
+        </section>
+      ) : (
+        <>
+          <div className="mb-7 flex items-center gap-4 rounded-2xl bg-primary p-5 text-white">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/10"><Camera className="h-5 w-5" aria-hidden="true" /></div>
+            <div className="min-w-0 flex-1"><p className="font-semibold">Wat is er vandaag veranderd?</p><p className="mt-1 text-xs leading-5 text-white/70">Eén foto houdt je verhaal levend.</p></div>
+            <Button asChild size="icon" className="h-11 w-11 shrink-0 rounded-full bg-white text-primary hover:bg-white/90"><Link to={projects.length === 1 ? PRODUCT_ROUTES.projectUpdateComposer(projects[0].id) : PRODUCT_ROUTES.createUpdate} aria-label="Bouwmoment toevoegen"><Plus className="h-5 w-5" aria-hidden="true" /></Link></Button>
+          </div>
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{projects.map(project => <ProjectCard key={project.id} id={project.id} title={project.title} projectType={project.projectType} progressPercentage={project.progressPercentage} coverUrl={project.cover?.proxyPath} coverMediaType={project.cover?.contentType} profileName={project.owner.displayName} updateCount={project.updateCount} visibility={project.visibility} />)}</div>
+        </>
+      )}
+      {dashboard.hasNextPage ? <div className="mt-8 text-center"><Button variant="outline" className="min-h-11" disabled={dashboard.isFetchingNextPage} onClick={() => void dashboard.fetchNextPage()}>{dashboard.isFetchingNextPage ? "Projecten laden…" : "Meer projecten laden"}</Button></div> : null}
+    </main>
+  );
 
   return (
-    <main className="min-h-screen bg-background">
-      {isLanding ? (
-        <>
-          <section className="relative isolate overflow-hidden bg-[#26231F] text-white" aria-labelledby="home-title">
-            <img
-              src="/images/buildy-renovation-progress.webp"
-              alt="Een Nederlandse woning tijdens een lichte, hoopvolle verbouwing"
-              className="absolute inset-0 -z-20 h-full w-full object-cover object-center"
-            />
-            <div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(25,22,19,0.92)_0%,rgba(25,22,19,0.74)_45%,rgba(25,22,19,0.2)_100%)]" aria-hidden="true" />
-            <div className="mx-auto grid min-h-[calc(100svh-4.5rem)] max-w-7xl items-center gap-12 px-4 py-16 sm:px-6 md:px-8 lg:grid-cols-12 lg:gap-10 lg:py-20">
-              <div className="lg:col-span-6">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#E0A998]">
-                  {"Van bouwplaats naar blijvend verhaal"}
-                </p>
-                <h1 id="home-title" className="mt-5 max-w-[10ch] font-serif text-[clamp(3.25rem,7vw,6.6rem)] leading-[0.88] tracking-[-0.035em] text-white">
-                  Maak van je verbouwing een verhaal om te bewaren.
-                </h1>
-                <p className="mt-7 max-w-xl text-base leading-7 text-white/80 md:text-lg md:leading-8">
-                  {"Leg foto’s en updates vast, laat vrienden en familie meekijken en maak er na afloop een persoonlijk Bouwboek van."}
-                </p>
-                <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                  <Button asChild size="lg" className="min-h-12 w-full bg-[#A94E36] px-6 text-white hover:bg-[#913F2B] sm:w-auto">
-                    <a href="#probeer-buildy">{"Start je verbouwverhaal"}</a>
-                  </Button>
-                  <Button asChild variant="outline" size="lg" className="min-h-12 w-full border-white/45 bg-white/5 px-6 text-white backdrop-blur-sm hover:bg-white hover:text-[#26231F] sm:w-auto">
-                    <a href={"#zo-werkt-het"}>{"Bekijk hoe het werkt"}</a>
-                  </Button>
-                </div>
-                <aside className="mt-8 flex max-w-xl items-start gap-3 border-l-2 border-[#E0A998] pl-4" aria-label="Privacybelofte">
-                  <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#E0A998]" aria-hidden="true" />
-                  <p className="text-sm leading-6 text-white/75">{"Je begint met Alleen ik. Delen gebeurt pas wanneer jij dat kiest."}</p>
-                </aside>
-              </div>
-              <div className="min-w-0 lg:col-span-6">
-                <HeroProductPreview />
-              </div>
-            </div>
-          </section>
-
-          <section id="zo-werkt-het" className="scroll-mt-28 border-b border-[#D8CFC1] bg-[#F7F2E9]" aria-labelledby="how-title">
-            <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 md:px-8 md:py-24">
-              <div className="grid gap-6 lg:grid-cols-12">
-                <div className="lg:col-span-6">
-                  <SectionLabel>Van vandaag naar later</SectionLabel>
-                  <h2 id="how-title" className="max-w-2xl font-serif text-4xl leading-[0.95] text-[#26231F] md:text-6xl">
-                    Eén eenvoudige lijn door je hele verbouwing.
-                  </h2>
-                </div>
-                <p className="max-w-xl text-base leading-7 text-[#655F57] lg:col-span-4 lg:col-start-9 lg:pt-7">
-                  Geen losse WhatsApp-foto’s of ingewikkeld projectdashboard. Ieder Bouwmoment krijgt een vaste plek in je Verhaal en Bouwboek.
-                </p>
-              </div>
-
-              <ol className={`mt-12 border-y border-[#D8CFC1] md:grid ${"md:grid-cols-3"}`}>
-                {(CORE_STEPS).map(({ icon: Icon, title, description }, index) => (
-                  <li key={title} className="grid grid-cols-[3rem_1fr] gap-4 border-b border-[#D8CFC1] py-7 last:border-b-0 md:block md:border-b-0 md:border-r md:px-8 md:py-9 md:first:pl-0 md:last:border-r-0 md:last:pr-0">
-                    <div className="flex items-center justify-between md:mb-12">
-                      <span className="text-xs font-semibold tabular-nums text-[#A94E36]">0{index + 1}</span>
-                      <Icon className="hidden h-5 w-5 text-[#655F57] md:block" strokeWidth={1.5} aria-hidden="true" />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-semibold tracking-[-0.02em] text-[#26231F]">{title}</h3>
-                      <p className="mt-2 text-sm leading-6 text-[#655F57]">{description}</p>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          </section>
-
-          <div className="border-b border-[#D8CFC1] bg-[#FFFDF8]">
-            <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 md:px-8 md:py-24">
-              <div className="mb-10 grid gap-6 lg:grid-cols-12">
-                <div className="lg:col-span-6">
-                  <SectionLabel>Probeer de hele lijn</SectionLabel>
-                  <h2 className="max-w-2xl font-serif text-4xl leading-[0.95] text-[#26231F] md:text-6xl">Van foto naar Bouwboek, zonder upload.</h2>
-                </div>
-                <p className="max-w-xl text-base leading-7 text-[#655F57] lg:col-span-4 lg:col-start-9 lg:pt-7">
-                  {"Kies één foto en zie hem direct als Bouwmoment, in je Verhaal en op een Bouwboekpagina. De foto blijft op dit apparaat totdat jij hem bewaart."}
-                </p>
-              </div>
-              <LocalPhotoDemo
-                saveHref={user ? `${PRODUCT_ROUTES.newProject}?intent=${LANDING_PHOTO_INTENT}` : LOCAL_PHOTO_AUTH_PATH}
-              />
+    <main className="bg-card">
+      <section className="relative overflow-hidden bg-primary text-white" aria-labelledby="home-title">
+        <div className="mx-auto grid max-w-7xl lg:min-h-[680px] lg:grid-cols-2">
+          <div className="relative z-10 px-5 pb-9 pt-10 sm:px-8 sm:py-14 lg:py-24">
+            <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-white/70"><span className="h-1.5 w-1.5 rounded-full bg-[#EDBA9F]" aria-hidden="true" /> Voor iedereen die iets moois bouwt</p>
+            <h1 id="home-title" className="mt-5 max-w-xl text-[clamp(2.7rem,6vw,5rem)] font-bold leading-[1.02] tracking-[-0.05em]">Jouw huis.<br />Jouw avontuur.<br /><span className="font-serif font-normal italic tracking-normal text-[#E9C9AD]">Jouw verhaal.</span></h1>
+            <p className="mt-6 max-w-md text-base leading-7 text-white/75">Van de eerste sloopdag tot eindelijk thuiskomen. Leg het vast, laat je mensen meeleven en zie je eigen Bouwboek ontstaan.</p>
+            <div className="mt-7 flex flex-wrap gap-3"><Button asChild className="min-h-12 rounded-full bg-accent px-6 text-base text-white hover:bg-accent/90"><Link to="/auth">Start je verbouwverhaal <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" /></Link></Button><a href="#zo-werkt-het" className="inline-flex min-h-12 items-center gap-2 px-2 text-sm font-semibold text-white">Zo werkt Buildy <span aria-hidden="true">↓</span></a></div>
+            <p className="mt-5 flex items-center gap-2 text-xs text-white/65"><ShieldCheck className="h-4 w-4" aria-hidden="true" /> Gratis beginnen. Je project start privé.</p>
+          </div>
+          <div className="relative min-h-[350px] sm:min-h-[430px] lg:min-h-full">
+            <img src="/images/buildy-renovation-complete.webp" alt="Een verbouwde woonkamer met warm daglicht" className="absolute inset-0 h-full w-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />
+            <div className="absolute inset-x-5 bottom-6 max-w-sm rounded-2xl border border-white/25 bg-white/95 p-4 text-foreground shadow-xl backdrop-blur sm:left-8">
+              <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-accent"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent/10"><Check className="h-3.5 w-3.5" aria-hidden="true" /></span> Voorbeeld · een mijlpaal</div>
+              <p className="mt-2 text-xl font-semibold tracking-tight">We wonen weer beneden.</p><p className="mt-1 text-sm text-muted-foreground">Van bouwstof naar blote voeten op de vloer.</p>
+              <div className="mt-3 flex items-center gap-2 border-t border-border pt-3 text-xs font-medium text-primary"><BookOpen className="h-4 w-4" aria-hidden="true" /> Ook een nieuwe bladzijde in je Bouwboek.</div>
             </div>
           </div>
-
-          <section id="voorbeeld" className="scroll-mt-28 border-b border-[#D8CFC1] bg-[#26231F] text-white" aria-labelledby="example-title">
-            <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 md:px-8 md:py-24">
-              <div className="mb-10 grid gap-5 lg:grid-cols-12">
-                <div className="lg:col-span-6">
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[#E0A998]">
-                    {"Samen beleven"}
-                  </p>
-                  <h2 id="example-title" className="max-w-2xl font-serif text-4xl leading-[0.95] md:text-6xl">
-                    {"Delen zonder steeds hetzelfde verhaal te vertellen."}
-                  </h2>
-                </div>
-                <p className="max-w-xl text-base leading-7 text-white/70 lg:col-span-4 lg:col-start-9 lg:pt-7">
-                  {"Een vriend ziet de foto’s, datum en het korte verhaal—zonder editknoppen. Ingelogd kan diegene reageren of een opmerking plaatsen."}
-                </p>
-              </div>
-              <ExampleRenovation />
-
-            </div>
-          </section>
-
-          <section className="border-b border-[#D8CFC1] bg-[#F7F2E9]" aria-labelledby="privacy-title">
-            <div className="mx-auto grid max-w-7xl gap-10 px-4 py-16 sm:px-6 md:px-8 md:py-20 lg:grid-cols-12">
-              <div className="lg:col-span-5">
-                <SectionLabel>Privacy zonder kleine lettertjes</SectionLabel>
-                <h2 id="privacy-title" className="max-w-lg font-serif text-4xl leading-none text-[#26231F] md:text-5xl">
-                  Jouw huis hoeft niet voor iedereen open te staan.
-                </h2>
-                <p className="mt-5 max-w-xl text-sm leading-6 text-[#655F57] md:text-base md:leading-7">
-                  Drie begrijpelijke keuzes. Een nieuwe verbouwing begint altijd met Alleen ik.
-                </p>
-              </div>
-
-              <div className="border-t border-[#D8CFC1] lg:col-span-6 lg:col-start-7">
-                {PRIVACY_LEVELS.map(({ level, title, description }) => (
-                  <div key={level} className="grid gap-3 border-b border-[#D8CFC1] py-5 sm:grid-cols-[8rem_1fr] sm:gap-6">
-                    <PrivacyBadge level={level} className="w-fit self-start" />
-                    <div>
-                      <h3 className="text-base font-semibold text-[#26231F]">{title}</h3>
-                      <p className="mt-1 text-sm leading-6 text-[#655F57]">{description}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          <section className="border-b border-[#D8CFC1] bg-[#FFFDF8]" aria-labelledby="book-title">
-            <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 py-16 sm:px-6 md:px-8 md:py-24 lg:grid-cols-12 lg:gap-10">
-              <div className="lg:col-span-5">
-                <SectionLabel>Voorbeeldweergave</SectionLabel>
-                <h2 id="book-title" className="max-w-lg font-serif text-4xl leading-none text-[#26231F] md:text-5xl">
-                  {"Je Bouwboek groeit met je verbouwing mee."}
-                </h2>
-                <p className="mt-5 max-w-xl text-base leading-7 text-[#655F57]">
-                  {"Ieder Bouwmoment krijgt automatisch een plek. Het digitale Bouwboek is gratis; jij kiest alleen wat je wilt bewaren."}
-                </p>
-
-                <Button asChild variant="outline" size="lg" className="mt-7 min-h-12 border-[#A94E36] bg-transparent px-6 text-[#26231F] hover:bg-[#A94E36] hover:text-white">
-                  <a href="#probeer-buildy">Start je verbouwverhaal <ArrowRight aria-hidden="true" /></a>
-                </Button>
-              </div>
-              <div className="lg:col-span-7">
-                <ExampleBookSpread />
-              </div>
-            </div>
-          </section>
-
-        </>
-      ) : null}
-
-      {!isLanding ? (
-      <section id="verbouwingen" className="scroll-mt-24" aria-labelledby="projects-title">
-        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 md:px-8 md:py-12">
-          <div className="grid gap-6 lg:grid-cols-12">
-            <div className="lg:col-span-6">
-              <SectionLabel>Vandaag bouwen. Later bewaren.</SectionLabel>
-              <h1 id="projects-title" className="max-w-2xl text-4xl font-semibold leading-[1.04] tracking-[-0.03em] md:text-5xl">
-                Jouw verhalen
-              </h1>
-            </div>
-            <p className="max-w-xl font-sans text-sm leading-6 text-muted-foreground lg:col-span-4 lg:col-start-9 lg:pt-7 md:text-base md:leading-7">
-              Een foto, een kleine overwinning, een herinnering. Bouw verder aan jouw verhaal.
-            </p>
-          </div>
-
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Button asChild className="min-h-11 gap-2 bg-accent text-accent-foreground hover:bg-accent/90">
-              <Link to={mine.length === 1 ? PRODUCT_ROUTES.projectUpdateComposer(mine[0].id) : mine.length > 1 ? PRODUCT_ROUTES.createUpdate : PRODUCT_ROUTES.newProject}><Plus className="h-4 w-4" aria-hidden="true" /> {mine.length ? "Bouwmoment toevoegen" : "Begin je verhaal"}</Link>
-            </Button>
-            <Button asChild variant="outline" className="min-h-11 gap-2">
-              <Link to={PRODUCT_ROUTES.following}><Users className="h-4 w-4" aria-hidden="true" /> Kijk mee</Link>
-            </Button>
-          </div>
-
-          {user ? (
-            <div id="mine-panel" className="pt-10 outline-none">
-              {loadingMine ? (
-                <ProjectCollection projects={[]} loading emptyState={null} />
-              ) : mineError ? (
-                <AsyncState
-                  status="error"
-                  title="Je verbouwingen zijn even niet bereikbaar"
-                  description="We tonen geen eerder geladen privégegevens. Controleer je verbinding en probeer het opnieuw."
-                  action={<Button variant="outline" onClick={() => void dashboardQuery.refetch()}>Opnieuw proberen</Button>}
-                />
-              ) : (
-                <ProjectCollection
-                  projects={mine}
-                  loading={false}
-                  emptyState={(
-                    <AsyncState
-                      status="empty"
-                      title="Begin je eerste verbouwing"
-                      description="Documenteer iedere fase en bepaal daarna rustig wie mag meekijken."
-                      action={(
-                        <Button asChild>
-                          <Link to={PRODUCT_ROUTES.newProject}><Plus className="h-4 w-4" aria-hidden="true" /> Nieuwe verbouwing</Link>
-                        </Button>
-                      )}
-                    />
-                  )}
-                />
-              )}
-              {!loadingMine && !mineError && dashboardQuery.hasNextPage ? (
-                <div className="mt-12 flex justify-center">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={dashboardQuery.isFetchingNextPage}
-                    onClick={() => void dashboardQuery.fetchNextPage()}
-                  >
-                    {dashboardQuery.isFetchingNextPage ? "Verbouwingen laden…" : "Meer verbouwingen laden"}
-                  </Button>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
         </div>
       </section>
-      ) : null}
 
-      {isLanding && !user ? (
-        <section className="border-t border-[#D8CFC1] bg-[#26231F] text-[#F7F2E9]" aria-labelledby="final-cta-title">
-          <div className="mx-auto grid max-w-7xl items-end gap-8 px-4 py-14 sm:px-6 md:px-8 md:py-16 lg:grid-cols-12">
-            <div className="lg:col-span-8">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#D8CFC1]">Je eerste Bouwmoment</p>
-              <h2 id="final-cta-title" className="mt-3 max-w-3xl font-serif text-4xl leading-[1.02] md:text-5xl">
-                Vandaag één foto. Straks een heel Verhaal.
-              </h2>
-              <p className="mt-4 max-w-xl text-sm leading-6 text-[#D8CFC1]">{"Probeer het op dit apparaat, begin privé en deel pas wanneer jij daar klaar voor bent."}</p>
-            </div>
-            <div className="lg:col-span-4 lg:flex lg:justify-end">
-              <Button asChild size="lg" className="min-h-12 w-full bg-[#A94E36] px-6 text-white hover:bg-[#8F3F2C] sm:w-auto">
-                <a href="#probeer-buildy">
-                  {"Start je verbouwverhaal"} <ArrowRight aria-hidden="true" />
-                </a>
-              </Button>
-            </div>
-          </div>
-        </section>
-      ) : null}
+      <section id="zo-werkt-het" className="scroll-mt-20" aria-labelledby="how-title">
+        <div className="mx-auto max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">Jij bouwt. Buildy bewaart.</p><h2 id="how-title" className="mt-3 max-w-xl text-3xl font-bold leading-tight tracking-tight sm:text-4xl">Het grote verhaal zit in de kleine momenten.</h2>
+          <div className="mt-9 grid gap-8 md:grid-cols-3">{[
+            {icon:Camera,title:"Leg het vast",text:"Foto’s, een datum en een paar woorden. Meer heb je niet nodig voor een nieuw Bouwmoment."},
+            {icon:Users,title:"Beleef het samen",text:"Volg je favoriete bouwers en projecten. Vier de mijlpalen met een reactie, emoji of een lief bericht."},
+            {icon:BookOpen,title:"Bewaar het voor altijd",text:"Je Bouwboek wordt automatisch samengesteld uit je project. Kies je foto’s en download je persoonlijke PDF."},
+          ].map(({icon:Icon,title,text},index) => <div key={title} className="relative border-t border-border pt-6"><span className="absolute -top-4 right-0 bg-card px-2 text-xs font-medium text-muted-foreground">0{index+1}</span><Icon className="mb-4 h-7 w-7 text-primary" strokeWidth={1.5} aria-hidden="true" /><h3 className="text-lg font-semibold">{title}</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">{text}</p></div>)}</div>
+        </div>
+      </section>
+
+      <section className="bg-secondary" aria-labelledby="transformation-title">
+        <div className="mx-auto grid max-w-6xl items-center gap-9 px-5 py-12 sm:px-8 sm:py-16 md:grid-cols-2">
+          <div className="overflow-hidden rounded-3xl"><BeforeAfterSlider beforeUrl="/images/buildy-renovation-progress.webp" afterUrl="/images/buildy-renovation-complete.webp" /><p className="mt-3 text-center text-xs text-muted-foreground">Voorbeeldproject · schuif om de verandering te zien</p></div>
+          <div><p className="text-xs font-semibold uppercase tracking-[0.15em] text-accent">Kijk eens hoe ver je bent</p><h2 id="transformation-title" className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Van “waar zijn we aan begonnen” tot “dit hebben wij gemaakt”.</h2><p className="mt-5 text-sm leading-7 text-muted-foreground">Op drukke bouwdagen vergeet je snel hoe het eerst was. In je tijdlijn zie je iedere stap terug. De rommel, de keuzes en de kleine overwinningen horen er allemaal bij.</p><Link to="/auth" className="mt-5 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-primary">Begin jouw verhaal <ArrowRight className="h-4 w-4" aria-hidden="true" /></Link></div>
+        </div>
+      </section>
+
+      <section id="voorbeeld" className="scroll-mt-20" aria-labelledby="book-title">
+        <div className="mx-auto grid max-w-6xl items-center gap-8 px-5 py-14 sm:px-8 sm:py-20 md:grid-cols-2">
+          <div><p className="text-xs font-semibold uppercase tracking-[0.15em] text-accent">Van project naar fotoboek</p><h2 id="book-title" className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Een boek dat met je meegroeit.</h2><p className="mt-5 text-sm leading-7 text-muted-foreground">Alle foto’s en verhalen staan vanzelf in de juiste volgorde. Jij geeft de cover, fotoselectie en indeling jouw eigen draai. Ook je allereerste Bouwmoment verdient een boek.</p><ul className="mt-5 space-y-3 text-sm">{["Automatisch samengesteld per project","Jouw foto’s, woorden en herinneringen","Gratis digitaal Bouwboek als PDF"].map(text=><li key={text} className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" aria-hidden="true" />{text}</li>)}</ul></div>
+          <figure className="overflow-hidden rounded-3xl bg-secondary"><img src="/images/buildy-bouwboek-preview.webp" alt="Voorbeeld van een open Bouwboek met een verbouwing voor en na" className="aspect-[4/3] w-full object-cover" loading="lazy" /><figcaption className="px-5 pb-4 text-xs text-muted-foreground">Voorbeeld van een persoonlijk Bouwboek</figcaption></figure>
+        </div>
+      </section>
+
+      <section className="border-y border-border bg-background">
+        <div className="mx-auto max-w-6xl px-5 py-12 sm:px-8"><h2 className="text-2xl font-bold tracking-tight">Probeer het met jouw foto.</h2><p className="mb-6 mt-2 max-w-xl text-sm leading-6 text-muted-foreground">Zie je foto als Bouwmoment en op een boekpagina. De foto blijft op dit apparaat totdat jij hem bewaart.</p><LocalPhotoDemo saveHref={LOCAL_PHOTO_AUTH_PATH} /></div>
+      </section>
+
+      <section className="mx-auto max-w-4xl px-5 py-14 text-center sm:py-20"><ShieldCheck className="mx-auto h-8 w-8 text-primary" aria-hidden="true" /><h2 className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl">Jouw huis. Jij kiest wie er meekijkt.</h2><p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-muted-foreground">Je begint met Alleen ik. Deel later met geaccepteerde volgers, via een tijdelijke deellink of openbaar. Je kunt die keuze altijd aanpassen.</p><Button asChild className="mt-7 min-h-12 rounded-full bg-accent px-7 text-white hover:bg-accent/90"><Link to="/auth">Begin gratis met Buildy <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" /></Link></Button></section>
     </main>
   );
 };
-
 export default Index;

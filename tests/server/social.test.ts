@@ -238,7 +238,6 @@ class MemorySocialRepository implements SocialRepository {
   async removeProfileFollow(actorId: string, profileId: string): Promise<SocialMutationResult> {
     const key = directed(actorId, profileId);
     const current = this.follows.get(key);
-    this.revokeLegacyProjectRelationships(actorId, profileId);
     if (!current || current === "rejected" || current === "revoked") {
       return { replayed: true, state: "none" };
     }
@@ -436,7 +435,7 @@ describe("social privacy service", () => {
     });
   });
 
-  it("revokes historical project rows when a profile-follow privacy boundary closes", async () => {
+  it("preserves independent project subscriptions on voluntary unfollow but revokes them on owner removal", async () => {
     const { repository, service } = serviceWith();
     const legacyKey = directed(ids.unrelated, ids.owner);
 
@@ -446,8 +445,7 @@ describe("social privacy service", () => {
       replayed: true,
       state: "none",
     });
-    expect(repository.legacyAccesses.get(legacyKey)).toBe("revoked");
-    expect(repository.legacyProjectFollowers.get(legacyKey)).toBe("revoked");
+    expect(repository.legacyProjectFollowers.get(legacyKey)).toBe("active");
 
     repository.follows.set(legacyKey, "pending");
     repository.legacyAccesses.set(legacyKey, "pending");

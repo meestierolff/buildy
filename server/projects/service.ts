@@ -181,6 +181,21 @@ export class ProjectService {
     return { projects, activity };
   }
 
+  async profileProjects(viewer: ProjectActor, ownerId: string, rawQuery: unknown): Promise<ProjectPage> {
+    const query = projectPageQuerySchema.parse(rawQuery);
+    const cursor = decodeProjectCursor(query.cursor, "profile-projects");
+    if (cursor && cursor.ownerId !== ownerId) throw new ProjectError("INVALID_CURSOR");
+    const rows = await this.repository.listProfileProjects(viewer, ownerId, cursor, query.limit + 1);
+    const items = rows.slice(0, query.limit);
+    const last = items.at(-1);
+    return {
+      items,
+      nextCursor: rows.length > query.limit && last
+        ? encodeProjectCursor({ version: 1, kind: "profile-projects", ownerId, timestamp: last.updatedAt, id: last.id })
+        : null,
+    };
+  }
+
   async setProjectFollow(
     actor: AuthenticatedProjectActor,
     projectId: string,

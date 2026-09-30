@@ -448,7 +448,7 @@ describe("Bouwboekpagina", () => {
     const { rerender } = render(<Photobook />);
 
     expect(screen.getByRole("region", { name: "Let op in je Bouwboek" })).toBeInTheDocument();
-    expect(screen.getAllByText("Pagina 2: Deze foto heeft een lage resolutie.")).toHaveLength(1);
+    expect(screen.getAllByText("Pagina 2: Deze foto kan wat onscherp worden als je ver inzoomt. Kies eventueel een grotere foto.")).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Download PDF" })).toBeEnabled();
 
     state.draft.document.warnings = [...state.draft.document.warnings, {

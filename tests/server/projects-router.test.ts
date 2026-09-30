@@ -93,6 +93,7 @@ function service(overrides: Partial<ProjectHttpService> = {}): ProjectHttpServic
     }),
     dashboard: async () => ({ items: [], nextCursor: null }),
     following: async () => ({ projects: [], activity: [] }),
+    profileProjects: async () => ({ items: [], nextCursor: null }),
     setProjectFollow: async (_actor, _projectId, following) => ({
       state: following ? "following" : "none", replayed: false,
     }),
@@ -210,6 +211,21 @@ describe("project HTTP routes", () => {
     const response = await handleApiRequest(new Request(`${REQUEST_ORIGIN}/api/following`));
     expect(response.status).toBe(200);
     expect(following).toHaveBeenCalledExactlyOnceWith(actor, {});
+  });
+
+  it("routes one profile's project list with the server-resolved viewer and bounded query", async () => {
+    const profileProjects = vi.fn(async () => ({ items: [], nextCursor: null }));
+    configureDefaultProjectRuntime({ actors: actorResolver(null), service: service({ profileProjects }) });
+    const response = await handleApiRequest(new Request(
+      `${REQUEST_ORIGIN}/api/social/profiles/${ACTOR_ID}/projects?limit=10`,
+      { headers: { "x-user-id": FORGED_USER_ID } },
+    ));
+    expect(response.status).toBe(200);
+    expect(profileProjects).toHaveBeenCalledExactlyOnceWith(ANONYMOUS_PROJECT_ACTOR, ACTOR_ID, { limit: "10" });
+
+    const invalid = await handleApiRequest(new Request(`${REQUEST_ORIGIN}/api/social/profiles/not-a-user/projects`));
+    expect(invalid.status).toBe(404);
+    expect(profileProjects).toHaveBeenCalledTimes(1);
   });
 
   it.each(["PUT", "DELETE"])("denies anonymous and cross-origin %s project follows", async (method) => {

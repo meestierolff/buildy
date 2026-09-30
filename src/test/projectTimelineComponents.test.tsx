@@ -27,8 +27,8 @@ vi.mock("@/components/CommentsSheet", () => ({
   ),
 }));
 vi.mock("@/components/MediaLightbox", () => ({
-  default: ({ items }: { items: Array<{ url: string }> }) => (
-    <div data-testid="media-lightbox">{items.map((item) => item.url).join(",")}</div>
+  default: ({ items, index }: { items: Array<{ url: string }>; index: number }) => (
+    <div data-testid="media-lightbox" data-active-index={index}>{items.map((item) => item.url).join(",")}</div>
   ),
 }));
 vi.mock("@/components/BeforeAfterSlider", () => ({
@@ -131,5 +131,43 @@ describe("BlueprintTimeline typed engagement boundary", () => {
     expect(screen.queryByRole("button", { name: "Link naar Bouwmoment kopiëren" })).not.toBeInTheDocument();
     expect(screen.getByTestId("reaction-bar")).toHaveAttribute("data-can-react", "false");
     expect(screen.getByTestId("comments-sheet")).toHaveAttribute("data-can-comment", "false");
+  });
+
+  it("maakt ook de zesde foto bereikbaar en opent de lichtbak op precies dat beeld", () => {
+    const media = Array.from({ length: 6 }, (_, index) => ({
+      ...update.media[0]!, id: `image-${index}`, proxyPath: `/api/media/image-${index}`, sortOrder: index,
+    }));
+    const pdf = { ...update.media[0]!, id: "document", proxyPath: "/api/media/document", contentType: "application/pdf", sortOrder: 6, caption: "Bouwtekening" };
+    render(<BlueprintTimeline updates={[{ ...update, media: [...media, pdf] }]} projectId={PROJECT_ID} />);
+
+    expect(screen.getAllByRole("img")).toHaveLength(6);
+    expect(screen.getByText("6 / 6")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Bouwtekening/ })).toHaveAttribute("href", pdf.proxyPath);
+    fireEvent.click(screen.getByRole("button", { name: "Open media 6 van Keuken gestript" }));
+    expect(screen.getByTestId("media-lightbox")).toHaveAttribute("data-active-index", "5");
+    expect(screen.getByTestId("media-lightbox")).not.toHaveTextContent(pdf.proxyPath);
+  });
+
+  it("houdt voor/na-foto’s afzonderlijk bereikbaar zonder een dubbel openingsbeeld", () => {
+    const before = { ...update.media[0]!, role: "before" as const };
+    const after = { ...update.media[0]!, id: "after-image", role: "after" as const, sortOrder: 1, proxyPath: "/api/media/after-image" };
+    render(<BlueprintTimeline updates={[{ ...update, media: [before, after] }]} projectId={PROJECT_ID} />);
+
+    expect(screen.getByTestId("before-after")).toHaveTextContent(`${before.proxyPath}:${after.proxyPath}`);
+    expect(screen.queryByTestId("timeline-primary-media")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Nafoto bekijken" }));
+    expect(screen.getByTestId("media-lightbox")).toHaveAttribute("data-active-index", "1");
+  });
+
+  it("houdt de globale datum-volgorde-ID chronologie in de nieuwe kaarten intact", () => {
+    const base = { ...update, media: [] };
+    const { container } = render(<BlueprintTimeline updates={[
+      { ...base, id: "later", updateDate: "2026-08-05" },
+      { ...base, id: "c", sortOrder: 2 },
+      { ...base, id: "b", sortOrder: 1 },
+      { ...base, id: "a", sortOrder: 1 },
+    ]} projectId={PROJECT_ID} />);
+    expect([...container.querySelectorAll("[data-update-id]")].map((item) => item.getAttribute("data-update-id")))
+      .toEqual(["a", "b", "c", "later"]);
   });
 });

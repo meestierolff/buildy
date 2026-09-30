@@ -562,7 +562,9 @@ export class PostgresSocialRepository implements SocialRepository {
       await lockActiveActor(transaction, actorId);
       await usersBlocked(transaction, actorId, profileId);
       const existing = await relationship(transaction, actorId, profileId, "follow");
-      await revokeProjectRelationships(transaction, actorId, profileId);
+      // Voluntary user-unfollow leaves independently selected projects intact.
+      // Their existing access checks still remove inaccessible content; owner
+      // removal and blocking continue to revoke project relationships below.
       if (!existing || existing.status === "rejected" || existing.status === "revoked") {
         return { replayed: true, state: "none" };
       }

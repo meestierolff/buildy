@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  BookOpen,
+  ChevronDown,
   Check,
   Hammer,
   Loader2,
@@ -38,7 +38,7 @@ const PROJECT_VISIBILITY_OPTIONS: ReadonlyArray<{
   label: string;
 }> = [
   { value: "private", label: "Alleen ik" },
-  { value: "followers", label: "Mijn profielconnecties" },
+  { value: "followers", label: "Mijn volgers" },
   { value: "unlisted", label: "Alleen via deellink" },
   { value: "public", label: "Openbaar" },
 ];
@@ -48,7 +48,7 @@ function visibilityShareText(visibility: ProjectVisibility): string {
     case "private":
       return "Deze verbouwing is alleen voor de eigenaar zichtbaar.";
     case "followers":
-      return "Bekijk deze verbouwing op Buildy. Hiervoor heb je een actieve profielconnectie met de maker nodig.";
+      return "Bekijk deze verbouwing op Buildy. Hiervoor heb je een geaccepteerde volgrelatie met de maker nodig.";
     case "unlisted":
       return "Bekijk deze verbouwing via een tijdelijke Buildy-deellink.";
     case "public":
@@ -328,144 +328,52 @@ const TripDetail = () => {
 
   return (
     <main className="min-h-screen">
-      <section className="border-b border-border bg-background" aria-labelledby="project-title">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 sm:pt-4 md:pt-6 lg:px-8">
-          {pageCover && (
-            <figure className="relative -mx-4 aspect-[4/3] max-h-[34rem] overflow-hidden bg-muted sm:mx-0 sm:aspect-[16/8] lg:aspect-[16/7]">
-              <ResilientImage
-                src={pageCover}
-                alt={`Omslagfoto van ${project.title}`}
-                fallbackLabel="Omslagfoto niet beschikbaar"
-                className="h-full w-full object-cover"
-              />
+      <section className="border-b border-border bg-card" aria-labelledby="project-title">
+        <div className="mx-auto max-w-3xl sm:px-6 sm:pt-5">
+          {pageCover ? (
+            <figure className="relative aspect-[16/9] max-h-80 overflow-hidden bg-muted sm:rounded-2xl">
+              <ResilientImage src={pageCover} alt={`Omslagfoto van ${project.title}`} fallbackLabel="Omslagfoto niet beschikbaar" className="h-full w-full object-cover" />
             </figure>
-          )}
-
-          <div className={`grid gap-7 py-7 md:py-9 ${
-            pageCover
-              ? "lg:grid-cols-[minmax(0,1fr)_auto]"
-              : "border-t-2 border-accent lg:grid-cols-[minmax(0,1fr)_auto]"
-          }`}>
-            <div className="min-w-0 max-w-3xl">
-              <div className="mb-3 flex flex-wrap items-center gap-3">
-                {project.projectType && (
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">
-                    {project.projectType}
-                  </span>
-                )}
-                <PrivacyBadge
-                  level={privacyLevel}
-                  label={project.visibility === "followers"
-                    ? "Profielconnecties"
-                    : project.visibility === "unlisted"
-                      ? "Deellink"
-                      : undefined}
-                />
-                {isOwner && (
-                  <span className="rounded-full border border-border bg-secondary px-2.5 py-1 text-xs font-semibold" aria-label="Eigenaarsweergave">
-                    Jouw verbouwing
-                  </span>
-                )}
-              </div>
-              <h1 id="project-title" className="break-words font-serif text-4xl leading-[1.04] tracking-tight sm:text-5xl md:text-6xl">
-                {project.title}
-              </h1>
-              <p className="mt-4 text-sm text-muted-foreground">
-                door{" "}
-                <Link
-                  to={PRODUCT_ROUTES.profile(project.owner.slug)}
-                  className="inline-flex min-h-11 items-center font-medium text-foreground underline decoration-border underline-offset-4 hover:decoration-accent"
-                >
-                  {project.owner.displayName}
-                </Link>
-              </p>
-              {project.description && (
-                <p className="mt-4 whitespace-pre-line text-sm leading-relaxed text-muted-foreground sm:text-base">
-                  {project.description}
-                </p>
-              )}
+          ) : null}
+          <div className="px-4 py-5 sm:px-0 sm:py-6">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              {project.projectType ? <span className="text-xs font-semibold text-primary">{project.projectType}</span> : null}
+              <PrivacyBadge level={privacyLevel} label={project.visibility === "followers" ? "Volgers" : project.visibility === "unlisted" ? "Deellink" : undefined} />
+              {isOwner ? <span className="text-xs text-muted-foreground" aria-label="Eigenaarsweergave">Jouw verbouwing</span> : null}
             </div>
-
-            <div className="flex flex-wrap content-start gap-2 lg:max-w-md lg:justify-end">
+            <h1 id="project-title" className="break-words text-[1.75rem] font-bold leading-tight tracking-tight sm:text-4xl">{project.title}</h1>
+            <Link to={PRODUCT_ROUTES.profile(project.owner.slug)} className="mt-2 inline-flex min-h-11 items-center gap-2 text-sm font-medium hover:text-primary">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-secondary text-xs font-bold text-primary" aria-hidden="true">{project.owner.displayName.slice(0, 1).toUpperCase()}</span>
+              {project.owner.displayName}
+            </Link>
+            {project.description ? <p className="mt-1 whitespace-pre-line text-sm leading-6 text-muted-foreground">{project.description}</p> : null}
+            <p className="mt-3 text-xs leading-5 text-muted-foreground">
+              {project.updateCount} {project.updateCount === 1 ? "Bouwmoment" : "Bouwmomenten"}
+              {currentPhase ? ` · ${currentPhase}` : ""}{projectPeriod ? ` · sinds ${projectPeriod}` : ""}
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
               {!isOwner ? (
-                <Button
-                  aria-pressed={isFollowing}
-                  className="min-h-11 gap-2"
-                  disabled={followProject.isPending}
-                  onClick={() => void handleFollow()}
-                  type="button"
-                  variant={isFollowing ? "outline" : "default"}
-                >
-                  {followProject.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                    : isFollowing ? <Check className="h-4 w-4" aria-hidden="true" />
-                      : <Plus className="h-4 w-4" aria-hidden="true" />}
+                <Button aria-pressed={isFollowing} className="min-h-11 flex-1 gap-2" disabled={followProject.isPending} onClick={() => void handleFollow()} type="button" variant={isFollowing ? "outline" : "default"}>
+                  {followProject.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : isFollowing ? <Check className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
                   {isFollowing ? "Niet meer volgen" : "Volg deze verbouwing"}
                 </Button>
               ) : null}
-              {canEditProject ? (
-                <Button
-                  type="button"
-                  onClick={() => setShowAddUpdate(true)}
-                  className="min-h-11 flex-1 gap-2 bg-accent text-accent-foreground hover:bg-accent/90 sm:flex-none"
-                >
-                  <Plus className="h-4 w-4" aria-hidden="true" /> Bouwmoment toevoegen
-                </Button>
-              ) : null}
-              {isOwner || (project.visibility !== "private" && project.visibility !== "unlisted") ? (
-                <Button type="button" variant="outline" onClick={() => void handleShare()} className="min-h-11 gap-2">
-                  <Share2 className="h-4 w-4" aria-hidden="true" /> {isOwner ? "Deel je verbouwing" : "Delen"}
-                </Button>
-              ) : null}
-              {!isOwner ? (
-                <ReportDialog
-                  compact
-                  targetType="project"
-                  targetId={project.id}
-                  targetLabel={`Verbouwing ${project.title}`}
-                />
-              ) : null}
-              {isOwner && (
-                <>
-                  <Select
-                    value={project.visibility}
-                    onValueChange={(value) => void handleVisibilityChange(value as ProjectVisibility)}
-                    disabled={updateProject.isPending}
-                  >
-                    <SelectTrigger className="min-h-11 w-full sm:w-48" aria-label="Zichtbaarheid van de verbouwing">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PROJECT_VISIBILITY_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                      ))}
-                    </SelectContent>
+              {canEditProject ? <Button type="button" onClick={() => setShowAddUpdate(true)} className="min-h-11 flex-1 gap-2 bg-accent text-accent-foreground hover:bg-accent/90"><Plus className="h-4 w-4" aria-hidden="true" /> Bouwmoment toevoegen</Button> : null}
+              {isOwner || (project.visibility !== "private" && project.visibility !== "unlisted") ? <Button type="button" variant="outline" onClick={() => void handleShare()} className="min-h-11 gap-2"><Share2 className="h-4 w-4" aria-hidden="true" /> {isOwner ? "Deel je verbouwing" : "Delen"}</Button> : null}
+              {!isOwner ? <ReportDialog compact targetType="project" targetId={project.id} targetLabel={`Verbouwing ${project.title}`} /> : null}
+            </div>
+            {isOwner ? (
+              <details className="group mt-3 border-t border-border">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-xs font-medium text-muted-foreground [&::-webkit-details-marker]:hidden">Projectinstellingen<ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" aria-hidden="true" /></summary>
+                <div className="space-y-4 pb-2">
+                  <Select value={project.visibility} onValueChange={(value) => void handleVisibilityChange(value as ProjectVisibility)} disabled={updateProject.isPending}>
+                    <SelectTrigger className="min-h-11 w-full text-base sm:text-sm" aria-label="Zichtbaarheid van de verbouwing"><SelectValue /></SelectTrigger>
+                    <SelectContent>{PROJECT_VISIBILITY_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
                   </Select>
-                  {photobooksEnabled ? (
-                    <Button asChild variant="outline" className="min-h-11 gap-2">
-                      <Link to={PRODUCT_ROUTES.projectPhotobook(project.id)}>
-                        <BookOpen className="h-4 w-4" aria-hidden="true" /> Bouwboek
-                      </Link>
-                    </Button>
-                  ) : null}
-                </>
-              )}
-            </div>
-
-            <div className="border-t border-border pt-5 lg:col-span-2 lg:flex lg:items-start lg:justify-between lg:gap-10">
-              <p className="text-sm text-muted-foreground">
-                {project.updateCount} {project.updateCount === 1 ? "Bouwmoment" : "Bouwmomenten"}
-                {currentPhase ? ` · ${currentPhase}` : ""}
-                {projectPeriod ? ` · begonnen in ${projectPeriod}` : ""}
-              </p>
-              <div className="mt-5 w-full max-w-xl lg:mt-0">
-                <ProgressControl
-                  projectId={project.id}
-                  expectedVersion={project.version}
-                  isOwner={canEditProject}
-                  progressPercentage={project.progressPercentage}
-                />
-              </div>
-            </div>
+                  <ProgressControl projectId={project.id} expectedVersion={project.version} isOwner={canEditProject} progressPercentage={project.progressPercentage} />
+                </div>
+              </details>
+            ) : project.progressPercentage > 0 ? <div className="mt-4"><ProgressControl projectId={project.id} expectedVersion={project.version} isOwner={false} progressPercentage={project.progressPercentage} /></div> : null}
           </div>
         </div>
       </section>
@@ -474,13 +382,11 @@ const TripDetail = () => {
         <GrowingBook key={project.id} projectId={project.id} savedUpdateId={savedUpdateId} />
       ) : null}
 
-      <section className="bg-[#FFFDF8]" aria-labelledby="story-title">
-        <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 md:py-12 lg:px-8">
-          <div className="mb-10 border-b border-[#D8CFC1] pb-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#A94E36]">Het Verhaal</p>
-            <h2 id="story-title" className="mt-2 font-serif text-4xl leading-none text-[#26231F] sm:text-5xl">
-              Van eerste foto tot thuis.
-            </h2>
+      <section className="bg-background" aria-labelledby="story-title">
+        <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
+          <div className="mb-6 flex items-center justify-between gap-3">
+            <h2 id="story-title" className="text-xl font-semibold tracking-tight">Het verhaal</h2>
+            <span className="text-xs text-muted-foreground">Van begin tot nu</span>
           </div>
 
           {timelineQuery.isPending ? (
@@ -488,7 +394,7 @@ const TripDetail = () => {
               <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> Bouwmomenten laden…
             </p>
           ) : timelineQuery.isError ? (
-            <div className="border-y border-[#D8CFC1] py-14 text-center" role="alert">
+            <div className="border-y border-border py-14 text-center" role="alert">
               <p className="text-muted-foreground">
                 {isOnline
                   ? "De Bouwmomenten konden niet worden geladen."
@@ -499,9 +405,9 @@ const TripDetail = () => {
               </Button>
             </div>
           ) : updates.length === 0 ? (
-            <div className="border-y border-[#D8CFC1] py-16 text-center text-[#655F57]">
-              <Hammer className="mx-auto mb-4 h-10 w-10 text-[#A94E36]" strokeWidth={1.5} aria-hidden="true" />
-              <p className="font-serif text-3xl text-[#26231F]">Je verbouwverhaal begint hier.</p>
+            <div className="border-y border-border py-16 text-center text-muted-foreground">
+              <Hammer className="mx-auto mb-4 h-10 w-10 text-accent" strokeWidth={1.5} aria-hidden="true" />
+              <p className="text-2xl font-semibold text-foreground">Je verbouwverhaal begint hier.</p>
               <p className="mt-2 text-sm">Eén foto is genoeg om te beginnen.</p>
               {canEditProject ? (
                 <Button

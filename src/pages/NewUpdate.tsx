@@ -43,12 +43,12 @@ const NewUpdate = () => {
   if (!user) return <Navigate to={authPagePath(PRODUCT_ROUTES.createUpdate)} replace />;
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6 md:py-16">
-      <header className="mb-9 border-b border-border pb-7">
+    <main className="mx-auto w-full max-w-3xl px-4 py-7 sm:px-6 sm:py-12">
+      <header className="mb-6">
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Nieuw Bouwmoment</p>
-        <h1 className="max-w-2xl font-serif text-4xl leading-tight md:text-5xl">Aan welke verbouwing werk je?</h1>
+        <h1 className="max-w-2xl font-sans text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">Aan welke verbouwing werk je?</h1>
         <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
-          Kies je verbouwing. Op de pagina opent de Bouwmoment-editor meteen voor je.
+          Kies je project en leg vast wat er vandaag is veranderd.
         </p>
       </header>
 
@@ -88,10 +88,10 @@ const NewUpdate = () => {
               <li key={project.id}>
                 <Link
                   to={PRODUCT_ROUTES.projectUpdateComposer(project.id)}
-                  className="group grid min-h-32 grid-cols-[5.5rem_minmax(0,1fr)_auto] items-center gap-4 border border-border bg-card p-3 outline-none transition-colors hover:border-accent/50 hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  className="group grid min-h-28 grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border border-border bg-card p-3 outline-none transition-colors hover:border-accent/50 hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   aria-label={`Nieuw Bouwmoment toevoegen aan ${project.title}`}
                 >
-                  <span className="flex aspect-square items-center justify-center overflow-hidden bg-secondary text-muted-foreground">
+                  <span className="flex aspect-square items-center justify-center overflow-hidden rounded-xl bg-secondary text-muted-foreground">
                     {project.cover?.proxyPath ? (
                       project.cover.contentType?.startsWith("video/") ? (
                         <ResilientVideo
@@ -115,7 +115,7 @@ const NewUpdate = () => {
                     )}
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate text-base font-semibold">{project.title}</span>
+                    <span className="block break-words text-base font-semibold">{project.title}</span>
                     <span className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       <PrivacyBadge level={project.visibility === "public" ? "public" : "private"} />
                       <span>{project.updateCount === 1 ? "1 Bouwmoment" : `${project.updateCount} Bouwmomenten`}</span>

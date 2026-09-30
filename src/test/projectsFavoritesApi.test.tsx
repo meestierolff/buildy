@@ -99,9 +99,10 @@ describe("landing and project dashboard browser states", () => {
   it("keeps the landing route focused on starting a renovation", () => {
     render(<BrowserRouter><Index /></BrowserRouter>);
 
-    expect(screen.getByRole("heading", { level: 1, name: "Maak van je verbouwing een verhaal om te bewaren." })).toBeInTheDocument();
-    expect(screen.getByText("Van bouwplaats naar blijvend verhaal")).toBeInTheDocument();
-    expect(screen.getByText("Leg foto’s en updates vast, laat vrienden en familie meekijken en maak er na afloop een persoonlijk Bouwboek van.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: /Jouw huis\.\s*Jouw avontuur\.\s*Jouw verhaal\./ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Beleef het samen" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Een boek dat met je meegroeit." })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Start je verbouwverhaal" })).toHaveAttribute("href", "/auth");
     expect(screen.queryByText("Veilige keuken")).not.toBeInTheDocument();
     expect(vi.mocked(useProjectDashboard)).toHaveBeenCalledWith(false);
   });
@@ -114,20 +115,20 @@ describe("landing and project dashboard browser states", () => {
     window.history.replaceState({}, "", "/projecten");
     render(<BrowserRouter><Index /></BrowserRouter>);
 
-    expect(screen.getByRole("heading", { level: 1, name: "Jouw verhalen" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: /maak van je verbouwing/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Jouw projecten" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /jouw avontuur/i })).not.toBeInTheDocument();
     expect(vi.mocked(useProjectDashboard)).toHaveBeenCalledWith(true);
   });
 
-  it("returns signed-in visitors to their stories while preserving their first-photo intent", async () => {
+  it("retains existing landing intent parameters on the authenticated projects route", async () => {
     vi.mocked(useAuth).mockReturnValue(auth(true));
     window.history.replaceState({}, "", "/?intent=landing-photo");
     render(<BrowserRouter><Index /></BrowserRouter>);
 
     await waitFor(() => expect(window.location.pathname).toBe("/projecten"));
     expect(window.location.search).toBe("?intent=landing-photo");
-    expect(screen.getByRole("heading", { name: "Jouw verhalen" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Kijk mee" })).toHaveAttribute("href", "/volgend");
+    expect(screen.getByRole("heading", { name: "Jouw projecten" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Liever eerst bij anderen meekijken" })).toHaveAttribute("href", "/connecties");
   });
 });
 
@@ -164,7 +165,7 @@ describe("typed following feed browser states", () => {
     const feed: FollowingFeed = {
       projects: [project],
       activity: [{
-        project: { id: PROJECT_ID, title: project.title },
+        project: { id: PROJECT_ID, title: project.title, owner: project.owner, followSource: "user" },
         update: {
           id: UPDATE_ID,
           projectId: PROJECT_ID,
@@ -194,6 +195,7 @@ describe("typed following feed browser states", () => {
     render(<BrowserRouter><Favorites /></BrowserRouter>);
     expect(screen.getByText("Werkblad geplaatst")).toBeInTheDocument();
     expect(screen.getByText("Veilige keuken")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Profiel van Noor" })).toHaveAttribute("href", "/profiel/noor");
     expect(screen.getByText("Mijlpaal")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Plaats reactie 👍, 3" }));
     await waitFor(() => expect(react).toHaveBeenCalledWith({
@@ -216,7 +218,7 @@ describe("typed following feed browser states", () => {
       refetch: vi.fn(),
     } as unknown as ReturnType<typeof useFollowingFeed>);
     render(<BrowserRouter><Favorites /></BrowserRouter>);
-    expect(screen.getByText("Je feed kon niet worden geladen")).toBeInTheDocument();
+    expect(screen.getByText("Je tijdlijn kon niet worden geladen")).toBeInTheDocument();
     expect(screen.queryByText("Veilige keuken")).not.toBeInTheDocument();
   });
 });

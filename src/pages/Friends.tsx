@@ -16,7 +16,7 @@ import type {
   SocialConnectionView,
   SocialProfile,
 } from "../../shared/contracts/social";
-import EmptyState from "@/components/EmptyState";
+import AsyncState from "@/components/app/AsyncState";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +33,7 @@ import {
 } from "@/hooks/useSocial";
 import { authPagePath } from "@/lib/authClient";
 import { PRODUCT_ROUTES } from "@/lib/productNavigation";
-import { Link } from "@/lib/router";
+import { Link, useSearchParams } from "@/lib/router";
 
 type FriendsTab = "search" | SocialConnectionView;
 type ConnectionPerson = Pick<
@@ -54,31 +54,31 @@ const CONNECTION_VIEWS: ReadonlyArray<{
   value: SocialConnectionView;
 }> = [
   {
-    emptyDescription: "Zoek een bouwer om een profielconnectie te maken.",
-    emptyTitle: "Nog geen profielconnecties",
-    label: "Mijn profielconnecties",
+    emptyDescription: "Zoek vrienden, familie of andere bouwers om hun verhaal te volgen.",
+    emptyTitle: "Je volgt nog geen bouwers",
+    label: "Volgend",
     value: "following",
   },
   {
-    emptyDescription: "Hier staan mensen die met jouw profiel verbonden zijn.",
-    emptyTitle: "Nog niemand verbonden met je profiel",
-    label: "Met mijn profiel",
+    emptyDescription: "De mensen die jouw bouwverhaal volgen verschijnen hier.",
+    emptyTitle: "Je eerste volger komt nog",
+    label: "Volgers",
     value: "followers",
   },
   {
     emptyDescription: "Nieuwe verzoeken voor jouw privéprofiel verschijnen hier.",
     emptyTitle: "Geen inkomende verzoeken",
-    label: "Inkomend",
+    label: "Verzoeken",
     value: "incoming",
   },
   {
     emptyDescription: "Verzoeken aan privéprofielen die nog wachten verschijnen hier.",
     emptyTitle: "Geen uitgaande verzoeken",
-    label: "Uitgaand",
+    label: "Verstuurd",
     value: "outgoing",
   },
   {
-    emptyDescription: "Geblokkeerde accounts verschijnen hier en kunnen altijd worden vrijgegeven.",
+    emptyDescription: "Geblokkeerde bouwers verschijnen hier. Je kunt ze hier ook weer deblokkeren.",
     emptyTitle: "Niemand geblokkeerd",
     label: "Geblokkeerd",
     value: "blocked",
@@ -98,12 +98,16 @@ const Friends = () => {
   const { user } = useAuth();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [activeTab, setActiveTab] = useState<FriendsTab>("search");
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<FriendsTab>(() => {
+    const view = searchParams.get("view");
+    return CONNECTION_VIEWS.some((item) => item.value === view) ? view as SocialConnectionView : "search";
+  });
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const profilesQuery = useInfiniteSocialProfiles(
     debouncedQuery,
-    activeTab === "search" && (debouncedQuery.length === 0 || debouncedQuery.length >= 2),
+    activeTab === "search" && debouncedQuery.length >= 2,
   );
   const followingQuery = useInfiniteSocialConnections("following", Boolean(user));
   const followersQuery = useInfiniteSocialConnections("followers", Boolean(user));
@@ -117,8 +121,8 @@ const Friends = () => {
   const blockMutation = useProfileBlockMutation();
 
   usePageMeta({
-    title: "Connecties — Buildy",
-    description: "Zoek bouwers en beheer je profielconnecties, verzoeken en blokkades.",
+    title: "Bouwers — Buildy",
+    description: "Volg bouwers, bekijk je volgers en beheer volgverzoeken.",
     path: "/connecties",
   });
 
@@ -163,7 +167,7 @@ const Friends = () => {
 
   const toggleFollow = async (profile: ConnectionPerson) => {
     if (!user) {
-      toast.error("Log in om profielen te verbinden");
+      toast.error("Log in om bouwers te volgen");
       return;
     }
     const removing = profile.viewerFollowStatus === "following" || profile.viewerFollowStatus === "pending";
@@ -177,14 +181,14 @@ const Friends = () => {
           removing
             ? profile.viewerFollowStatus === "pending"
               ? "Verzoek ingetrokken"
-              : "Profielverbinding verwijderd"
+              : "Bouwer ontvolgd"
             : result.state === "pending"
-              ? "Connectieverzoek verstuurd"
-              : "Profiel verbonden",
+              ? "Volgverzoek verstuurd"
+              : "Je volgt deze bouwer",
         );
       });
     } catch {
-      toast.error("Profielverbinding bijwerken mislukt");
+      toast.error("Volgen bijwerken mislukt");
     }
   };
 
@@ -192,10 +196,10 @@ const Friends = () => {
     try {
       await runFor(profile.id, async () => {
         await removeFollowerMutation.mutateAsync({ followerId: profile.id });
-        toast.success("Profielconnectie verwijderd");
+        toast.success("Volger verwijderd");
       });
     } catch {
-      toast.error("Profielconnectie verwijderen mislukt");
+      toast.error("Volger verwijderen mislukt");
     }
   };
 
@@ -207,7 +211,7 @@ const Friends = () => {
           decision,
           kind: "profile",
         });
-        toast.success(decision === "accept" ? "Connectieverzoek geaccepteerd" : "Connectieverzoek afgewezen");
+        toast.success(decision === "accept" ? "Volgverzoek geaccepteerd" : "Volgverzoek afgewezen");
       });
     } catch {
       toast.error("Verzoek verwerken mislukt");
@@ -218,10 +222,10 @@ const Friends = () => {
     try {
       await runFor(profile.id, async () => {
         await blockMutation.mutateAsync({ action: "unblock", profileId: profile.id });
-        toast.success("Account vrijgegeven");
+        toast.success("Bouwer gedeblokkeerd");
       });
     } catch {
-      toast.error("Account vrijgeven mislukt");
+      toast.error("Deblokkeren mislukt");
     }
   };
 
@@ -229,13 +233,13 @@ const Friends = () => {
     const loading = busyId === profile.id;
     if (context === "incoming") {
       return (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             type="button"
             size="sm"
             onClick={() => decideRequest(profile, "accept")}
             disabled={loading}
-            className="rounded-full text-[10px] font-bold uppercase tracking-widest"
+            className="min-h-11 rounded-full px-4 text-sm font-medium"
           >
             <Check className="mr-1 h-3 w-3" aria-hidden="true" /> Accepteren
           </Button>
@@ -245,7 +249,7 @@ const Friends = () => {
             variant="outline"
             onClick={() => decideRequest(profile, "reject")}
             disabled={loading}
-            className="rounded-full text-[10px] font-bold uppercase tracking-widest"
+            className="min-h-11 rounded-full px-4 text-sm font-medium"
           >
             <X className="mr-1 h-3 w-3" aria-hidden="true" /> Afwijzen
           </Button>
@@ -260,7 +264,7 @@ const Friends = () => {
           variant="outline"
           onClick={() => removeFollower(profile)}
           disabled={loading}
-          className="rounded-full text-[10px] font-bold uppercase tracking-widest"
+          className="min-h-11 rounded-full px-4 text-sm font-medium"
         >
           <UserMinus className="mr-1 h-3 w-3" aria-hidden="true" /> Verwijderen
         </Button>
@@ -274,9 +278,9 @@ const Friends = () => {
           variant="outline"
           onClick={() => unblock(profile)}
           disabled={loading}
-          className="rounded-full text-[10px] font-bold uppercase tracking-widest"
+          className="min-h-11 rounded-full px-4 text-sm font-medium"
         >
-          Vrijgeven
+          Deblokkeren
         </Button>
       );
     }
@@ -291,7 +295,7 @@ const Friends = () => {
         variant={removing || isFollowing ? "outline" : "default"}
         onClick={() => toggleFollow(profile)}
         disabled={loading}
-        className="rounded-full text-[10px] font-bold uppercase tracking-widest"
+        className="min-h-11 rounded-full px-4 text-sm font-medium"
       >
         {loading ? (
           <Loader2 className="mr-1 h-3 w-3 animate-spin" aria-hidden="true" />
@@ -301,10 +305,10 @@ const Friends = () => {
           <UserPlus className="mr-1 h-3 w-3" aria-hidden="true" />
         )}
         {context === "following" || isFollowing
-          ? "Verbinding verwijderen"
+          ? "Ontvolgen"
           : context === "outgoing" || isPending
             ? "Intrekken"
-            : "Profiel verbinden"}
+            : "Volgen"}
       </Button>
     );
   };
@@ -321,26 +325,26 @@ const Friends = () => {
       </div>
     );
     return (
-      <div className="flex flex-col gap-4 border-b border-border py-5 last:border-b-0 sm:flex-row sm:items-center">
-        <div className="flex min-w-0 flex-1 items-center gap-4">
-          <Avatar className="h-11 w-11 shrink-0 border border-border">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-4 last:border-b-0 sm:px-5">
+        <div className="flex min-w-[10rem] flex-1 items-center gap-3">
+          <Avatar className="h-12 w-12 shrink-0 border border-border">
             {profile.avatar && <AvatarImage src={profile.avatar.proxyPath} alt="" />}
             <AvatarFallback>{initials(profile.displayName)}</AvatarFallback>
           </Avatar>
           {profileIsAccessible ? (
-            <Link to={PRODUCT_ROUTES.profile(profile.slug)} className="min-w-0 hover:underline">
+            <Link to={PRODUCT_ROUTES.profile(profile.slug)} className="flex min-h-11 min-w-0 items-center hover:underline">
               {identity}
             </Link>
           ) : identity}
         </div>
-        <div className="flex shrink-0 pl-[3.75rem] sm:pl-0">{actionsFor(profile, context)}</div>
+        <div className="flex shrink-0">{actionsFor(profile, context)}</div>
       </div>
     );
   };
 
   const renderSearch = () => {
-    if (debouncedQuery.length === 1) {
-      return <p className="py-12 text-center text-sm text-muted-foreground">Typ minimaal twee tekens om te zoeken.</p>;
+    if (query.trim().length < 2 || debouncedQuery.length < 2) {
+      return <AsyncState status="empty" icon={<Search className="h-5 w-5" aria-hidden="true" />} title="Wie bouwt er mee?" description="Zoek op naam of gebruikersnaam. Typ minimaal twee tekens om een bouwer te vinden." />;
     }
     if (profilesQuery.isPending) {
       return (
@@ -353,7 +357,7 @@ const Friends = () => {
       return (
         <div className="space-y-3 py-12 text-center" role="alert">
           <p className="text-sm text-muted-foreground">Bouwers konden niet worden geladen.</p>
-          <Button type="button" variant="outline" size="sm" onClick={() => profilesQuery.refetch()}>
+          <Button type="button" variant="outline" size="sm" className="min-h-11" onClick={() => profilesQuery.refetch()}>
             Opnieuw proberen
           </Button>
         </div>
@@ -361,25 +365,21 @@ const Friends = () => {
     }
     if (profiles.length === 0) {
       return (
-        <EmptyState
-          icon={Search}
-          title={debouncedQuery ? `Geen resultaten voor “${debouncedQuery}”` : "Nog geen openbare bouwers"}
-          description={debouncedQuery ? "Probeer een andere naam of gebruikersnaam." : "Openbare profielen verschijnen hier zodra ze beschikbaar zijn."}
-        />
+        <AsyncState status="empty" icon={<Search className="h-5 w-5" aria-hidden="true" />} title={`Geen bouwers gevonden voor “${debouncedQuery}”`} description="Controleer de naam of probeer een andere gebruikersnaam." />
       );
     }
-    return <div>{profiles.map((profile) => <ProfileRow key={profile.id} profile={profile} context="search" />)}</div>;
+    return <div className="overflow-hidden rounded-2xl border border-border bg-card">{profiles.map((profile) => <ProfileRow key={profile.id} profile={profile} context="search" />)}</div>;
   };
 
   const renderConnections = () => {
     if (!user) {
       return (
-        <EmptyState
-          icon={Users}
-          title="Log in voor je connecties"
-          description="Je profielconnecties, verzoeken en blokkades zijn alleen voor jou zichtbaar."
+        <AsyncState status="empty"
+          icon={<Users className="h-5 w-5" aria-hidden="true" />}
+          title="Samen je verbouwing beleven"
+          description="Log in om bouwers te volgen en je volgverzoeken te bekijken."
           action={(
-            <Button asChild className="rounded-full">
+            <Button asChild className="min-h-11 rounded-full">
               <Link to={authPagePath("/connecties")}>Inloggen</Link>
             </Button>
           )}
@@ -391,7 +391,7 @@ const Friends = () => {
     if (activeConnectionQuery.isPending) {
       return (
         <p className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground" role="status">
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Connecties laden…
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Bouwers laden…
         </p>
       );
     }
@@ -399,16 +399,16 @@ const Friends = () => {
       return (
         <div className="space-y-3 py-12 text-center" role="alert">
           <p className="text-sm text-muted-foreground">Deze lijst kon niet worden geladen.</p>
-          <Button type="button" variant="outline" size="sm" onClick={() => activeConnectionQuery.refetch()}>
+          <Button type="button" variant="outline" size="sm" className="min-h-11" onClick={() => activeConnectionQuery.refetch()}>
             Opnieuw proberen
           </Button>
         </div>
       );
     }
     if (activeConnections.length === 0) {
-      return <EmptyState icon={Users} title={config.emptyTitle} description={config.emptyDescription} />;
+      return <AsyncState status="empty" icon={<Users className="h-5 w-5" aria-hidden="true" />} title={config.emptyTitle} description={config.emptyDescription} action={activeTab === "following" ? <Button className="min-h-11" onClick={() => setActiveTab("search")}>Zoek een bouwer</Button> : undefined} />;
     }
-    return <div>{activeConnections.map((profile) => <ProfileRow key={profile.id} profile={profile} context={activeTab} />)}</div>;
+    return <div className="overflow-hidden rounded-2xl border border-border bg-card">{activeConnections.map((profile) => <ProfileRow key={profile.id} profile={profile} context={activeTab} />)}</div>;
   };
 
   const currentHasNextPage = activeTab === "search"
@@ -421,68 +421,64 @@ const Friends = () => {
     ? profilesQuery.fetchNextPage()
     : activeConnectionQuery?.fetchNextPage();
 
+  const requestView = ["incoming", "outgoing", "blocked"].includes(activeTab);
+  const incomingTotal = incomingQuery.data?.pages[0]?.total;
+  const activeTotal = activeConnectionQuery?.data?.pages[0]?.total;
+  const primaryTabs = [
+    { value: "search", label: "Zoeken" },
+    { value: "following", label: "Volgend" },
+    { value: "followers", label: "Volgers" },
+    { value: "incoming", label: "Verzoeken" },
+  ] as const;
+
   return (
     <main className="min-h-screen bg-background">
-      <div className="mx-auto max-w-4xl px-5 py-12 sm:px-8 md:py-20">
-        <div className="mb-10 max-w-xl">
-          <p className="eyebrow mb-3">Connecties</p>
-          <h1 className="font-serif text-4xl italic leading-tight md:text-5xl">Bouw samen, op jouw voorwaarden.</h1>
-          <p className="mt-4 text-sm font-light text-muted-foreground">
-            Beheer je profielconnecties, toegangsverzoeken en blokkades. Volg een specifieke verbouwing op de verhaalpagina voor nieuwe Bouwmomenten in Volgend.
-          </p>
-        </div>
+      <div className="mx-auto max-w-3xl px-4 pb-12 pt-7 sm:px-6 sm:pt-10">
+        <header className="mb-6">
+          <h1 className="text-3xl font-bold tracking-tight">Bouwers</h1>
+          <p className="mt-2 max-w-lg text-sm leading-6 text-muted-foreground">Volg de mensen achter de verbouwing.</p>
+        </header>
 
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as FriendsTab)}>
-          <TabsList className="mb-8 flex h-auto w-full justify-start gap-6 overflow-x-auto rounded-none border-b border-border bg-transparent p-0">
-            <TabsTrigger
-              value="search"
-              className="shrink-0 rounded-none border-b-2 border-transparent px-0 pb-3 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
-            >
-              Zoeken
-            </TabsTrigger>
-            {user && CONNECTION_VIEWS.map((view) => {
-              const total = connectionQueries[view.value].data?.pages[0]?.total;
-              return (
-                <TabsTrigger
-                  key={view.value}
-                  value={view.value}
-                  className="shrink-0 rounded-none border-b-2 border-transparent px-0 pb-3 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
-                >
-                  {view.label} {total === undefined ? "" : `(${total})`}
-                </TabsTrigger>
-              );
-            })}
+        <Tabs value={requestView ? "incoming" : activeTab} onValueChange={(value) => setActiveTab(value as FriendsTab)}>
+          <TabsList className="mb-6 grid h-auto w-full grid-cols-4 rounded-xl bg-muted p-1">
+            {primaryTabs.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value} className="relative min-h-11 rounded-lg px-1 text-xs font-medium data-[state=active]:bg-card data-[state=active]:text-primary data-[state=active]:shadow-sm sm:px-3 sm:text-sm">
+                {tab.label}
+                {tab.value === "incoming" && incomingTotal ? <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-semibold text-accent-foreground">{incomingTotal}</span> : null}
+              </TabsTrigger>
+            ))}
           </TabsList>
 
-          {activeTab === "search" && (
-            <div className="relative mb-8">
-              <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-              <Input
-                aria-label="Zoek bouwers op naam of gebruikersnaam"
-                placeholder="Zoek op naam of @gebruikersnaam…"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                className="h-12 rounded-full border-border pl-11"
-              />
+          {requestView && user ? (
+            <div className="mb-5 flex gap-2 overflow-x-auto pb-1" aria-label="Verzoeken en blokkades">
+              {CONNECTION_VIEWS.filter((view) => ["incoming", "outgoing", "blocked"].includes(view.value)).map((view) => {
+                const total = connectionQueries[view.value].data?.pages[0]?.total;
+                return <Button key={view.value} type="button" variant={activeTab === view.value ? "secondary" : "ghost"} className="min-h-11 shrink-0 rounded-full px-4 text-xs" aria-pressed={activeTab === view.value} onClick={() => setActiveTab(view.value)}>{view.value === "incoming" ? "Ontvangen" : view.label}{total === undefined ? "" : ` · ${total}`}</Button>;
+              })}
             </div>
-          )}
+          ) : null}
 
+          {activeTab === "search" ? (
+            <div className="relative mb-5">
+              <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Input aria-label="Zoek bouwers op naam of gebruikersnaam" placeholder="Naam of gebruikersnaam" value={query} onChange={(event) => setQuery(event.target.value)} className="h-12 rounded-xl border-border bg-card pl-12 pr-4 text-base" autoComplete="off" maxLength={80} />
+            </div>
+          ) : null}
+
+          {activeTab === "following" || activeTab === "followers" ? (
+            <p className="mb-4 text-xs text-muted-foreground">
+              {activeTotal === undefined ? "" : `${activeTotal} `}
+              {activeTab === "following"
+                ? activeTotal === 1 ? "bouwer die je volgt" : "bouwers die je volgt"
+                : activeTotal === 1 ? "persoon volgt jouw verhaal" : "mensen volgen jouw verhaal"}
+            </p>
+          ) : null}
           {activeTab === "search" ? renderSearch() : renderConnections()}
         </Tabs>
 
-        {currentHasNextPage && (
-          <div className="mt-10 flex justify-center">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={fetchNextPage}
-              disabled={currentIsFetchingNextPage}
-              className="rounded-full text-[11px] font-bold uppercase tracking-widest"
-            >
-              {currentIsFetchingNextPage ? "Meer laden…" : "Meer laden"}
-            </Button>
-          </div>
-        )}
+        {currentHasNextPage && (activeTab !== "search" || (query.trim().length >= 2 && debouncedQuery.length >= 2)) ? (
+          <div className="mt-6 flex justify-center"><Button type="button" variant="outline" className="min-h-11 rounded-full" onClick={() => void fetchNextPage()} disabled={currentIsFetchingNextPage}>{currentIsFetchingNextPage ? "Meer laden…" : "Meer bouwers"}</Button></div>
+        ) : null}
       </div>
     </main>
   );

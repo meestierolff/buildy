@@ -101,7 +101,7 @@ const AccountSettings = () => {
   usePageMeta({
     title: "Account & instellingen — Buildy",
     description: "Beheer je profiel, privacy en account.",
-    path: "/profiel",
+    path: "/account",
     noIndex: true,
   });
   const { user, loading: authLoading, signOut } = useAuth();
@@ -141,7 +141,7 @@ const AccountSettings = () => {
     );
   }
 
-  if (!user) return <Navigate to="/auth?next=/profiel" replace />;
+  if (!user) return <Navigate to="/auth?next=/account" replace />;
 
   const setField = <Key extends keyof ProfileDraft>(key: Key, value: ProfileDraft[Key]) => {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -254,11 +254,11 @@ const AccountSettings = () => {
   };
 
   return (
-    <main className="mx-auto max-w-3xl space-y-10 px-6 py-12 md:py-16">
+    <main className="mx-auto max-w-3xl space-y-6 px-4 py-7 sm:px-6 sm:py-10">
       <header className="flex flex-col gap-5 border-b border-border pb-8 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="eyebrow mb-2">Profiel</p>
-          <h1 className="font-serif text-4xl leading-tight">Jouw Buildy</h1>
+          <Link to="/profiel" className="mb-2 inline-flex min-h-11 items-center text-sm text-muted-foreground hover:text-foreground">← Mijn profiel</Link>
+          <h1 className="text-3xl font-bold tracking-tight">Instellingen</h1>
           <p className="mt-3 text-sm text-muted-foreground">
             Beheer je profiel, privacy en account.
           </p>
@@ -272,7 +272,7 @@ const AccountSettings = () => {
         <div className="mb-6 flex items-start gap-4">
           <Avatar className="h-14 w-14 border border-border">
             <AvatarImage src={profile?.avatar?.proxyPath ?? ""} alt="" />
-            <AvatarFallback className="font-serif text-xl italic">
+            <AvatarFallback className="bg-secondary text-xl font-semibold text-primary">
               {profile?.displayName[0]?.toUpperCase() ?? "?"}
             </AvatarFallback>
           </Avatar>
@@ -280,10 +280,10 @@ const AccountSettings = () => {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 id="profile-settings-title" className="text-base font-semibold">Profiel en privacy</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Deze gegevens komen uit je afgeschermde Buildy-profiel.</p>
+                <p className="mt-1 text-sm text-muted-foreground">Kies hoe andere bouwers je zien.</p>
               </div>
               {profile && (
-                <Button asChild type="button" variant="outline" size="sm">
+                <Button asChild type="button" variant="outline" size="sm" className="min-h-11">
                   <Link to={`/profiel/${profile.slug}`}>Bekijk profiel</Link>
                 </Button>
               )}
@@ -298,7 +298,7 @@ const AccountSettings = () => {
         ) : profileQuery.isError || !profile ? (
           <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
             <p className="text-sm text-muted-foreground" role="alert">Je profiel kon niet veilig worden geladen.</p>
-            <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => profileQuery.refetch()}>
+            <Button type="button" variant="outline" size="sm" className="mt-3 min-h-11" onClick={() => profileQuery.refetch()}>
               Opnieuw proberen
             </Button>
           </div>
@@ -309,6 +309,7 @@ const AccountSettings = () => {
                 <Label htmlFor="profile-display-name">Weergavenaam</Label>
                 <Input
                   id="profile-display-name"
+                  className="min-h-11"
                   value={draft.displayName}
                   onChange={(event) => setField("displayName", event.target.value)}
                   minLength={1}
@@ -323,7 +324,7 @@ const AccountSettings = () => {
                   <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">@</span>
                   <Input
                     id="profile-slug"
-                    className="pl-7"
+                    className="min-h-11 pl-7"
                     value={draft.slug}
                     onChange={(event) => setField("slug", event.target.value)}
                     minLength={1}
@@ -355,6 +356,7 @@ const AccountSettings = () => {
               </Label>
               <Input
                 id="profile-location"
+                className="min-h-11"
                 value={draft.location}
                 onChange={(event) => setField("location", event.target.value)}
                 maxLength={120}
@@ -369,7 +371,7 @@ const AccountSettings = () => {
                   <Lock className="h-3.5 w-3.5" aria-hidden="true" /> Privéprofiel
                 </Label>
                 <p className="mt-1 max-w-lg text-xs leading-relaxed text-muted-foreground">
-                  Alleen geaccepteerde volgers kunnen je profielgegevens bekijken. Blokkades blijven altijd leidend.
+                  Je keurt volgverzoeken eerst goed. Kies per verbouwing wie mag meekijken.
                 </p>
               </div>
               <Switch
@@ -380,7 +382,7 @@ const AccountSettings = () => {
               />
             </div>
 
-            <Button type="submit" disabled={profileMutation.isPending} className="gap-2">
+            <Button type="submit" disabled={profileMutation.isPending} className="min-h-11 gap-2">
               {profileMutation.isPending
                 ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                 : <Save className="h-4 w-4" aria-hidden="true" />}
@@ -433,7 +435,7 @@ const AccountSettings = () => {
                 ? sessionsQuery.error.message
                 : "Je sessies konden niet worden geladen."}
             </p>
-            <Button className="mt-3" type="button" size="sm" variant="outline" onClick={() => sessionsQuery.refetch()}>
+            <Button className="mt-3 min-h-11" type="button" size="sm" variant="outline" onClick={() => sessionsQuery.refetch()}>
               Opnieuw proberen
             </Button>
           </div>
@@ -459,6 +461,7 @@ const AccountSettings = () => {
                   type="button"
                   size="sm"
                   variant="outline"
+                  className="min-h-11"
                   disabled={revokeSessionMutation.isPending}
                   onClick={() => revokeSession(session.id, session.isCurrent)}
                 >
@@ -522,7 +525,7 @@ const AccountSettings = () => {
                   </p>
                 </div>
                 {item.downloadPath && (
-                  <Button asChild type="button" size="sm" variant="outline" className="gap-2">
+                  <Button asChild type="button" size="sm" variant="outline" className="min-h-11 gap-2">
                     <a href={item.downloadPath} download>
                       <Download className="h-4 w-4" aria-hidden="true" /> Download
                     </a>

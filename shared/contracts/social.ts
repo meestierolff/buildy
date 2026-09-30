@@ -8,6 +8,7 @@ export const socialRoutes = {
   connections: "/api/social/connections",
   profiles: "/api/social/profiles",
   profile: "/api/social/profiles/:profileId",
+  profileProjects: "/api/social/profiles/:profileId/projects",
   profileFollow: "/api/social/profiles/:profileId/follow",
   profileBlock: "/api/social/profiles/:profileId/block",
   followRequestAccept: "/api/social/follow-requests/:requesterId/accept",

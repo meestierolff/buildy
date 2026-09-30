@@ -13,6 +13,7 @@ import {
   type SocialProfilePage,
 } from "../../shared/contracts/social";
 import { apiRequest } from "./apiClient";
+import { dashboardResponseSchema, projectPageQuerySchema, type ProjectPage } from "../../shared/contracts/projects";
 
 const uuidSchema = z.string().uuid();
 
@@ -56,6 +57,17 @@ export async function getSocialProfile(
     socialProfileResponseSchema,
     { signal },
   )).data;
+}
+
+export async function getProfileProjects(
+  profileId: string,
+  input: { cursor?: string; limit?: number } = {},
+  signal?: AbortSignal,
+): Promise<ProjectPage> {
+  const parsed = projectPageQuerySchema.parse(input);
+  const query = new URLSearchParams({ limit: String(parsed.limit) });
+  if (parsed.cursor) query.set("cursor", parsed.cursor);
+  return (await apiRequest(`${profilePath(profileId, "/projects")}?${query}`, dashboardResponseSchema, { signal })).data;
 }
 
 export async function searchSocialProfiles(

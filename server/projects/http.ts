@@ -33,6 +33,7 @@ export interface ProjectHttpService {
   }>;
   dashboard(actorId: string, query: unknown): Promise<ProjectPage>;
   following(actor: AuthenticatedProjectActor, query: unknown): Promise<FollowingFeed>;
+  profileProjects(viewer: ProjectActor, ownerId: string, query: unknown): Promise<ProjectPage>;
   setProjectFollow(actor: AuthenticatedProjectActor, projectId: string, following: boolean): Promise<ProjectFollowMutationResult>;
   overview(viewer: ProjectActor, projectId: string): Promise<ProjectOverview>;
   timeline(viewer: ProjectActor, projectId: string, query: unknown): Promise<TimelinePage>;
@@ -148,6 +149,12 @@ export function createProjectHttpHandler(dependencies: ProjectHttpDependencies) 
       if (request.method === "GET" && pathname === "/api/following") {
         return jsonSuccess(
           await dependencies.service.following(authenticatedActor(), queryInput(url)),
+          requestId,
+        );
+      }
+      if (request.method === "GET" && parameters.profileId && pathname.endsWith("/projects")) {
+        return jsonSuccess(
+          await dependencies.service.profileProjects(actor, validatedId(parameters.profileId, "project"), queryInput(url)),
           requestId,
         );
       }

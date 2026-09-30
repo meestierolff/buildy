@@ -33,7 +33,7 @@ const ReactionBar = ({ projectId, updateId, canReact = true }: ReactionBarProps)
       toast.error("Log in om te reageren");
       return;
     }
-    if (!projectId || mutation.isPending) return;
+    if (!canReact || !projectId || mutation.isPending) return;
 
     try {
       await mutation.mutateAsync({
@@ -106,9 +106,10 @@ const ReactionBar = ({ projectId, updateId, canReact = true }: ReactionBarProps)
           <button
             type="button"
             aria-label="Reactie kiezen"
-            className="h-11 w-11 rounded-full border border-dashed border-border text-muted-foreground hover:text-accent hover:border-accent flex items-center justify-center"
+            className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-full px-2 text-muted-foreground hover:bg-secondary hover:text-primary"
           >
             <Smile className="h-5 w-5" aria-hidden="true" />
+            {items.length === 0 ? <span className="text-xs font-medium">Reageren</span> : null}
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-2" align="start">

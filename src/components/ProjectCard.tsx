@@ -22,7 +22,7 @@ interface ProjectCardProps {
 }
 
 const looksLikeVideo = (url: string | null | undefined, mediaType: string | null | undefined) =>
-  mediaType === "video" || /\.(mp4|mov|webm)(\?|#|$)/i.test(url ?? "");
+  (mediaType === "video" || mediaType?.startsWith("video/")) || /\.(mp4|mov|webm)(\?|#|$)/i.test(url ?? "");
 
 const ProjectCard = ({
   id,
@@ -43,7 +43,7 @@ const ProjectCard = ({
     ? ""
     : ` ${{
         private: "Alleen voor de eigenaar.",
-        followers: "Zichtbaar voor profielvolgers.",
+        followers: "Zichtbaar voor toegelaten profielvolgers.",
         unlisted: "Alleen zichtbaar met een actieve tijdelijke deellink.",
         public: "Openbare verbouwing.",
       }[visibility]}`;
@@ -56,15 +56,12 @@ const ProjectCard = ({
   return (
     <Link
       to={PRODUCT_ROUTES.project(id)}
-      className="group block rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background"
+      className="group block h-full rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background"
       aria-label={`${title} bekijken.${visibilityLabel}`}
     >
-      <article>
+      <article className="h-full overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-shadow group-hover:shadow-md motion-reduce:transition-none">
         <div
-          className={cn(
-            "relative mb-4 overflow-hidden rounded-sm border border-border bg-muted",
-            variant === "feature" ? "aspect-[16/10]" : "aspect-[4/5]",
-          )}
+          className="relative aspect-[4/3] overflow-hidden bg-muted"
         >
           {coverUrl ? (
             videoCover ? (
@@ -87,9 +84,9 @@ const ProjectCard = ({
               />
             )
           ) : (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-secondary px-6 text-center text-muted-foreground">
+            <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-secondary/70 px-6 text-center text-muted-foreground">
               <PlaceholderIcon className="h-10 w-10" strokeWidth={1.25} aria-hidden="true" />
-              <span className="font-sans text-xs font-semibold uppercase tracking-[0.16em]">Foto volgt</span>
+              <span className="font-sans text-sm font-medium">Foto volgt</span>
             </div>
           )}
 
@@ -97,49 +94,33 @@ const ProjectCard = ({
             <PrivacyBadge
               level={privacyLevel}
               label={visibility === "followers"
-                ? "Mijn volgers"
+                ? "Profielvolgers"
                 : visibility === "unlisted"
                   ? "Deellink"
                   : undefined}
-              className="absolute left-3 top-3 bg-background/95 shadow-sm"
+              className="absolute left-3 top-3 border-white/60 bg-card/95 shadow-sm"
             />
           ) : null}
 
-          <div className="absolute inset-x-0 bottom-0 h-1 bg-background/75" aria-hidden="true">
-            <div className="h-full bg-accent" style={{ width: `${progress}%` }} />
-          </div>
         </div>
 
-        <div className="border-t border-border pt-3">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              {projectType ? (
-                <p className="mb-1 font-sans text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  {projectType}
-                </p>
-              ) : null}
-              <h3 className={cn("font-serif leading-[1.05] text-foreground", variant === "feature" ? "text-3xl md:text-4xl" : "text-2xl")}>
-                {title}
-              </h3>
-            </div>
-            <span className="shrink-0 pt-0.5 font-sans text-xs font-semibold tabular-nums text-foreground">
-              {progress}%
-            </span>
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 font-sans text-xs leading-5 text-muted-foreground">
-            <span>{profileName ? `Door ${profileName}` : "Buildy-verbouwing"}</span>
+        <div className="p-4 sm:p-5">
+          {projectType ? <p className="mb-1.5 text-xs font-medium text-muted-foreground">{projectType}</p> : null}
+          <h3 className={cn("break-words font-sans font-semibold leading-snug tracking-tight text-foreground", variant === "feature" ? "text-xl sm:text-2xl" : "text-lg")}>
+            {title}
+          </h3>
+          <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5 text-muted-foreground">
+            {profileName ? <><span className="min-w-0 truncate">{profileName}</span><span aria-hidden="true">·</span></> : null}
             <span>{updateCount === 1 ? "1 Bouwmoment" : `${updateCount} Bouwmomenten`}</span>
           </div>
-
-          <div
-            className="sr-only"
-            role="progressbar"
-            aria-label={`Voortgang van ${title}`}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={progress}
-          />
+          {progress > 0 ? (
+            <div className="mt-4 flex items-center gap-3">
+              <div className="h-1 flex-1 overflow-hidden rounded-full bg-secondary" role="progressbar" aria-label={`Voortgang van ${title}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
+                <div className="h-full rounded-full bg-primary" style={{ width: `${progress}%` }} />
+              </div>
+              <span className="shrink-0 text-xs font-medium tabular-nums text-muted-foreground">{progress}%</span>
+            </div>
+          ) : null}
         </div>
       </article>
     </Link>
