@@ -2,6 +2,33 @@
 
 Scope: [GRAPH](GRAPH.md). Behavior: [FLOWS](FLOWS.md).
 
+## Mobile core — 2026-09-30 (local verification)
+
+Mobile navigation now exposes owned stories, following, adding a moment, the
+Bouwboek and profile; the header exposes notifications. Viewer onboarding can
+finish without creating a project. Following reuses existing authorized
+reactions/comments. Opening a notification marks it read; replacing an active
+share link requires an explicit in-app confirmation.
+
+The owner sees a canonical book preview after saving a Bouwmoment. The book
+editor puts the preview first and exposes subtitle, photo selection/restoration,
+crop controls and per-moment layouts. Preview updates after saving settings;
+the PDF uses that same document. Vertical mobile scrolling no longer turns pages.
+
+Short-book backend changes reuse the existing `30cb14a` work. New books omit
+blank padding and allow 2–400 pages, including odd counts. Historical document
+checksums and locked revisions remain intact. Migration 0054 must precede the
+app release and is compatible with the previous deployed app.
+
+Local evidence: 62 focused backend/migration cases, 48 navigation/composer/social
+cases, 25 book UI cases and 6 share-link cases passed. Typecheck, changed-file
+lint and app build passed. These checks do not claim hosted behavior.
+Computer Use captured mobile references from Polarsteps' book landing and empty
+trip form; no personal travel content or reference images are committed.
+
+Before this release the public health returned `4ae7d71c9bb5031ebda47a14284cceffcffc6076`.
+READY deployment `dpl_26HwmGVPjKwJYa4GR8egEeveMUqk` remains the app rollback.
+
 ## Published baseline — 2026-09-27
 
 PR #4 merged as `3d5a60af8f1a41419b1e0512cbb12246a61953fc`.

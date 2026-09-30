@@ -71,6 +71,27 @@ export default function OnboardingDialog({ enabled, activeProjectId }: Onboardin
   const isPending = createProject.isPending || updateProfile.isPending;
   const needsProject = !createdProjectId;
 
+  const followAlong = async () => {
+    if (!profile || submitGuardRef.current) return;
+    submitGuardRef.current = true;
+    setSaveError(null);
+    try {
+      profileCommandRef.current ??= {
+        idempotencyKey: createClientIdempotencyKey("profile-onboarding"),
+        expectedVersion: profile.version,
+        onboardingCompleted: true,
+      };
+      await updateProfile.mutateAsync(profileCommandRef.current);
+      setDismissed(true);
+      navigate(PRODUCT_ROUTES.following);
+    } catch (error) {
+      if (error instanceof ApiClientError && error.status === 409) profileCommandRef.current = null;
+      setSaveError("Je keuze kon niet worden bewaard. Probeer het opnieuw.");
+    } finally {
+      submitGuardRef.current = false;
+    }
+  };
+
   const complete = async () => {
     if (!profile || submitGuardRef.current) return;
     const normalizedTitle = projectTitle.trim();
@@ -200,6 +221,11 @@ export default function OnboardingDialog({ enabled, activeProjectId }: Onboardin
         {saveError ? <p className="text-sm text-destructive" role="status" aria-live="polite">{saveError}</p> : null}
 
         <DialogFooter className="gap-2 sm:space-x-0">
+          {needsProject && !retryLocked ? (
+            <Button type="button" variant="outline" className="min-h-11 w-full sm:w-auto" disabled={isPending} onClick={() => void followAlong()}>
+              Ik kijk mee
+            </Button>
+          ) : null}
           <Button
             type="button"
             className="w-full sm:w-auto"

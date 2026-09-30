@@ -70,11 +70,21 @@ describe("server-side canonical PDF renderer", () => {
     }
   });
 
-  it("embeds the canonical page model into a byte-stable complete PDF", async () => {
-    const document = build();
+  it("embeds an odd canonical page count into a byte-stable complete PDF", async () => {
+    const document = build({ updates: [1, 2].map((index) => ({
+      id: `20000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      updateDate: `2026-04-0${index}`,
+      sortOrder: 0,
+      title: `Bouwmoment ${index}`,
+      room: null,
+      description: "De eerste ideeën krijgen vorm.",
+      phaseId: "phase-one",
+      phaseName: "Start",
+      media: [],
+    })) });
     const assets = {
       readOriginal: async () => {
-        throw new Error("empty proof must not request an asset");
+        throw new Error("text-only book must not request an asset");
       },
     };
 
@@ -83,7 +93,10 @@ describe("server-side canonical PDF renderer", () => {
 
     expect(first.bytes.subarray(0, 8).toString("ascii")).toMatch(/^%PDF-1\./);
     expect(first.bytes.subarray(-1_024).toString("ascii")).toContain("%%EOF");
-    expect(first.pageCount).toBe(24);
+    expect(document.pages.map((page) => page.kind)).toEqual([
+      "cover", "chapter", "update_text", "update_text", "cover",
+    ]);
+    expect(first.pageCount).toBe(5);
     expect(first.documentSha256).toBe(document.checksumSha256);
     expect(first.pdfSha256).toBe(createHash("sha256").update(first.bytes).digest("hex"));
     expect(first.pdfSha256).toBe(second.pdfSha256);

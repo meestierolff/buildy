@@ -249,7 +249,7 @@ const SectionLabel = ({ children }: { children: ReactNode }) => (
 
 const Index = () => {
   const { user, loading: authLoading } = useAuth();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const view = pathname === PRODUCT_ROUTES.projects ? "projects" : "landing";
   const isLanding = view === "landing";
   usePageMeta({
@@ -271,6 +271,8 @@ const Index = () => {
   ).values());
   const loadingMine = dashboardQuery.isPending;
   const mineError = dashboardQuery.isError;
+
+  if (isLanding && user) return <Navigate to={`${PRODUCT_ROUTES.projects}${search}`} replace />;
 
   if (view === "projects" && authLoading) {
     return (
@@ -446,17 +448,26 @@ const Index = () => {
 
       {!isLanding ? (
       <section id="verbouwingen" className="scroll-mt-24" aria-labelledby="projects-title">
-        <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 md:px-8 md:py-24">
+        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 md:px-8 md:py-12">
           <div className="grid gap-6 lg:grid-cols-12">
             <div className="lg:col-span-6">
-              <SectionLabel>Jouw Bouwdagboeken</SectionLabel>
+              <SectionLabel>Vandaag bouwen. Later bewaren.</SectionLabel>
               <h1 id="projects-title" className="max-w-2xl text-4xl font-semibold leading-[1.04] tracking-[-0.03em] md:text-5xl">
-                Mijn verbouwingen
+                Jouw verhalen
               </h1>
             </div>
             <p className="max-w-xl font-sans text-sm leading-6 text-muted-foreground lg:col-span-4 lg:col-start-9 lg:pt-7 md:text-base md:leading-7">
-              Hier staan alleen verbouwingen die bij jouw account horen. Voeg een Bouwmoment toe of open een Verhaal om verder te gaan.
+              Een foto, een kleine overwinning, een herinnering. Bouw verder aan jouw verhaal.
             </p>
+          </div>
+
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Button asChild className="min-h-11 gap-2 bg-accent text-accent-foreground hover:bg-accent/90">
+              <Link to={mine.length === 1 ? PRODUCT_ROUTES.projectUpdateComposer(mine[0].id) : mine.length > 1 ? PRODUCT_ROUTES.createUpdate : PRODUCT_ROUTES.newProject}><Plus className="h-4 w-4" aria-hidden="true" /> {mine.length ? "Bouwmoment toevoegen" : "Begin je verhaal"}</Link>
+            </Button>
+            <Button asChild variant="outline" className="min-h-11 gap-2">
+              <Link to={PRODUCT_ROUTES.following}><Users className="h-4 w-4" aria-hidden="true" /> Kijk mee</Link>
+            </Button>
           </div>
 
           {user ? (

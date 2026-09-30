@@ -126,6 +126,7 @@ describe("AddStepDialog typed API retry", () => {
 
     await waitFor(() => expect(mocks.onClose).toHaveBeenCalledTimes(1));
     expect(mocks.onAdded).toHaveBeenCalledTimes(1);
+    expect(mocks.onAdded).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222");
     expect(mocks.createUpdate).toHaveBeenCalledTimes(2);
     expect(mocks.createUpdate.mock.calls[1]?.[0]).toBe(firstCommand);
     expect(mocks.refetchProject).toHaveBeenCalledTimes(1);

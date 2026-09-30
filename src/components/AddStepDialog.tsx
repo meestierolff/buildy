@@ -46,7 +46,7 @@ interface AddStepDialogProps {
   projectId: string;
   importLandingPhoto?: boolean;
   onClose: () => void;
-  onAdded: () => void;
+  onAdded: (updateId: string) => void;
 }
 
 type CompareRole = "before" | "after";
@@ -490,6 +490,7 @@ const AddStepDialog = ({
     setSaveError(null);
     let updateRequestStarted = false;
     let saved = false;
+    let savedUpdateId = "";
 
     try {
       if (!pendingCommandRef.current) {
@@ -534,7 +535,8 @@ const AddStepDialog = ({
 
       setSaveStage("saving");
       updateRequestStarted = true;
-      await createUpdate.mutateAsync(pendingCommandRef.current);
+      const result = await createUpdate.mutateAsync(pendingCommandRef.current);
+      savedUpdateId = result.update.id;
 
       pendingCommandRef.current = null;
       setRetryLocked(false);
@@ -582,7 +584,7 @@ const AddStepDialog = ({
           console.error("Clear saved update recovery data failed", error);
         }
       }
-      onAdded();
+      onAdded(savedUpdateId);
       onClose();
       toast.success("Bouwmoment toegevoegd!");
     }

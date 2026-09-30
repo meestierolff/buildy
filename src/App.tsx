@@ -54,12 +54,11 @@ const ApplicationFrame = () => {
   const dashboardQuery = useProjectDashboard(Boolean(user));
   const { pathname } = useLocation();
   const hidesMobileNavigation = pathname === "/auth";
-  const activeProjectId = dashboardQuery.data?.pages
-    .flatMap((page) => page.items)
-    .at(0)?.id;
-  const storyHref = activeProjectId
-    ? PRODUCT_ROUTES.project(activeProjectId)
-    : PRODUCT_ROUTES.newProject;
+  const ownProjects = dashboardQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const routeProjectId = /^\/project\/([^/]+)/.exec(pathname)?.[1];
+  const activeProjectId = ownProjects.find((project) => project.id === routeProjectId)?.id
+    ?? ownProjects[0]?.id;
+  const storyHref = PRODUCT_ROUTES.projects;
   const navigationItems = getMobileNavigationItems({
     storyHref,
     updateHref: activeProjectId
@@ -67,7 +66,7 @@ const ApplicationFrame = () => {
       : PRODUCT_ROUTES.newProject,
     photobookHref: activeProjectId
       ? PRODUCT_ROUTES.projectPhotobook(activeProjectId)
-      : PRODUCT_ROUTES.newProject,
+      : PRODUCT_ROUTES.projects,
     profileHref: PRODUCT_ROUTES.ownProfile,
   });
   const showFeedbackLauncher = Boolean(user) && !["/feedback", "/support", "/melden"].includes(pathname);
@@ -76,7 +75,7 @@ const ApplicationFrame = () => {
     <>
       <AppShell
         header={<Header activeProjectId={activeProjectId} />}
-        footer={<Footer />}
+        footer={user ? undefined : <Footer />}
         mobileNavigation={!user || hidesMobileNavigation ? undefined : (
           <MobileNav items={navigationItems} label="Mobiele navigatie" />
         )}

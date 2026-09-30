@@ -4,9 +4,10 @@ import { describe, expect, it } from "vitest";
 import type { PhotobookTextMeasurer } from "../../server/photobooks/document";
 import {
   buildPhotobookDocument,
+  photobookDocumentChecksum,
   verifyPhotobookDocumentChecksum,
 } from "../../server/photobooks/document";
-import type { PhotobookDocument } from "../../shared/contracts/photobooks";
+import { photobookDocumentSchema, type PhotobookDocument } from "../../shared/contracts/photobooks";
 
 const PROJECT_ID = "10000000-0000-4000-8000-000000000001";
 const UPDATE_ONE = "20000000-0000-4000-8000-000000000001";
@@ -105,25 +106,70 @@ describe("canonical photobook document", () => {
       .toEqual([updates[2].id]);
   });
 
-  it("is deterministic, checksummed, chronological and padded to an even minimum", () => {
+  it("is deterministic, checksummed and chronological without blank padding", () => {
     const first = build();
     const second = build();
 
     expect(first).toEqual(second);
     expect(first.checksumSha256).toMatch(/^[0-9a-f]{64}$/);
     expect(verifyPhotobookDocumentChecksum(first)).toBe(true);
-    expect(first.pageCount).toBe(24);
-    expect(first.pages).toHaveLength(24);
+    expect(first.pageCount).toBe(6);
+    expect(first.pages).toHaveLength(6);
+    expect(first.pages.some((page) => page.kind === "blank")).toBe(false);
     expect(first.pages.map((page) => page.number)).toEqual(
-      Array.from({ length: 24 }, (_, index) => index + 1),
+      Array.from({ length: 6 }, (_, index) => index + 1),
     );
     expect(first.chapters.map((chapter) => chapter.title)).toEqual(["Sloop", "Constructie"]);
     expect(first.sourceAssetIds).toEqual([ASSET_ONE, ASSET_TWO]);
     expect(first.pages[0]).toMatchObject({ kind: "cover", number: 1 });
-    expect(first.pages.at(-1)).toMatchObject({ id: "back-cover", kind: "cover", number: 24 });
+    expect(first.pages.at(-1)).toMatchObject({ id: "back-cover", kind: "cover", number: 6 });
   });
 
-  it("detects a changed canonical page after approval", () => {
+  it("accepts an odd natural page count without adding blank pages", () => {
+    const document = build({ updates: [UPDATE_ONE, UPDATE_TWO].map((id, index) => ({
+      id,
+      updateDate: `2026-02-0${index + 1}`,
+      sortOrder: 0,
+      title: `Bouwmoment ${index + 1}`,
+      room: null,
+      description: "Een korte dag in de verbouwing.",
+      phaseId: "phase-demolition",
+      phaseName: "Sloop",
+      media: [],
+    })) });
+
+    expect(document.pageCount).toBe(5);
+    expect(document.pages.map((page) => page.kind)).toEqual([
+      "cover", "chapter", "update_text", "update_text", "cover",
+    ]);
+    expect(document.pages.map((page) => page.number)).toEqual([1, 2, 3, 4, 5]);
+    expect(photobookDocumentSchema.safeParse(document).success).toBe(true);
+    expect(verifyPhotobookDocumentChecksum(document)).toBe(true);
+  });
+
+  it("keeps stored padded version-one documents and their checksums unchanged", () => {
+    const legacyDocument = build({ updates: [] });
+    const backCover = legacyDocument.pages.pop()!;
+    while (legacyDocument.pages.length < 23) {
+      const number = legacyDocument.pages.length + 1;
+      legacyDocument.pages.push({
+        id: `blank:${number}`, number, kind: "blank", chapterId: null,
+        updateId: null, background: "#ffffff", overlay: null, blocks: [],
+      });
+    }
+    legacyDocument.pages.push({ ...backCover, number: 24 });
+    legacyDocument.pageCount = 24;
+    const { checksumSha256: _checksum, ...body } = legacyDocument;
+    legacyDocument.checksumSha256 = photobookDocumentChecksum(body);
+
+    const parsed = photobookDocumentSchema.parse(legacyDocument);
+
+    expect(parsed).toEqual(legacyDocument);
+    expect(parsed.pages).toHaveLength(24);
+    expect(verifyPhotobookDocumentChecksum(parsed)).toBe(true);
+  });
+
+  it("detects a changed canonical page after checksumming", () => {
     const document = build();
     const changed = structuredClone(document) as PhotobookDocument;
     const textBlock = changed.pages[0]?.blocks.find((block) => block.type === "text");
@@ -217,9 +263,9 @@ describe("canonical photobook document", () => {
     ]));
   });
 
-  it("marks a provider page-limit excess without silently dropping pages", () => {
+  it("marks a configured page-limit excess without silently dropping pages", () => {
     const document = build({ maximumPages: 24 });
-    expect(document.pageCount).toBe(24);
+    expect(document.pageCount).toBe(6);
 
     const manyUpdates = Array.from({ length: 25 }, (_, index) => ({
       id: `20000000-0000-4000-8000-${String(index + 100).padStart(12, "0")}`,
@@ -234,8 +280,8 @@ describe("canonical photobook document", () => {
     }));
     const oversized = build({ maximumPages: 24, updates: manyUpdates });
 
-    expect(oversized.pageCount).toBeGreaterThan(24);
-    expect(oversized.pageCount % 2).toBe(0);
+    expect(oversized.pageCount).toBe(28);
+    expect(oversized.pages.filter((page) => page.kind === "update_text")).toHaveLength(25);
     expect(oversized.warnings).toContainEqual(expect.objectContaining({
       code: "PAGE_LIMIT_EXCEEDED",
       severity: "blocking",

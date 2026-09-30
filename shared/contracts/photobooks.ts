@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { apiSuccessSchema } from "./api.js";
 
+// Keep the stored format identifier compatible with existing book settings.
 export const LAUNCH_PHOTOBOOK_FORMAT = "a4-landscape-hardcover-v1" as const;
-export const LAUNCH_PHOTOBOOK_MIN_PAGES = 24;
+export const PHOTOBOOK_MIN_PAGES = 2;
 
 const uuidSchema = z.string().uuid();
 const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
@@ -171,10 +172,10 @@ export const photobookDocumentSchema = z.object({
   print: photobookPrintSpecSchema,
   cover: photobookCoverSchema,
   chapters: z.array(photobookChapterSchema).max(250),
-  pages: z.array(photobookPageSchema).min(LAUNCH_PHOTOBOOK_MIN_PAGES).max(400),
+  pages: z.array(photobookPageSchema).min(PHOTOBOOK_MIN_PAGES).max(400),
   sourceAssets: z.array(photobookSourceAssetSchema).max(5_000),
   sourceAssetIds: z.array(uuidSchema).max(5_000),
-  pageCount: z.number().int().min(LAUNCH_PHOTOBOOK_MIN_PAGES).max(400),
+  pageCount: z.number().int().min(PHOTOBOOK_MIN_PAGES).max(400),
   warnings: z.array(photobookWarningSchema).max(10_000),
   checksumSha256: sha256Schema,
 }).strict().superRefine((document, context) => {
@@ -182,13 +183,6 @@ export const photobookDocumentSchema = z.object({
     context.addIssue({
       code: z.ZodIssueCode.custom,
       message: "pageCount komt niet overeen met het canonical paginamodel.",
-      path: ["pageCount"],
-    });
-  }
-  if (document.pageCount % 2 !== 0) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Een printproof moet een even aantal pagina's hebben.",
       path: ["pageCount"],
     });
   }

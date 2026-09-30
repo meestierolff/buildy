@@ -12,6 +12,7 @@ import type { PhotobookDraft } from "@/lib/photobookApi";
 
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 const UPDATE_ID = "22222222-2222-4222-8222-222222222222";
+const ASSET_ID = "66666666-6666-4666-8666-666666666666";
 const REVISION_ID = "44444444-4444-4444-8444-444444444444";
 const IDEMPOTENCY_KEY = "55555555-5555-4555-8555-555555555555";
 const originalCreateObjectUrl = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
@@ -22,6 +23,8 @@ const state = vi.hoisted(() => ({
   navigate: vi.fn(),
   refetch: vi.fn(),
   requestProof: vi.fn(),
+  saveSettings: vi.fn(),
+  replaceExclusions: vi.fn(),
   loadProof: vi.fn(),
   createObjectUrl: vi.fn(),
   revokeObjectUrl: vi.fn(),
@@ -40,11 +43,11 @@ vi.mock("@/hooks/usePhotobook", () => ({
   }),
   useReplacePhotobookExclusions: () => ({
     isPending: false,
-    mutateAsync: vi.fn(),
+    mutateAsync: state.replaceExclusions,
   }),
   useUpdatePhotobookSettings: () => ({
     isPending: false,
-    mutateAsync: vi.fn(),
+    mutateAsync: state.saveSettings,
   }),
   useRequestPhotobookProof: () => ({
     isPending: false,
@@ -191,6 +194,8 @@ describe("Bouwboekpagina", () => {
     state.navigate.mockReset();
     state.refetch.mockReset().mockImplementation(async () => ({ data: state.draft }));
     state.requestProof.mockReset();
+    state.saveSettings.mockReset().mockResolvedValue(undefined);
+    state.replaceExclusions.mockReset().mockResolvedValue(undefined);
     state.loadProof.mockReset().mockResolvedValue({ blob: new Blob(["%PDF-1.7"], { type: "application/pdf" }) });
     state.createObjectUrl.mockReset().mockReturnValue("blob:buildy-pdf");
     state.revokeObjectUrl.mockReset();
@@ -213,7 +218,7 @@ describe("Bouwboekpagina", () => {
     render(<Photobook />);
 
     expect(screen.getByRole("heading", {
-      name: "Je Bouwboek groeit met je verbouwing mee",
+      name: "Je verbouwing, om te bewaren",
     })).toBeInTheDocument();
     expect(screen.getByRole("heading", {
       name: "Je eerste bladzijde begint met een Bouwmoment",
@@ -221,19 +226,99 @@ describe("Bouwboekpagina", () => {
     expect(screen.queryByRole("region", { name: "Bouwboekweergave" })).not.toBeInTheDocument();
   });
 
-  it("biedt alleen de digitale verhaalflow, twee indelingen en de interesseactie", () => {
+  it("zet het boek voorop en verdeelt de editor over drie toegankelijke onderdelen", () => {
     state.draft = draftWith([cover(), updatePage()]);
     render(<Photobook />);
 
     expect(screen.getByRole("region", { name: "Bouwboekweergave" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /bouwmoment, bladzijde 2/i })).toBeInTheDocument();
     expect(screen.getByText("Cover · 1 van 2")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Afwisselend" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Foto groot" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ik wil dit later laten drukken" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Cover" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Inhoud" })).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Indeling" }), { button: 0, ctrlKey: false });
+    expect(screen.getByRole("button", { name: /Afwisselend/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Foto groot/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Collage/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ik wil dit later laten drukken" })).not.toBeInTheDocument();
 
     const visibleText = document.body.textContent ?? "";
     expect(visibleText).not.toMatch(/printproof|sha-?256|revisie|checkout|betaling|stripe|peecho/i);
+  });
+
+
+  it("bewaart de ondertitel en gekozen momentindeling en blokkeert een verouderde download", async () => {
+    state.draft = draftWith([cover(), updatePage()]);
+    state.draft.settings = {
+      ...settings,
+      preferences: { ...settings.preferences, layoutByPage: { [`update:${UPDATE_ID}:photos:1`]: "grid" } },
+    };
+    render(<Photobook />);
+
+    fireEvent.change(screen.getByLabelText("Ondertitel"), { target: { value: "Ons eerste thuis" } });
+    expect(screen.getByRole("button", { name: "Download PDF" })).toBeDisabled();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Indeling" }), { button: 0, ctrlKey: false });
+    fireEvent.click(screen.getByRole("button", { name: /Foto groot/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Opslaan" }));
+
+    await waitFor(() => expect(state.saveSettings).toHaveBeenCalledOnce());
+    expect(state.saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+      subtitle: "Ons eerste thuis",
+      preferences: expect.objectContaining({ layoutByPage: { [UPDATE_ID]: "one" } }),
+    }));
+  });
+
+  it("kan de laatste foto uitsluiten zonder het originele Bouwmoment te veranderen", async () => {
+    const momentPage = updatePage();
+    momentPage.blocks.push({
+      id: "story-photo", type: "photo", assetId: ASSET_ID,
+      frame: { xMm: 129, yMm: 12, widthMm: 156, heightMm: 186 },
+      crop: { fit: "contain", focusX: 0.5, focusY: 0.5, zoom: 1 },
+      effectiveDpi: 300, altText: "Testfoto",
+    });
+    state.draft = draftWith([cover(), momentPage]);
+    state.draft.exclusions = [{ targetType: "chapter", chapterKey: "older-chapter" }];
+    render(<Photobook />);
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Inhoud" }), { button: 0, ctrlKey: false });
+    fireEvent.click(screen.getByRole("button", { name: "Foto 1 verbergen" }));
+    await waitFor(() => expect(state.replaceExclusions).toHaveBeenCalledWith({ exclusions: [
+      { targetType: "chapter", chapterKey: "older-chapter" },
+      { targetType: "media", mediaAssetId: ASSET_ID },
+    ] }));
+    expect(state.saveSettings).not.toHaveBeenCalled();
+  });
+
+  it("houdt terugzetten bereikbaar als alle Bouwmomenten verborgen zijn", async () => {
+    state.draft = draftWith([cover()]);
+    state.draft.exclusions = [{ targetType: "update", updateId: UPDATE_ID }];
+    render(<Photobook />);
+
+    expect(screen.getByRole("tab", { name: "Inhoud" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Verborgen Bouwmoment 1 terugzetten" }));
+    await waitFor(() => expect(state.replaceExclusions).toHaveBeenCalledWith({ exclusions: [] }));
+  });
+
+  it("bewaart foto-uitsnedes via de bestaande instellingen en normaliseert hele-fotoweergave", async () => {
+    const momentPage = updatePage();
+    momentPage.blocks.push({
+      id: "story-photo", type: "photo", assetId: ASSET_ID,
+      frame: { xMm: 129, yMm: 12, widthMm: 156, heightMm: 186 },
+      crop: { fit: "cover", focusX: 0.5, focusY: 0.5, zoom: 2 },
+      effectiveDpi: 300, altText: "Testfoto",
+    });
+    state.draft = draftWith([cover(), momentPage]);
+    render(<Photobook />);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Inhoud" }), { button: 0, ctrlKey: false });
+    fireEvent.click(screen.getByRole("button", { name: "Uitsnede" }));
+    fireEvent.change(screen.getByLabelText("Positie links / rechts"), { target: { value: "0.75" } });
+    fireEvent.click(screen.getByRole("button", { name: "Hele foto" }));
+    fireEvent.click(screen.getByRole("button", { name: "Opslaan" }));
+
+    await waitFor(() => expect(state.saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+      preferences: expect.objectContaining({ cropByAsset: {
+        [ASSET_ID]: { fit: "contain", focusX: 0.75, focusY: 0.5, zoom: 1 },
+      } }),
+    })));
   });
 
   it("downloadt de gecontroleerde PDF van het getoonde boek en ruimt de tijdelijke URL op", async () => {
@@ -345,6 +430,7 @@ describe("Bouwboekpagina", () => {
     fireEvent.click(screen.getByRole("button", { name: "Download PDF" }));
     expect(state.requestProof).not.toHaveBeenCalled();
     expect(screen.getByRole("region", { name: "Bouwboekweergave" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Foto groot" })).toBeEnabled();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Indeling" }), { button: 0, ctrlKey: false });
+    expect(screen.getByRole("button", { name: /Foto groot/ })).toBeEnabled();
   });
 });

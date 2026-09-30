@@ -14,6 +14,16 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -84,6 +94,7 @@ export function ShareLinkDialog({
   const revokeLink = useRevokeProjectShareLink(projectId);
   const [expiryDays, setExpiryDays] = useState("7");
   const [freshShareUrl, setFreshShareUrl] = useState<string | null>(null);
+  const [confirmReplacement, setConfirmReplacement] = useState(false);
   const issueCommand = useRef<{ expiresAt: string; idempotencyKey: string } | null>(null);
   const revokeKey = useRef<string | null>(null);
   const link = stateQuery.data?.link ?? null;
@@ -106,6 +117,7 @@ export function ShareLinkDialog({
   const handleOpenChange = (nextOpen: boolean) => {
     if (isPending) return;
     if (!nextOpen) {
+      setConfirmReplacement(false);
       forgetFreshSecret();
       issueCommand.current = null;
       revokeKey.current = null;
@@ -194,7 +206,7 @@ export function ShareLinkDialog({
             </div>
             <div className="flex gap-3">
               <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden="true" />
-              <p><span className="font-semibold">Direct te stoppen.</span> Intrekken of roteren werkt meteen.</p>
+              <p><span className="font-semibold">Direct te stoppen.</span> Intrekken of vervangen werkt meteen.</p>
             </div>
           </div>
 
@@ -232,7 +244,9 @@ export function ShareLinkDialog({
                   </div>
                   {!freshShareUrl ? (
                     <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-                      Buildy bewaart de geheime link niet. Maak een nieuwe om hem opnieuw te kopiëren; de vorige stopt dan direct.
+                      {link.state === "active"
+                        ? "Buildy bewaart de geheime link niet. Maak je een nieuwe, dan werkt de huidige link niet meer. Mensen aan wie je hem al deelde hebben dan de nieuwe link nodig."
+                        : "Deze link is verlopen. Maak een nieuwe om je verhaal weer te delen."}
                     </p>
                   ) : null}
                 </div>
@@ -277,7 +291,12 @@ export function ShareLinkDialog({
                       ))}
                     </SelectContent>
                   </Select>
-                  <Button type="button" className="min-h-11 w-full gap-2" disabled={isPending} onClick={() => void issue()}>
+                  <Button
+                    type="button"
+                    className="min-h-11 w-full gap-2"
+                    disabled={isPending}
+                    onClick={() => link?.state === "active" ? setConfirmReplacement(true) : void issue()}
+                  >
                     {isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : link ? <RotateCcw className="h-4 w-4" aria-hidden="true" /> : <KeyRound className="h-4 w-4" aria-hidden="true" />}
                     {link ? "Nieuwe link maken" : "Deellink maken"}
                   </Button>
@@ -304,6 +323,24 @@ export function ShareLinkDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+      <AlertDialog open={open && confirmReplacement} onOpenChange={setConfirmReplacement}>
+        <AlertDialogContent className="w-[calc(100%-2rem)] max-w-md rounded-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Actieve link vervangen?</AlertDialogTitle>
+            <AlertDialogDescription>
+              De huidige link werkt daarna niet meer. Mensen aan wie je hem al deelde hebben de nieuwe link nodig om je verhaal te bekijken.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="min-h-11" disabled={isPending}>
+              Huidige link behouden
+            </AlertDialogCancel>
+            <AlertDialogAction className="min-h-11" disabled={isPending} onClick={() => void issue()}>
+              Ja, link vervangen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

@@ -1,4 +1,5 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render as renderComponent, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectOverview, ProjectUpdate } from "../../shared/contracts/projects";
@@ -75,13 +76,36 @@ vi.mock("@/components/moderation/ReportDialog", () => ({
   default: () => <button type="button">Melden</button>,
 }));
 vi.mock("@/components/AddStepDialog", () => ({
-  default: () => <div role="dialog">Nieuwe update</div>,
+  default: ({ onAdded, onClose }: { onAdded: (id: string) => void; onClose: () => void }) => (
+    <div role="dialog">
+      Nieuwe update
+      <button type="button" onClick={() => {
+        onAdded("55555555-5555-4555-8555-555555555555");
+        onClose();
+      }}>Bouwmoment bewaren</button>
+    </div>
+  ),
+}));
+vi.mock("@/components/project/GrowingBook", () => ({
+  default: ({ projectId, savedUpdateId }: { projectId: string; savedUpdateId?: string }) => (
+    <div data-testid="growing-book" data-project-id={projectId} data-saved-update-id={savedUpdateId} />
+  ),
 }));
 
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 const OWNER_ID = "22222222-2222-4222-8222-222222222222";
 const UPDATE_ID = "33333333-3333-4333-8333-333333333333";
 const MEDIA_ID = "44444444-4444-4444-8444-444444444444";
+
+function render(ui: React.ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return {
+    ...renderComponent(ui, {
+      wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+    }),
+    queryClient,
+  };
+}
 
 const project: ProjectOverview = {
   id: PROJECT_ID,
@@ -201,6 +225,7 @@ describe("TripDetail typed project-readflow", () => {
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith(true));
     expect(useProjectFollowMutation).toHaveBeenCalledWith(PROJECT_ID);
     expect(screen.queryByRole("button", { name: "Bouwmoment toevoegen" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("growing-book")).not.toBeInTheDocument();
 
     mockReadflow({ overview: { ...viewerProject, viewerFollowStatus: "following" } });
     mutateAsync.mockResolvedValue({ state: "none", replayed: false });
@@ -225,6 +250,21 @@ describe("TripDetail typed project-readflow", () => {
     expect(screen.getByTestId("progress-control")).toHaveTextContent("versie 7");
     expect(screen.getByRole("button", { name: "Deel je verbouwing" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Volg deze verbouwing" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("growing-book")).toHaveAttribute("data-project-id", PROJECT_ID);
+  });
+
+  it("ververst na bewaren het Bouwboek met het daadwerkelijk opgeslagen Bouwmoment", async () => {
+    const { queryClient } = render(<TripDetail />);
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    fireEvent.click(screen.getByRole("button", { name: "Bouwmoment toevoegen" }));
+    fireEvent.click(screen.getByRole("button", { name: "Bouwmoment bewaren" }));
+
+    await waitFor(() => expect(screen.getByTestId("growing-book")).toHaveAttribute(
+      "data-saved-update-id",
+      "55555555-5555-4555-8555-555555555555",
+    ));
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["photobook", "project", PROJECT_ID] });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("opent alleen voor de eigenaar de shareflow en laat een ingelogde shareviewer engageren", () => {

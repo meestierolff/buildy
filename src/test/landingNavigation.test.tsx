@@ -1,15 +1,22 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import App from "@/App";
 import Header from "@/components/Header";
 import MobileNav from "@/components/app/MobileNav";
 import { useAuth } from "@/hooks/useAuth";
-import { useOwnProfile } from "@/hooks/useProfiles";
+import { useProjectDashboard } from "@/hooks/useProjectApi";
 import { getMobileNavigationItems, MOBILE_NAVIGATION_ITEMS } from "@/lib/productNavigation";
 import { BrowserRouter } from "@/lib/router";
 
-vi.mock("@/hooks/useAuth", () => ({ useAuth: vi.fn() }));
-vi.mock("@/hooks/useProfiles", () => ({ useOwnProfile: vi.fn() }));
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: vi.fn(),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+vi.mock("@/hooks/useProjectApi", () => ({ useProjectDashboard: vi.fn() }));
+vi.mock("@/components/app/OnboardingDialog", () => ({ default: () => null }));
+vi.mock("@/components/moderation/FeedbackLauncher", () => ({ default: () => null }));
+vi.mock("@/pages/TripDetail", () => ({ default: () => <div>Geopend verhaal</div> }));
 
 describe("landing- en productnavigatie", () => {
   beforeEach(() => {
@@ -24,7 +31,10 @@ describe("landing- en productnavigatie", () => {
       refetchSession: vi.fn(),
       signOut: vi.fn(),
     });
-    vi.mocked(useOwnProfile).mockReturnValue({ data: undefined } as ReturnType<typeof useOwnProfile>);
+    vi.mocked(useProjectDashboard).mockReturnValue({
+      data: { pages: [{ items: [], nextCursor: null }] },
+      isSuccess: true,
+    } as unknown as ReturnType<typeof useProjectDashboard>);
   });
 
   it("toont de afgesproken publieke header met één primaire actie", () => {
@@ -38,7 +48,7 @@ describe("landing- en productnavigatie", () => {
     expect(screen.queryByRole("link", { name: /ontdek/i })).not.toBeInTheDocument();
   });
 
-  it("toont ingelogd alleen de vier primaire desktopbestemmingen", () => {
+  it("maakt ingelogd verhalen, gevolgde projecten en meldingen bereikbaar", () => {
     vi.mocked(useAuth).mockReturnValue({
       user: {
         id: "owner",
@@ -61,14 +71,17 @@ describe("landing- en productnavigatie", () => {
 
     render(<BrowserRouter><Header activeProjectId="project-1" /></BrowserRouter>);
 
-    expect(screen.getByRole("link", { name: "Mijn verbouwing" })).toHaveAttribute("href", "/project/project-1");
+    expect(screen.getByRole("link", { name: "Buildy" })).toHaveAttribute("href", "/projecten");
+    expect(screen.getByRole("link", { name: "Verhalen" })).toHaveAttribute("href", "/projecten");
+    expect(screen.getByRole("link", { name: "Volgend" })).toHaveAttribute("href", "/volgend");
     expect(screen.getByRole("link", { name: "Bouwmoment toevoegen" })).toHaveAttribute("href", "/project/project-1?update=nieuw");
     expect(screen.getByRole("link", { name: "Bouwboek" })).toHaveAttribute("href", "/project/project-1/bouwboek");
     expect(screen.getByRole("link", { name: "Profiel" })).toHaveAttribute("href", "/profiel");
-    expect(screen.queryByRole("link", { name: /connecties|volgend|bestellingen|meldingen/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Meldingen" })).toHaveAttribute("href", "/notificaties");
+    expect(screen.queryByRole("link", { name: /connecties|bestellingen/i })).not.toBeInTheDocument();
   });
 
-  it("stuurt alle projectacties zonder bestaande verbouwing naar de korte aanmaakflow", () => {
+  it("laat een volger zonder eigen verbouwing rondkijken zonder aanmaakflow", () => {
     vi.mocked(useAuth).mockReturnValue({
       user: {
         id: "owner",
@@ -91,14 +104,17 @@ describe("landing- en productnavigatie", () => {
 
     render(<BrowserRouter><Header /></BrowserRouter>);
 
-    expect(screen.getByRole("link", { name: "Mijn verbouwing" })).toHaveAttribute("href", "/project/nieuw");
+    expect(screen.getByRole("link", { name: "Verhalen" })).toHaveAttribute("href", "/projecten");
+    expect(screen.getByRole("link", { name: "Volgend" })).toHaveAttribute("href", "/volgend");
     expect(screen.getByRole("link", { name: "Bouwmoment toevoegen" })).toHaveAttribute("href", "/project/nieuw");
-    expect(screen.getByRole("link", { name: "Bouwboek" })).toHaveAttribute("href", "/project/nieuw");
+    expect(screen.getByRole("link", { name: "Bouwboek" })).toHaveAttribute("href", "/projecten");
+    expect(screen.getByRole("link", { name: "Meldingen" })).toHaveAttribute("href", "/notificaties");
   });
 
-  it("gebruikt exact de vier afgesproken mobiele labels", () => {
+  it("gebruikt de vijf afgesproken mobiele bestemmingen", () => {
     expect(MOBILE_NAVIGATION_ITEMS.map((item) => item.label)).toEqual([
-      "Verhaal",
+      "Verhalen",
+      "Volgend",
       "Toevoegen",
       "Bouwboek",
       "Profiel",
@@ -107,7 +123,6 @@ describe("landing- en productnavigatie", () => {
 
   it("koppelt mobiele bestemmingen aan de actieve verbouwing", () => {
     const items = getMobileNavigationItems({
-      storyHref: "/project/project-1",
       updateHref: "/project/project-1?update=nieuw",
       photobookHref: "/project/project-1/bouwboek",
       profileHref: "/profiel",
@@ -115,7 +130,8 @@ describe("landing- en productnavigatie", () => {
 
     render(<BrowserRouter><MobileNav items={items} /></BrowserRouter>);
 
-    expect(screen.getByRole("link", { name: "Verhaal" })).toHaveAttribute("href", "/project/project-1");
+    expect(screen.getByRole("link", { name: "Verhalen" })).toHaveAttribute("href", "/projecten");
+    expect(screen.getByRole("link", { name: "Volgend" })).toHaveAttribute("href", "/volgend");
     expect(screen.getByRole("link", { name: "Toevoegen" })).toHaveAttribute("href", "/project/project-1?update=nieuw");
     expect(screen.getByRole("link", { name: "Bouwboek" })).toHaveAttribute("href", "/project/project-1/bouwboek");
     expect(screen.getByRole("link", { name: "Profiel" })).toHaveAttribute("href", "/profiel");
@@ -125,10 +141,32 @@ describe("landing- en productnavigatie", () => {
     const items = getMobileNavigationItems();
 
     expect(items.map((item) => item.href)).toEqual([
+      "/projecten",
+      "/volgend",
       "/project/nieuw",
-      "/project/nieuw",
-      "/project/nieuw",
+      "/projecten",
       "/profiel",
     ]);
+  });
+
+  it("houdt toevoegen en het Bouwboek bij het geopende eigen project", async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      ...vi.mocked(useAuth)(),
+      user: { id: "owner" },
+    } as ReturnType<typeof useAuth>);
+    vi.mocked(useProjectDashboard).mockReturnValue({
+      data: { pages: [{ items: [{ id: "project-1" }, { id: "project-2" }], nextCursor: null }] },
+      isSuccess: true,
+    } as unknown as ReturnType<typeof useProjectDashboard>);
+    window.history.replaceState({}, "", "/project/project-2");
+
+    render(<App />);
+    await screen.findByText("Geopend verhaal");
+
+    const mobile = within(screen.getByRole("navigation", { name: "Mobiele navigatie" }));
+    expect(mobile.getByRole("link", { name: "Toevoegen" })).toHaveAttribute("href", "/project/project-2?update=nieuw");
+    expect(mobile.getByRole("link", { name: "Bouwboek" })).toHaveAttribute("href", "/project/project-2/bouwboek");
+    expect(screen.getByRole("link", { name: "Bouwmoment toevoegen" })).toHaveAttribute("href", "/project/project-2?update=nieuw");
+    expect(screen.getByRole("link", { name: "Meldingen" })).toHaveAttribute("href", "/notificaties");
   });
 });

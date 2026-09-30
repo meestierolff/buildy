@@ -9,6 +9,9 @@ import {
   Share2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
+import GrowingBook from "@/components/project/GrowingBook";
+import { photobookQueryKeys } from "@/hooks/usePhotobook";
 
 import AddStepDialog from "@/components/AddStepDialog";
 import BlueprintTimeline from "@/components/BlueprintTimeline";
@@ -60,6 +63,9 @@ function isAccessError(error: unknown): boolean {
 const TripDetail = () => {
   const { id } = useParams<{ id: string }>();
   const projectId = id ?? "";
+  const queryClient = useQueryClient();
+  const [savedMoment, setSavedMoment] = useState<{ projectId: string; updateId: string }>();
+  const savedUpdateId = savedMoment?.projectId === projectId ? savedMoment.updateId : undefined;
   const { user } = useAuth();
   const appFeatures = useAppFeatures();
   const photobooksEnabled = appFeatures.photobooksEnabled;
@@ -323,9 +329,9 @@ const TripDetail = () => {
   return (
     <main className="min-h-screen">
       <section className="border-b border-border bg-background" aria-labelledby="project-title">
-        <div className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 md:pt-6 lg:px-8">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 sm:pt-4 md:pt-6 lg:px-8">
           {pageCover && (
-            <figure className="relative aspect-[4/3] max-h-[34rem] w-full overflow-hidden bg-muted sm:aspect-[16/8] lg:aspect-[16/7]">
+            <figure className="relative -mx-4 aspect-[4/3] max-h-[34rem] overflow-hidden bg-muted sm:mx-0 sm:aspect-[16/8] lg:aspect-[16/7]">
               <ResilientImage
                 src={pageCover}
                 alt={`Omslagfoto van ${project.title}`}
@@ -361,7 +367,7 @@ const TripDetail = () => {
                   </span>
                 )}
               </div>
-              <h1 id="project-title" className="break-words text-3xl font-semibold leading-[1.04] tracking-tight sm:text-4xl md:text-5xl">
+              <h1 id="project-title" className="break-words font-serif text-4xl leading-[1.04] tracking-tight sm:text-5xl md:text-6xl">
                 {project.title}
               </h1>
               <p className="mt-4 text-sm text-muted-foreground">
@@ -464,8 +470,12 @@ const TripDetail = () => {
         </div>
       </section>
 
+      {isOwner && photobooksEnabled && (project.updateCount > 0 || savedUpdateId) ? (
+        <GrowingBook key={project.id} projectId={project.id} savedUpdateId={savedUpdateId} />
+      ) : null}
+
       <section className="bg-[#FFFDF8]" aria-labelledby="story-title">
-        <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 md:py-16 lg:px-8">
+        <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 md:py-12 lg:px-8">
           <div className="mb-10 border-b border-[#D8CFC1] pb-5">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#A94E36]">Het Verhaal</p>
             <h2 id="story-title" className="mt-2 font-serif text-4xl leading-none text-[#26231F] sm:text-5xl">
@@ -539,8 +549,10 @@ const TripDetail = () => {
             setShowAddUpdate(false);
             setImportLandingPhoto(false);
           }}
-          onAdded={() => {
+          onAdded={(updateId) => {
+            setSavedMoment({ projectId: project.id, updateId });
             setImportLandingPhoto(false);
+            void queryClient.invalidateQueries({ queryKey: photobookQueryKeys.project(project.id) });
             void Promise.all([overviewQuery.refetch(), timelineQuery.refetch()]).catch((error) => {
               console.error("Refresh project after update failed", error);
             });
@@ -553,8 +565,15 @@ const TripDetail = () => {
           projectId={project.id}
           update={editingUpdate}
           onClose={() => setEditingUpdate(null)}
-          onUpdated={() => setEditingUpdate(null)}
-          onDeleted={() => setEditingUpdate(null)}
+          onUpdated={() => {
+            setEditingUpdate(null);
+            void queryClient.invalidateQueries({ queryKey: photobookQueryKeys.project(project.id) });
+          }}
+          onDeleted={() => {
+            setEditingUpdate(null);
+            setSavedMoment(undefined);
+            void queryClient.invalidateQueries({ queryKey: photobookQueryKeys.project(project.id) });
+          }}
         />
       )}
       {isOwner && project.visibility === "unlisted" && shareDialogOpen ? (
