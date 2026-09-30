@@ -114,6 +114,7 @@ const Photobook = () => {
   const proofMutation = useRequestPhotobookProof(id);
   const [settingsDraft, setSettingsDraft] = useState<PhotobookSettings | null>(null);
   const [activePage, setActivePage] = useState(0);
+  const [selectedMomentId, setSelectedMomentId] = useState<string | null>(null);
   const [coverAssetLimit, setCoverAssetLimit] = useState(12);
   const [cropAssetId, setCropAssetId] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -302,8 +303,8 @@ const Photobook = () => {
       JSON.stringify(exclusion) !== JSON.stringify(target)));
   };
 
-  const currentPage = document?.pages[activePage];
-  const currentMoment = moments.find((moment) => moment.updateId === currentPage?.updateId) ?? moments[0];
+  // Editing keeps its own selection: a spread may start with another moment.
+  const currentMoment = moments.find((moment) => moment.updateId === selectedMomentId) ?? moments[0];
   const currentPhotoOrder = useMemo(() => {
     if (!currentMoment || !settingsDraft) return currentMoment?.assetIds ?? [];
     const configured = settingsDraft.preferences.photoOrderByUpdate[currentMoment.updateId] ?? [];
@@ -550,7 +551,7 @@ const Photobook = () => {
                       <div className="space-y-2">
                         <Label htmlFor="photobook-moment">Bouwmoment</Label>
                         <select className="h-12 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-base" id="photobook-moment" value={currentMoment.updateId}
-                          onChange={(event) => { const moment = moments.find((item) => item.updateId === event.target.value); if (moment) { setActivePage(moment.firstPageIndex); setCropAssetId(null); } }}>
+                          onChange={(event) => { const moment = moments.find((item) => item.updateId === event.target.value); if (moment) { setSelectedMomentId(moment.updateId); setActivePage(moment.firstPageIndex); setCropAssetId(null); } }}>
                           {moments.map((moment) => <option key={moment.updateId} value={moment.updateId}>{moment.title}{moment.date ? ` · ${moment.date}` : ""}</option>)}
                         </select>
                       </div>
@@ -610,7 +611,7 @@ const Photobook = () => {
                       <div className="space-y-2">
                         <Label htmlFor="photobook-layout-moment">Indeling voor Bouwmoment</Label>
                         <select className="h-12 w-full min-w-0 rounded-lg border border-input bg-background px-3 text-base" id="photobook-layout-moment" value={currentMoment.updateId}
-                          onChange={(event) => { const moment = moments.find((item) => item.updateId === event.target.value); if (moment) setActivePage(moment.firstPageIndex); }}>
+                          onChange={(event) => { const moment = moments.find((item) => item.updateId === event.target.value); if (moment) { setSelectedMomentId(moment.updateId); setActivePage(moment.firstPageIndex); } }}>
                           {moments.map((moment) => <option key={moment.updateId} value={moment.updateId}>{moment.title}</option>)}
                         </select>
                       </div>

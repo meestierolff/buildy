@@ -321,6 +321,42 @@ describe("Bouwboekpagina", () => {
     })));
   });
 
+  it("bewaart de gekozen bewerkingscontext wanneer een desktopspread op de vorige pagina begint", async () => {
+    vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+      matches: true, media: query, onchange: null, addListener: vi.fn(), removeListener: vi.fn(),
+      addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(() => false),
+    }));
+    const secondUpdateId = "77777777-7777-4777-8777-777777777777";
+    const secondPage = updatePage();
+    secondPage.id = `update:${secondUpdateId}:text:1`;
+    secondPage.updateId = secondUpdateId;
+    secondPage.number = 3;
+    secondPage.blocks = secondPage.blocks.map((block) => block.type === "text" && block.id.includes(":title")
+      ? { ...block, text: "De tweede muur", lines: ["De tweede muur"] }
+      : block);
+    state.draft = draftWith([cover(), updatePage(), secondPage]);
+    render(<Photobook />);
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Inhoud" }), { button: 0, ctrlKey: false });
+    fireEvent.change(screen.getByLabelText("Bouwmoment"), { target: { value: secondUpdateId } });
+    expect(screen.getByText("2–3 van 3")).toBeInTheDocument();
+    expect(screen.getByLabelText("Bouwmoment")).toHaveValue(secondUpdateId);
+    fireEvent.click(screen.getByRole("button", { name: "Moment verbergen" }));
+    await waitFor(() => expect(state.replaceExclusions).toHaveBeenCalledWith({ exclusions: [
+      { targetType: "update", updateId: secondUpdateId },
+    ] }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Vorige pagina" }));
+    expect(screen.getByLabelText("Bouwmoment")).toHaveValue(secondUpdateId);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Indeling" }), { button: 0, ctrlKey: false });
+    expect(screen.getByLabelText("Indeling voor Bouwmoment")).toHaveValue(secondUpdateId);
+    fireEvent.click(screen.getByRole("button", { name: /Foto groot/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Opslaan" }));
+    await waitFor(() => expect(state.saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+      preferences: expect.objectContaining({ layoutByPage: { [secondUpdateId]: "one" } }),
+    })));
+  });
+
   it("downloadt de gecontroleerde PDF van het getoonde boek en ruimt de tijdelijke URL op", async () => {
     state.draft = draftWith([cover(), updatePage()]);
     state.draft.proof = readyProof(state.draft.document);

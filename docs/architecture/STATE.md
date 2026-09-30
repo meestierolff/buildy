@@ -2,7 +2,7 @@
 
 Scope: [GRAPH](GRAPH.md). Behavior: [FLOWS](FLOWS.md).
 
-## Mobile core — 2026-09-30 (local verification)
+## Mobile core — 2026-09-30 (release preparation)
 
 Mobile navigation now exposes owned stories, following, adding a moment, the
 Bouwboek and profile; the header exposes notifications. Viewer onboarding can
@@ -21,13 +21,26 @@ checksums and locked revisions remain intact. Migration 0054 must precede the
 app release and is compatible with the previous deployed app.
 
 Local evidence: 62 focused backend/migration cases, 48 navigation/composer/social
-cases, 25 book UI cases and 6 share-link cases passed. Typecheck, changed-file
+cases, 26 book UI cases and 6 share-link cases passed. Typecheck, changed-file
 lint and app build passed. These checks do not claim hosted behavior.
 Computer Use captured mobile references from Polarsteps' book landing and empty
 trip form; no personal travel content or reference images are committed.
 
 Before this release the public health returned `4ae7d71c9bb5031ebda47a14284cceffcffc6076`.
 READY deployment `dpl_26HwmGVPjKwJYa4GR8egEeveMUqk` remains the app rollback.
+
+Migration 0054 was first applied on isolated `br-red-pine-b1fz1qm2`, then on
+production main `br-noisy-king-b14pmt91` using the existing Neon connection and
+`buildy_migrator_app`. Each transaction held an advisory lock, checked all 53
+prior migration hashes, applied DDL and inserted the ledger entry atomically.
+All 54 applied hashes now match local files. Worker grants, finalizer ownership
+and locked-revision guards are unchanged. Pre-migration rollback branch
+`br-frosty-mode-b1869io9` is retained without compute at LSN `0/34138C0`.
+No production credentials or personal records were retrieved.
+
+Staged build `dpl_ARLWvmEv5R5LrhcfKYV2sa7XLX7X` reached READY for `48b10a0`.
+Final review then fixed desktop-spread moment selection, with a regression test
+that failed before the fix and passed after. Hosted evidence follows separately.
 
 ## Published baseline — 2026-09-27
 
