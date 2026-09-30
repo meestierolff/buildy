@@ -405,26 +405,26 @@ const Photobook = () => {
     : undefined;
 
   return (
-    <main className="min-h-screen bg-[#F7F2E9] pb-8 text-[#26231F] dark:bg-background dark:text-foreground">
-      <header className="border-b border-[#D8CFC1] bg-[#FFFDF8]/95 dark:border-border dark:bg-card/95">
+    <main className="min-h-screen bg-background pb-8 text-foreground dark:bg-background dark:text-foreground">
+      <header className="border-b border-border bg-card/95 dark:border-border dark:bg-card/95">
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-4 sm:px-6 lg:px-8">
           <Button asChild aria-label="Terug naar verbouwing" className="h-11 w-11 shrink-0" size="icon" variant="ghost">
             <Link to={`/project/${id}`}><ArrowLeft aria-hidden="true" /></Link>
           </Button>
           <div className="min-w-0">
             <p className="eyebrow">Jouw Bouwboek</p>
-            <h1 className="mt-1 font-serif text-2xl leading-tight sm:text-3xl">Je verbouwing, om te bewaren</h1>
+            <h1 className="mt-1 text-xl font-semibold leading-tight tracking-tight sm:text-2xl">Je verbouwing, om te bewaren</h1>
           </div>
         </div>
       </header>
 
       {emptyBook ? (
         <section className="mx-auto max-w-3xl px-4 py-12 sm:px-6 sm:py-20" aria-labelledby="empty-book-title">
-          <div className="relative overflow-hidden rounded-2xl border border-[#D8CFC1] bg-[#FFFDF8] px-6 py-14 text-center shadow-[0_28px_70px_rgba(38,35,31,0.10)] dark:border-border dark:bg-card sm:px-12">
-            <div className="absolute inset-y-0 left-0 w-2 bg-[#A94E36]" aria-hidden="true" />
-            <BookOpen className="mx-auto h-10 w-10 text-[#A94E36]" aria-hidden="true" />
+          <div className="relative overflow-hidden rounded-2xl border border-border bg-card px-6 py-14 text-center shadow-[0_28px_70px_rgba(38,35,31,0.10)] dark:border-border dark:bg-card sm:px-12">
+            <div className="absolute inset-y-0 left-0 w-2 bg-accent" aria-hidden="true" />
+            <BookOpen className="mx-auto h-10 w-10 text-accent" aria-hidden="true" />
             <h2 className="mt-5 font-serif text-4xl" id="empty-book-title">Je eerste bladzijde begint met een Bouwmoment</h2>
-            <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-[#655F57] dark:text-muted-foreground">
+            <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-muted-foreground dark:text-muted-foreground">
               Voeg een foto en een paar woorden toe. Je Bouwboek groeit daarna vanzelf met je verbouwing mee.
             </p>
             <Button asChild className="mt-7" size="lg"><Link to={`/project/${id}`}>Naar je verbouwing</Link></Button>
@@ -435,12 +435,12 @@ const Photobook = () => {
           <div className="min-w-0">
             <div className="mb-4 px-1">
               <div className="flex items-start justify-between gap-3">
-                <h2 className="min-w-0 break-words font-serif text-3xl sm:text-4xl">{sourceDocument.cover.title}</h2>
-                <Badge className="mt-1 shrink-0 border-[#D8CFC1] bg-transparent text-[#655F57] dark:border-border dark:text-muted-foreground" variant="outline">
+                <h2 className="min-w-0 break-words text-2xl font-bold tracking-tight sm:text-3xl">{sourceDocument.cover.title}</h2>
+                <Badge className="mt-1 shrink-0 border-border bg-transparent text-muted-foreground dark:border-border dark:text-muted-foreground" variant="outline">
                   {document.pageCount} pagina’s
                 </Badge>
               </div>
-              <p className="mt-1 text-sm text-[#655F57] dark:text-muted-foreground">
+              <p className="mt-1 text-sm text-muted-foreground dark:text-muted-foreground">
                 {moments.length} {moments.length === 1 ? "Bouwmoment" : "Bouwmomenten"} · groeit met ieder nieuw moment
               </p>
             </div>
@@ -448,7 +448,7 @@ const Photobook = () => {
             <PhotobookViewer activePage={activePage} document={document} onActivePageChange={setActivePage} />
 
             <div className="mt-5 flex flex-col gap-3 px-1 sm:flex-row sm:items-center sm:justify-between">
-              <p className="max-w-sm text-sm leading-6 text-[#655F57] dark:text-muted-foreground">
+              <p className="max-w-sm text-sm leading-6 text-muted-foreground dark:text-muted-foreground">
                 Van de eerste sleutel tot de laatste verfstreek. Dit is jullie verhaal.
               </p>
               <Button
@@ -469,20 +469,20 @@ const Photobook = () => {
                 {pdfError ?? "Je PDF kon niet worden gemaakt. Probeer het opnieuw."}
               </p>
             ) : pdfRendering ? (
-              <p className="mt-3 px-1 text-sm text-[#655F57] dark:text-muted-foreground" role="status">
+              <p className="mt-3 px-1 text-sm text-muted-foreground dark:text-muted-foreground" role="status">
                 Je PDF wordt gemaakt. Je kunt hem hier downloaden zodra hij klaar is.
               </p>
             ) : null}
 
             {bookWarnings.length > 0 ? (
-              <section aria-labelledby="book-warnings-title" className="mt-5 rounded-xl border border-[#D8CFC1] bg-[#FFFDF8] p-4 dark:border-border dark:bg-card">
+              <section aria-labelledby="book-warnings-title" className="mt-5 rounded-xl border border-border bg-card p-4 dark:border-border dark:bg-card">
                 <h3 className="text-sm font-semibold" id="book-warnings-title">Let op in je Bouwboek</h3>
                 {pdfBlocked ? <p className="mt-1 text-sm">Pas de gemarkeerde punten aan om je PDF te downloaden.</p> : null}
                 <ul className="mt-2 max-h-48 space-y-2 overflow-y-auto text-sm">
                   {bookWarnings.map((warning) => (
-                    <li className={warning.severity === "blocking" ? "text-destructive" : "text-[#655F57] dark:text-muted-foreground"} key={`${warning.severity}:${warning.pageNumber}:${warning.message}`}>
+                    <li className={warning.severity === "blocking" ? "text-destructive" : "text-muted-foreground dark:text-muted-foreground"} key={`${warning.severity}:${warning.pageNumber}:${warning.message}`}>
                       {warning.severity === "blocking" ? <strong>Pas aan: </strong> : null}
-                      {warning.pageNumber !== null ? `Pagina ${warning.pageNumber}: ` : ""}{warning.message}
+                      {warning.pageNumber !== null ? `Pagina ${warning.pageNumber}: ` : ""}{warning.code === "LOW_EFFECTIVE_DPI" ? "Deze foto kan wat onscherp worden als je ver inzoomt. Kies eventueel een grotere foto." : warning.message}
                     </li>
                   ))}
                 </ul>
@@ -490,13 +490,13 @@ const Photobook = () => {
             ) : null}
           </div>
 
-          <aside className="min-w-0 self-start rounded-2xl border border-[#D8CFC1] bg-[#FFFDF8] dark:border-border dark:bg-card" aria-label="Bouwboek aanpassen">
+          <aside className="min-w-0 self-start rounded-2xl border border-border bg-card dark:border-border dark:bg-card" aria-label="Bouwboek aanpassen">
             <div className="px-4 pt-5 sm:px-5">
               <p className="eyebrow">Maak het van jullie</p>
-              <h2 className="mt-1 font-serif text-2xl">Jouw boek, jouw keuzes</h2>
+              <h2 className="mt-1 text-xl font-semibold tracking-tight">Jouw boek, jouw keuzes</h2>
             </div>
             <Tabs defaultValue={moments.length === 0 ? "content" : "cover"} className="mt-4">
-              <TabsList aria-label="Bouwboek aanpassen" className="mx-4 grid h-12 grid-cols-3 bg-[#F1EBE1] dark:bg-muted sm:mx-5">
+              <TabsList aria-label="Bouwboek aanpassen" className="mx-4 grid h-12 grid-cols-3 bg-muted dark:bg-muted sm:mx-5">
                 <TabsTrigger className="h-10" value="cover">Cover</TabsTrigger>
                 <TabsTrigger className="h-10" value="content">Inhoud</TabsTrigger>
                 <TabsTrigger className="h-10" value="layout">Indeling</TabsTrigger>
@@ -519,13 +519,13 @@ const Photobook = () => {
                     <p className="text-sm font-medium" id="cover-photos-label">Coverfoto</p>
                     <div className="mt-2 grid grid-cols-3 gap-2" role="group" aria-labelledby="cover-photos-label">
                       <button aria-label="Kies automatisch een coverfoto" aria-pressed={settingsDraft.coverMediaAssetId === null}
-                        className="flex aspect-[4/3] items-center justify-center rounded-lg border-2 border-[#D8CFC1] px-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-pressed:border-[#A94E36] aria-pressed:bg-[#A94E36]/5 dark:border-border"
+                        className="flex aspect-[4/3] items-center justify-center rounded-lg border-2 border-border px-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-pressed:border-primary aria-pressed:bg-accent/5 dark:border-border"
                         onClick={() => { setActivePage(0); updateSettingsDraft((settings) => ({ ...settings, coverMediaAssetId: null, preferences: { ...settings.preferences, coverCrop: null } })); }} type="button">
                         <Sparkles className="mr-1 h-4 w-4" aria-hidden="true" /> Auto
                       </button>
                       {sourceDocument.sourceAssets.slice(0, coverAssetLimit).map((asset, index) => (
                         <button aria-label={`Kies foto ${index + 1} als cover`} aria-pressed={settingsDraft.coverMediaAssetId === asset.id}
-                          className="aspect-[4/3] overflow-hidden rounded-lg border-2 border-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-pressed:border-[#A94E36]" key={asset.id}
+                          className="aspect-[4/3] overflow-hidden rounded-lg border-2 border-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-pressed:border-primary" key={asset.id}
                           onClick={() => { setActivePage(0); updateSettingsDraft((settings) => ({ ...settings, coverMediaAssetId: asset.id, preferences: { ...settings.preferences, coverCrop: { fit: "cover", focusX: 0.5, focusY: 0.5, zoom: 1 } } })); }} type="button">
                           <ResilientImage alt="" className="h-full w-full object-cover" loading="lazy" src={photobookMediaProxyPath(asset.id, "small")} />
                         </button>
@@ -545,7 +545,7 @@ const Photobook = () => {
                 </TabsContent>
 
                 <TabsContent value="content" className="m-0 space-y-5 p-4 sm:p-5">
-                  <p className="text-sm leading-6 text-[#655F57] dark:text-muted-foreground">Kies wat je wilt bewaren in je boek. Je originele Bouwmomenten blijven in je verhaal staan.</p>
+                  <p className="text-sm leading-6 text-muted-foreground dark:text-muted-foreground">Kies wat je wilt bewaren in je boek. Je originele Bouwmomenten blijven in je verhaal staan.</p>
                   {currentMoment ? (
                     <>
                       <div className="space-y-2">
@@ -622,14 +622,14 @@ const Photobook = () => {
                           { value: "two", label: "Naast elkaar", icon: "▥", description: "Twee foto’s per fotopagina" },
                           { value: "grid", label: "Collage", icon: "▦", description: "Tot vier foto’s bij elkaar" },
                         ] as const).map((option) => (
-                          <button aria-pressed={layoutChoice === option.value} className="rounded-xl border border-[#D8CFC1] p-3 text-left transition hover:border-[#A94E36]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-pressed:border-[#A94E36] aria-pressed:bg-[#A94E36]/5 dark:border-border" key={option.value} onClick={() => setLayoutChoice(option.value)} type="button">
-                            <span className="block text-2xl text-[#A94E36]" aria-hidden="true">{option.icon}</span>
+                          <button aria-pressed={layoutChoice === option.value} className="rounded-xl border border-border p-3 text-left transition hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-pressed:border-primary aria-pressed:bg-accent/5 dark:border-border" key={option.value} onClick={() => setLayoutChoice(option.value)} type="button">
+                            <span className="block text-2xl text-accent" aria-hidden="true">{option.icon}</span>
                             <span className="mt-1 block text-sm font-semibold">{option.label}</span>
-                            <span className="mt-1 block text-xs leading-5 text-[#655F57] dark:text-muted-foreground">{option.description}</span>
+                            <span className="mt-1 block text-xs leading-5 text-muted-foreground dark:text-muted-foreground">{option.description}</span>
                           </button>
                         ))}
                       </div>
-                      <p className="text-xs leading-5 text-[#655F57] dark:text-muted-foreground">De eerste foto blijft bij je tekst. Deze keuze geldt voor de fotopagina’s daarna.</p>
+                      <p className="text-xs leading-5 text-muted-foreground dark:text-muted-foreground">De eerste foto blijft bij je tekst. Deze keuze geldt voor de fotopagina’s daarna.</p>
                     </>
                   ) : <div className="py-4 text-center text-sm text-muted-foreground"><Images className="mx-auto mb-3 h-7 w-7" aria-hidden="true" />Zet eerst een Bouwmoment terug bij Inhoud.</div>}
                 </TabsContent>
@@ -637,7 +637,7 @@ const Photobook = () => {
             </Tabs>
             <div className="flex items-center justify-between gap-3 border-t border-[#E5DDD1] p-4 dark:border-border sm:p-5">
               {settingsDirty ? (
-                <p className="text-xs leading-5 text-[#655F57] dark:text-muted-foreground" role="status">Sla op om je voorbeeld bij te werken en je PDF te downloaden.</p>
+                <p className="text-xs leading-5 text-muted-foreground dark:text-muted-foreground" role="status">Sla op om je voorbeeld bij te werken en je PDF te downloaden.</p>
               ) : <p className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-300"><Check className="h-4 w-4 shrink-0" aria-hidden="true" />Alles is bewaard.</p>}
               <Button className="min-h-11 shrink-0" disabled={!settingsDirty || busy} onClick={saveSettings} type="button">
                 {settingsMutation.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Save aria-hidden="true" />} Opslaan

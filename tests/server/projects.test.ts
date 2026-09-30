@@ -456,6 +456,37 @@ describe("project repository security rules", () => {
     }
   });
 
+  it.each(["dashboard", "profile", "following"] as const)("uses only an attached published image as the %s card cover fallback", async (view) => {
+    const execute = vi.fn().mockResolvedValue({ rows: [] });
+    const database = {
+      transaction: async (callback: (transaction: { execute: typeof execute }) => Promise<unknown>) => callback({ execute }),
+    } as unknown as BuildyDatabase;
+    const repository = new PostgresProjectRepository(database);
+    if (view === "dashboard") await repository.listDashboard(ACTOR_ID, undefined, 10);
+    if (view === "profile") await repository.listProfileProjects(ANONYMOUS_PROJECT_ACTOR, OTHER_ID, undefined, 10);
+    if (view === "following") await repository.listFollowingProjects({ kind: "authenticated", appUserId: ACTOR_ID }, 10);
+
+    const sql = new PgDialect().sqlToQuery(execute.mock.calls[1][0] as SQL).sql.replace(/\s+/g, " ");
+    const cover = sql.split("select asset.id,")[1]?.split(") cover on true")[0];
+    expect(sql).toContain("app_can_view_project(project.id)");
+    expect(cover).toContain("attachment.media_asset_id = asset.id");
+    expect(cover).toContain("attachment.project_id = asset.project_id");
+    expect(cover).toContain("cover_update.id = attachment.update_id");
+    expect(cover).toContain("cover_update.project_id = attachment.project_id");
+    expect(cover).toContain("asset.project_id = project.id");
+    expect(cover).toContain("asset.owner_id = project.owner_id");
+    expect(cover).toContain("asset.purpose = 'project_media'");
+    expect(cover).toContain("cover_update.status = 'published'");
+    expect(cover).not.toContain("'draft'");
+    expect(cover).toContain("app_can_view_update(cover_update.id, project.id)");
+    expect(cover).toContain("not app_moderation_media_hidden(asset.id)");
+    expect(cover).toContain("asset.status = 'ready'");
+    expect(cover).toContain("asset.is_current");
+    expect(cover).toContain("asset.detected_content_type like 'image/%'");
+    expect(cover).toContain("order by case when asset.purpose = 'project_cover' then 0 else 1 end, cover_update.update_date desc nulls last, cover_update.sort_order desc, cover_update.id desc, attachment.sort_order,");
+    expect(cover).toContain("limit 1");
+  });
+
   it("does not turn a profile project list into discovery of private or link-only projects", async () => {
     const execute = vi.fn().mockResolvedValue({ rows: [] });
     const database = {

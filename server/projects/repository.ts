@@ -40,6 +40,38 @@ type DatabaseTransactionCallback = Parameters<BuildyDatabase["transaction"]>[0];
 type DatabaseTransaction = Parameters<DatabaseTransactionCallback>[0];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+// A chosen cover wins; otherwise use the first photo in the newest visible,
+// published moment. Keep the attachment binding even for the owner's cards.
+const projectCardCoverQuery = sql`
+  select asset.id, asset.detected_content_type, asset.width_pixels, asset.height_pixels
+  from media_assets asset
+  left join update_media attachment
+    on attachment.media_asset_id = asset.id
+    and attachment.project_id = asset.project_id
+  left join updates cover_update
+    on cover_update.id = attachment.update_id
+    and cover_update.project_id = attachment.project_id
+  where asset.project_id = project.id
+    and asset.owner_id = project.owner_id
+    and asset.status = 'ready'
+    and asset.is_current
+    and asset.detected_content_type like 'image/%'
+    and not app_moderation_media_hidden(asset.id)
+    and (
+      asset.purpose = 'project_cover'
+      or (
+        asset.purpose = 'project_media'
+        and cover_update.status = 'published'
+        and app_can_view_update(cover_update.id, project.id)
+      )
+    )
+  order by case when asset.purpose = 'project_cover' then 0 else 1 end,
+    cover_update.update_date desc nulls last, cover_update.sort_order desc,
+    cover_update.id desc, attachment.sort_order,
+    asset.updated_at desc, asset.id desc
+  limit 1
+`;
+
 type ProjectAccessFacts = {
   ownerId: string;
   visibility: ProjectVisibility;
@@ -589,15 +621,7 @@ export class PostgresProjectRepository implements ProjectRepository {
             and ${includeDrafts ? sql`item.status in ('draft', 'published')` : sql`item.status = 'published'`}
         ) update_stats on true
         left join lateral (
-          select asset.id, asset.detected_content_type, asset.width_pixels, asset.height_pixels
-          from media_assets asset
-          where asset.project_id = project.id
-            and asset.owner_id = project.owner_id
-            and asset.purpose = 'project_cover'
-            and asset.status = 'ready'
-            and asset.is_current
-          order by asset.updated_at desc, asset.id desc
-          limit 1
+          ${projectCardCoverQuery}
         ) cover on true
         where project.owner_id = ${ownerId}::uuid
           and project.lifecycle_status = 'active'
@@ -679,15 +703,7 @@ export class PostgresProjectRepository implements ProjectRepository {
             and item.status = 'published'
         ) update_stats on true
         left join lateral (
-          select asset.id, asset.detected_content_type, asset.width_pixels, asset.height_pixels
-          from media_assets asset
-          where asset.project_id = project.id
-            and asset.owner_id = project.owner_id
-            and asset.purpose = 'project_cover'
-            and asset.status = 'ready'
-            and asset.is_current
-          order by asset.updated_at desc, asset.id desc
-          limit 1
+          ${projectCardCoverQuery}
         ) cover on true
         where project.lifecycle_status = 'active'
           and app_can_view_project(project.id)

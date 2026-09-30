@@ -91,7 +91,7 @@ export const PhotobookViewer = ({
     <section
       aria-keyshortcuts="ArrowLeft ArrowRight Home End"
       aria-label="Bouwboekweergave"
-      className="min-w-0 rounded-2xl border border-[#D8CFC1] bg-[#E9E1D5] p-3 shadow-[0_24px_60px_rgba(38,35,31,0.10)] outline-none focus-visible:ring-2 focus-visible:ring-[#A94E36] dark:border-border dark:bg-muted/50 sm:p-5"
+      className="min-w-0 rounded-2xl border border-border bg-secondary p-3 shadow-[0_24px_60px_rgba(38,35,31,0.10)] outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-border dark:bg-muted/50 sm:p-5"
       onKeyDown={(event) => {
         if (event.key === "ArrowLeft") {
           event.preventDefault();
@@ -155,7 +155,7 @@ export const PhotobookViewer = ({
         >
           <ChevronLeft aria-hidden="true" />
         </Button>
-        <p aria-live="polite" className="min-w-40 text-center text-xs font-semibold tabular-nums text-[#655F57] dark:text-muted-foreground">
+        <p aria-live="polite" className="min-w-40 text-center text-xs font-semibold tabular-nums text-muted-foreground dark:text-muted-foreground">
           {pageLabel}
         </p>
         <Button
@@ -171,7 +171,7 @@ export const PhotobookViewer = ({
         </Button>
       </div>
 
-      <p className="mt-1 text-center text-xs text-[#655F57] dark:text-muted-foreground md:hidden">Veeg om door je verhaal te bladeren</p>
+      <p className="mt-1 text-center text-xs text-muted-foreground dark:text-muted-foreground md:hidden">Veeg om door je verhaal te bladeren</p>
 
       <nav aria-label="Bladzijden" className="mt-5 flex gap-2 overflow-x-auto pb-2">
         {document.pages.slice(0, thumbnailCount).map((page, index) => {
@@ -180,7 +180,7 @@ export const PhotobookViewer = ({
             <button
               aria-current={active ? "page" : undefined}
               aria-label={`Ga naar ${pageName(page).toLowerCase()}, bladzijde ${page.number}`}
-              className="w-24 shrink-0 rounded-md border-2 border-transparent p-1 text-left transition hover:border-[#B9AD9D] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-current:border-[#A94E36] aria-current:bg-white/50"
+              className="w-24 shrink-0 rounded-md border-2 border-transparent p-1 text-left transition hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-current:border-primary aria-current:bg-white/50"
               key={page.id}
               onClick={() => onActivePageChange(normalizedPageIndex(index, document.pageCount, desktopSpread))}
               type="button"
@@ -188,7 +188,7 @@ export const PhotobookViewer = ({
               <div className="overflow-hidden rounded-sm border border-black/10 bg-white shadow-sm">
                 <CanonicalPhotobookPage decorative document={document} imageSize="small" page={page} />
               </div>
-              <span className="mt-1 block truncate text-center text-[10px] font-medium text-[#655F57] dark:text-muted-foreground">
+              <span className="mt-1 block truncate text-center text-[10px] font-medium text-muted-foreground dark:text-muted-foreground">
                 {pageName(page)}
               </span>
             </button>
@@ -196,7 +196,7 @@ export const PhotobookViewer = ({
         })}
         {thumbnailCount < document.pageCount ? (
           <button
-            className="w-24 shrink-0 rounded-md border border-dashed border-[#B9AD9D] px-2 text-xs text-[#655F57] hover:border-[#A94E36] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-muted-foreground"
+            className="w-24 shrink-0 rounded-md border border-dashed border-border px-2 text-xs text-muted-foreground hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-muted-foreground"
             onClick={() => setThumbnailCount((count) => Math.min(document.pageCount, count + 10))}
             ref={loadMoreRef}
             type="button"

@@ -27,7 +27,44 @@ horizontal overflow was present. Reference screenshots remain outside Git.
 The previous deployed main release was confirmed as
 `6251b1dae86994563f61d83907573cc1384093e4` in READY production deployment
 `dpl_2exYu6rmLbhATr918srucwTUY4AP`. It remains the application rollback.
-Publication and hosted verification of this redesign are pending.
+Initial redesign release `1a8e346b3dfc317579192e615c7cda981df09460` reached
+READY as `dpl_317NLh8D5hGnBG7FGfH3B7PTJvb4` on the ordinary public domain.
+Two synthetic accounts verified user-only following and first-publication
+notifications, project+user deduplication, hidden drafts, comment/emoji persistence,
+notification read state, voluntary unfollow preserving an accessible explicit
+project, and private-profile request/acceptance. Owner removal and blocking denied
+project, timeline, comment and media reads and removed feed content. Restoring the
+synthetic relationship restored permitted access.
+
+Two real private Blob photos produced a six-page PDF (2,132,809 bytes); both the
+PDF bytes hash and canonical document hash matched the API checksums. Preview
+and downloaded proof used the same page count. The first upload check uncovered
+a Node test-script SDK header omission; explicit same-origin session headers fixed
+the script without changing the app.
+
+Computer Use logged into the synthetic owner account and displayed the live
+project story, chronological cards, own profile and canonical book at mobile
+widths. The real library picker selected two images; fixed composer actions and
+photo reordering controls were visible. The browser picker was slow and a later
+extension overlay interrupted the viewer-account check; API evidence is distinct
+from browser evidence. No claim of physical-camera testing is made.
+
+The visual pass found list cards without covers when only moment photos existed.
+The follow-up uses the first authorized image of the latest published moment when
+no explicit cover exists, with attachment/access/moderation filters. Fifty-four
+focused project/router checks passed. Book controls now share the app palette;
+16 book UI cases passed and the canonical renderer is unchanged.
+
+Migration 0055 was applied on isolated `br-frosty-pond-b12edfbz` first. Exact
+repository queries and access functions verified user-only/both/mute/pending/
+revoked/blocked/project-only/unrelated cases, draft publication and independent
+unfollow. This connector could not SET ROLE buildy_web_app; hosted ordinary API
+checks above subsequently exercised runtime access. The isolated branch was
+removed. Production application used buildy_migrator_app, an advisory transaction
+lock and comparison of all 54 prior hashes before DDL+ledger insertion. All 55
+hashes match; function owner/ACL/SECURITY DEFINER/search_path stayed unchanged.
+Rollback branch `br-calm-hall-b1shoixi` at LSN `0/345BFB8` is READY without compute.
+Final follow-up publication and synthetic-account cleanup are pending.
 
 ## Published mobile core — 2026-09-30
 
