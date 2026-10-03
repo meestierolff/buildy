@@ -370,3 +370,27 @@ export const photobookOrderEvents = pgTable(
     check("photobook_order_events_payload_ck", sql`jsonb_typeof(${table.payloadSummary}) = 'object'`),
   ],
 );
+
+// Manual requests are independent from retained paid/provider order history.
+export const bookRequests = pgTable("book_requests", {
+  id: uuid("id").primaryKey(),
+  ownerId: uuid("owner_id").notNull().references(() => appUsers.id, { onDelete: "cascade" }),
+  projectId: uuid("project_id").notNull(),
+  document: jsonb("document").$type<PhotobookDocument>().notNull(),
+  documentSha256: text("document_sha256").notNull(),
+  quantity: integer("quantity").notNull(),
+  deliveryCiphertext: text("delivery_ciphertext").notNull(),
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  requestHash: text("request_hash").notNull(),
+  status: text("status").default("requested").notNull(),
+  reply: text("reply").default("").notNull(),
+  version: optimisticVersion(),
+  ...timestamps(),
+}, table => [
+  foreignKey({ name: "book_requests_project_owner_fk", columns: [table.projectId, table.ownerId], foreignColumns: [projects.id, projects.ownerId] }).onDelete("cascade"),
+  index("book_requests_owner_idx").on(table.ownerId, table.createdAt),
+  index("book_requests_project_idx").on(table.projectId),
+  uniqueIndex("book_requests_open_project_uq").on(table.projectId).where(sql`${table.status} NOT IN ('cancelled', 'shipped')`),
+  check("book_requests_quantity_ck", sql`${table.quantity} BETWEEN 1 AND 10`),
+  check("book_requests_status_ck", sql`${table.status} IN ('requested', 'accepted', 'printing', 'shipped', 'cancelled')`),
+]);

@@ -5,10 +5,11 @@ then only the affected flow in [FLOWS](docs/architecture/FLOWS.md).
 
 **Maak van je verbouwing een verhaal om te bewaren.**
 Account → private renovation → photo/date/text Bouwmoment → chronological story
-→ share/follow/react/comment → digital Bouwboek/PDF.
+→ share/follow/react/comment → Bouwboek preview → manual book request → admin PDF.
 Preserve React/Vite, Vercel, Neon, private Blob and the existing design.
-Budget, floorplans, broad discovery, invitations, OAuth, demo modes and physical
-ordering are removed. Do not rebuild them as part of a core change.
+Owner-only budget, notes and work hours are part of the core. Physical book
+requests are handled manually by admins. Floorplans, broad discovery, invitations,
+OAuth, demo modes and automated checkout remain removed.
 
 ## Working loop
 
@@ -29,11 +30,12 @@ ordering are removed. Do not rebuild them as part of a core change.
 - Private media requires authorization, including after link revocation or blocking.
   Direct Blob uploads use server-issued scoped authorization.
 - One canonical chronological document drives preview, page count and PDF.
+  Customers request a book; only admins generate/download its immutable PDF.
 - Preserve retry-safe mutations, account export/deletion and bounded cleanup.
   Keep historical database records and applied migrations; no schema reset or
   encryption-key rotation. Migration changes are append-only when necessary.
 - Never expose secrets, session cookies, private URLs or personal content in Git,
-  logs, screenshots or evidence. No paid plans, payments or print orders.
+  logs, screenshots or evidence. No paid plans or automated payments/print dispatch.
 
 Computer Use and normal non-destructive commit/push/merge/deploy are authorized.
 The owner performs personal login/MFA or secret entry that tools cannot keep private.

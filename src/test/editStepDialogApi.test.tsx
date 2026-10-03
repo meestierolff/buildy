@@ -204,6 +204,21 @@ describe("EditStepDialog typed update mutations", () => {
     expect(mocks.uploadMedia).not.toHaveBeenCalled();
   });
 
+  it("restores private notes and allows clearing costs and time without changing story text", async () => {
+    render(<EditStepDialog projectId={PROJECT_ID} update={{ ...update, privateDetails: {
+      notes: "Privé maatvoering", costAmountMinor: 1299, ownMinutes: 90, contractorMinutes: 120,
+    } }} onClose={mocks.onClose} onUpdated={mocks.onUpdated} />);
+    expect(screen.getByLabelText("Eigen aantekeningen")).toHaveValue("Privé maatvoering");
+    expect(screen.getByLabelText("Eigen uren")).toHaveValue("1.5");
+    for (const label of ["Eigen aantekeningen", "Kosten van dit Bouwmoment (€)", "Eigen uren", "Uren aannemer"]) {
+      fireEvent.change(screen.getByLabelText(label), { target: { value: "" } });
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Wijzigingen opslaan" }));
+    await waitFor(() => expect(mocks.editUpdate).toHaveBeenCalledOnce());
+    expect(mocks.editUpdate.mock.calls[0][0]).toMatchObject({ description: update.description,
+      privateDetails: { notes: null, costAmountMinor: 0, ownMinutes: 0, contractorMinutes: 0 } });
+  });
+
   it("requires a second confirmed action before sending the soft-delete command", async () => {
     render(
       <EditStepDialog

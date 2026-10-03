@@ -151,6 +151,14 @@ export function decryptAccountExportPayload(
     delete order.pii_encryption_key_version;
   }
 
+  const bookRequests = payload.bookRequests ?? [];
+  if (!Array.isArray(bookRequests)) throw new Error("EXPORT_PAYLOAD_INVALID");
+  for (const item of bookRequests) {
+    const request = objectRecord(item);
+    if (typeof request.id !== "string") throw new Error("EXPORT_PAYLOAD_INVALID");
+    decryptOptional(keyring, request, "delivery_ciphertext", "delivery_details", `book-request:${request.id}:delivery`);
+  }
+
   const feedback = payload.feedback ?? [];
   if (!Array.isArray(feedback)) throw new Error("EXPORT_PAYLOAD_INVALID");
   payload.feedback = feedback;

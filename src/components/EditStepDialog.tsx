@@ -1,3 +1,5 @@
+import PrivateMomentFields from "@/components/project/PrivateMomentFields";
+import { privateMomentDraft, privateMomentInput, PrivateMomentInputError } from "@/lib/privateMomentForm";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -112,6 +114,7 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
   const [title, setTitle] = useState(update.title ?? "");
   const [room] = useState(update.room ?? "");
   const [description, setDescription] = useState(update.description ?? "");
+  const [privateForm, setPrivateForm] = useState(() => privateMomentDraft(update.privateDetails));
   const [updateDate, setUpdateDate] = useState(update.updateDate);
   const [phaseId, setPhaseId] = useState(update.phase?.id ?? "");
   const [isMilestone, setIsMilestone] = useState(update.isMilestone);
@@ -298,7 +301,8 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
       await readyEditorMedia(item);
       toast.success("De foto is privé verwerkt. Sla je wijzigingen op wanneer je klaar bent.");
     } catch (error) {
-      const message = error instanceof PrivateMediaUploadError || error instanceof UpdateEditorError
+      const message = error instanceof PrivateMediaUploadError ||
+          error instanceof PrivateMomentInputError || error instanceof UpdateEditorError
         ? error.message
         : "Deze foto kon niet veilig worden verwerkt. Probeer haar opnieuw.";
       setSaveError(message);
@@ -372,6 +376,7 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
 
     try {
       if (!pendingEditCommandRef.current) {
+        const privateDetails = privateMomentInput(privateForm);
         const latest = await projectQuery.refetch({ throwOnError: true });
         if (latest.data?.viewerAccess !== "owner" || !latest.data.canEdit) {
           throw new UpdateEditorError("Je hebt geen bewerkingsrechten voor deze verbouwing.");
@@ -381,6 +386,7 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
           title,
           room,
           description,
+          privateDetails,
           updateDate,
           phaseId,
           isMilestone,
@@ -408,6 +414,7 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
         setRetryLocked(false);
         const message = error instanceof ApiClientError ||
           error instanceof PrivateMediaUploadError ||
+          error instanceof PrivateMomentInputError ||
           error instanceof UpdateEditorError
           ? error.message
           : "Opslaan lukte niet. Je wijzigingen staan nog hier.";
@@ -582,6 +589,7 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
                   <input type="checkbox" aria-label="Dit is een mijlpaal" checked={isMilestone} onChange={(event) => { setIsMilestone(event.target.checked); markDirty(); }} disabled={formLocked} className="h-5 w-5 shrink-0 accent-[hsl(var(--accent))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
                   <span><span className="block text-sm font-semibold">Dit is een mijlpaal</span><span className="block text-xs text-muted-foreground">Een bijzonder moment in je verbouwing</span></span>
                 </label>
+                <PrivateMomentFields idPrefix="edit-moment-private" value={privateForm} onChange={(value) => { setPrivateForm(value); markDirty(); }} disabled={formLocked} />
                 <details className="rounded-xl border border-border px-3">
                   <summary className="flex min-h-12 cursor-pointer items-center text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{phaseId ? `Fase: ${phaseOptions.find((phase) => phase.value === phaseId)?.label ?? "gekozen"}` : "Fase toevoegen (optioneel)"}</summary>
                   <div className="space-y-2 pb-3 [&_input]:text-base [&_button]:min-h-11">
@@ -628,7 +636,7 @@ const EditStepDialog = ({ projectId, update, onClose, onUpdated, onDeleted }: Ed
           <AlertDialogHeader>
             <AlertDialogTitle>Bouwmoment definitief uit de verbouwing verwijderen?</AlertDialogTitle>
             <AlertDialogDescription>
-              Het Bouwmoment verdwijnt uit het Verhaal. Gekoppelde mediabestanden worden niet hard verwijderd en blijven volgens het bewaarbeleid beschermd.
+              Het Bouwmoment verdwijnt uit je verhaal en je huidige Bouwboek. Een al aangevraagde boekversie blijft ongewijzigd. Gekoppelde foto’s blijven beschermd bewaard volgens het bewaarbeleid.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

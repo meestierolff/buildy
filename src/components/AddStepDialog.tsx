@@ -1,3 +1,5 @@
+import PrivateMomentFields from "@/components/project/PrivateMomentFields";
+import { privateMomentDraft, privateMomentInput, PrivateMomentInputError } from "@/lib/privateMomentForm";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -88,6 +90,7 @@ const AddStepDialog = ({
   const [phaseId, setPhaseId] = useState("");
   const [isMilestone, setIsMilestone] = useState(false);
   const [description, setDescription] = useState("");
+  const [privateForm, setPrivateForm] = useState(privateMomentDraft);
   const [updateDate, setUpdateDate] = useState(() => {
     const today = new Date();
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
@@ -246,6 +249,7 @@ const AddStepDialog = ({
         setPhaseId(draft.phaseId);
         setIsMilestone(draft.isMilestone);
         setDescription(draft.description);
+        if (draft.privateForm) setPrivateForm(draft.privateForm);
         setUpdateDate(draft.updateDate);
         initialDateRef.current = draft.updateDate;
         updateIdempotencyKeyRef.current = draft.updateIdempotencyKey;
@@ -372,7 +376,8 @@ const AddStepDialog = ({
       await readyUpload(upload);
       toast.success("De foto is privé verwerkt. Plaats het Bouwmoment wanneer je klaar bent.");
     } catch (error) {
-      const message = error instanceof PrivateMediaUploadError || error instanceof UpdateDraftError
+      const message = error instanceof PrivateMediaUploadError ||
+          error instanceof PrivateMomentInputError || error instanceof UpdateDraftError
         ? error.message
         : "Deze foto kon niet veilig worden verwerkt. Probeer haar opnieuw.";
       setSaveError(message);
@@ -410,7 +415,7 @@ const AddStepDialog = ({
   };
 
   const isDirty = Boolean(
-    hasRestoredDraft || title.trim() || phaseId || isMilestone || description.trim() ||
+    Object.values(privateForm).some((value) => value.trim()) || hasRestoredDraft || title.trim() || phaseId || isMilestone || description.trim() ||
     updateDate !== initialDateRef.current || files.length,
   );
 
@@ -420,6 +425,7 @@ const AddStepDialog = ({
     phaseId,
     isMilestone,
     description,
+    privateForm,
     updateDate,
     files: files.map((upload) => ({
       id: upload.id,
@@ -464,7 +470,7 @@ const AddStepDialog = ({
     return () => globalThis.clearTimeout(timer);
   // `persistDraft` intentionally snapshots every listed state value after the debounce.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [description, draftHydrated, files, isDirty, isMilestone, phaseId, projectId, title, updateDate, user?.id]);
+  }, [description, privateForm, draftHydrated, files, isDirty, isMilestone, phaseId, projectId, title, updateDate, user?.id]);
 
   const requestClose = () => {
     const intent = getUpdateComposerCloseIntent({
@@ -497,6 +503,7 @@ const AddStepDialog = ({
 
     try {
       if (!pendingCommandRef.current) {
+        const privateDetails = privateMomentInput(privateForm);
         const accessResult = projectQuery.data
           ? projectQuery
           : await projectQuery.refetch({ throwOnError: true });
@@ -523,6 +530,7 @@ const AddStepDialog = ({
         pendingCommandRef.current = buildCreateUpdateCommand({
           title,
           description,
+          privateDetails,
           updateDate,
           phaseId,
           isMilestone,
@@ -566,6 +574,7 @@ const AddStepDialog = ({
         setRetryLocked(false);
         const message = error instanceof ApiClientError ||
           error instanceof PrivateMediaUploadError ||
+          error instanceof PrivateMomentInputError ||
           error instanceof UpdateDraftError
           ? error.message
           : "Opslaan lukte niet. Je concept staat nog hier; probeer opnieuw.";
@@ -749,6 +758,7 @@ const AddStepDialog = ({
                   <input type="checkbox" aria-label="Dit is een mijlpaal" checked={isMilestone} onChange={(event) => setIsMilestone(event.target.checked)} disabled={formLocked} className="h-5 w-5 shrink-0 accent-[hsl(var(--accent))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
                   <span><span className="block text-sm font-semibold">Dit is een mijlpaal</span><span className="block text-xs text-muted-foreground">Een bijzonder moment in je verbouwing</span></span>
                 </label>
+                <PrivateMomentFields idPrefix="new-moment-private" value={privateForm} onChange={setPrivateForm} disabled={formLocked} />
                 <details className="rounded-xl border border-border px-3">
                   <summary className="flex min-h-12 cursor-pointer items-center text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{phaseId ? `Fase: ${phaseOptions.find((phase) => phase.value === phaseId)?.label ?? "gekozen"}` : "Fase toevoegen (optioneel)"}</summary>
                   <div className="space-y-2 pb-3 [&_input]:text-base [&_button]:min-h-11">

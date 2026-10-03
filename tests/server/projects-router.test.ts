@@ -107,6 +107,7 @@ function service(overrides: Partial<ProjectHttpService> = {}): ProjectHttpServic
       deleted: true,
       replayed: false,
     }),
+    deleteProjectPhase: async () => ({ project: overview(), phaseId: PHASE_ID, deleted: true, replayed: false }),
     createProjectPhase: async () => ({
       project: overview(),
       phase: {

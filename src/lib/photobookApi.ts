@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   photobookDraftResponseSchema,
+  photobookPreviewResponseSchema,
   photobookProofMutationResponseSchema,
   replacePhotobookExclusionsInputSchema,
   requestPhotobookProofInputSchema,
@@ -184,4 +185,9 @@ export function photobookMediaProxyPath(
   size: "small" | "medium" | "large" = "large",
 ): `/api/media/${string}` {
   return `/api/media/${encodedId(assetId)}?size=${size}`;
+}
+
+export async function previewPhotobookSettings(projectId: string, input: UpdatePhotobookSettingsInput, signal?: AbortSignal) {
+  return (await apiRequest(projectPhotobookPath(projectId, "/preview"), photobookPreviewResponseSchema,
+    { method: "POST", body: updatePhotobookSettingsInputSchema.parse(input), signal })).data;
 }

@@ -10,6 +10,7 @@ import {
   type ProjectOverview,
   type ProjectVisibility,
   type UpdateMediaInput,
+  type UpdatePrivateDetails,
 } from "../../shared/contracts/projects";
 
 export type NewProjectDraft = {
@@ -62,6 +63,7 @@ export type UpdateComposerDraft = {
   updateDate: string;
   phaseId: string;
   isMilestone: boolean;
+  privateDetails?: UpdatePrivateDetails;
   media: readonly UpdateComposerMedia[];
 };
 
@@ -86,6 +88,7 @@ export function buildCreateUpdateCommand(
     ...(description ? { description } : {}),
     phaseId: draft.phaseId || undefined,
     isMilestone: draft.isMilestone,
+    ...(draft.privateDetails ? { privateDetails: draft.privateDetails } : {}),
     media,
     publish: true,
   });
@@ -98,6 +101,7 @@ export type EditUpdateDraft = {
   updateDate: string;
   phaseId: string;
   isMilestone: boolean;
+  privateDetails?: UpdatePrivateDetails;
   media: ReadonlyArray<UpdateComposerMedia & { caption?: string | null }>;
 };
 
@@ -115,6 +119,7 @@ export function buildEditUpdateCommand(
     description: nonEmpty(draft.description) ?? null,
     phaseId: draft.phaseId || null,
     isMilestone: draft.isMilestone,
+    ...(draft.privateDetails ? { privateDetails: draft.privateDetails } : {}),
     media: draft.media.map((item, sortOrder) => {
       const caption = item.caption?.trim();
       return {

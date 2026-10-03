@@ -18,7 +18,7 @@ const Index = () => {
   const dashboard = useProjectDashboard(!isLanding && Boolean(user));
   const projects = Array.from(new Map((dashboard.data?.pages ?? []).flatMap(page => page.items).map(project => [project.id, project])).values());
   usePageMeta({ title: isLanding ? "Buildy — Maak van je verbouwing een verhaal om te bewaren" : "Jouw projecten — Buildy", description: "Leg je bouwproject vast, volg andere bouwers en zie automatisch je eigen fotoboek ontstaan.", path: isLanding ? PRODUCT_ROUTES.landing : PRODUCT_ROUTES.projects, noIndex: !isLanding });
-  if (isLanding && user) return <Navigate to={`${search ? PRODUCT_ROUTES.projects : PRODUCT_ROUTES.following}${search}`} replace />;
+  if (isLanding && user) return <Navigate to={`${PRODUCT_ROUTES.projects}${search}`} replace />;
   if (!isLanding && authLoading) return <main className="min-h-[55vh]"><AsyncState status="loading" title="Account controleren" /></main>;
   if (!isLanding && !user) return <Navigate to={authPagePath(PRODUCT_ROUTES.projects)} replace />;
 
@@ -78,7 +78,7 @@ const Index = () => {
           <div className="mt-9 grid gap-8 md:grid-cols-3">{[
             {icon:Camera,title:"Leg het vast",text:"Foto’s, een datum en een paar woorden. Meer heb je niet nodig voor een nieuw Bouwmoment."},
             {icon:Users,title:"Beleef het samen",text:"Volg je favoriete bouwers en projecten. Vier de mijlpalen met een reactie, emoji of een lief bericht."},
-            {icon:BookOpen,title:"Bewaar het voor altijd",text:"Je Bouwboek wordt automatisch samengesteld uit je project. Kies je foto’s en download je persoonlijke PDF."},
+            {icon:BookOpen,title:"Bewaar het voor altijd",text:"Je Bouwboek wordt automatisch samengesteld uit je project. Kies je foto’s en vraag jouw gedrukte boek aan."},
           ].map(({icon:Icon,title,text},index) => <div key={title} className="relative border-t border-border pt-6"><span className="absolute -top-4 right-0 bg-card px-2 text-xs font-medium text-muted-foreground">0{index+1}</span><Icon className="mb-4 h-7 w-7 text-primary" strokeWidth={1.5} aria-hidden="true" /><h3 className="text-lg font-semibold">{title}</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">{text}</p></div>)}</div>
         </div>
       </section>
@@ -92,7 +92,7 @@ const Index = () => {
 
       <section id="voorbeeld" className="scroll-mt-20" aria-labelledby="book-title">
         <div className="mx-auto grid max-w-6xl items-center gap-8 px-5 py-14 sm:px-8 sm:py-20 md:grid-cols-2">
-          <div><p className="text-xs font-semibold uppercase tracking-[0.15em] text-accent">Van project naar fotoboek</p><h2 id="book-title" className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Een boek dat met je meegroeit.</h2><p className="mt-5 text-sm leading-7 text-muted-foreground">Alle foto’s en verhalen staan vanzelf in de juiste volgorde. Jij geeft de cover, fotoselectie en indeling jouw eigen draai. Ook je allereerste Bouwmoment verdient een boek.</p><ul className="mt-5 space-y-3 text-sm">{["Automatisch samengesteld per project","Jouw foto’s, woorden en herinneringen","Gratis digitaal Bouwboek als PDF"].map(text=><li key={text} className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" aria-hidden="true" />{text}</li>)}</ul></div>
+          <div><p className="text-xs font-semibold uppercase tracking-[0.15em] text-accent">Van project naar fotoboek</p><h2 id="book-title" className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Een boek dat met je meegroeit.</h2><p className="mt-5 text-sm leading-7 text-muted-foreground">Alle foto’s en verhalen staan vanzelf in de juiste volgorde. Jij geeft de cover, fotoselectie en indeling jouw eigen draai. Ook je allereerste Bouwmoment verdient een boek.</p><ul className="mt-5 space-y-3 text-sm">{["Automatisch samengesteld per project","Jouw foto’s, woorden en herinneringen","Bekijk je boek en vraag een gedrukt exemplaar aan"].map(text=><li key={text} className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" aria-hidden="true" />{text}</li>)}</ul></div>
           <figure className="overflow-hidden rounded-3xl bg-secondary"><img src="/images/buildy-bouwboek-preview.webp" alt="Voorbeeld van een open Bouwboek met een verbouwing voor en na" className="aspect-[4/3] w-full object-cover" loading="lazy" /><figcaption className="px-5 pb-4 text-xs text-muted-foreground">Voorbeeld van een persoonlijk Bouwboek</figcaption></figure>
         </div>
       </section>

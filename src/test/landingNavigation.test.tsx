@@ -82,7 +82,7 @@ describe("landing- en productnavigatie", () => {
 
     render(<BrowserRouter><Header activeProjectId="project-1" /></BrowserRouter>);
 
-    expect(screen.getByRole("link", { name: "Buildy" })).toHaveAttribute("href", "/volgend");
+    expect(screen.getByRole("link", { name: "Buildy" })).toHaveAttribute("href", "/projecten");
     expect(screen.getByRole("link", { name: "Projecten" })).toHaveAttribute("href", "/projecten");
     expect(screen.getByRole("link", { name: "Tijdlijn" })).toHaveAttribute("href", "/volgend");
     expect(screen.getByRole("link", { name: "Bouwmoment toevoegen" })).toHaveAttribute("href", "/project/project-1?update=nieuw");
@@ -126,8 +126,8 @@ describe("landing- en productnavigatie", () => {
 
   it("gebruikt de vijf afgesproken mobiele bestemmingen", () => {
     expect(MOBILE_NAVIGATION_ITEMS.map((item) => item.label)).toEqual([
-      "Tijdlijn",
       "Projecten",
+      "Tijdlijn",
       "Toevoegen",
       "Boeken",
       "Profiel",
@@ -154,8 +154,8 @@ describe("landing- en productnavigatie", () => {
     const items = getMobileNavigationItems();
 
     expect(items.map((item) => item.href)).toEqual([
-      "/volgend",
       "/projecten",
+      "/volgend",
       "/project/nieuw",
       "/bouwboeken",
       "/profiel",
@@ -212,12 +212,12 @@ describe("landing- en productnavigatie", () => {
     expect(window.location.pathname).toBe(path);
   });
 
-  it("brengt ingelogde bezoekers vanaf de startpagina naar hun tijdlijn", async () => {
+  it("brengt ingelogde bezoekers vanaf de startpagina naar hun eigen projecten", async () => {
     vi.mocked(useAuth).mockReturnValue({ ...vi.mocked(useAuth)(), user: { id: "owner" } } as ReturnType<typeof useAuth>);
     render(<App />);
 
-    expect(await screen.findByText("Sociale tijdlijn")).toBeInTheDocument();
-    expect(window.location.pathname).toBe("/volgend");
+    expect(await screen.findByRole("heading", { name: "Jouw projecten" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/projecten");
   });
 
   it("laat mobiel en desktop hetzelfde project kiezen voor een nieuw Bouwmoment", async () => {

@@ -66,11 +66,6 @@ export const PhotobookViewer = ({
     return () => observer.disconnect();
   }, [document.pageCount, thumbnailCount]);
 
-  useEffect(() => {
-    const normalized = normalizedPageIndex(activePage, document.pageCount, desktopSpread);
-    if (normalized !== activePage) onActivePageChange(normalized);
-  }, [activePage, desktopSpread, document.pageCount, onActivePageChange]);
-
   const move = (direction: -1 | 1) => {
     if (!desktopSpread) {
       onActivePageChange(normalizedPageIndex(current + direction, document.pageCount, false));
@@ -182,7 +177,7 @@ export const PhotobookViewer = ({
               aria-label={`Ga naar ${pageName(page).toLowerCase()}, bladzijde ${page.number}`}
               className="w-24 shrink-0 rounded-md border-2 border-transparent p-1 text-left transition hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-current:border-primary aria-current:bg-white/50"
               key={page.id}
-              onClick={() => onActivePageChange(normalizedPageIndex(index, document.pageCount, desktopSpread))}
+              onClick={() => onActivePageChange(index)}
               type="button"
             >
               <div className="overflow-hidden rounded-sm border border-black/10 bg-white shadow-sm">

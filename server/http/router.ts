@@ -25,6 +25,7 @@ import { handleDefaultModerationRequest } from "../moderation/runtime.js";
 import { handleDefaultModerationAdminRequest } from "../moderation/adminRuntime.js";
 import { handleDefaultProjectShareRequest } from "../projectShares/runtime.js";
 import { handleDefaultFeedbackAdminRequest } from "../feedbackAdmin/runtime.js";
+import { handleDefaultBookOrderRequest } from "../bookOrders/runtime.js";
 
 type RouteHandler = (request: Request, requestId: string) => Response | Promise<Response>;
 type PatternRouteHandler = (
@@ -393,6 +394,7 @@ registerPatternRoute("POST", "/api/projects/:projectId/updates", handleDefaultPr
 registerPatternRoute("PATCH", "/api/projects/:projectId/updates/:updateId", handleDefaultProjectRequest);
 registerPatternRoute("DELETE", "/api/projects/:projectId/updates/:updateId", handleDefaultProjectRequest);
 registerPatternRoute("POST", "/api/projects/:projectId/phases", handleDefaultProjectRequest);
+registerPatternRoute("DELETE", "/api/projects/:projectId/phases/:phaseId", handleDefaultProjectRequest);
 registerRoute("POST", "/api/media/upload-intents", handleDefaultMediaRequest);
 registerExternalRoute("POST", "/api/media/blob-upload-completed", handleDefaultMediaRequest);
 registerPatternRoute("POST", "/api/media/:assetId/blob-upload", handleDefaultMediaRequest);
@@ -440,6 +442,12 @@ registerRoute("GET", "/api/notifications", handleDefaultEngagementRequest);
 registerRoute("PATCH", "/api/notifications", handleDefaultEngagementRequest);
 registerPatternRoute("PATCH", "/api/notifications/:notificationId", handleDefaultEngagementRequest);
 registerPatternRoute("GET", "/api/projects/:projectId/photobook", handleDefaultPhotobookRequest);
+registerPatternRoute("POST", "/api/projects/:projectId/photobook/preview", handleDefaultPhotobookRequest);
+registerPatternRoute("GET", "/api/projects/:projectId/photobook/orders", handleDefaultBookOrderRequest);
+registerPatternRoute("POST", "/api/projects/:projectId/photobook/orders", handleDefaultBookOrderRequest);
+registerRoute("GET", "/api/admin/book-orders", handleDefaultBookOrderRequest);
+registerPatternRoute("PATCH", "/api/admin/book-orders/:orderId", handleDefaultBookOrderRequest);
+registerPatternRoute("POST", "/api/admin/book-orders/:orderId/pdf", handleDefaultBookOrderRequest);
 registerPatternRoute("PUT", "/api/projects/:projectId/photobook/settings", handleDefaultPhotobookRequest);
 registerPatternRoute("PUT", "/api/projects/:projectId/photobook/exclusions", handleDefaultPhotobookRequest);
 registerPatternRoute("POST", "/api/projects/:projectId/photobook/proofs", handleDefaultPhotobookRequest);

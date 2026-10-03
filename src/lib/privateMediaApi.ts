@@ -27,6 +27,7 @@ export type ProjectMediaUploadStage = "uploading" | "processing" | "ready";
 
 export type PrivateProjectImageUploadInput = {
   projectId: string;
+  purpose?: "project_media" | "project_cover";
   idempotencyKey: string;
   prepared: PreparedProjectImage;
   signal?: AbortSignal;
@@ -327,7 +328,7 @@ export async function waitForProjectMediaReady(
 
 function assertScopedAsset(
   asset: MediaAssetState,
-  projectId: string,
+  projectId: string | null,
   purpose: MediaUploadPurpose,
 ): void {
   if (asset.projectId !== projectId || asset.purpose !== purpose) {
@@ -338,11 +339,11 @@ function assertScopedAsset(
   }
 }
 
-export async function uploadProjectImage(
-  input: PrivateProjectImageUploadInput,
+async function uploadPrivateImage(
+  input: Omit<PrivateProjectImageUploadInput, "projectId" | "purpose"> & { projectId: string | null; purpose: "project_media" | "project_cover" | "avatar" },
   runtime: MediaUploadRuntime = {},
 ): Promise<MediaAssetState> {
-  const purpose = "project_media";
+  const { purpose } = input;
   if (
     input.prepared.file.size !== input.prepared.sizeBytes ||
     input.prepared.file.type !== input.prepared.contentType ||
@@ -461,4 +462,12 @@ export async function uploadProjectImage(
   }
   input.onStage?.("ready");
   return asset;
+}
+
+export function uploadProjectImage(input: PrivateProjectImageUploadInput, runtime: MediaUploadRuntime = {}) {
+  return uploadPrivateImage({ ...input, purpose: input.purpose ?? "project_media" }, runtime);
+}
+
+export function uploadProfileImage(input: Omit<PrivateProjectImageUploadInput, "projectId" | "purpose">, runtime: MediaUploadRuntime = {}) {
+  return uploadPrivateImage({ ...input, projectId: null, purpose: "avatar" }, runtime);
 }

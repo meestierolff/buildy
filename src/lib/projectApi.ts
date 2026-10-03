@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   dashboardResponseSchema,
   deleteProjectMutationResponseSchema,
+  deleteProjectPhaseMutationResponseSchema,
   deleteUpdateMutationResponseSchema,
   followingFeedQuerySchema,
   followingFeedResponseSchema,
@@ -16,6 +17,7 @@ import {
   type CreateProjectPhaseInput,
   type CreateUpdateInput,
   type DeleteProjectInput,
+  type DeleteProjectPhaseInput,
   type DeleteUpdateInput,
   type EditUpdateInput,
   type FollowingFeed,
@@ -270,4 +272,9 @@ export async function createProjectWithVisibility(input: {
     }
     throw new ProjectVisibilityContinuationError(created.project.id, { cause });
   }
+}
+
+export async function deleteProjectPhase(projectId: string, phaseId: string, input: DeleteProjectPhaseInput) {
+  return (await apiRequest(`${phasesPath(projectId)}/${encodeURIComponent(uuidSchema.parse(phaseId))}`,
+    deleteProjectPhaseMutationResponseSchema, { method: "DELETE", body: input })).data;
 }

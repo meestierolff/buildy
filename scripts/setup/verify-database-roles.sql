@@ -37,6 +37,9 @@ CREATE TEMP TABLE buildy_expected_function_grants (
   role_kind text NOT NULL CHECK (role_kind IN ('web', 'account', 'media', 'photobook', 'payment'))
 );
 INSERT INTO buildy_expected_function_grants (signature, role_kind) VALUES
+  ('public.app_can_read_book_request(uuid,uuid)', 'web'),
+  ('public.app_can_manage_book_requests()', 'web'),
+  ('public.app_admin_book_order_assets(uuid,uuid)', 'web'),
   ('public.app_resolve_active_user(text)', 'web'),
   ('public.app_provision_auth_identity(text,uuid,boolean)', 'web'),
   ('public.app_lock_password_auth_identity(text)', 'web'),

@@ -2,6 +2,43 @@
 
 Scope: [GRAPH](GRAPH.md). Behavior: [FLOWS](FLOWS.md).
 
+## Tester feedback implementation — 2026-10-03
+
+Local implementation covers profile photo upload; project cover, visibility and
+planned dates; automatic date-based progress; owner-only notes, costs and own/
+contractor hours per Bouwmoment; project budget; and deletion of custom phases
+without deleting moments. Project settings and sharing fit the mobile story.
+Own projects are the first navigation destination, followed by the timeline.
+Vertical lightbox swipes dismiss a moment; account deletion is less prominent.
+
+The book editor follows the selected preview page, including desktop spreads,
+and generates canonical unsaved previews while preserving explicit saving.
+A compact live preview remains visible inside the mobile editor. Customers can
+submit retry-safe manual book requests with a frozen document and encrypted
+contact/delivery details. Admins use `/admin/boeken` to review requests, reply,
+change status and download the stored version as PDF. Customer proof/PDF routes
+are forbidden server-side, including known historical revision URLs. Account
+exports retain personal source content and decrypt request details but omit
+PDF bytes. Accepted/printing requests block account/project deletion; unaccepted
+requests are cancelled before access revocation and existing cleanup erases them.
+
+Verification so far is local: 86 focused book UI, ordering, HTTP/access,
+canonical-document, actual PDF-renderer and migration-discovery cases passed;
+typecheck and changed-file lint passed. Separate focused navigation, gestures,
+routing, budget/private-data and avatar/project-settings checks also passed.
+The application build passed. These check groups overlap and are not a combined
+coverage total. No hosted end-to-end result is asserted for this feedback release.
+Append-only migrations 0056–0059 add the required records and lifecycle boundaries;
+published SHA, production migration state and ordinary hosted flows remain to be
+confirmed before this section records release evidence.
+
+The previous production application is retained for rollback: READY deployment
+`dpl_EMjd3h45oCZDxWiwawD3URmn34np`, SHA
+`f90f3a4e1c3f32d773df8101d254885bd268bd5c`.
+Book requests do not take payment or automatically contact a printer. Buildy must
+confirm price, print specifications (including bleed/page requirements) and
+delivery with the customer before manually sending the PDF to a printer.
+
 ## Social mobile redesign — 2026-09-30
 
 Local implementation now combines accepted user follows and explicit project

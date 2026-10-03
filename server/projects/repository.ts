@@ -1,6 +1,8 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   mediaAssets,
+  projectBudgets,
+  budgetItems,
   outboxEvents,
   projectPhases,
   projectPrivateDetails,
@@ -16,6 +18,7 @@ import type {
   ProjectPhase,
   ProjectUpdate,
   ProjectVisibility,
+  UpdatePrivateDetails,
 } from "../../shared/contracts/projects.js";
 import { projectFollowMutationResultSchema } from "../../shared/contracts/projects.js";
 import type { BuildyDatabase } from "../db/client.js";
@@ -27,6 +30,7 @@ import type {
   CreateProjectPhaseCommand,
   CreateUpdateCommand,
   DeleteProjectCommand,
+  DeleteProjectPhaseCommand,
   DeleteUpdateCommand,
   EditUpdateCommand,
   MutationReference,
@@ -53,6 +57,7 @@ const projectCardCoverQuery = sql`
     and cover_update.project_id = attachment.project_id
   where asset.project_id = project.id
     and asset.owner_id = project.owner_id
+    and asset.original_asset_id is null
     and asset.status = 'ready'
     and asset.is_current
     and asset.detected_content_type like 'image/%'
@@ -71,6 +76,26 @@ const projectCardCoverQuery = sql`
     asset.updated_at desc, asset.id desc
   limit 1
 `;
+
+// Read-time calculation keeps the estimate current without background jobs.
+const automaticProgress = sql`case
+  when project.start_date is null or project.expected_end_date is null then project.progress_percentage
+  when (now() at time zone 'Europe/Amsterdam')::date < project.start_date then 0
+  when (now() at time zone 'Europe/Amsterdam')::date >= project.expected_end_date then 100
+  else least(100, greatest(0, round(100.0 * ((now() at time zone 'Europe/Amsterdam')::date - project.start_date)
+    / nullif(project.expected_end_date - project.start_date, 0))))::integer end`;
+
+// This scalar is used only in owner project reads. Forced budget RLS is a
+// second boundary; following activity and the canonical book never select it.
+const privateMomentDetails = sql`case when project.owner_id = app_actor_id() then (
+  select jsonb_build_object('notes', max(private_item.private_notes) filter (where private_item.is_update_summary),
+    'costAmountMinor', coalesce(max(private_item.amount_minor) filter (where private_item.is_update_summary), sum(private_item.amount_minor)),
+    'ownMinutes', sum(private_item.own_minutes), 'contractorMinutes', sum(private_item.contractor_minutes))
+  from budget_items private_item
+  where private_item.update_id = item.id and private_item.kind = 'actual'
+    and private_item.created_by_id = app_actor_id()
+  having count(*) > 0
+) else null end`;
 
 type ProjectAccessFacts = {
   ownerId: string;
@@ -122,6 +147,7 @@ type RawProjectOverview = RawProjectCard & {
   viewer_follow_status: ProjectOverview["viewerFollowStatus"];
   viewer_access: "owner" | "follower" | "link" | "public";
   phases: ProjectPhase[];
+  budget?: ProjectOverview["budget"] | null;
 };
 
 type RawProjectUpdate = {
@@ -139,6 +165,7 @@ type RawProjectUpdate = {
   version: number;
   publishedAt: string | null;
   updatedAt: string;
+  privateDetails?: UpdatePrivateDetails | null;
   media: Array<{
     id: string;
     contentType: string | null;
@@ -207,6 +234,7 @@ function mapProjectCard(row: RawProjectCard): ProjectCard {
 function mapProjectOverview(row: RawProjectOverview): ProjectOverview {
   return {
     ...mapProjectCard(row),
+    ...(row.viewer_access === "owner" && row.budget ? { budget: row.budget } : {}),
     startDate: row.start_date,
     expectedEndDate: row.expected_end_date,
     contentRevision: Number(row.content_revision),
@@ -224,8 +252,10 @@ function mapProjectOverview(row: RawProjectOverview): ProjectOverview {
 }
 
 function mapProjectUpdate(row: RawProjectUpdate): ProjectUpdate {
+  const { privateDetails, ...publicRow } = row;
   return {
-    ...row,
+    ...publicRow,
+    ...(privateDetails ? { privateDetails } : {}),
     publishedAt: nullableIso(row.publishedAt),
     updatedAt: iso(row.updatedAt),
     contentRevision: Number(row.contentRevision),
@@ -358,6 +388,32 @@ async function assertMedia(
   if (records.length !== new Set(assetIds).size) throw new ProjectError("INVALID_MEDIA");
 }
 
+async function savePrivateMomentDetails(
+  transaction: DatabaseTransaction,
+  command: Pick<CreateUpdateCommand, "projectId" | "actorId" | "updateId" | "now">,
+  details: UpdatePrivateDetails,
+): Promise<void> {
+  await transaction.insert(projectBudgets).values({
+    projectId: command.projectId, ownerId: command.actorId,
+  }).onConflictDoNothing({ target: projectBudgets.projectId });
+  const [budget] = await transaction.select({ id: projectBudgets.id }).from(projectBudgets)
+    .where(and(eq(projectBudgets.projectId, command.projectId), eq(projectBudgets.ownerId, command.actorId))).limit(1);
+  if (!budget) throw new ProjectError("PROJECT_NOT_FOUND");
+  const values = {
+    amountMinor: details.costAmountMinor, privateNotes: details.notes || null,
+    ownMinutes: details.ownMinutes, contractorMinutes: details.contractorMinutes,
+    updatedAt: command.now,
+  };
+  await transaction.insert(budgetItems).values({
+    budgetId: budget.id, projectId: command.projectId, updateId: command.updateId,
+    createdById: command.actorId, kind: "actual", category: "Bouwmoment",
+    isUpdateSummary: true, ...values,
+  }).onConflictDoUpdate({
+    target: budgetItems.updateId, targetWhere: sql`${budgetItems.isUpdateSummary}`,
+    set: { ...values, version: sql`${budgetItems.version} + 1` },
+  });
+}
+
 async function explainProjectMutationFailure(
   transaction: DatabaseTransaction,
   projectId: string,
@@ -452,6 +508,12 @@ export class PostgresProjectRepository implements ProjectRepository {
         ...command.privateDetails,
         version: 1,
       });
+      if (command.input.plannedBudgetMinor !== undefined) {
+        await transaction.insert(projectBudgets).values({
+          projectId: command.projectId, ownerId: command.ownerId,
+          plannedAmountMinor: command.input.plannedBudgetMinor,
+        });
+      }
       await transaction.insert(projectPhases).values(
         STANDARD_PROJECT_PHASES.map((name, sortOrder) => ({
           projectId: command.projectId,
@@ -510,6 +572,15 @@ export class PostgresProjectRepository implements ProjectRepository {
             command.ownerId,
             input.expectedVersion,
           );
+        }
+        if (input.plannedBudgetMinor !== undefined) {
+          await transaction.insert(projectBudgets).values({
+            projectId: command.projectId, ownerId: command.ownerId,
+            plannedAmountMinor: input.plannedBudgetMinor,
+          }).onConflictDoUpdate({ target: projectBudgets.projectId, set: {
+            plannedAmountMinor: input.plannedBudgetMinor,
+            version: sql`${projectBudgets.version} + 1`, updatedAt: command.now,
+          } });
         }
       });
     } catch (error) {
@@ -599,7 +670,7 @@ export class PostgresProjectRepository implements ProjectRepository {
           project.description,
           project.project_type,
           project.visibility,
-          project.progress_percentage,
+          ${automaticProgress} as progress_percentage,
           project.version,
           project.updated_at,
           project.published_at,
@@ -670,7 +741,7 @@ export class PostgresProjectRepository implements ProjectRepository {
           project.description,
           project.project_type,
           project.visibility,
-          project.progress_percentage,
+          ${automaticProgress} as progress_percentage,
           project.version,
           project.updated_at,
           project.published_at,
@@ -833,7 +904,7 @@ export class PostgresProjectRepository implements ProjectRepository {
           project.description,
           project.project_type,
           project.visibility,
-          project.progress_percentage,
+          ${automaticProgress} as progress_percentage,
           project.version,
           project.updated_at,
           project.published_at,
@@ -854,6 +925,22 @@ export class PostgresProjectRepository implements ProjectRepository {
             else 'public'
           end as viewer_access,
           coalesce(phases.items, '[]'::jsonb) as phases,
+          case when project.owner_id = ${actorId}::uuid then (
+            select jsonb_build_object(
+              'plannedAmountMinor', coalesce((select budget.planned_amount_minor from project_budgets budget where budget.project_id = project.id), 0),
+              'spentAmountMinor', coalesce(sum(budget_item.amount_minor), 0),
+              'remainingAmountMinor', coalesce((select budget.planned_amount_minor from project_budgets budget where budget.project_id = project.id), 0) - coalesce(sum(budget_item.amount_minor), 0),
+              'ownMinutes', coalesce(sum(budget_item.own_minutes), 0),
+              'contractorMinutes', coalesce(sum(budget_item.contractor_minutes), 0)
+            ) from budget_items budget_item
+            left join updates budget_update on budget_update.id = budget_item.update_id
+            where budget_item.project_id = project.id and budget_item.kind = 'actual'
+              and (budget_item.update_id is null or budget_update.status in ('draft', 'published'))
+              and (budget_item.is_update_summary or budget_item.update_id is null or not exists (
+                select 1 from budget_items summary_item
+                where summary_item.update_id = budget_item.update_id and summary_item.is_update_summary
+              ))
+          ) else null end as budget,
           cover.id as cover_id,
           cover.detected_content_type as cover_content_type,
           cover.width_pixels as cover_width,
@@ -889,6 +976,9 @@ export class PostgresProjectRepository implements ProjectRepository {
           where asset.project_id = project.id
             and asset.owner_id = project.owner_id
             and asset.purpose = 'project_cover'
+            and asset.original_asset_id is null
+            and asset.detected_content_type like 'image/%'
+            and not app_moderation_media_hidden(asset.id)
             and asset.status = 'ready'
             and asset.is_current
           order by asset.updated_at desc, asset.id desc
@@ -938,6 +1028,7 @@ export class PostgresProjectRepository implements ProjectRepository {
                 'title', item.title,
                 'room', item.room,
                 'description', item.description,
+          'privateDetails', ${privateMomentDetails},
                 'updateDate', item.update_date,
                 'status', item.status,
                 'isMilestone', item.is_milestone,
@@ -1008,6 +1099,7 @@ export class PostgresProjectRepository implements ProjectRepository {
           'title', item.title,
           'room', item.room,
           'description', item.description,
+          'privateDetails', ${privateMomentDetails},
           'updateDate', item.update_date,
           'status', item.status,
           'isMilestone', item.is_milestone,
@@ -1119,6 +1211,9 @@ export class PostgresProjectRepository implements ProjectRepository {
           version: 1,
           publishedAt: command.input.publish ? command.now : null,
         });
+        if (command.input.privateDetails) {
+          await savePrivateMomentDetails(transaction, command, command.input.privateDetails);
+        }
         if (command.input.media.length > 0) {
           await transaction.insert(updateMedia).values(command.input.media.map((media) => ({
             updateId: command.updateId,
@@ -1212,6 +1307,9 @@ export class PostgresProjectRepository implements ProjectRepository {
           throw new ProjectError("VERSION_CONFLICT");
         }
 
+        if (input.privateDetails) {
+          await savePrivateMomentDetails(transaction, command, input.privateDetails);
+        }
         if (input.media) {
           await transaction.delete(updateMedia).where(and(
             eq(updateMedia.updateId, command.updateId),
@@ -1336,6 +1434,35 @@ export class PostgresProjectRepository implements ProjectRepository {
         requestHash: command.requestHash,
       });
       return { id: command.updateId, replayed: false };
+    });
+  }
+
+  async deleteProjectPhase(command: DeleteProjectPhaseCommand): Promise<MutationReference> {
+    return this.database.transaction(async (transaction) => {
+      await setActor(transaction, command.actorId);
+      await lockIdempotencyKey(transaction, command.idempotencyKey);
+      const eventType = "project.phase.deleted.v1";
+      const replay = await replayedMutation(transaction, command.idempotencyKey, eventType, command.requestHash);
+      if (replay) return replay;
+      const changed = await transaction.update(projects).set({
+        contentRevision: sql`${projects.contentRevision} + 1`,
+        version: sql`${projects.version} + 1`, updatedAt: command.now,
+      }).where(and(eq(projects.id, command.projectId), eq(projects.ownerId, command.actorId),
+        eq(projects.lifecycleStatus, "active"), eq(projects.version, command.input.expectedProjectVersion),
+      )).returning({ id: projects.id });
+      if (!changed[0]) await explainProjectMutationFailure(transaction, command.projectId, command.actorId, command.input.expectedProjectVersion);
+      const [phase] = await transaction.select({ isCustom: projectPhases.isCustom }).from(projectPhases)
+        .where(and(eq(projectPhases.id, command.phaseId), eq(projectPhases.projectId, command.projectId))).limit(1);
+      if (!phase?.isCustom) throw new ProjectError("INVALID_PHASE");
+      // Detach every moment, including retained deleted moments, before the FK
+      // restricted phase delete. No story text/media is removed.
+      await transaction.update(updates).set({ phaseId: null,
+        contentRevision: sql`${updates.contentRevision} + 1`, version: sql`${updates.version} + 1`, updatedAt: command.now,
+      }).where(and(eq(updates.projectId, command.projectId), eq(updates.phaseId, command.phaseId)));
+      await transaction.delete(projectPhases).where(and(eq(projectPhases.id, command.phaseId), eq(projectPhases.projectId, command.projectId)));
+      await appendMutationEvent(transaction, { aggregateType: "project", aggregateId: command.projectId,
+        eventType, idempotencyKey: command.idempotencyKey, requestHash: command.requestHash, resultId: command.phaseId });
+      return { id: command.phaseId, replayed: false };
     });
   }
 

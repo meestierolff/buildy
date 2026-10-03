@@ -70,7 +70,7 @@ function apiStatus(status: string): MediaAssetState["status"] {
 }
 
 function assetState(row: Pick<UploadRow, "id" | "projectId" | "purpose" | "status">): MediaAssetState {
-  if (!row.projectId) throw new MediaError("MEDIA_NOT_FOUND");
+  if ((row.purpose === "avatar") !== (row.projectId === null)) throw new MediaError("MEDIA_NOT_FOUND");
   return {
     id: row.id,
     projectId: row.projectId,
@@ -110,7 +110,7 @@ export class PostgresMediaRepository implements MediaRepository {
       event_id: string;
       asset_id: string;
       owner_id: string;
-      project_id: string;
+      project_id: string | null;
       purpose: MediaUploadPurpose;
       temporary_object_key: string;
       bucket_name: string;
@@ -208,16 +208,21 @@ export class PostgresMediaRepository implements MediaRepository {
           };
         }
 
-        const [project] = await transaction
-          .select({ id: projects.id, ownerId: projects.ownerId })
-          .from(projects)
-          .where(and(
-            eq(projects.id, command.projectId),
-            eq(projects.lifecycleStatus, "active"),
-          ))
-          .limit(1);
-        if (!project || project.ownerId !== command.actorId) {
-          throw new MediaError("PROJECT_NOT_FOUND");
+        if (command.purpose === "avatar") {
+          if (command.projectId !== null) throw new MediaError("UPLOAD_INVALID");
+        } else {
+          if (!command.projectId) throw new MediaError("PROJECT_NOT_FOUND");
+          const [project] = await transaction
+            .select({ id: projects.id, ownerId: projects.ownerId })
+            .from(projects)
+            .where(and(
+              eq(projects.id, command.projectId),
+              eq(projects.lifecycleStatus, "active"),
+            ))
+            .limit(1);
+          if (!project || project.ownerId !== command.actorId) {
+            throw new MediaError("PROJECT_NOT_FOUND");
+          }
         }
 
         await transaction.insert(mediaAssets).values({
@@ -286,7 +291,6 @@ export class PostgresMediaRepository implements MediaRepository {
       const row = rows[0] as UploadRow | undefined;
       if (
         !row ||
-        !row.projectId ||
         !row.claimedContentType ||
         !row.sizeBytes ||
         !row.sha256

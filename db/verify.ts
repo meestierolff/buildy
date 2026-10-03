@@ -32,6 +32,7 @@ export const EXPECTED_PUBLIC_TABLES = [
   "beta_invite_redemptions",
   "beta_invites",
   "budget_items",
+  "book_requests",
   "comment_mentions",
   "comments",
   "deletion_assets",
@@ -97,6 +98,9 @@ export const EXPECTED_RLS_TABLES = EXPECTED_PUBLIC_TABLES.filter(
 );
 
 const REQUIRED_FUNCTIONS = [
+  "app_can_read_book_request",
+  "app_can_manage_book_requests",
+  "app_admin_book_order_assets",
   "app_account_order_is_active",
   "app_request_account_export",
   "app_request_account_deletion",

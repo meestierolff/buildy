@@ -1,6 +1,6 @@
 export type MediaUploadRateLimitInput = {
   actorId: string;
-  projectId: string;
+  projectId: string | null;
   requestedBytes: number;
 };
 
@@ -28,7 +28,7 @@ export class StorageBackedMediaUploadRateLimiter implements MediaUploadRateLimit
 
   async consume(input: MediaUploadRateLimitInput): Promise<MediaUploadRateLimitDecision> {
     const decision = await this.storage.consume(
-      `media-upload-intent:v1:${input.actorId}:${input.projectId}`,
+      `media-upload-intent:v1:${input.actorId}:${input.projectId ?? "avatar"}`,
       { window: UPLOAD_INTENT_WINDOW_SECONDS, max: MAX_UPLOAD_INTENTS_PER_WINDOW },
     );
     return {

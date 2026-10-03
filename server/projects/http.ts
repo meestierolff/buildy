@@ -51,6 +51,9 @@ export interface ProjectHttpService {
     deleted: true;
     replayed: boolean;
   }>;
+  deleteProjectPhase(actorId: string, projectId: string, phaseId: string, input: unknown): Promise<{
+    project: ProjectOverview; phaseId: string; deleted: true; replayed: boolean;
+  }>;
   createProjectPhase(actorId: string, projectId: string, input: unknown): Promise<{
     project: ProjectOverview;
     phase: ProjectPhase;
@@ -166,6 +169,10 @@ export function createProjectHttpHandler(dependencies: ProjectHttpDependencies) 
           requestId,
         );
       }
+      if (projectId && parameters.phaseId && request.method === "DELETE") {
+        return jsonSuccess(await dependencies.service.deleteProjectPhase(authenticatedActorId(), projectId,
+          validatedId(parameters.phaseId, "project"), await jsonInput(request)), requestId);
+      }
       if (projectId && pathname.endsWith("/phases") && request.method === "POST") {
         const result = await dependencies.service.createProjectPhase(
           authenticatedActorId(),
@@ -179,7 +186,7 @@ export function createProjectHttpHandler(dependencies: ProjectHttpDependencies) 
         !pathname.endsWith("/updates") &&
         !pathname.endsWith("/phases") &&
         !pathname.endsWith("/follow") &&
-        !updateId
+        !updateId && !parameters.phaseId
       ) {
         if (request.method === "GET") {
           return jsonSuccess(await dependencies.service.overview(actor, projectId), requestId);

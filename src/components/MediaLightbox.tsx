@@ -27,10 +27,10 @@ interface Props {
 
 const MediaLightbox = ({ items, index, onClose, onIndex, projectId }: Props) => {
   const item = items[index];
-  const touchStartX = useRef<number | null>(null);
-  const touchStartY = useRef<number | null>(null);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [dragX, setDragX] = useState(0);
+  const [dragY, setDragY] = useState(0);
   const [reportOpen, setReportOpen] = useState(false);
 
   useEffect(() => {
@@ -46,29 +46,45 @@ const MediaLightbox = ({ items, index, onClose, onIndex, projectId }: Props) => 
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
+    const previousFocus = document.activeElement;
     document.body.style.overflow = "hidden";
     closeButtonRef.current?.focus();
-    return () => { document.body.style.overflow = previousOverflow; };
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
+    };
   }, []);
 
   if (!item) return null;
 
+  const cancelSwipe = () => {
+    touchStart.current = null;
+    setDragX(0);
+    setDragY(0);
+  };
   const onTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
-    touchStartY.current = e.touches[0].clientY;
+    cancelSwipe();
+    if (reportOpen || e.touches.length !== 1 ||
+      (e.target instanceof Element && e.target.closest("button, a, input, textarea, video"))) return;
+    touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
   };
   const onTouchMove = (e: React.TouchEvent) => {
-    if (touchStartX.current == null) return;
-    const dx = e.touches[0].clientX - touchStartX.current;
-    const dy = e.touches[0].clientY - (touchStartY.current ?? 0);
-    if (Math.abs(dx) > Math.abs(dy)) setDragX(dx);
+    if (e.touches.length !== 1) { cancelSwipe(); return; }
+    if (!touchStart.current) return;
+    const dx = e.touches[0].clientX - touchStart.current.x;
+    const dy = e.touches[0].clientY - touchStart.current.y;
+    setDragX(Math.abs(dx) > Math.abs(dy) * 1.2 ? dx : 0);
+    setDragY(Math.abs(dy) > Math.abs(dx) * 1.2 ? dy : 0);
   };
-  const onTouchEnd = () => {
-    const dx = dragX;
-    setDragX(0);
-    touchStartX.current = null;
-    touchStartY.current = null;
-    if (Math.abs(dx) < 60) return;
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const start = touchStart.current;
+    const end = e.changedTouches[0];
+    cancelSwipe();
+    if (!start || !end || e.touches.length > 0 || reportOpen) return;
+    const dx = end.clientX - start.x;
+    const dy = end.clientY - start.y;
+    if (Math.abs(dy) >= 90 && Math.abs(dy) > Math.abs(dx) * 1.2) { onClose(); return; }
+    if (Math.abs(dx) < 60 || Math.abs(dx) <= Math.abs(dy) * 1.2) return;
     if (dx < 0 && index < items.length - 1) onIndex(index + 1);
     if (dx > 0 && index > 0) onIndex(index - 1);
   };
@@ -94,11 +110,13 @@ const MediaLightbox = ({ items, index, onClose, onIndex, projectId }: Props) => 
       </div>
 
       <div
-        className="flex-1 flex items-center justify-center relative overflow-hidden touch-pan-y"
+        className="min-h-0 flex-1 flex items-center justify-center relative overflow-hidden"
+        style={{ touchAction: "pinch-zoom" }}
         onClick={closeFromBackdrop}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
+        onTouchCancel={cancelSwipe}
       >
         {index > 0 && (
           <button
@@ -111,8 +129,8 @@ const MediaLightbox = ({ items, index, onClose, onIndex, projectId }: Props) => 
           </button>
         )}
         <div
-          className="w-full h-full flex items-center justify-center transition-transform"
-          style={{ transform: `translateX(${dragX}px)` }}
+          className="w-full h-full flex items-center justify-center motion-reduce:transform-none"
+          style={{ transform: `translate(${dragX}px, ${dragY}px)`, opacity: Math.max(0.3, 1 - Math.abs(dragY) / 400) }}
           onClick={(event) => event.stopPropagation()}
         >
           {item.type === "video" ? (
@@ -152,6 +170,7 @@ const MediaLightbox = ({ items, index, onClose, onIndex, projectId }: Props) => 
 
 
       <div className="p-4 text-white" onClick={(e) => e.stopPropagation()}>
+        <p className="mb-3 text-center text-xs text-white/50 sm:hidden">Veeg omhoog of omlaag om te sluiten</p>
         <div className="flex items-end justify-between gap-3 max-w-2xl mx-auto">
           <div className="min-w-0">
             {item.phase && (

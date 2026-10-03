@@ -1,3 +1,4 @@
+import type { PrivateMomentDraft } from "./privateMomentForm";
 import {
   createUpdateInputSchema,
   type CreateUpdateInput,
@@ -26,6 +27,7 @@ export type StoredUpdateComposerDraft = {
   phaseId: string;
   isMilestone: boolean;
   description: string;
+  privateForm?: PrivateMomentDraft;
   updateDate: string;
   files: StoredUpdateDraftFile[];
   updateIdempotencyKey: string;
@@ -77,6 +79,12 @@ export function normalizeStoredUpdateDraft(value: unknown): StoredUpdateComposer
     !Array.isArray(candidate.files) || candidate.files.length > MAX_FILES
   ) return null;
 
+  if (candidate.privateForm && (
+    typeof candidate.privateForm.notes !== "string" || candidate.privateForm.notes.length > 10000 ||
+    [candidate.privateForm.cost, candidate.privateForm.ownHours, candidate.privateForm.contractorHours]
+      .some((value) => typeof value !== "string" || value.length > 100)
+  )) return null;
+
   let totalBytes = 0;
   const files: StoredUpdateDraftFile[] = [];
   for (const file of candidate.files) {
@@ -120,6 +128,7 @@ export function normalizeStoredUpdateDraft(value: unknown): StoredUpdateComposer
     phaseId: candidate.phaseId,
     isMilestone: candidate.isMilestone,
     description: candidate.description,
+    ...(candidate.privateForm ? { privateForm: candidate.privateForm } : {}),
     updateDate: candidate.updateDate,
     files,
     updateIdempotencyKey: candidate.updateIdempotencyKey,

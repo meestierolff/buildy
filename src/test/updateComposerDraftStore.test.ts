@@ -56,6 +56,12 @@ describe("private update draft normalization", () => {
     await expect(normalized?.files[0]?.bytes.text()).resolves.toBe("exact-source");
   });
 
+  it("retains private entries during recovery without requiring valid completed numeric input", () => {
+    const privateForm = { notes: "Eigen aantekening", cost: "12,", ownHours: "1,5", contractorHours: "" };
+    expect(normalizeStoredUpdateDraft(draft({ privateForm }))?.privateForm).toEqual(privateForm);
+    expect(normalizeStoredUpdateDraft(draft({ privateForm: { ...privateForm, notes: "x".repeat(10001) } }))).toBeNull();
+  });
+
   it("rejects corrupt dates, commands and injected asset identifiers", () => {
     expect(normalizeStoredUpdateDraft(draft({ updateDate: "morgen" }))).toBeNull();
     expect(normalizeStoredUpdateDraft(draft({ pendingCommand: { publish: true } }))).toBeNull();

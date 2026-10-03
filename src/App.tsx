@@ -33,6 +33,7 @@ const Feedback = lazy(() => import("./pages/Feedback"));
 const Report = lazy(() => import("./pages/Report"));
 const ModerationAdmin = lazy(() => import("./pages/ModerationAdmin"));
 const FeedbackAdmin = lazy(() => import("./pages/FeedbackAdmin"));
+const BookOrdersAdmin = lazy(() => import("./pages/BookOrdersAdmin"));
 const NewUpdate = lazy(() => import("./pages/NewUpdate"));
 const Notifications = lazy(() => import("./pages/Notifications"));
 const ShareLinkRedeem = lazy(() => import("./pages/ShareLinkRedeem"));
@@ -94,6 +95,7 @@ const ApplicationFrame = () => {
               <Route path="/update/nieuw" element={<NewUpdate />} />
               <Route path="/project/:id/bouwboek" element={<Photobook />} />
               <Route path="/bouwboeken" element={<Books />} />
+              <Route path="/admin/boeken" element={<BookOrdersAdmin />} />
               <Route path="/project/:id" element={<TripDetail />} />
               <Route path="/volgend" element={<Favorites />} />
               <Route path="/connecties" element={<Friends />} />

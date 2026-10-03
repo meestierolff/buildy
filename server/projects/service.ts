@@ -3,6 +3,7 @@ import {
   createProjectPhaseInputSchema,
   createUpdateInputSchema,
   deleteProjectInputSchema,
+  deleteProjectPhaseInputSchema,
   deleteUpdateInputSchema,
   editUpdateInputSchema,
   followingFeedQuerySchema,
@@ -329,6 +330,20 @@ export class ProjectService {
     );
     if (!project) throw new ProjectError("PROJECT_NOT_FOUND");
     return { project, updateId: result.id, deleted: true, replayed: result.replayed };
+  }
+
+  async deleteProjectPhase(actorId: string, projectId: string, phaseId: string, rawInput: unknown): Promise<{
+    project: ProjectOverview; phaseId: string; deleted: true; replayed: boolean;
+  }> {
+    const input = deleteProjectPhaseInputSchema.parse(rawInput);
+    const operation = "project.phase.delete";
+    const result = await this.repository.deleteProjectPhase({
+      phaseId, projectId, actorId, input,
+      idempotencyKey: scopedProjectIdempotencyKey(operation, actorId, phaseId, input.idempotencyKey),
+      requestHash: projectRequestHash(operation, withoutIdempotencyKey(input), this.blindIndex), now: this.clock(),
+    });
+    const project = await this.overview({ kind: "authenticated", appUserId: actorId }, projectId);
+    return { project, phaseId: result.id, deleted: true, replayed: result.replayed };
   }
 
   async createProjectPhase(

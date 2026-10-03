@@ -14,6 +14,7 @@ export const mediaRoutes = {
 export const mediaUploadPurposeSchema = z.enum([
   "project_media",
   "project_cover",
+  "avatar",
   "floorplan",
 ]);
 
@@ -39,18 +40,21 @@ const idempotencyKeySchema = z.string()
 
 export const createMediaUploadIntentInputSchema = z.object({
   idempotencyKey: idempotencyKeySchema,
-  projectId: z.string().uuid(),
+  projectId: z.string().uuid().nullable(),
   purpose: mediaUploadPurposeSchema,
   contentType: projectImageContentTypeSchema,
   sizeBytes: z.number().int().min(1).max(50 * 1024 * 1024),
   checksumSha256Base64: sha256Base64Schema,
-}).strict();
+}).strict().refine(
+  (input) => input.purpose === "avatar" ? input.projectId === null : input.projectId !== null,
+  { message: "Een profielfoto hoort bij je account; projectfoto’s horen bij een verbouwing.", path: ["projectId"] },
+);
 
 export const completeMediaUploadInputSchema = z.object({}).strict();
 
 export const mediaAssetStateSchema = z.object({
   id: z.string().uuid(),
-  projectId: z.string().uuid(),
+  projectId: z.string().uuid().nullable(),
   purpose: mediaUploadPurposeSchema,
   status: z.enum(["pending_upload", "uploaded", "processing", "ready", "failed"]),
 });

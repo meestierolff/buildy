@@ -16,12 +16,12 @@ const Header = ({ activeProjectId, updateHref: preferredUpdateHref }: { activePr
 
   return (
     <div className="mx-auto flex min-h-14 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:min-h-16 lg:px-8">
-      <BrandLogo href={user ? PRODUCT_ROUTES.following : PRODUCT_ROUTES.landing} imageClassName="h-8 w-8 rounded-lg shadow-none" textClassName="text-xl tracking-tight" />
+      <BrandLogo href={user ? PRODUCT_ROUTES.projects : PRODUCT_ROUTES.landing} imageClassName="h-8 w-8 rounded-lg shadow-none" textClassName="text-xl tracking-tight" />
       {user ? (
         <>
           <nav className="hidden items-center gap-1 lg:flex" aria-label="Hoofdnavigatie">
-            <NavLink to={PRODUCT_ROUTES.following} className={navClass}>Tijdlijn</NavLink>
             <NavLink to={PRODUCT_ROUTES.projects} className={navClass}>Projecten</NavLink>
+            <NavLink to={PRODUCT_ROUTES.following} className={navClass}>Tijdlijn</NavLink>
             <NavLink to={PRODUCT_ROUTES.books} className={navClass}>Bouwboeken</NavLink>
             <NavLink to={PRODUCT_ROUTES.ownProfile} className={navClass}>Profiel</NavLink>
             <Button asChild size="sm" className="ml-3 min-h-11 rounded-full bg-accent px-5 text-white hover:bg-accent/90"><Link to={updateHref}>Bouwmoment toevoegen</Link></Button>

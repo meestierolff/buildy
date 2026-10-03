@@ -92,6 +92,9 @@ import {
   resetDefaultProjectShareRuntimeForTests,
 } from "./projectShares/runtime.js";
 import { ProjectShareService } from "./projectShares/service.js";
+import { PostgresBookOrderRepository } from "./bookOrders/repository.js";
+import { BookOrderService } from "./bookOrders/service.js";
+import { configureDefaultBookOrderRuntime, resetDefaultBookOrderRuntimeForTests } from "./bookOrders/runtime.js";
 
 export type ServerCompositionStatus = "unconfigured" | "ready" | "failed";
 
@@ -346,9 +349,7 @@ export function ensureServerComposition(): ServerCompositionStatus {
             `photobook-worker:${runtime.APP_ENV}`,
           )
         : undefined;
-      configureDefaultPhotobookRuntime({
-        actors,
-        service: new PhotobookService(
+      const photobookService = new PhotobookService(
           new PostgresPhotobookRepository(database),
           VERCEL_BLOB_STORAGE_NAMESPACE,
           protection.blindIndex,
@@ -356,8 +357,22 @@ export function ensureServerComposition(): ServerCompositionStatus {
           undefined,
           photobookWorker,
           Boolean(photobookWorker),
-        ),
+        );
+      configureDefaultPhotobookRuntime({
+        actors,
+        service: photobookService,
         storage,
+      });
+      configureDefaultBookOrderRuntime({
+        actors,
+        admins: adminActors,
+        service: new BookOrderService(
+          new PostgresBookOrderRepository(database),
+          photobookService,
+          protection.keyring,
+          protection.blindIndex,
+          storage,
+        ),
       });
     }
 
@@ -384,6 +399,7 @@ export function resetServerCompositionForTests(): void {
   resetDefaultEngagementRuntimeForTests();
   resetDefaultProfileRuntimeForTests();
   resetDefaultPhotobookRuntimeForTests();
+  resetDefaultBookOrderRuntimeForTests();
   resetDefaultAccountRuntimeForTests();
   resetDefaultModerationRuntimeForTests();
   resetDefaultModerationAdminRuntimeForTests();

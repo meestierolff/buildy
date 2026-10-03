@@ -6,7 +6,7 @@ const Terms = () => (
   <LegalLayout
     title="Algemene voorwaarden"
     description="De voorwaarden voor het gratis gebruik van Buildy en je digitale Bouwboek."
-    updated="8 september 2026"
+    updated="3 oktober 2026"
   >
     <LegalPendingNotice title="Exploitantgegevens nog vereist">
       <p>
@@ -26,9 +26,10 @@ const Terms = () => (
 
     <h2>1. De dienst</h2>
     <p>
-      Buildy is op dit moment een gratis digitale dienst. Een gedrukt Bouwboek kun je in
-      deze versie niet kopen. Een vraag over interesse in een gedrukt Bouwboek is alleen
-      productonderzoek: je reactie legt jou of Buildy nergens op vast.
+      Buildy is op dit moment een gratis digitale dienst. Je kunt een gedrukt Bouwboek
+      aanvragen. Een beheerder behandelt die aanvraag handmatig. Er wordt in de app
+      geen bedrag afgeschreven; prijs, levering en uitvoering worden afzonderlijk
+      met je afgesproken voordat het boek wordt gedrukt.
     </p>
 
     <h2>2. Account en inloggen</h2>
@@ -37,7 +38,7 @@ const Terms = () => (
       <li>Je verstrekt juiste profielinformatie en bewaart je wachtwoord veilig. Deel je inloggegevens niet.</li>
       <li>Bewaar je inloggegevens zorgvuldig.</li>
       <li>Je gebruikt geen account van een ander en probeert toegangscontroles niet te omzeilen.</li>
-      <li>Je kunt via <em>Profiel &rsaquo; Account verwijderen</em> de verwijdering van je account aanvragen.</li>
+      <li>Je kunt via <em>Profiel &rsaquo; Instellingen &rsaquo; Account verwijderen</em> de verwijdering van je account aanvragen.</li>
     </ul>
 
     <h2>3. Jouw foto&apos;s, verhalen en reacties</h2>
@@ -80,13 +81,15 @@ const Terms = () => (
       reageren. Bij direct gevaar bel je 112; Buildy is geen noodkanaal.
     </p>
 
-    <h2>6. Digitaal Bouwboek en printinteresse</h2>
+    <h2>6. Bouwboek en boekaanvragen</h2>
     <p>
       Het digitale Bouwboek wordt samengesteld uit de geselecteerde Bouwmomenten, foto&apos;s
       en instellingen. Controleer zelf de selectie, volgorde, uitsnede en tekst. Buildy
       belooft niet dat een digitale voorbeeldweergave zonder aanvullende controle geschikt
-      is om professioneel te laten drukken. De optionele printinteressevragen zijn alleen
-      feedback en leveren geen recht op een fysiek product, prijs of leverdatum op.
+      is om professioneel te laten drukken. Een aanvraag bewaart de getoonde boekversie;
+      latere wijzigingen aan je project veranderen die aanvraag niet. Alleen bevoegde
+      beheerders kunnen de PDF maken voor de handmatige afhandeling met de drukker.
+      De aanvraag zelf bevestigt nog geen prijs of leverdatum.
     </p>
 
     <h2>7. Beschikbaarheid en wijzigingen</h2>

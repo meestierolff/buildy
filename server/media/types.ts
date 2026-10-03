@@ -13,7 +13,7 @@ export type MediaAssetStatus = MediaAssetState["status"];
 export type CreateUploadIntentCommand = {
   assetId: string;
   actorId: string;
-  projectId: string;
+  projectId: string | null;
   purpose: MediaUploadPurpose;
   temporaryObjectKey: string;
   storageProvider: "vercel_blob";
@@ -75,7 +75,7 @@ export type MediaProcessingJob = {
   eventId: string;
   assetId: string;
   ownerId: string;
-  projectId: string;
+  projectId: string | null;
   purpose: MediaUploadPurpose;
   temporaryObjectKey: string;
   bucket: string;

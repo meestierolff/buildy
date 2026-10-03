@@ -14,11 +14,11 @@ const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 const UPDATE_ID = "22222222-2222-4222-8222-222222222222";
 const ASSET_ID = "66666666-6666-4666-8666-666666666666";
 const REVISION_ID = "44444444-4444-4444-8444-444444444444";
-const IDEMPOTENCY_KEY = "55555555-5555-4555-8555-555555555555";
 const originalCreateObjectUrl = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
 const originalRevokeObjectUrl = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
 
 const state = vi.hoisted(() => ({
+  preview: vi.fn(),
   draft: undefined as PhotobookDraft | undefined,
   navigate: vi.fn(),
   refetch: vi.fn(),
@@ -58,6 +58,7 @@ vi.mock("@/lib/photobookApi", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/photobookApi")>(),
   createPhotobookIdempotencyKey: () => "55555555-5555-4555-8555-555555555555",
   loadPhotobookProofView: state.loadProof,
+  previewPhotobookSettings: state.preview,
 }));
 vi.mock("@/lib/router", () => ({
   useNavigate: () => state.navigate,
@@ -67,6 +68,8 @@ vi.mock("@/lib/router", () => ({
     children?: ReactNode;
   }) => <a href={to} {...props}>{children}</a>,
 }));
+
+vi.mock("@/components/photobook/BookOrderPanel", () => ({ BookOrderPanel: ({ disabled }: { disabled: boolean }) => <button disabled={disabled}>Boek bestellen</button> }));
 
 import Photobook from "@/pages/Photobook";
 
@@ -191,6 +194,7 @@ function readyProof(document: PhotobookDocument): NonNullable<PhotobookDraft["pr
 
 describe("Bouwboekpagina", () => {
   beforeEach(() => {
+    state.preview.mockReset().mockImplementation(async () => state.draft!.document);
     state.navigate.mockReset();
     state.refetch.mockReset().mockImplementation(async () => ({ data: state.draft }));
     state.requestProof.mockReset();
@@ -246,7 +250,7 @@ describe("Bouwboekpagina", () => {
   });
 
 
-  it("bewaart de ondertitel en gekozen momentindeling en blokkeert een verouderde download", async () => {
+  it("bewaart de ondertitel en gekozen momentindeling en blokkeert een verouderde boekaanvraag", async () => {
     state.draft = draftWith([cover(), updatePage()]);
     state.draft.settings = {
       ...settings,
@@ -255,7 +259,7 @@ describe("Bouwboekpagina", () => {
     render(<Photobook />);
 
     fireEvent.change(screen.getByLabelText("Ondertitel"), { target: { value: "Ons eerste thuis" } });
-    expect(screen.getByRole("button", { name: "Download PDF" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Boek bestellen" })).toBeDisabled();
     fireEvent.mouseDown(screen.getByRole("tab", { name: "Indeling" }), { button: 0, ctrlKey: false });
     fireEvent.click(screen.getByRole("button", { name: /Foto groot/ }));
     fireEvent.click(screen.getByRole("button", { name: "Opslaan" }));
@@ -347,7 +351,7 @@ describe("Bouwboekpagina", () => {
     ] }));
 
     fireEvent.click(screen.getByRole("button", { name: "Vorige pagina" }));
-    expect(screen.getByLabelText("Bouwmoment")).toHaveValue(secondUpdateId);
+    expect(screen.getByRole("tab", { name: "Cover" })).toHaveAttribute("aria-selected", "true");
     fireEvent.mouseDown(screen.getByRole("tab", { name: "Indeling" }), { button: 0, ctrlKey: false });
     expect(screen.getByLabelText("Indeling voor Bouwmoment")).toHaveValue(secondUpdateId);
     fireEvent.click(screen.getByRole("button", { name: /Foto groot/ }));
@@ -357,84 +361,39 @@ describe("Bouwboekpagina", () => {
     })));
   });
 
-  it("downloadt de gecontroleerde PDF van het getoonde boek en ruimt de tijdelijke URL op", async () => {
+  it("biedt alleen bestellen, ook als een historische PDF bestaat", () => {
     state.draft = draftWith([cover(), updatePage()]);
     state.draft.proof = readyProof(state.draft.document);
-    const { unmount } = render(<Photobook />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Download PDF" }));
-
-    await waitFor(() => expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce());
-    expect(state.loadProof).toHaveBeenCalledWith({
-      revisionId: REVISION_ID,
-      documentSha256: state.draft.document.checksumSha256,
-      pdfSha256: "b".repeat(64),
-      signal: expect.any(AbortSignal),
-    });
-    const link = vi.mocked(HTMLAnchorElement.prototype.click).mock.contexts[0] as HTMLAnchorElement;
-    expect(link?.href).toBe("blob:buildy-pdf");
-    expect(link?.download).toBe("Bouwboek.pdf");
+    render(<Photobook />);
+    expect(screen.queryByRole("button", { name: "Download PDF" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Boek bestellen" })).toBeEnabled();
     expect(state.requestProof).not.toHaveBeenCalled();
-    unmount();
-    expect(state.revokeObjectUrl).toHaveBeenCalledWith("blob:buildy-pdf");
-  });
-
-  it("maakt de actuele PDF, wacht op de bestaande status en biedt daarna downloaden aan", async () => {
-    state.draft = draftWith([cover(), updatePage()]);
-    state.requestProof.mockImplementation(async () => {
-      state.draft!.proof = { ...readyProof(state.draft!.document), status: "rendering", pdfSha256: null, pdfPath: null };
-      return { revisionId: REVISION_ID, status: "rendering", replayed: false };
-    });
-    const { rerender } = render(<Photobook />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Download PDF" }));
-
-    await waitFor(() => expect(state.refetch).toHaveBeenCalledOnce());
-    expect(state.requestProof).toHaveBeenCalledWith({
-      idempotencyKey: IDEMPOTENCY_KEY,
-      expectedDraftVersion: state.draft.version,
-      expectedDocumentSha256: state.draft.document.checksumSha256,
-    });
-    expect(screen.getByRole("button", { name: "PDF wordt gemaakt…" })).toBeDisabled();
-    expect(screen.getByRole("status")).toHaveTextContent("Je PDF wordt gemaakt.");
     expect(state.loadProof).not.toHaveBeenCalled();
-
-    state.draft.proof = readyProof(state.draft.document);
-    rerender(<Photobook />);
-    fireEvent.click(screen.getByRole("button", { name: "Download PDF" }));
-    await waitFor(() => expect(state.loadProof).toHaveBeenCalledOnce());
-    expect(state.requestProof).toHaveBeenCalledOnce();
   });
 
-  it("gebruikt een oude vastgelegde PDF met evenveel pagina's niet voor het actuele boek", async () => {
-    state.draft = draftWith([cover(), updatePage()]);
-    state.draft.proof = { ...readyProof(state.draft.document), status: "locked", documentSha256: "c".repeat(64) };
-    state.requestProof.mockRejectedValue(new Error("unavailable"));
+  it("volgt het getoonde Bouwmoment bij bladeren en springt bij de cover naar coveropties", () => {
+    const secondId = "77777777-7777-4777-8777-777777777777";
+    state.draft = draftWith([cover(), updatePage(), { ...updatePage(), id: "second", number: 3, updateId: secondId }]);
     render(<Photobook />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Download PDF" }));
-
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Je PDF kon niet worden gemaakt of gedownload."));
-    expect(state.requestProof).toHaveBeenCalledOnce();
-    expect(state.loadProof).not.toHaveBeenCalled();
-    expect(state.createObjectUrl).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Download PDF" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: /bouwmoment, bladzijde 3/i }));
+    expect(screen.getByLabelText("Bouwmoment")).toHaveValue(secondId);
+    fireEvent.click(screen.getByRole("button", { name: /cover, bladzijde 1/i }));
+    expect(screen.getByRole("tab", { name: "Cover" })).toHaveAttribute("aria-selected", "true");
   });
 
-  it("start geen download wanneer de PDF-controle mislukt", async () => {
+  it("bouwt een direct canonical voorbeeld zonder de instellingen op te slaan", async () => {
     state.draft = draftWith([cover(), updatePage()]);
-    state.draft.proof = readyProof(state.draft.document);
-    state.loadProof.mockRejectedValue(new Error("checksum mismatch"));
+    const next = { ...state.draft.document, pageCount: 3, pages: [cover(), updatePage(), { ...cover(), id: "back-cover", number: 3 }], checksumSha256: "c".repeat(64) };
+    state.preview.mockResolvedValue(next);
     render(<Photobook />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Download PDF" }));
-
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Probeer het opnieuw."));
-    expect(state.createObjectUrl).not.toHaveBeenCalled();
-    expect(HTMLAnchorElement.prototype.click).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Ondertitel"), { target: { value: "Ons eerste thuis" } });
+    await waitFor(() => expect(state.preview).toHaveBeenCalledWith(PROJECT_ID, expect.objectContaining({ subtitle: "Ons eerste thuis" }), expect.any(AbortSignal)));
+    await waitFor(() => expect(screen.getByText("3 pagina’s")).toBeInTheDocument());
+    expect(state.saveSettings).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Boek bestellen" })).toBeDisabled();
   });
 
-  it("toont bestaande boekmeldingen en houdt alleen blokkerende punten tegen bij downloaden", () => {
+  it("toont bestaande boekmeldingen en houdt alleen blokkerende punten tegen bij bestellen", () => {
     state.draft = draftWith([cover(), updatePage()]);
     const warning = {
       code: "LOW_EFFECTIVE_DPI" as const,
@@ -449,7 +408,7 @@ describe("Bouwboekpagina", () => {
 
     expect(screen.getByRole("region", { name: "Let op in je Bouwboek" })).toBeInTheDocument();
     expect(screen.getAllByText("Pagina 2: Deze foto kan wat onscherp worden als je ver inzoomt. Kies eventueel een grotere foto.")).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "Download PDF" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Boek bestellen" })).toBeEnabled();
 
     state.draft.document.warnings = [...state.draft.document.warnings, {
       code: "TEXT_OVERFLOW",
@@ -462,8 +421,8 @@ describe("Bouwboekpagina", () => {
     rerender(<Photobook />);
 
     expect(screen.getByText(/De covertitel past niet binnen drie regels/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Download PDF" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Download PDF" }));
+    expect(screen.getByRole("button", { name: "Boek bestellen" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Boek bestellen" }));
     expect(state.requestProof).not.toHaveBeenCalled();
     expect(screen.getByRole("region", { name: "Bouwboekweergave" })).toBeInTheDocument();
     fireEvent.mouseDown(screen.getByRole("tab", { name: "Indeling" }), { button: 0, ctrlKey: false });

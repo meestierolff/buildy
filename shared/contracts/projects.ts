@@ -10,6 +10,7 @@ export const projectRoutes = {
   updates: "/api/projects/:projectId/updates",
   updateDetail: "/api/projects/:projectId/updates/:updateId",
   phases: "/api/projects/:projectId/phases",
+  phaseDetail: "/api/projects/:projectId/phases/:phaseId",
 } as const;
 
 const uuidSchema = z.string().uuid();
@@ -54,6 +55,21 @@ export const projectPrivateDetailsInputSchema = z.object({
   contractorNotes: trimmedOptionalText(5_000),
 }).strict();
 
+export const budgetAmountSchema = z.number().int().min(0).max(2_000_000_000);
+export const updatePrivateDetailsSchema = z.object({
+  notes: z.string().trim().max(10_000).nullable(),
+  costAmountMinor: budgetAmountSchema,
+  ownMinutes: z.number().int().min(0).max(6_000_000),
+  contractorMinutes: z.number().int().min(0).max(6_000_000),
+}).strict();
+export const projectBudgetSchema = z.object({
+  plannedAmountMinor: budgetAmountSchema,
+  spentAmountMinor: z.number().int().nonnegative(),
+  remainingAmountMinor: z.number().int(),
+  ownMinutes: z.number().int().nonnegative(),
+  contractorMinutes: z.number().int().nonnegative(),
+});
+
 export const createProjectInputSchema = z.object({
   idempotencyKey: z.string()
     .trim()
@@ -66,6 +82,7 @@ export const createProjectInputSchema = z.object({
   startDate: isoDateSchema.optional(),
   expectedEndDate: isoDateSchema.optional(),
   privateDetails: projectPrivateDetailsInputSchema.optional(),
+  plannedBudgetMinor: budgetAmountSchema.optional(),
 }).strict().superRefine((input, context) => {
   if (input.startDate && input.expectedEndDate && input.expectedEndDate < input.startDate) {
     context.addIssue({
@@ -85,6 +102,7 @@ export const updateProjectInputSchema = z.object({
   expectedEndDate: isoDateSchema.nullable().optional(),
   visibility: projectVisibilitySchema.optional(),
   progressPercentage: z.number().int().min(0).max(100).optional(),
+  plannedBudgetMinor: budgetAmountSchema.optional(),
 }).strict().refine(
   (input) => Object.keys(input).some((key) => key !== "expectedVersion"),
   { message: "Geef minimaal één projectwijziging op." },
@@ -160,6 +178,7 @@ export const createUpdateInputSchema = z.object({
   phaseId: uuidSchema.optional(),
   isMilestone: z.boolean().default(false),
   media: z.array(updateMediaInputSchema).max(50).default([]),
+  privateDetails: updatePrivateDetailsSchema.optional(),
   publish: z.boolean().default(false),
 }).strict().superRefine((input, context) => {
   validateUpdateMedia(input.media, context);
@@ -175,6 +194,7 @@ export const editUpdateInputSchema = z.object({
   phaseId: uuidSchema.nullable().optional(),
   isMilestone: z.boolean().optional(),
   media: z.array(updateMediaInputSchema).max(50).optional(),
+  privateDetails: updatePrivateDetailsSchema.optional(),
   publish: z.literal(true).optional(),
 }).strict().refine(
   (input) => Object.keys(input).some((key) => !["idempotencyKey", "expectedVersion"].includes(key)),
@@ -213,6 +233,11 @@ export const createProjectPhaseInputSchema = z.object({
   idempotencyKey: idempotencyKeySchema,
   expectedProjectVersion: z.number().int().positive(),
   name: z.string().trim().min(1).max(80),
+}).strict();
+
+export const deleteProjectPhaseInputSchema = z.object({
+  idempotencyKey: idempotencyKeySchema,
+  expectedProjectVersion: z.number().int().positive(),
 }).strict();
 
 export const mediaDescriptorSchema = z.object({
@@ -271,6 +296,7 @@ export const projectOverviewSchema = projectCardSchema.extend({
   viewerAccess: z.enum(["owner", "follower", "link", "public"]),
   canEdit: z.boolean(),
   phases: z.array(projectPhaseSchema),
+  budget: projectBudgetSchema.optional(),
 });
 
 export const projectUpdateSchema = z.object({
@@ -289,6 +315,7 @@ export const projectUpdateSchema = z.object({
   publishedAt: z.string().datetime().nullable(),
   updatedAt: z.string().datetime(),
   media: z.array(updateMediaDescriptorSchema),
+  privateDetails: updatePrivateDetailsSchema.optional(),
 });
 
 export const projectPageSchema = z.object({
@@ -350,6 +377,12 @@ export const deleteProjectMutationResponseSchema = apiSuccessSchema(z.object({
   }),
   replayed: z.boolean(),
 }));
+export const deleteProjectPhaseMutationResponseSchema = apiSuccessSchema(z.object({
+  project: projectOverviewSchema,
+  phaseId: uuidSchema,
+  deleted: z.literal(true),
+  replayed: z.boolean(),
+}));
 export const projectPhaseMutationResponseSchema = apiSuccessSchema(z.object({
   project: projectOverviewSchema,
   phase: projectPhaseSchema,
@@ -378,3 +411,6 @@ export type TimelinePage = z.infer<typeof timelinePageSchema>;
 export type FollowingActivity = z.infer<typeof followingActivitySchema>;
 export type FollowingFeed = z.infer<typeof followingFeedSchema>;
 export type ProjectFollowMutationResult = z.infer<typeof projectFollowMutationResultSchema>;
+
+export type DeleteProjectPhaseInput = z.infer<typeof deleteProjectPhaseInputSchema>;
+export type UpdatePrivateDetails = z.infer<typeof updatePrivateDetailsSchema>;

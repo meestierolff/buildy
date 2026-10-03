@@ -19,8 +19,6 @@ export function usePhotobookDraft(projectId: string, enabled = true) {
     queryKey: photobookQueryKeys.project(projectId),
     queryFn: ({ signal }) => getPhotobookDraft(projectId, signal),
     enabled: enabled && Boolean(projectId),
-    refetchInterval: (query) =>
-      query.state.data?.proof?.status === "rendering" ? 2_000 : false,
   });
 }
 

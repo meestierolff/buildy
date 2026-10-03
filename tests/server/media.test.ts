@@ -262,6 +262,30 @@ describe("private media upload API service", () => {
     expect(JSON.stringify(result)).not.toMatch(/objectKey|bucket|ownerId|storageProvider/);
   });
 
+  it("uploads a profile avatar without a project and preserves its owner scope on retry", async () => {
+    const { repository, rateLimiter, service } = serviceFixture();
+    const input = { ...uploadInput(), purpose: "avatar", projectId: null };
+    const first = await service.createUploadIntent(ACTOR_ID, input);
+    const replay = await service.createUploadIntent(ACTOR_ID, input);
+    expect(first.asset).toMatchObject({ id: ASSET_ID, purpose: "avatar", projectId: null });
+    expect(replay.asset.id).toBe(first.asset.id);
+    expect(replay.replayed).toBe(true);
+    expect(repository.intents[0]).toMatchObject({ actorId: ACTOR_ID, purpose: "avatar", projectId: null });
+    expect(rateLimiter.consume).toHaveBeenCalledWith({ actorId: ACTOR_ID, projectId: null, requestedBytes: 42 });
+    await expect(service.completeUpload(BLOCKED_ID, ASSET_ID, {})).rejects.toMatchObject({ reason: "MEDIA_NOT_FOUND" });
+  });
+
+  it.each([
+    { purpose: "avatar", projectId: PROJECT_ID },
+    { purpose: "project_media", projectId: null },
+    { purpose: "project_cover", projectId: null },
+  ])("rejects mismatched upload purpose and scope: $purpose/$projectId", async (scope) => {
+    const { repository, rateLimiter, service } = serviceFixture();
+    await expect(service.createUploadIntent(ACTOR_ID, { ...uploadInput(), ...scope })).rejects.toBeInstanceOf(ZodError);
+    expect(repository.intents).toHaveLength(0);
+    expect(rateLimiter.consume).not.toHaveBeenCalled();
+  });
+
   it("fails closed before creating an intent when only legacy direct-upload storage is composed", async () => {
     const repository = new FakeMediaRepository();
     const { handleClientUpload: _clientUpload, ...legacyStorage } = storageFixture().storage;

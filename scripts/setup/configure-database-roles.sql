@@ -116,6 +116,9 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLI
 
 CREATE TEMP TABLE buildy_web_runtime_functions (signature text PRIMARY KEY);
 INSERT INTO buildy_web_runtime_functions (signature) VALUES
+  ('public.app_can_read_book_request(uuid,uuid)'),
+  ('public.app_can_manage_book_requests()'),
+  ('public.app_admin_book_order_assets(uuid,uuid)'),
   ('public.app_resolve_active_user(text)'),
   ('public.app_provision_auth_identity(text, uuid, boolean)'),
   ('public.app_lock_password_auth_identity(text)'),

@@ -6,8 +6,9 @@ import {
   BookOpen,
   Check,
   Crop,
+  ChevronLeft,
+  ChevronRight,
   Images,
-  Download,
   EyeOff,
   Loader2,
   RefreshCcw,
@@ -24,6 +25,8 @@ import type {
   PhotobookSettings,
 } from "../../shared/contracts/photobooks";
 import { PhotobookCropControls } from "@/components/photobook/PhotobookCropControls";
+import { CanonicalPhotobookPage } from "@/components/photobook/CanonicalPhotobookPage";
+import { BookOrderPanel } from "@/components/photobook/BookOrderPanel";
 import { PhotobookViewer } from "@/components/photobook/PhotobookViewer";
 import { ResilientImage } from "@/components/ResilientMedia";
 import { Badge } from "@/components/ui/badge";
@@ -36,17 +39,13 @@ import { usePageMeta } from "@/hooks/usePageMeta";
 import {
   usePhotobookDraft,
   useReplacePhotobookExclusions,
-  useRequestPhotobookProof,
   useUpdatePhotobookSettings,
 } from "@/hooks/usePhotobook";
 import { ApiClientError } from "@/lib/apiClient";
 import {
-  createPhotobookIdempotencyKey,
-  loadPhotobookProofView,
+  previewPhotobookSettings,
   photobookMediaProxyPath,
-  type RequestPhotobookProofInput,
 } from "@/lib/photobookApi";
-import { hasExactPhotobookProof } from "@/lib/photobookPreview";
 import { Link, useNavigate, useParams } from "@/lib/router";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -111,43 +110,38 @@ const Photobook = () => {
   const draftQuery = usePhotobookDraft(id, Boolean(user) && validProjectId);
   const settingsMutation = useUpdatePhotobookSettings(id);
   const exclusionsMutation = useReplacePhotobookExclusions(id);
-  const proofMutation = useRequestPhotobookProof(id);
   const [settingsDraft, setSettingsDraft] = useState<PhotobookSettings | null>(null);
   const [activePage, setActivePage] = useState(0);
   const [selectedMomentId, setSelectedMomentId] = useState<string | null>(null);
   const [coverAssetLimit, setCoverAssetLimit] = useState(12);
   const [cropAssetId, setCropAssetId] = useState<string | null>(null);
-  const [pdfLoading, setPdfLoading] = useState(false);
-  const [pdfError, setPdfError] = useState<string | null>(null);
-  const pdfController = useRef<AbortController | null>(null);
-  const pdfRequest = useRef<RequestPhotobookProofInput | null>(null);
-  const pdfObjectUrls = useRef(new Set<string>());
+  const [editorTab, setEditorTab] = useState("cover");
+  const [preview, setPreview] = useState<{ settingsKey: string; document: PhotobookDocument } | null>(null);
+  const [previewPending, setPreviewPending] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const appliedSettingsVersion = useRef<number | null>(null);
 
   const draft = draftQuery.data;
   const sourceDocument = draft?.document;
   const serverSettings = draft?.settings;
+  const settingsKey = JSON.stringify(settingsDraft);
+  const previewDocument = preview?.settingsKey === settingsKey ? preview.document : sourceDocument;
   const digitalBook = useMemo(
-    () => sourceDocument ? deriveDigitalBook(sourceDocument) : null,
-    [sourceDocument],
+    () => previewDocument ? deriveDigitalBook(previewDocument) : null,
+    [previewDocument],
   );
   const document = digitalBook?.document;
   const moments = digitalBook?.moments ?? [];
   const bookWarnings = useMemo(() => [...new Map(
-    (sourceDocument?.warnings ?? []).map((warning) => [
+    (document?.warnings ?? []).map((warning) => [
       `${warning.severity}:${warning.pageNumber}:${warning.message}`,
       warning,
     ]),
-  ).values()], [sourceDocument?.warnings]);
+  ).values()], [document?.warnings]);
   const pdfBlocked = bookWarnings.some((warning) => warning.severity === "blocking");
   const settingsDirty = Boolean(
     settingsDraft && serverSettings && JSON.stringify(settingsDraft) !== JSON.stringify(serverSettings),
   );
-  const pdfRendering = draft?.proof?.status === "rendering"
-    && draft.proof.documentSha256 === sourceDocument?.checksumSha256;
-  const pdfFailed = draft?.proof?.status === "failed"
-    && draft.proof.documentSha256 === sourceDocument?.checksumSha256;
-
   usePageMeta({
     title: sourceDocument ? `${sourceDocument.cover.title} — Bouwboek` : "Bouwboek — Buildy",
     description: "Bekijk hoe je Bouwboek vanzelf groeit met ieder Bouwmoment.",
@@ -176,86 +170,36 @@ const Photobook = () => {
   }, [document?.pageCount, sourceDocument?.checksumSha256]);
 
   useEffect(() => {
-    setPdfError(null);
-    setPdfLoading(false);
-    pdfRequest.current = null;
-    const objectUrls = pdfObjectUrls.current;
-    return () => {
-      pdfController.current?.abort();
-      pdfController.current = null;
-      objectUrls.forEach((url) => URL.revokeObjectURL(url));
-      objectUrls.clear();
-    };
-  }, [id, sourceDocument?.checksumSha256, user?.id]);
-
-  const downloadPdf = async () => {
-    if (!draft || settingsDirty || pdfBlocked || pdfController.current || proofMutation.isPending || pdfRendering) return;
-    const controller = new AbortController();
-    pdfController.current = controller;
-    setPdfLoading(true);
-    setPdfError(null);
-    try {
-      let currentDraft = draft;
-      if (!hasExactPhotobookProof(currentDraft.proof, currentDraft.document)) {
-        if (!pdfRequest.current || pdfFailed) {
-          pdfRequest.current = {
-            idempotencyKey: createPhotobookIdempotencyKey(),
-            expectedDraftVersion: draft.version,
-            expectedDocumentSha256: draft.document.checksumSha256,
-          };
-        }
-        const requested = await proofMutation.mutateAsync(pdfRequest.current);
-        if (controller.signal.aborted) return;
-        if (requested.status === "failed") {
-          pdfRequest.current = null;
-          throw new Error("PDF generation failed");
-        }
-        const refreshed = await draftQuery.refetch();
-        if (controller.signal.aborted) return;
-        if (!refreshed.data || refreshed.data.document.checksumSha256 !== draft.document.checksumSha256) {
-          throw new ApiClientError({ status: 409, code: "CONFLICT", message: "Het Bouwboek is gewijzigd." });
-        }
-        currentDraft = refreshed.data;
-        if (currentDraft.proof?.status === "rendering"
-          && currentDraft.proof.documentSha256 === currentDraft.document.checksumSha256) return;
-      }
-      const proof = currentDraft.proof;
-      if (!proof?.pdfSha256 || !hasExactPhotobookProof(proof, currentDraft.document)) {
-        throw new Error("PDF unavailable");
-      }
-      const loaded = await loadPhotobookProofView({
-        revisionId: proof.revisionId,
-        documentSha256: currentDraft.document.checksumSha256,
-        pdfSha256: proof.pdfSha256,
-        signal: controller.signal,
-      });
-      if (controller.signal.aborted) return;
-      const url = URL.createObjectURL(loaded.blob);
-      pdfObjectUrls.current.add(url);
-      const link = window.document.createElement("a");
-      link.href = url;
-      link.download = "Bouwboek.pdf";
-      window.document.body.append(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => {
-        if (pdfObjectUrls.current.delete(url)) URL.revokeObjectURL(url);
-      }, 1_000);
-    } catch (error) {
-      if (!controller.signal.aborted) {
-        setPdfError(error instanceof ApiClientError && error.code === "CONFLICT"
-          ? "Je Bouwboek is intussen gewijzigd. Vernieuw de pagina en probeer opnieuw."
-          : error instanceof ApiClientError && ["PROVIDER_UNAVAILABLE", "VALIDATION_FAILED"].includes(error.code)
-            ? error.message
-          : "Je PDF kon niet worden gemaakt of gedownload. Probeer het opnieuw.");
-      }
-    } finally {
-      if (pdfController.current === controller) {
-        pdfController.current = null;
-        setPdfLoading(false);
-      }
+    if (!settingsDirty || !settingsDraft) {
+      setPreview(null);
+      setPreviewPending(false);
+      setPreviewError(null);
+      return;
     }
-  };
+    const controller = new AbortController();
+    setPreviewPending(true);
+    setPreviewError(null);
+    const timer = window.setTimeout(() => {
+      void previewPhotobookSettings(id, settingsDraft, controller.signal).then(next => {
+        if (!controller.signal.aborted) setPreview({ settingsKey, document: next });
+      }).catch(() => {
+        if (!controller.signal.aborted) setPreviewError("Het voorbeeld kon niet worden bijgewerkt. Je wijzigingen zijn nog niet opgeslagen.");
+      }).finally(() => {
+        if (!controller.signal.aborted) setPreviewPending(false);
+      });
+    }, 180);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [id, settingsDirty, settingsDraft, settingsKey, sourceDocument?.checksumSha256]);
+
+  const onPageChange = useCallback((index: number) => {
+    setActivePage(index);
+    setCropAssetId(null);
+    const page = document?.pages[index];
+    if (page?.updateId) {
+      setSelectedMomentId(page.updateId);
+      setEditorTab(current => current === "cover" ? "content" : current);
+    } else if (page?.kind === "cover") setEditorTab("cover");
+  }, [document]);
 
   const updateSettingsDraft = useCallback((change: (settings: PhotobookSettings) => PhotobookSettings) => {
     setSettingsDraft((current) => current ? change(current) : current);
@@ -267,8 +211,7 @@ const Photobook = () => {
       await settingsMutation.mutateAsync(settingsDraft);
       toast.success("Bouwboek bijgewerkt");
     } catch (error) {
-      console.error("Photobook settings update failed", error);
-      toast.error(errorMessage(error, "Bouwboek bijwerken mislukt"));
+        toast.error(errorMessage(error, "Bouwboek bijwerken mislukt"));
     }
   };
 
@@ -282,8 +225,7 @@ const Photobook = () => {
       await exclusionsMutation.mutateAsync({ exclusions });
       toast.success("Inhoud van je Bouwboek bijgewerkt");
     } catch (error) {
-      console.error("Photobook exclusions update failed", error);
-      toast.error(errorMessage(error, "Inhoud bijwerken mislukt"));
+        toast.error(errorMessage(error, "Inhoud bijwerken mislukt"));
     }
   };
 
@@ -303,7 +245,7 @@ const Photobook = () => {
       JSON.stringify(exclusion) !== JSON.stringify(target)));
   };
 
-  // Editing keeps its own selection: a spread may start with another moment.
+  // The selected logical page survives desktop spread rendering. Browsing updates this selection.
   const currentMoment = moments.find((moment) => moment.updateId === selectedMomentId) ?? moments[0];
   const currentPhotoOrder = useMemo(() => {
     if (!currentMoment || !settingsDraft) return currentMoment?.assetIds ?? [];
@@ -445,39 +387,16 @@ const Photobook = () => {
               </p>
             </div>
 
-            <PhotobookViewer activePage={activePage} document={document} onActivePageChange={setActivePage} />
+            <PhotobookViewer activePage={activePage} document={document} onActivePageChange={onPageChange} />
 
-            <div className="mt-5 flex flex-col gap-3 px-1 sm:flex-row sm:items-center sm:justify-between">
-              <p className="max-w-sm text-sm leading-6 text-muted-foreground dark:text-muted-foreground">
-                Van de eerste sleutel tot de laatste verfstreek. Dit is jullie verhaal.
-              </p>
-              <Button
-                className="min-h-12 shrink-0"
-                disabled={settingsDirty || pdfBlocked || busy || pdfLoading || proofMutation.isPending || pdfRendering}
-                onClick={() => void downloadPdf()}
-                type="button"
-                variant="outline"
-              >
-                {pdfLoading || proofMutation.isPending || pdfRendering
-                  ? <Loader2 className="animate-spin" aria-hidden="true" />
-                  : <Download aria-hidden="true" />}
-                {pdfLoading || proofMutation.isPending || pdfRendering ? "PDF wordt gemaakt…" : "Download PDF"}
-              </Button>
-            </div>
-            {pdfError || pdfFailed ? (
-              <p className="mt-3 px-1 text-sm text-destructive" role="alert">
-                {pdfError ?? "Je PDF kon niet worden gemaakt. Probeer het opnieuw."}
-              </p>
-            ) : pdfRendering ? (
-              <p className="mt-3 px-1 text-sm text-muted-foreground dark:text-muted-foreground" role="status">
-                Je PDF wordt gemaakt. Je kunt hem hier downloaden zodra hij klaar is.
-              </p>
-            ) : null}
+            {previewPending && <p className="mt-3 text-sm text-muted-foreground" role="status">Voorbeeld bijwerken…</p>}
+            {previewError && <p className="mt-3 text-sm text-destructive" role="alert">{previewError}</p>}
+            <BookOrderPanel projectId={id} draft={draft} disabled={settingsDirty || pdfBlocked || busy} />
 
             {bookWarnings.length > 0 ? (
               <section aria-labelledby="book-warnings-title" className="mt-5 rounded-xl border border-border bg-card p-4 dark:border-border dark:bg-card">
                 <h3 className="text-sm font-semibold" id="book-warnings-title">Let op in je Bouwboek</h3>
-                {pdfBlocked ? <p className="mt-1 text-sm">Pas de gemarkeerde punten aan om je PDF te downloaden.</p> : null}
+                {pdfBlocked ? <p className="mt-1 text-sm">Pas de gemarkeerde punten aan voordat je een boek aanvraagt.</p> : null}
                 <ul className="mt-2 max-h-48 space-y-2 overflow-y-auto text-sm">
                   {bookWarnings.map((warning) => (
                     <li className={warning.severity === "blocking" ? "text-destructive" : "text-muted-foreground dark:text-muted-foreground"} key={`${warning.severity}:${warning.pageNumber}:${warning.message}`}>
@@ -491,11 +410,21 @@ const Photobook = () => {
           </div>
 
           <aside className="min-w-0 self-start rounded-2xl border border-border bg-card dark:border-border dark:bg-card" aria-label="Bouwboek aanpassen">
+            <div className="sticky top-14 z-20 rounded-t-2xl border-b bg-card/95 px-3 py-2 shadow-sm backdrop-blur md:hidden" aria-label="Live voorbeeld tijdens bewerken">
+              <div className="flex items-center justify-center gap-3">
+                <Button aria-label="Vorige bewerkpagina" size="icon" variant="ghost" disabled={activePage === 0} onClick={() => onPageChange(Math.max(0, activePage - 1))}><ChevronLeft /></Button>
+                <div className="w-full max-w-[220px] overflow-hidden rounded border bg-white">
+                  {document.pages[activePage] && <CanonicalPhotobookPage decorative document={document} page={document.pages[activePage]!} imageSize="medium" />}
+                </div>
+                <Button aria-label="Volgende bewerkpagina" size="icon" variant="ghost" disabled={activePage >= document.pageCount - 1} onClick={() => onPageChange(Math.min(document.pageCount - 1, activePage + 1))}><ChevronRight /></Button>
+              </div>
+              <p className="mt-1 text-center text-xs text-muted-foreground">Pagina {activePage + 1} van {document.pageCount}{previewPending ? " · bijwerken…" : settingsDirty ? " · nog niet opgeslagen" : ""}</p>
+            </div>
             <div className="px-4 pt-5 sm:px-5">
               <p className="eyebrow">Maak het van jullie</p>
               <h2 className="mt-1 text-xl font-semibold tracking-tight">Jouw boek, jouw keuzes</h2>
             </div>
-            <Tabs defaultValue={moments.length === 0 ? "content" : "cover"} className="mt-4">
+            <Tabs value={moments.length === 0 ? "content" : editorTab} onValueChange={value => { setEditorTab(value); if (value === "cover") setActivePage(0); }} className="mt-4">
               <TabsList aria-label="Bouwboek aanpassen" className="mx-4 grid h-12 grid-cols-3 bg-muted dark:bg-muted sm:mx-5">
                 <TabsTrigger className="h-10" value="cover">Cover</TabsTrigger>
                 <TabsTrigger className="h-10" value="content">Inhoud</TabsTrigger>
@@ -637,7 +566,7 @@ const Photobook = () => {
             </Tabs>
             <div className="flex items-center justify-between gap-3 border-t border-[#E5DDD1] p-4 dark:border-border sm:p-5">
               {settingsDirty ? (
-                <p className="text-xs leading-5 text-muted-foreground dark:text-muted-foreground" role="status">Sla op om je voorbeeld bij te werken en je PDF te downloaden.</p>
+                <p className="text-xs leading-5 text-muted-foreground dark:text-muted-foreground" role="status">Je ziet je wijzigingen in het voorbeeld. Sla ze op voordat je bestelt.</p>
               ) : <p className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-300"><Check className="h-4 w-4 shrink-0" aria-hidden="true" />Alles is bewaard.</p>}
               <Button className="min-h-11 shrink-0" disabled={!settingsDirty || busy} onClick={saveSettings} type="button">
                 {settingsMutation.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Save aria-hidden="true" />} Opslaan

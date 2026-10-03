@@ -23,14 +23,14 @@ export function mediaRequestHash(value: unknown, blindIndex: PrivacyBlindIndex):
 
 export function scopedMediaUploadKey(
   actorId: string,
-  projectId: string,
+  projectId: string | null,
   clientKey: string,
 ): string {
   const digest = createHash("sha256")
     .update("buildy-media-upload-key:v1\0")
     .update(actorId)
     .update("\0")
-    .update(projectId)
+    .update(projectId ?? "avatar")
     .update("\0")
     .update(clientKey)
     .digest("hex");

@@ -40,18 +40,18 @@ export interface ProductNavigationItem {
 
 export const MOBILE_NAVIGATION_ITEMS: readonly ProductNavigationItem[] = [
   {
-    id: "following",
-    label: "Tijdlijn",
-    href: PRODUCT_ROUTES.following,
-    icon: "following",
-    requiresAuth: true,
-  },
-  {
     id: "story",
     label: "Projecten",
     href: PRODUCT_ROUTES.projects,
     icon: "story",
     exact: true,
+    requiresAuth: true,
+  },
+  {
+    id: "following",
+    label: "Tijdlijn",
+    href: PRODUCT_ROUTES.following,
+    icon: "following",
     requiresAuth: true,
   },
   {

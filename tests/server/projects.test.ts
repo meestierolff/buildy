@@ -33,6 +33,7 @@ import {
   type CreateProjectPhaseCommand,
   type CreateUpdateCommand,
   type DeleteProjectCommand,
+  type DeleteProjectPhaseCommand,
   type DeleteUpdateCommand,
   type EditUpdateCommand,
   type MutationReference,
@@ -258,6 +259,24 @@ class FakeProjectRepository implements ProjectRepository {
       });
     }
     return { id: command.updateId, replayed: false };
+  }
+
+  async deleteProjectPhase(command: DeleteProjectPhaseCommand): Promise<MutationReference> {
+    const project = this.projects.get(command.projectId);
+    if (!project || project.owner.id !== command.actorId) throw new ProjectError("PROJECT_NOT_FOUND");
+    const replay = this.idempotency.get(command.idempotencyKey);
+    if (replay) {
+      if (replay.requestHash !== command.requestHash) throw new ProjectError("IDEMPOTENCY_CONFLICT");
+      return { id: replay.id, replayed: true };
+    }
+    if (project.version !== command.input.expectedProjectVersion) throw new ProjectError("VERSION_CONFLICT");
+    const phase = project.phases.find((item) => item.id === command.phaseId);
+    if (!phase?.isCustom) throw new ProjectError("INVALID_PHASE");
+    project.phases = project.phases.filter((item) => item.id !== command.phaseId);
+    project.version += 1;
+    for (const item of this.updates.values()) if (item.phase?.id === command.phaseId) item.phase = null;
+    this.idempotency.set(command.idempotencyKey, { id: command.phaseId, requestHash: command.requestHash });
+    return { id: command.phaseId, replayed: false };
   }
 
   async createProjectPhase(command: CreateProjectPhaseCommand): Promise<MutationReference> {
@@ -772,5 +791,28 @@ describe("project service", () => {
       projectId: PROJECT_ID,
       input: { expectedProjectVersion: 1, name: "Maatwerk" },
     });
+  });
+});
+
+describe("custom phase removal", () => {
+  it("keeps moment content and supports an identical retry", async () => {
+    const repository = new FakeProjectRepository();
+    const phase = { id: SECOND_UPDATE_ID, name: "Eigen fase", sortOrder: 6, isCustom: true };
+    repository.projects.get(PROJECT_ID)!.phases.push(phase);
+    repository.updates.get(UPDATE_ID)!.phase = phase;
+    const originalText = repository.updates.get(UPDATE_ID)!.description;
+    const service = new ProjectService(repository, new RecordingProtector(), BLIND_INDEX);
+    const input = { expectedProjectVersion: 1, idempotencyKey: "remove-custom-phase-0001" };
+    expect((await service.deleteProjectPhase(ACTOR_ID, PROJECT_ID, phase.id, input)).deleted).toBe(true);
+    expect(repository.updates.get(UPDATE_ID)).toMatchObject({ phase: null, description: originalText });
+    expect((await service.deleteProjectPhase(ACTOR_ID, PROJECT_ID, phase.id, input)).replayed).toBe(true);
+  });
+  it("rejects a standard phase and another owner", async () => {
+    const repository = new FakeProjectRepository();
+    const service = new ProjectService(repository, new RecordingProtector(), BLIND_INDEX);
+    const phaseId = repository.projects.get(PROJECT_ID)!.phases[0].id;
+    const input = { expectedProjectVersion: 1, idempotencyKey: "remove-custom-phase-0001" };
+    await expect(service.deleteProjectPhase(ACTOR_ID, PROJECT_ID, phaseId, input)).rejects.toMatchObject({ reason: "INVALID_PHASE" });
+    await expect(service.deleteProjectPhase(OTHER_ID, PROJECT_ID, phaseId, input)).rejects.toMatchObject({ reason: "PROJECT_NOT_FOUND" });
   });
 });

@@ -174,7 +174,7 @@ describe("PhotobookService", () => {
     expect(result).toEqual({ revisionId: REVISION_ID, status: "ready", replayed: false });
   });
 
-  it("lets an owner editor poll retry only its exact rendering revision", async () => {
+  it("does not start PDF work or expose PDF paths while an owner previews the book", async () => {
     const repository = new MemoryPhotobookRepository();
     repository.currentProof = {
       revisionId: REVISION_ID,
@@ -213,11 +213,11 @@ describe("PhotobookService", () => {
 
     const editor = await service.editor(ACTOR_ID, PROJECT_ID);
 
-    expect(processed).toEqual([REVISION_ID]);
+    expect(processed).toEqual([]);
     expect(editor.proof).toMatchObject({
       revisionId: REVISION_ID,
-      status: "ready",
-      pdfPath: `/api/photobooks/proofs/${REVISION_ID}/pdf`,
+      status: "rendering",
+      pdfPath: null,
     });
   });
 

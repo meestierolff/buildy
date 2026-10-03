@@ -7,9 +7,12 @@ import {
   Plus,
   RefreshCw,
   Share2,
+  Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+import ProjectSettings from "@/components/project/ProjectSettings";
+import ProjectBudgetPanel from "@/components/project/ProjectBudgetPanel";
 import GrowingBook from "@/components/project/GrowingBook";
 import { photobookQueryKeys } from "@/hooks/usePhotobook";
 
@@ -37,7 +40,7 @@ const PROJECT_VISIBILITY_OPTIONS: ReadonlyArray<{
   value: ProjectVisibility;
   label: string;
 }> = [
-  { value: "private", label: "Alleen ik" },
+  { value: "private", label: "Privé (alleen ik)" },
   { value: "followers", label: "Mijn volgers" },
   { value: "unlisted", label: "Alleen via deellink" },
   { value: "public", label: "Openbaar" },
@@ -77,6 +80,7 @@ const TripDetail = () => {
   const [showAddUpdate, setShowAddUpdate] = useState(false);
   const [importLandingPhoto, setImportLandingPhoto] = useState(false);
   const [editingUpdate, setEditingUpdate] = useState<ProjectUpdate | null>(null);
+  const [budgetOpen, setBudgetOpen] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(() => (
     typeof navigator === "undefined" || navigator.onLine
@@ -342,10 +346,13 @@ const TripDetail = () => {
               {isOwner ? <span className="text-xs text-muted-foreground" aria-label="Eigenaarsweergave">Jouw verbouwing</span> : null}
             </div>
             <h1 id="project-title" className="break-words text-[1.75rem] font-bold leading-tight tracking-tight sm:text-4xl">{project.title}</h1>
-            <Link to={PRODUCT_ROUTES.profile(project.owner.slug)} className="mt-2 inline-flex min-h-11 items-center gap-2 text-sm font-medium hover:text-primary">
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-secondary text-xs font-bold text-primary" aria-hidden="true">{project.owner.displayName.slice(0, 1).toUpperCase()}</span>
-              {project.owner.displayName}
-            </Link>
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <Link to={PRODUCT_ROUTES.profile(project.owner.slug)} className="inline-flex min-h-11 min-w-0 items-center gap-2 text-sm font-medium hover:text-primary">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-bold text-primary" aria-hidden="true">{project.owner.displayName.slice(0, 1).toUpperCase()}</span>
+                <span className="truncate">{project.owner.displayName}</span>
+              </Link>
+              {isOwner || (project.visibility !== "private" && project.visibility !== "unlisted") ? <Button type="button" variant="ghost" onClick={() => void handleShare()} className="min-h-11 shrink-0 gap-2 px-2 text-xs sm:px-3 sm:text-sm" aria-label={isOwner ? "Deel je verbouwing" : "Delen"}><Share2 className="h-4 w-4" aria-hidden="true" /> <span className="sm:hidden">Delen</span><span className="hidden sm:inline">{isOwner ? "Deel je verbouwing" : "Delen"}</span></Button> : null}
+            </div>
             {project.description ? <p className="mt-1 whitespace-pre-line text-sm leading-6 text-muted-foreground">{project.description}</p> : null}
             <p className="mt-3 text-xs leading-5 text-muted-foreground">
               {project.updateCount} {project.updateCount === 1 ? "Bouwmoment" : "Bouwmomenten"}
@@ -359,21 +366,24 @@ const TripDetail = () => {
                 </Button>
               ) : null}
               {canEditProject ? <Button type="button" onClick={() => setShowAddUpdate(true)} className="min-h-11 flex-1 gap-2 bg-accent text-accent-foreground hover:bg-accent/90"><Plus className="h-4 w-4" aria-hidden="true" /> Bouwmoment toevoegen</Button> : null}
-              {isOwner || (project.visibility !== "private" && project.visibility !== "unlisted") ? <Button type="button" variant="outline" onClick={() => void handleShare()} className="min-h-11 gap-2"><Share2 className="h-4 w-4" aria-hidden="true" /> {isOwner ? "Deel je verbouwing" : "Delen"}</Button> : null}
+              {canEditProject ? <Button type="button" variant="outline" aria-expanded={budgetOpen} aria-controls="project-budget-panel" onClick={() => setBudgetOpen((open) => !open)} className="min-h-11 gap-2"><Wallet className="h-4 w-4" aria-hidden="true" /> Budget</Button> : null}
               {!isOwner ? <ReportDialog compact targetType="project" targetId={project.id} targetLabel={`Verbouwing ${project.title}`} /> : null}
             </div>
+            {canEditProject && budgetOpen ? <div id="project-budget-panel" className="mt-4"><ProjectBudgetPanel project={project} /></div> : null}
             {isOwner ? (
               <details className="group mt-3 border-t border-border">
                 <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-xs font-medium text-muted-foreground [&::-webkit-details-marker]:hidden">Projectinstellingen<ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" aria-hidden="true" /></summary>
                 <div className="space-y-4 pb-2">
+                  <p className="text-xs text-muted-foreground">Wie mag je verbouwing zien?</p>
                   <Select value={project.visibility} onValueChange={(value) => void handleVisibilityChange(value as ProjectVisibility)} disabled={updateProject.isPending}>
                     <SelectTrigger className="min-h-11 w-full text-base sm:text-sm" aria-label="Zichtbaarheid van de verbouwing"><SelectValue /></SelectTrigger>
                     <SelectContent>{PROJECT_VISIBILITY_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
                   </Select>
-                  <ProgressControl projectId={project.id} expectedVersion={project.version} isOwner={canEditProject} progressPercentage={project.progressPercentage} />
+                  <ProjectSettings key={project.id} project={project} />
                 </div>
               </details>
-            ) : project.progressPercentage > 0 ? <div className="mt-4"><ProgressControl projectId={project.id} expectedVersion={project.version} isOwner={false} progressPercentage={project.progressPercentage} /></div> : null}
+            ) : null}
+            <div className="mt-4"><ProgressControl projectId={project.id} expectedVersion={project.version} isOwner={false} progressPercentage={project.progressPercentage} startDate={project.startDate} expectedEndDate={project.expectedEndDate} /></div>
           </div>
         </div>
       </section>

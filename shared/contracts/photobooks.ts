@@ -249,3 +249,5 @@ export type PhotobookChapter = z.infer<typeof photobookChapterSchema>;
 export type PhotobookSourceAsset = z.infer<typeof photobookSourceAssetSchema>;
 export type PhotobookWarning = z.infer<typeof photobookWarningSchema>;
 export type PhotobookDocument = z.infer<typeof photobookDocumentSchema>;
+
+export const photobookPreviewResponseSchema = apiSuccessSchema(photobookDocumentSchema);

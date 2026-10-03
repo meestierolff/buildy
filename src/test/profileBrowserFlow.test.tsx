@@ -8,6 +8,7 @@ import Profile from "@/pages/Profile";
 const PROFILE_ID = "11111111-1111-4111-8111-111111111111";
 
 const mocks = vi.hoisted(() => ({
+  adminSession: vi.fn(),
   accountExports: vi.fn(),
   accountSessions: vi.fn(),
   createExportMutation: {
@@ -26,6 +27,8 @@ const mocks = vi.hoisted(() => ({
     isPending: false,
     mutateAsync: vi.fn(),
   },
+  prepareImage: vi.fn(),
+  uploadAvatar: vi.fn(),
   ownProfile: vi.fn(),
   profileProjects: vi.fn(),
   projectDashboard: vi.fn(),
@@ -56,6 +59,15 @@ vi.mock("@/hooks/useAuth", () => ({
     user: mocks.user,
   }),
 }));
+
+vi.mock("@/lib/privateMediaApi", () => ({
+  preparePrivateProjectImage: (...args: unknown[]) => mocks.prepareImage(...args),
+  uploadProfileImage: (...args: unknown[]) => mocks.uploadAvatar(...args),
+}));
+
+vi.mock("@/lib/appFeatures", () => ({ useAppFeatures: () => ({ accountLifecycleEnabled: true, mediaFeaturesEnabled: true, photobooksEnabled: true, passwordSignInEnabled: true }) }));
+
+vi.mock("@/hooks/useModeration", () => ({ useModerationAdminSession: () => mocks.adminSession() }));
 
 vi.mock("@/hooks/usePageMeta", () => ({ usePageMeta: vi.fn() }));
 
@@ -139,6 +151,7 @@ function projectCard() {
 
 describe("profile browser flow", () => {
   beforeEach(() => {
+    mocks.adminSession.mockReturnValue({ isSuccess: false });
     mocks.user = { email: "ada@example.test", id: "session-auth-user" };
     mocks.updateMutation.mutateAsync.mockReset().mockResolvedValue({
       id: PROFILE_ID,
@@ -331,6 +344,61 @@ describe("profile browser flow", () => {
       action: "remove",
       profileId: PROFILE_ID,
     }));
+  });
+
+  it("bewaart een nieuwe profielfoto pas samen met profielwijzigingen", async () => {
+    window.history.replaceState({}, "", "/account");
+    const file = new File(["avatar"], "avatar.jpg", { type: "image/jpeg" });
+    const prepared = { file, contentType: "image/jpeg", sizeBytes: file.size, checksumSha256Base64: "checksum" };
+    mocks.prepareImage.mockResolvedValue(prepared);
+    mocks.uploadAvatar.mockResolvedValue({ id: "22222222-2222-4222-8222-222222222222" });
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:avatar-preview") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
+    render(<BrowserRouter><AccountSettings /></BrowserRouter>);
+    fireEvent.change(screen.getByLabelText(/Profielfoto/), { target: { files: [file] } });
+    expect(mocks.uploadAvatar).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Profiel opslaan" }));
+    await waitFor(() => expect(mocks.updateMutation.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
+      expectedVersion: 3, avatarAssetId: "22222222-2222-4222-8222-222222222222",
+    })));
+    expect(mocks.uploadAvatar).toHaveBeenCalledWith({ idempotencyKey: expect.stringMatching(/^avatar-upload:/), prepared });
+    const command = mocks.updateMutation.mutateAsync.mock.calls[0][0];
+    expect(command).not.toHaveProperty("slug");
+    expect(command).not.toHaveProperty("displayName");
+    expect(command).not.toHaveProperty("username");
+  });
+
+  it("vergrendelt profielvelden zolang de profielfoto nog wordt verwerkt", async () => {
+    const file = new File(["avatar"], "avatar.jpg", { type: "image/jpeg" });
+    let finishUpload: (asset: { id: string }) => void = () => undefined;
+    mocks.prepareImage.mockResolvedValue({ file });
+    mocks.uploadAvatar.mockReturnValue(new Promise((resolve) => { finishUpload = resolve; }));
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:avatar-preview") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
+    render(<BrowserRouter><AccountSettings /></BrowserRouter>);
+    fireEvent.change(screen.getByLabelText(/Profielfoto/), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole("button", { name: "Profiel opslaan" }));
+    await waitFor(() => expect(screen.getByLabelText("Profielnaam")).toBeDisabled());
+    expect(mocks.updateMutation.mutateAsync).not.toHaveBeenCalled();
+    finishUpload({ id: "22222222-2222-4222-8222-222222222222" });
+    await waitFor(() => expect(screen.getByLabelText("Profielnaam")).not.toBeDisabled());
+  });
+
+  it.each(["admin", "moderator", undefined])("toont boekbeheer alleen bij een bevestigde beheerrol (%s)", (role) => {
+    mocks.adminSession.mockReturnValue({ isSuccess: Boolean(role), data: role ? { role } : undefined });
+    render(<BrowserRouter><AccountSettings /></BrowserRouter>);
+    const link = screen.queryByRole("link", { name: "Boekbestellingen beheren" });
+    if (role === "admin") expect(link).toHaveAttribute("href", "/admin/boeken");
+    else expect(link).not.toBeInTheDocument();
+  });
+
+  it("houdt accountverwijdering beschikbaar achter een compacte gesloten sectie", () => {
+    window.history.replaceState({}, "", "/account");
+    render(<BrowserRouter><AccountSettings /></BrowserRouter>);
+    const disclosure = screen.getByText("Account verwijderen", { selector: "summary" });
+    expect(disclosure.closest("details")).not.toHaveAttribute("open");
+    fireEvent.click(disclosure);
+    expect(screen.getByRole("button", { name: "Account verwijderen", hidden: true })).toHaveClass("text-destructive");
   });
 
   it("schrijft accountprofielvelden met de geladen serverversie en zonder identityveld", async () => {

@@ -2,7 +2,6 @@ import type { PhotobookEditorState, PhotobookProofMutation } from "./types.js";
 import { HttpError } from "../http/errors.js";
 import { jsonError, jsonSuccess } from "../http/responses.js";
 import {
-  guardObjectStream,
   type ObjectStorage,
 } from "../storage/objectStorage.js";
 import type { ProjectActorResolver } from "../projects/actor.js";
@@ -15,6 +14,7 @@ const MAX_JSON_BODY_BYTES = 1024 * 1024;
 export type PhotobookRouteParameters = Readonly<Record<string, string>>;
 
 export interface PhotobookHttpService {
+  preview?(actorId: string, projectId: string, input: unknown): Promise<import("../../shared/contracts/photobooks.js").PhotobookDocument>;
   editor(actorId: string, projectId: string): Promise<PhotobookEditorState>;
   updateSettings(actorId: string, projectId: string, input: unknown): Promise<PhotobookEditorState>;
   replaceExclusions(actorId: string, projectId: string, input: unknown): Promise<PhotobookEditorState>;
@@ -51,57 +51,6 @@ async function jsonInput(request: Request): Promise<unknown> {
   } catch {
     throw new HttpError(400, "BAD_REQUEST", "De JSON-body is ongeldig.");
   }
-}
-
-function parseRange(value: string | null, size: number): { start: number; end: number } | null {
-  if (!value) return null;
-  const match = /^bytes=(\d*)-(\d*)$/.exec(value);
-  if (!match || (!match[1] && !match[2])) {
-    throw new HttpError(416, "BAD_REQUEST", "Dit bytebereik is niet beschikbaar.");
-  }
-  let start: number;
-  let end: number;
-  if (!match[1]) {
-    const suffix = Number(match[2]);
-    if (!Number.isSafeInteger(suffix) || suffix < 1) {
-      throw new HttpError(416, "BAD_REQUEST", "Dit bytebereik is niet beschikbaar.");
-    }
-    start = Math.max(0, size - suffix);
-    end = size - 1;
-  } else {
-    start = Number(match[1]);
-    end = match[2] ? Number(match[2]) : size - 1;
-  }
-  if (
-    !Number.isSafeInteger(start)
-    || !Number.isSafeInteger(end)
-    || start < 0
-    || end < start
-    || start >= size
-  ) throw new HttpError(416, "BAD_REQUEST", "Dit bytebereik is niet beschikbaar.");
-  return { start, end: Math.min(end, size - 1) };
-}
-
-function proofHeaders(input: {
-  sha256: string;
-  size: number;
-  contentLength: number;
-  range?: { start: number; end: number };
-}): Headers {
-  const headers = new Headers({
-    "accept-ranges": "bytes",
-    "cache-control": "private, no-store, max-age=0",
-    "content-disposition": "inline; filename=\"bouwboek-printproof.pdf\"",
-    "content-length": String(input.contentLength),
-    "content-type": "application/pdf",
-    "cross-origin-resource-policy": "same-origin",
-    etag: `"sha256-${input.sha256}"`,
-    "x-content-type-options": "nosniff",
-  });
-  if (input.range) {
-    headers.set("content-range", `bytes ${input.range.start}-${input.range.end}/${input.size}`);
-  }
-  return headers;
 }
 
 function rethrowPhotobookError(error: unknown): never {
@@ -145,54 +94,11 @@ export function createPhotobookHttpHandler(dependencies: PhotobookHttpDependenci
           requestId,
         );
       }
-      if (projectId && pathname.endsWith("/photobook/proofs") && request.method === "POST") {
-        const result = await dependencies.service.requestProof(actorId, projectId, await jsonInput(request));
-        return jsonSuccess(result, requestId, {
-          status: result.replayed || result.status !== "rendering" ? 200 : 202,
-        });
+      if (projectId && pathname.endsWith("/photobook/preview") && request.method === "POST" && dependencies.service.preview) {
+        return jsonSuccess(await dependencies.service.preview(actorId, projectId, await jsonInput(request)), requestId);
       }
-      if (revisionId && pathname.endsWith("/pdf") && ["GET", "HEAD"].includes(request.method)) {
-        const proof = await dependencies.service.proofObject(actorId, revisionId);
-        const etag = `"sha256-${proof.sha256}"`;
-        if (request.headers.get("if-none-match") === etag) {
-          return new Response(null, { status: 304, headers: proofHeaders({
-            sha256: proof.sha256,
-            size: proof.sizeBytes,
-            contentLength: 0,
-          }) });
-        }
-        const range = parseRange(request.headers.get("range"), proof.sizeBytes);
-        const contentLength = range ? range.end - range.start + 1 : proof.sizeBytes;
-        const headers = proofHeaders({ sha256: proof.sha256, size: proof.sizeBytes, contentLength, range: range ?? undefined });
-        if (request.method === "HEAD") return new Response(null, { status: 200, headers });
-
-        const object = await dependencies.storage.streamObject({
-          key: proof.objectKey,
-          maximumBytes: proof.sizeBytes,
-          range: range ?? undefined,
-        });
-        if (
-          object.metadata.key !== proof.objectKey
-          || object.metadata.sizeBytes !== proof.sizeBytes
-          || object.metadata.contentType !== "application/pdf"
-          || object.contentLength !== contentLength
-          || (range && (
-            !object.range
-            || object.range.start !== range.start
-            || object.range.end !== range.end
-          ))
-        ) throw new PhotobookError("INVALID_STATE");
-        const body = guardObjectStream({
-          stream: object.stream,
-          expectedBytes: contentLength,
-          expectedSha256Hex: range ? undefined : proof.sha256,
-        });
-        if (!range) {
-          headers.set("x-buildy-proof-revision", proof.revisionId);
-          headers.set("x-buildy-proof-document-sha256", proof.documentSha256);
-          headers.set("x-buildy-proof-pdf-sha256", proof.sha256);
-        }
-        return new Response(body, { status: range ? 206 : 200, headers });
+      if ((projectId && pathname.endsWith("/photobook/proofs")) || (revisionId && pathname.endsWith("/pdf"))) {
+        throw new HttpError(403, "FORBIDDEN", "Alleen Buildy kan een PDF maken voor een boekbestelling.");
       }
 
       return jsonError(404, "NOT_FOUND", "Deze API-route bestaat niet.", requestId);

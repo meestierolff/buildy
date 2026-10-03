@@ -3,6 +3,7 @@ import type {
   CreateProjectPhaseInput,
   CreateUpdateInput,
   DeleteProjectInput,
+  DeleteProjectPhaseInput,
   DeleteUpdateInput,
   EditUpdateInput,
   FollowingActivity,
@@ -108,6 +109,8 @@ export type CreateProjectPhaseCommand = {
   now: Date;
 };
 
+export type DeleteProjectPhaseCommand = Omit<CreateProjectPhaseCommand, "input"> & { input: DeleteProjectPhaseInput };
+
 export type MutationReference = {
   id: string;
   replayed: boolean;
@@ -133,6 +136,7 @@ export interface ProjectRepository {
   editUpdate(command: EditUpdateCommand): Promise<MutationReference>;
   deleteUpdate(command: DeleteUpdateCommand): Promise<MutationReference>;
   requestProjectDeletion(command: DeleteProjectCommand): Promise<ProjectDeletionMutation>;
+  deleteProjectPhase(command: DeleteProjectPhaseCommand): Promise<MutationReference>;
   createProjectPhase(command: CreateProjectPhaseCommand): Promise<MutationReference>;
 }
 

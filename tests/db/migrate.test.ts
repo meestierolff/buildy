@@ -118,6 +118,10 @@ describe("migration discovery", () => {
       "0053_project_follow_revocation.sql",
       "0054_digital_photobook_page_count.sql",
       "0055_user_follow_publication_notifications.sql",
+      "0056_private_moment_budget.sql",
+      "0057_avatar_upload_processing.sql",
+      "0058_manual_book_requests.sql",
+      "0059_manual_book_lifecycle.sql",
     ]);
     expect(migrations.every((migration) => /^[0-9a-f]{64}$/.test(migration.sha256))).toBe(true);
   });
@@ -363,9 +367,9 @@ describe("migration URL and CLI boundaries", () => {
     expect(() => parseMigrationArguments(["--statement-timeout-ms", "0"])).toThrow(/tussen 1/);
   });
 
-  it("keeps the schema contract at 55 public and 45 RLS tables", () => {
-    expect(EXPECTED_PUBLIC_TABLES).toHaveLength(55);
-    expect(EXPECTED_RLS_TABLES).toHaveLength(45);
+  it("keeps the schema contract at 56 public and 46 RLS tables", () => {
+    expect(EXPECTED_PUBLIC_TABLES).toHaveLength(56);
+    expect(EXPECTED_RLS_TABLES).toHaveLength(46);
     expect(() => compareExpectedNames("test", ["one"], ["one"])).not.toThrow();
     expect(() => compareExpectedNames("test", ["one"], ["two"])).toThrow(/ontbreekt.*onverwacht/);
   });

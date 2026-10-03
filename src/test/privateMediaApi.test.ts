@@ -7,6 +7,7 @@ import {
   PrivateMediaUploadError,
   resetVercelBlobClientUploadForTests,
   uploadProjectImage,
+  uploadProfileImage,
   waitForProjectMediaReady,
   type PreparedProjectImage,
 } from "@/lib/privateMediaApi";
@@ -58,6 +59,29 @@ describe("private project media client", () => {
   afterEach(() => {
     resetVercelBlobClientUploadForTests();
     vi.unstubAllGlobals();
+  });
+
+  it.each(["avatar", "project_cover"] as const)("keeps %s uploads bound to their intended scope", async (purpose) => {
+    const projectId = purpose === "avatar" ? null : PROJECT_ID;
+    const asset = { id: ASSET_ID, projectId, purpose, status: "ready" };
+    const fetchMock = vi.fn(async () => success({ asset, upload: null, replayed: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    const input = { idempotencyKey: UPLOAD_KEY, prepared: preparedImage() };
+    const result = purpose === "avatar"
+      ? await uploadProfileImage(input)
+      : await uploadProjectImage({ ...input, projectId: PROJECT_ID, purpose });
+    expect(result).toMatchObject(asset);
+    const request = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(request[1].body))).toMatchObject({ purpose, projectId });
+  });
+
+  it("rejects a profile upload response scoped to a project", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => success({
+      asset: { id: ASSET_ID, projectId: PROJECT_ID, purpose: "project_media", status: "ready" },
+      upload: null, replayed: true,
+    })));
+    await expect(uploadProfileImage({ idempotencyKey: UPLOAD_KEY, prepared: preparedImage() }))
+      .rejects.toMatchObject({ code: "UNSAFE_UPLOAD_GRANT" });
   });
 
   it("computes the browser SHA-256 over the exact upload bytes", async () => {

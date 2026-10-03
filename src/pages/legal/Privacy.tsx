@@ -6,7 +6,7 @@ const Privacy = () => (
   <LegalLayout
     title="Privacyverklaring"
     description="Welke persoonsgegevens Buildy in de gratis MVP verwerkt, waarom en welke keuzes en rechten je hebt."
-    updated="8 september 2026"
+    updated="3 oktober 2026"
   >
     <LegalPendingNotice title="Verantwoordelijke en contactgegevens nog vereist">
       <p>
@@ -38,7 +38,9 @@ const Privacy = () => (
       <li><strong>Verbouwing en Bouwmomenten:</strong> titel, type verbouwing, datums, voortgang, verhalen, foto&apos;s, volgorde en zichtbaarheid.</li>
       <li><strong>Sociale gegevens:</strong> volgverzoeken en -relaties, reacties, emoji-reacties en meldingen.</li>
       <li><strong>Digitaal Bouwboek:</strong> titel, cover, geselecteerde Bouwmomenten, foto&apos;s, volgorde en opmaakvoorkeuren.</li>
-      <li><strong>Feedback en printinteresse:</strong> je antwoorden en eventuele waardering. Printinteresse is alleen productonderzoek en legt jou of Buildy nergens op vast.</li>
+      <li><strong>Privénotities en budget:</strong> eigen aantekeningen, bouwbudget, kosten en bestede uren. Deze worden niet getoond aan projectbezoekers en komen niet in je Bouwboek.</li>
+      <li><strong>Boekaanvragen:</strong> de gekozen boekversie, aantal exemplaren, afhandelstatus en de contact- en bezorggegevens die je voor de aanvraag invult. Contact- en bezorggegevens worden versleuteld opgeslagen en zijn alleen voor bevoegde beheerders beschikbaar.</li>
+      <li><strong>Feedback:</strong> je antwoorden en eventuele waardering.</li>
       <li><strong>Support en meldingen:</strong> je bericht, antwoordadres, categorie, ontvangstcode en de informatie die nodig is om je verzoek te behandelen.</li>
       <li><strong>Techniek en beveiliging:</strong> IP-adres, tijdstip, aangevraagde route, browser- en apparaatgegevens, sessiegegevens, foutinformatie en beveiligingssignalen voor zover de dienst en infrastructuur die vastleggen.</li>
     </ul>
@@ -70,7 +72,7 @@ const Privacy = () => (
             <td>Uitvoering van de gebruikersovereenkomst</td>
           </tr>
           <tr>
-            <td>Vrijwillige feedback en printinteresse onderzoeken</td>
+            <td>Vrijwillige feedback onderzoeken</td>
             <td>Feedbackantwoorden en eventuele waardering</td>
             <td>Gerechtvaardigd belang om het product te verbeteren; deelname is optioneel</td>
           </tr>
@@ -108,6 +110,7 @@ const Privacy = () => (
     <ul>
       <li><strong><a href="https://vercel.com/legal/dpa" target="_blank" rel="noreferrer">Vercel</a>:</strong> hosting van de webapp en serverfuncties, private Vercel Blob-opslag voor media en technische beveiligings- en requestlogs.</li>
       <li><strong><a href="https://neon.com/security" target="_blank" rel="noreferrer">Neon</a>:</strong> PostgreSQL-database voor accounts en productgegevens.</li>
+      <li><strong>Drukkerij:</strong> bij de afgesproken uitvoering van je boekaanvraag kan een beheerder de gekozen boekinhoud en benodigde bezorggegevens aan de drukkerij doorgeven. Er worden geen gegevens automatisch naar een drukkerij gestuurd.</li>
       <li><strong>Bevoegde adviseurs, toezichthouders of autoriteiten:</strong> alleen wanneer dat noodzakelijk of wettelijk verplicht is.</li>
     </ul>
     <p>

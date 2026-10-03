@@ -123,7 +123,7 @@ export class PhotobookService {
       await this.processExactRevision(proof.revisionId);
       proof = await this.repository.latestProof(actorId, projectId);
     }
-    const exposesPdf = proof && ["ready", "approved", "locked"].includes(proof.status);
+    const exposesPdf = false;
     return {
       draftId: saved.draftId,
       version: saved.version,
@@ -143,7 +143,14 @@ export class PhotobookService {
   }
 
   async editor(actorId: string, projectId: string): Promise<PhotobookEditorState> {
-    return this.buildEditorState(actorId, projectId, true);
+    return this.buildEditorState(actorId, projectId, false);
+  }
+
+  async preview(actorId: string, projectId: string, rawInput: unknown): Promise<PhotobookDocument> {
+    const settings = updatePhotobookSettingsInputSchema.parse(rawInput);
+    const source = await this.repository.loadSource(actorId, projectId);
+    if (!source) throw new PhotobookError("PHOTOBOOK_NOT_FOUND");
+    return this.buildDocument({ ...source, settings });
   }
 
   async updateSettings(

@@ -114,6 +114,10 @@ describe("AddStepDialog typed API retry", () => {
     const title = screen.getByLabelText(/Korte titel of bijschrift/);
     fireEvent.change(title, { target: { value: "De eerste muur is open" } });
     fireEvent.click(screen.getByRole("checkbox", { name: "Dit is een mijlpaal" }));
+    fireEvent.change(screen.getByLabelText("Eigen aantekeningen"), { target: { value: "Privé afspraak" } });
+    fireEvent.change(screen.getByLabelText("Kosten van dit Bouwmoment (€)"), { target: { value: "125,45" } });
+    fireEvent.change(screen.getByLabelText("Eigen uren"), { target: { value: "1,5" } });
+    fireEvent.change(screen.getByLabelText("Uren aannemer"), { target: { value: "2" } });
     fireEvent.click(screen.getByRole("button", { name: "Bouwmoment plaatsen" }));
 
     await screen.findByText(/serverbevestiging ontbreekt nog/i);
@@ -133,6 +137,7 @@ describe("AddStepDialog typed API retry", () => {
     expect(mocks.createUpdate.mock.calls[1]?.[0]).toBe(firstCommand);
     expect(mocks.refetchProject).toHaveBeenCalledTimes(1);
     expect(firstCommand).toHaveProperty("isMilestone", true);
+    expect(firstCommand.privateDetails).toEqual({ notes: "Privé afspraak", costAmountMinor: 12545, ownMinutes: 90, contractorMinutes: 120 });
     expect(firstCommand).not.toHaveProperty("userId");
     expect(firstCommand).not.toHaveProperty("user_id");
   });

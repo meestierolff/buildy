@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Download,
   FileArchive,
@@ -8,7 +8,8 @@ import {
   MapPin,
   MonitorSmartphone,
   Save,
-  ShieldAlert,
+  Camera,
+  ChevronDown,
   Trash2,
   UserRound,
 } from "lucide-react";
@@ -39,9 +40,11 @@ import {
   useRevokeAccountSessionMutation,
 } from "@/hooks/useAccount";
 import { useOwnProfile, useUpdateOwnProfileMutation } from "@/hooks/useProfiles";
+import { useModerationAdminSession } from "@/hooks/useModeration";
 import { usePageMeta } from "@/hooks/usePageMeta";
 import { useAppFeatures } from "@/lib/appFeatures";
 import { ApiClientError } from "@/lib/apiClient";
+import { preparePrivateProjectImage, uploadProfileImage, type PreparedProjectImage } from "@/lib/privateMediaApi";
 import { createClientIdempotencyKey } from "@/lib/clientIdempotency";
 import { Link, Navigate } from "@/lib/router";
 import type { UpdateOwnProfileInput } from "../../shared/contracts/profiles";
@@ -105,9 +108,15 @@ const AccountSettings = () => {
     noIndex: true,
   });
   const { user, loading: authLoading, signOut } = useAuth();
+  const adminSession = useModerationAdminSession(Boolean(user) && !authLoading);
   const profileQuery = useOwnProfile(Boolean(user));
   const profileMutation = useUpdateOwnProfileMutation();
   const [draft, setDraft] = useState<ProfileDraft>(EMPTY_PROFILE);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string>();
+  const [avatarRemoved, setAvatarRemoved] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const avatarUpload = useRef<{ file: File; key: string; prepared?: PreparedProjectImage; assetId?: string }>();
   const [draftVersion, setDraftVersion] = useState<number | null>(null);
   const [includeMediaInExport, setIncludeMediaInExport] = useState(true);
   const [deletionConfirmation, setDeletionConfirmation] = useState("");
@@ -132,6 +141,13 @@ const AccountSettings = () => {
     setDraftVersion(profile.version);
   }, [draftVersion, profile]);
 
+  useEffect(() => {
+    if (!avatarFile) { setAvatarPreview(undefined); return; }
+    const preview = URL.createObjectURL(avatarFile);
+    setAvatarPreview(preview);
+    return () => URL.revokeObjectURL(preview);
+  }, [avatarFile]);
+
   if (authLoading || leavingAccount) {
     return (
       <main className="flex min-h-[60vh] items-center justify-center" role="status" aria-live="polite">
@@ -149,7 +165,7 @@ const AccountSettings = () => {
 
   const saveProfile = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!profile) return;
+    if (!profile || savingProfile) return;
 
     const displayName = draft.displayName.trim();
     const slug = draft.slug.trim().toLowerCase();
@@ -162,25 +178,44 @@ const AccountSettings = () => {
     if (location !== profile.location) changes.location = location;
     if (draft.isPrivate !== profile.isPrivate) changes.isPrivate = draft.isPrivate;
 
-    if (Object.keys(changes).length === 0) {
+    if (avatarRemoved && profile.avatar) changes.avatarAssetId = null;
+
+    if (Object.keys(changes).length === 0 && !avatarFile) {
       toast.info("Er zijn geen profielwijzigingen om op te slaan.");
       return;
     }
 
+    setSavingProfile(true);
     try {
+      if (avatarFile) {
+        if (avatarUpload.current?.file !== avatarFile) {
+          avatarUpload.current = { file: avatarFile, key: createClientIdempotencyKey("avatar-upload") };
+        }
+        const upload = avatarUpload.current;
+        upload.prepared ??= await preparePrivateProjectImage(avatarFile);
+        upload.assetId ??= (await uploadProfileImage({
+          idempotencyKey: upload.key,
+          prepared: upload.prepared,
+        })).id;
+        changes.avatarAssetId = upload.assetId;
+      }
       await profileMutation.mutateAsync({
         idempotencyKey: createClientIdempotencyKey("profile-update"),
         expectedVersion: profile.version,
         ...changes,
       });
+      setAvatarFile(null);
+      setAvatarRemoved(false);
+      avatarUpload.current = undefined;
       toast.success("Je profiel is bijgewerkt.");
     } catch (error) {
-      console.error("Profile settings update failed", error);
       toast.error(
         error instanceof ApiClientError
           ? error.message
-          : "Je profiel kon niet worden opgeslagen. Probeer het opnieuw.",
+          : error instanceof Error ? error.message : "Je profiel kon niet worden opgeslagen. Probeer het opnieuw.",
       );
+    } finally {
+      setSavingProfile(false);
     }
   };
 
@@ -268,10 +303,14 @@ const AccountSettings = () => {
         </Button>
       </header>
 
+      {adminSession.isSuccess && adminSession.data?.role === "admin" ? (
+        <Button asChild variant="outline" className="min-h-11"><Link to="/admin/boeken">Boekbestellingen beheren</Link></Button>
+      ) : null}
+
       <section className="rounded-xl border border-border bg-card p-6 md:p-8" aria-labelledby="profile-settings-title">
         <div className="mb-6 flex items-start gap-4">
           <Avatar className="h-14 w-14 border border-border">
-            <AvatarImage src={profile?.avatar?.proxyPath ?? ""} alt="" />
+            <AvatarImage src={avatarPreview ?? (avatarRemoved ? "" : profile?.avatar?.proxyPath ?? "")} alt="" />
             <AvatarFallback className="bg-secondary text-xl font-semibold text-primary">
               {profile?.displayName[0]?.toUpperCase() ?? "?"}
             </AvatarFallback>
@@ -303,7 +342,25 @@ const AccountSettings = () => {
             </Button>
           </div>
         ) : (
-          <form className="space-y-5" onSubmit={saveProfile}>
+          <form onSubmit={saveProfile}>
+            <fieldset disabled={savingProfile || profileMutation.isPending} className="space-y-5">
+            <div className="space-y-2">
+              <Label htmlFor="profile-avatar">Profielfoto</Label>
+              <div className="flex flex-wrap items-center gap-2">
+                <label htmlFor="profile-avatar" className="relative inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm font-medium focus-within:ring-2 focus-within:ring-ring">
+                  <Camera className="h-4 w-4" aria-hidden="true" /> Foto kiezen
+                  <input id="profile-avatar" type="file" className="sr-only" accept="image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif" disabled={savingProfile} onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    if (file) { setAvatarFile(file); setAvatarRemoved(false); }
+                    event.currentTarget.value = "";
+                  }} />
+                </label>
+                {(avatarFile || (profile.avatar && !avatarRemoved)) && <Button type="button" variant="ghost" className="min-h-11" disabled={savingProfile} onClick={() => {
+                  setAvatarFile(null); setAvatarRemoved(true); avatarUpload.current = undefined;
+                }}>Foto verwijderen</Button>}
+              </div>
+              <p className="text-xs text-muted-foreground">Je foto wordt opgeslagen met je profielwijzigingen.</p>
+            </div>
             <div className="grid gap-5 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="profile-display-name">Weergavenaam</Label>
@@ -382,12 +439,13 @@ const AccountSettings = () => {
               />
             </div>
 
-            <Button type="submit" disabled={profileMutation.isPending} className="min-h-11 gap-2">
-              {profileMutation.isPending
+            <Button type="submit" disabled={savingProfile || profileMutation.isPending} className="min-h-11 gap-2">
+              {savingProfile || profileMutation.isPending
                 ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                 : <Save className="h-4 w-4" aria-hidden="true" />}
               Profiel opslaan
             </Button>
+            </fieldset>
           </form>
         )}
       </section>
@@ -539,9 +597,12 @@ const AccountSettings = () => {
       ) : null}
 
       {accountLifecycleEnabled ? (
-      <section className="rounded-xl border border-destructive/40 bg-destructive/5 p-6 md:p-8" aria-labelledby="delete-account-title">
+      <details className="group rounded-xl border border-border bg-card px-6 md:px-8">
+        <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between text-sm text-muted-foreground [&::-webkit-details-marker]:hidden">
+          Account verwijderen <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" aria-hidden="true" />
+        </summary>
+        <div className="pb-6" aria-labelledby="delete-account-title">
         <div className="flex items-start gap-3">
-          <ShieldAlert className="mt-0.5 h-5 w-5 text-destructive" aria-hidden="true" />
           <div className="flex-1">
             <h2 id="delete-account-title" className="text-base font-semibold">Account verwijderen</h2>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -553,7 +614,7 @@ const AccountSettings = () => {
 
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button type="button" variant="destructive" className="mt-5 gap-2">
+            <Button type="button" variant="outline" className="mt-5 min-h-11 gap-2 text-destructive">
               <Trash2 className="h-4 w-4" aria-hidden="true" /> Account verwijderen
             </Button>
           </AlertDialogTrigger>
@@ -592,7 +653,8 @@ const AccountSettings = () => {
             </form>
           </AlertDialogContent>
         </AlertDialog>
-      </section>
+        </div>
+      </details>
       ) : null}
     </main>
   );
