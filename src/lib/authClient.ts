@@ -5,6 +5,7 @@ import {
   usernameSignInInputSchema,
   usernameSignUpInputSchema,
   safeAuthNextPath,
+  MIN_PASSWORD_LENGTH,
 } from "../../shared/contracts/auth";
 import { apiErrorSchema } from "../../shared/contracts/api";
 
@@ -117,7 +118,7 @@ export function authErrorMessage(error: unknown, flow: AuthFlow): string {
     return "Je gebruikersnaam of wachtwoord klopt niet. Probeer het opnieuw.";
   }
   if (code === "USERNAME_UNAVAILABLE") return "Deze gebruikersnaam is niet beschikbaar. Kies een andere.";
-  if (code === "WEAK_PASSWORD") return "Kies een langer, uniek wachtwoord van minimaal 15 tekens.";
+  if (code === "WEAK_PASSWORD") return `Kies een uniek wachtwoord van minimaal ${MIN_PASSWORD_LENGTH} tekens, anders dan je gebruikersnaam.`;
   if (code === "BAD_REQUEST" || code === "VALIDATION_FAILED") return "Controleer je gebruikersnaam en wachtwoord.";
   const fallback: Record<AuthFlow, string> = {
     session: "Je sessie kon niet worden gecontroleerd. Probeer het opnieuw.",

@@ -61,6 +61,24 @@ describe("username and password authentication", () => {
     expect(JSON.stringify(session)).not.toContain(TOKEN);
     expect(response.headers.get("set-cookie")).toContain(`buildy_session=${TOKEN}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800; Secure`);
   });
+  it("accepts exactly ten password characters and rejects nine before persistence", async () => {
+    const { engine, repository } = harness();
+    const password = "Hout!27Zon";
+    const rejected = await engine.handler(request("/api/auth/sign-up", {
+      username: "verbouwer", password: password.slice(0, -1),
+    }));
+    expect(rejected.status).toBe(400);
+    expect(rejected.headers.has("set-cookie")).toBe(false);
+    expect(repository.register).not.toHaveBeenCalled();
+
+    const accepted = await engine.handler(request("/api/auth/sign-up", {
+      username: "verbouwer", password,
+    }));
+    expect(accepted.status).toBe(200);
+    expect(repository.register).toHaveBeenCalledTimes(1);
+    const [identity] = vi.mocked(repository.register).mock.calls[0];
+    expect(await verifyPassword(password, identity.passwordHash)).toBe(true);
+  });
   it("logs into the same persisted identity and rotates the previous session", async () => {
     const { engine, repository } = harness();
     const response = await engine.handler(request(undefined, undefined, { cookie: `buildy_session=${"P".repeat(43)}` }));
@@ -171,8 +189,9 @@ describe("password storage", () => {
     expect(await verifyPassword(PASSWORD, null)).toBe(false);
   });
   it("allows passphrases, spaces and Unicode without composition rules", () => {
-    expect(usernameSignUpInputSchema.parse({ username: " My.House-2 ", password: "🌳".repeat(15) }).username).toBe("my.house-2");
-    expect(usernameSignUpInputSchema.safeParse({ username: "house", password: "a".repeat(14) }).success).toBe(false);
+    expect(usernameSignUpInputSchema.parse({ username: " My.House-2 ", password: "🌳".repeat(10) }).username).toBe("my.house-2");
+    expect(usernameSignUpInputSchema.safeParse({ username: "house", password: "🌳".repeat(9) }).success).toBe(false);
+    expect(usernameSignUpInputSchema.safeParse({ username: "house", password: "🌳".repeat(128) }).success).toBe(true);
     expect(usernameSignUpInputSchema.safeParse({ username: "house", password: "🌳".repeat(129) }).success).toBe(false);
     expect(isWeakPassword(PASSWORD, "verbouwer")).toBe(false);
   });

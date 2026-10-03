@@ -116,7 +116,12 @@ const NotificationList = ({
             <div className={compact ? "px-4 py-3" : "p-4 sm:p-5"}>
               <Link
                 to={notificationHref(notification)}
-                onClick={onNavigate}
+                onClick={() => {
+                  if (notification.status === "unread" && !busy) {
+                    void updateStatus(notification.id, "read");
+                  }
+                  onNavigate?.();
+                }}
                 className="flex min-h-11 items-start gap-3 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 <div className="relative mt-0.5 shrink-0">
@@ -148,7 +153,7 @@ const NotificationList = ({
                 <div className="ml-11 mt-2 flex flex-wrap gap-2 sm:ml-[3.25rem]">
                   <Button
                     size="sm"
-                    className="min-h-9 gap-1"
+                    className="min-h-11 gap-1"
                     disabled={busy}
                     onClick={() => void decide(notification, "accept")}
                   >
@@ -157,7 +162,7 @@ const NotificationList = ({
                   <Button
                     size="sm"
                     variant="outline"
-                    className="min-h-9 gap-1"
+                    className="min-h-11 gap-1"
                     disabled={busy}
                     onClick={() => void decide(notification, "reject")}
                   >
@@ -173,7 +178,7 @@ const NotificationList = ({
                       type="button"
                       size="sm"
                       variant="ghost"
-                      className="min-h-9"
+                      className="min-h-11"
                       disabled={busy}
                       onClick={() => void updateStatus(notification.id, "read")}
                     >
@@ -184,7 +189,7 @@ const NotificationList = ({
                     type="button"
                     size="sm"
                     variant="ghost"
-                    className="min-h-9 text-muted-foreground"
+                    className="min-h-11 text-muted-foreground"
                     disabled={busy}
                     onClick={() => void updateStatus(notification.id, "archive")}
                   >

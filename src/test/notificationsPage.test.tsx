@@ -122,6 +122,34 @@ describe("notifications page", () => {
     await waitFor(() => expect(markAllRead).toHaveBeenCalledTimes(1));
   });
 
+  it("marks an opened notification read and still opens its Bouwmoment", async () => {
+    vi.mocked(useAuth).mockReturnValue(auth(true));
+    render(<BrowserRouter><Notifications /></BrowserRouter>);
+
+    fireEvent.click(screen.getByRole("link", { name: /ada reageerde op je Bouwmoment/i }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+      action: "read",
+      notificationId: NOTIFICATION_ID,
+    }));
+    expect(window.location.pathname).toBe(`/project/${PROJECT_ID}`);
+    expect(new URLSearchParams(window.location.search).get("update")).toBe(UPDATE_ID);
+  });
+
+  it("keeps the Bouwmoment reachable when marking it read fails", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mutateAsync.mockRejectedValueOnce(new Error("Connection interrupted"));
+    vi.mocked(useAuth).mockReturnValue(auth(true));
+    render(<BrowserRouter><Notifications /></BrowserRouter>);
+
+    fireEvent.click(screen.getByRole("link", { name: /ada reageerde op je Bouwmoment/i }));
+
+    await waitFor(() => expect(consoleError).toHaveBeenCalled());
+    expect(window.location.pathname).toBe(`/project/${PROJECT_ID}`);
+    expect(new URLSearchParams(window.location.search).get("update")).toBe(UPDATE_ID);
+    consoleError.mockRestore();
+  });
+
   it("requires a cookie-backed authenticated session", async () => {
     vi.mocked(useAuth).mockReturnValue(auth(false));
     render(<BrowserRouter><Notifications /></BrowserRouter>);

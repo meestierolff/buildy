@@ -1,10 +1,12 @@
 import { formatDistanceToNow } from "date-fns";
 import { nl } from "date-fns/locale";
-import { Flag, Heart, Home, Loader2, RefreshCw } from "lucide-react";
+import { ArrowUpRight, Camera, Flag, Heart, Loader2, MessageCircle, Plus, RefreshCw, Users } from "lucide-react";
+import { useState } from "react";
 
-import EmptyState from "@/components/EmptyState";
+import CommentsSheet from "@/components/CommentsSheet";
 import { phaseColor } from "@/components/PhaseSelect";
 import ProjectCard from "@/components/ProjectCard";
+import ReactionBar from "@/components/ReactionBar";
 import { ResilientImage } from "@/components/ResilientMedia";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -18,139 +20,115 @@ import { PRODUCT_ROUTES } from "@/lib/productNavigation";
 const Favorites = () => {
   const { user, loading: authLoading } = useAuth();
   const feedQuery = useFollowingFeed(Boolean(user));
-  usePageMeta({
-    title: "Verbouwingen die ik volg — Buildy",
-    description: "Bekijk bouwmomenten van verbouwingen die je volgt.",
-    path: PRODUCT_ROUTES.following,
-    noIndex: true,
-  });
+  const [openComments, setOpenComments] = useState<string | null>(null);
+  usePageMeta({ title: "Jouw tijdlijn — Buildy", description: "Nieuwe Bouwmomenten van de bouwers en projecten die je volgt.", path: PRODUCT_ROUTES.following, noIndex: true });
 
   if (authLoading) return <main className="min-h-screen bg-background" />;
   if (!user) return <Navigate to={authPagePath(PRODUCT_ROUTES.following)} replace />;
 
   const projects = feedQuery.data?.projects ?? [];
   const activity = feedQuery.data?.activity ?? [];
+  const selectedActivity = activity.find(({ update }) => update.id === openComments);
 
   return (
-    <main className="mx-auto max-w-7xl px-6 py-16 md:px-8">
-      <div className="mb-12">
-        <p className="eyebrow mb-2">Jouw feed</p>
-        <h1 className="font-serif text-4xl italic md:text-5xl">Volgend</h1>
+    <main className="mx-auto max-w-2xl px-4 py-6 sm:px-6 sm:py-9">
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <p className="mb-1 text-xs font-medium text-muted-foreground">Samen bouwen, samen beleven</p>
+          <h1 className="text-3xl font-bold tracking-tight">Jouw tijdlijn</h1>
+        </div>
+        <Button asChild variant="outline" size="icon" className="h-11 w-11 shrink-0 rounded-full bg-card">
+          <Link to={PRODUCT_ROUTES.connections} aria-label="Bouwers zoeken"><Users className="h-5 w-5" /></Link>
+        </Button>
       </div>
+      <Link to={PRODUCT_ROUTES.createUpdate} className="mb-6 flex min-h-20 items-center gap-3 rounded-2xl border border-border bg-card p-4 transition-colors hover:border-primary/30">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-secondary text-primary"><Camera className="h-5 w-5" aria-hidden="true" /></span>
+        <span className="flex-1"><span className="block text-sm font-semibold">Wat is er vandaag veranderd?</span><span className="mt-0.5 block text-xs text-muted-foreground">Bewaar een foto, groot of klein.</span></span>
+        <Plus className="h-5 w-5 text-accent" aria-hidden="true" />
+      </Link>
 
       {feedQuery.isPending ? (
-        <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Gevolgde verbouwingen laden…
-        </p>
+        <p className="flex items-center gap-2 py-8 text-sm text-muted-foreground" role="status"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Bouwmomenten laden…</p>
       ) : feedQuery.isError ? (
-        <section className="rounded-lg border border-dashed p-8 text-center" role="alert">
-          <h2 className="font-semibold">Je feed kon niet worden geladen</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            We tonen geen eerder geladen privéverbouwingen wanneer de toegangscontrole mislukt.
-          </p>
-          <Button className="mt-5 gap-2" variant="outline" onClick={() => void feedQuery.refetch()}>
-            <RefreshCw className="h-4 w-4" aria-hidden="true" /> Opnieuw proberen
-          </Button>
+        <section className="rounded-2xl border border-border bg-card p-7 text-center" role="alert">
+          <h2 className="font-semibold">Je tijdlijn kon niet worden geladen</h2>
+          <p className="mt-2 text-sm text-muted-foreground">Probeer opnieuw om de nieuwste Bouwmomenten te bekijken.</p>
+          <Button className="mt-5 min-h-11 gap-2" variant="outline" onClick={() => void feedQuery.refetch()}><RefreshCw className="h-4 w-4" aria-hidden="true" /> Opnieuw proberen</Button>
         </section>
       ) : projects.length === 0 ? (
-        <EmptyState
-          icon={Heart}
-          title="Je volgt nog niks"
-          description="Volg een verbouwing via de knop bij het verhaal. Nieuwe Bouwmomenten vind je hier terug."
-        />
+        <section className="rounded-2xl border border-border bg-card px-6 py-10 text-center">
+          <span className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-secondary text-primary"><Heart className="h-6 w-6" aria-hidden="true" /></span>
+          <h2 className="text-xl font-semibold tracking-tight">Een verbouwing beleef je samen</h2>
+          <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-muted-foreground">Volg een bouwer of open een gedeeld project van vrienden. Hun nieuwe Bouwmomenten komen hier samen.</p>
+          <Button asChild className="mt-6 min-h-11 gap-2"><Link to={PRODUCT_ROUTES.connections}><Users className="h-4 w-4" aria-hidden="true" /> Zoek een bouwer</Link></Button>
+        </section>
       ) : (
         <Tabs defaultValue="feed">
-          <TabsList className="mb-8 h-auto gap-8 rounded-none border-b border-border bg-transparent p-0">
-            <TabsTrigger value="feed" className="rounded-none border-b-2 border-transparent px-0 pb-3 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60 data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none">
-              Recent
-            </TabsTrigger>
-            <TabsTrigger value="projects" className="rounded-none border-b-2 border-transparent px-0 pb-3 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60 data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none">
-              Verbouwingen ({projects.length})
-            </TabsTrigger>
+          <TabsList className="mb-5 grid h-11 w-full grid-cols-2 rounded-xl bg-secondary p-1">
+            <TabsTrigger value="feed" className="h-9 rounded-lg text-sm data-[state=active]:bg-card">Bouwmomenten</TabsTrigger>
+            <TabsTrigger value="projects" className="h-9 rounded-lg text-sm data-[state=active]:bg-card">Projecten ({projects.length})</TabsTrigger>
           </TabsList>
-
           <TabsContent value="feed">
             {activity.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nog geen gepubliceerde bouwmomenten van verbouwingen die je volgt.</p>
+              <p className="rounded-2xl border bg-card px-5 py-8 text-sm leading-6 text-muted-foreground">Nog geen Bouwmomenten. Zodra er iets te zien is, vind je het hier.</p>
             ) : (
-              <div className="max-w-lg divide-y divide-border/50 overflow-hidden rounded-xl border border-border/60">
+              <div className="space-y-5">
                 {activity.map(({ project, update }) => {
-                  const firstPhoto = update.media.find((media) => (
-                    media.contentType !== "application/pdf" && !media.contentType?.startsWith("video/")
-                  ));
+                  const photos = update.media.filter((media) => media.contentType !== "application/pdf" && !media.contentType?.startsWith("video/"));
                   const timestamp = update.publishedAt ?? update.updatedAt;
+                  const momentHref = PRODUCT_ROUTES.projectUpdate(project.id, update.id);
+                  const title = update.title?.trim() || update.room?.trim() || "Bouwmoment";
+                  const owner = project.owner;
                   return (
-                    <Link
-                      key={update.id}
-                      to={PRODUCT_ROUTES.projectUpdate(project.id, update.id)}
-                      className="block bg-card transition-colors hover:bg-muted/40"
-                    >
-                      <div className="flex items-center gap-2 px-4 pb-1 pt-3">
-                        <Home className="h-3 w-3 shrink-0 text-accent" aria-hidden="true" />
-                        <span className="truncate text-[11px] font-semibold text-accent">{project.title}</span>
-                        <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
-                          {formatDistanceToNow(new Date(timestamp), { addSuffix: true, locale: nl })}
-                        </span>
-                      </div>
-
-                      {firstPhoto ? (
-                        <div className="aspect-[4/3] w-full">
-                          <ResilientImage
-                            src={firstPhoto.proxyPath}
-                            alt=""
-                            loading="lazy"
-                            className="h-full w-full object-cover"
-                          />
+                    <article key={update.id} className="overflow-hidden rounded-2xl border border-border bg-card">
+                      <header className="flex min-h-20 items-center gap-3 px-4 py-3">
+                        <Link to={owner ? PRODUCT_ROUTES.profile(owner.slug) : PRODUCT_ROUTES.project(project.id)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-secondary text-sm font-bold text-primary" aria-label={owner ? `Profiel van ${owner.displayName}` : project.title}>
+                          {(owner?.displayName ?? project.title).slice(0, 1).toUpperCase()}
+                        </Link>
+                        <div className="min-w-0 flex-1">
+                          <Link to={owner ? PRODUCT_ROUTES.profile(owner.slug) : PRODUCT_ROUTES.project(project.id)} className="block truncate text-sm font-semibold hover:underline">{owner?.displayName ?? project.title}</Link>
+                          <Link to={PRODUCT_ROUTES.project(project.id)} className="mt-0.5 block truncate text-xs text-muted-foreground hover:text-primary">{project.title}</Link>
+                        </div>
+                        <time dateTime={timestamp} className="max-w-24 shrink-0 text-right text-[11px] leading-4 text-muted-foreground">{formatDistanceToNow(new Date(timestamp), { addSuffix: true, locale: nl })}</time>
+                      </header>
+                      {photos.length ? (
+                        <div className="flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain bg-muted" aria-label={`Foto’s van ${title}`} tabIndex={photos.length > 1 ? 0 : undefined}>
+                          {photos.map((photo, index) => (
+                            <Link key={photo.id} to={momentHref} aria-label={`Bekijk ${title}, foto ${index + 1} van ${photos.length}`} className="relative block aspect-[4/3] w-full shrink-0 snap-center overflow-hidden">
+                              <ResilientImage src={photo.proxyPath} alt="" loading="lazy" className="h-full w-full object-cover" />
+                              {photos.length > 1 ? <span className="absolute bottom-3 right-3 rounded-full bg-black/55 px-2.5 py-1 text-xs font-medium text-white">{index + 1} / {photos.length}</span> : null}
+                            </Link>
+                          ))}
                         </div>
                       ) : null}
-
-                      <div className="space-y-1 px-4 pb-3 pt-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {update.phase ? (
-                            <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${phaseColor(update.phase.name)}`}>
-                              {update.phase.name}
-                            </span>
-                          ) : null}
-                          {update.isMilestone ? (
-                            <span className="flex items-center gap-0.5 rounded-full bg-accent/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-accent">
-                              <Flag className="h-2.5 w-2.5" aria-hidden="true" /> Mijlpaal
-                            </span>
-                          ) : null}
+                      <div className="px-4 pb-3 pt-4">
+                        {update.phase || update.isMilestone ? <div className="mb-2 flex flex-wrap items-center gap-2">
+                          {update.phase ? <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${phaseColor(update.phase.name)}`}>{update.phase.name}</span> : null}
+                          {update.isMilestone ? <span className="flex items-center gap-1 rounded-full bg-accent/10 px-2 py-1 text-[10px] font-semibold text-accent"><Flag className="h-3 w-3" aria-hidden="true" /> Mijlpaal</span> : null}
+                        </div> : null}
+                        <h2 className="text-xl font-semibold leading-tight tracking-tight"><Link to={momentHref} className="hover:text-primary">{title}</Link></h2>
+                        {update.description ? <p className="mt-2 line-clamp-3 whitespace-pre-line text-sm leading-6 text-muted-foreground">{update.description}</p> : null}
+                        <Link to={momentHref} className="inline-flex min-h-11 items-center gap-1 text-xs font-semibold text-primary">Bekijk het verhaal <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2">
+                          <ReactionBar projectId={project.id} updateId={update.id} />
+                          <button type="button" aria-label={`Opmerkingen bij ${title} openen`} onClick={() => setOpenComments(update.id)} className="flex min-h-11 items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-primary"><MessageCircle className="h-4 w-4" aria-hidden="true" /> Opmerkingen</button>
                         </div>
-                        <p className="text-sm font-bold leading-tight">{update.title ?? update.room ?? "Bouwmoment"}</p>
-                        {update.description ? (
-                          <p className="line-clamp-2 text-xs text-muted-foreground">{update.description}</p>
-                        ) : null}
                       </div>
-                    </Link>
+                    </article>
                   );
                 })}
               </div>
             )}
           </TabsContent>
-
           <TabsContent value="projects">
-            <div className="grid grid-cols-1 gap-x-8 gap-y-12 md:grid-cols-2 lg:grid-cols-3">
-              {projects.map((project) => (
-                <ProjectCard
-                  key={project.id}
-                  id={project.id}
-                  title={project.title}
-                  projectType={project.projectType}
-                  progressPercentage={project.progressPercentage}
-                  coverUrl={project.cover?.proxyPath}
-                  coverMediaType={project.cover?.contentType}
-                  profileName={project.owner.displayName}
-                  updateCount={project.updateCount}
-                  visibility={project.visibility}
-                />
-              ))}
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              {projects.map((project) => <ProjectCard key={project.id} id={project.id} title={project.title} projectType={project.projectType} progressPercentage={project.progressPercentage} coverUrl={project.cover?.proxyPath} coverMediaType={project.cover?.contentType} profileName={project.owner.displayName} updateCount={project.updateCount} visibility={project.visibility} />)}
             </div>
           </TabsContent>
+          {selectedActivity ? <CommentsSheet projectId={selectedActivity.project.id} updateId={selectedActivity.update.id} open onOpenChange={(open) => { if (!open) setOpenComments(null); }} /> : null}
         </Tabs>
       )}
     </main>
   );
 };
-
 export default Favorites;

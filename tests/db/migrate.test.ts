@@ -117,6 +117,7 @@ describe("migration discovery", () => {
       "0052_project_following.sql",
       "0053_project_follow_revocation.sql",
       "0054_digital_photobook_page_count.sql",
+      "0055_user_follow_publication_notifications.sql",
     ]);
     expect(migrations.every((migration) => /^[0-9a-f]{64}$/.test(migration.sha256))).toBe(true);
   });

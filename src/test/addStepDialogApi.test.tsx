@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import AddStepDialog from "@/components/AddStepDialog";
 
@@ -113,10 +113,12 @@ describe("AddStepDialog typed API retry", () => {
 
     const title = screen.getByLabelText(/Korte titel of bijschrift/);
     fireEvent.change(title, { target: { value: "De eerste muur is open" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Dit is een mijlpaal" }));
     fireEvent.click(screen.getByRole("button", { name: "Bouwmoment plaatsen" }));
 
     await screen.findByText(/serverbevestiging ontbreekt nog/i);
     expect(title).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Dit is een mijlpaal" })).toBeDisabled();
     expect(mocks.createUpdate).toHaveBeenCalledTimes(1);
     const firstCommand = mocks.createUpdate.mock.calls[0]?.[0];
 
@@ -126,9 +128,11 @@ describe("AddStepDialog typed API retry", () => {
 
     await waitFor(() => expect(mocks.onClose).toHaveBeenCalledTimes(1));
     expect(mocks.onAdded).toHaveBeenCalledTimes(1);
+    expect(mocks.onAdded).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222");
     expect(mocks.createUpdate).toHaveBeenCalledTimes(2);
     expect(mocks.createUpdate.mock.calls[1]?.[0]).toBe(firstCommand);
     expect(mocks.refetchProject).toHaveBeenCalledTimes(1);
+    expect(firstCommand).toHaveProperty("isMilestone", true);
     expect(firstCommand).not.toHaveProperty("userId");
     expect(firstCommand).not.toHaveProperty("user_id");
   });
@@ -224,6 +228,30 @@ describe("AddStepDialog typed API retry", () => {
       dataTransfer: { files: [droppedPhoto] },
     });
     expect(screen.getAllByAltText(/Voorvertoning/)).toHaveLength(1);
+  });
+
+  it("bewaart fotovolgorde, verwijdering en mijlpaal in het herstelbare concept", async () => {
+    render(<AddStepDialog projectId={PROJECT_ID} onClose={mocks.onClose} onAdded={mocks.onAdded} />);
+    const first = new File(["first"], "eerste.jpg", { type: "image/jpeg" });
+    const second = new File(["second"], "tweede.jpg", { type: "image/jpeg" });
+    fireEvent.change(screen.getByLabelText("Kies foto's uit je bibliotheek"), { target: { files: [first, second] } });
+    fireEvent.change(screen.getByLabelText(/Korte titel of bijschrift/), { target: { value: "De sleutel is binnen" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Dit is een mijlpaal" }));
+    fireEvent.click(screen.getByRole("button", { name: "tweede.jpg naar voren" }));
+
+    const firstCard = within(screen.getByRole("list", { name: "Fotovolgorde" })).getAllByRole("listitem")[0]!;
+    expect(within(firstCard).getByText("tweede.jpg")).toBeInTheDocument();
+    expect(within(firstCard).getByText("Openingsfoto")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "eerste.jpg verwijderen" }));
+
+    await waitFor(() => expect(mocks.saveDraft).toHaveBeenLastCalledWith(
+      "browser-session-user", PROJECT_ID, expect.objectContaining({
+        title: "De sleutel is binnen", isMilestone: true,
+        files: [expect.objectContaining({ name: "tweede.jpg" })],
+      }),
+    ));
+    expect(mocks.mediaUpload).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/Korte titel of bijschrift/)).toHaveValue("De sleutel is binnen");
   });
 
   it("laat alleen de mislukte foto afzonderlijk opnieuw verwerken", async () => {

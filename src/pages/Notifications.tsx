@@ -59,11 +59,11 @@ const Notifications = () => {
   if (!user) return <Navigate to={authPagePath(PRODUCT_ROUTES.notifications)} replace />;
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6 md:py-16">
+    <main className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6 sm:py-9">
       <header className="mb-8 flex flex-col gap-5 border-b border-border pb-7 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Jouw activiteit</p>
-          <h1 className="font-serif text-4xl leading-tight md:text-5xl">Notificaties</h1>
+          <h1 className="text-3xl font-bold leading-tight tracking-tight">Notificaties</h1>
           <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
             Verzoeken, reacties en Bouwmomenten voor jouw account.
           </p>

@@ -2,7 +2,7 @@
 
 **Maak van je verbouwing een verhaal om te bewaren.**
 Scope: account → private renovation → photo/date/text Bouwmoment → chronological
-story → sharing and project following → reactions/comments → digital Bouwboek/PDF.
+story → sharing and user/project following → reactions/comments → digital Bouwboek/PDF.
 [STATE](STATE.md) records deployments; [FLOWS](FLOWS.md) records behavior.
 
 There is one account app. Budget, floorplans, discovery feeds, invitations,
@@ -15,7 +15,7 @@ flowchart LR
   U[React UI] --> H[Same-origin API]
   H --> A[Password sessions and access]
   H --> P[Renovations and Bouwmomenten]
-  H --> S[Sharing and project following]
+  H --> S[Sharing and user/project following]
   H --> E[Reactions and comments]
   H --> B[Canonical Bouwboek and PDF]
   H --> L[Account, support and moderation]
@@ -40,7 +40,7 @@ flowchart LR
 | C | [Composition](../../server/composition.ts), [core configuration](../../server/config/runtime.ts) |
 | A | [Password auth](../../server/auth), [actor resolution](../../server/projects/actor.ts) |
 | P | [Projects](../../server/projects), [Bouwmoment UI](../../src/components/AddStepDialog.tsx) |
-| S | [Share links](../../server/projectShares), [project repository](../../server/projects/repository.ts), [visibility connections](../../server/social) |
+| S | [Share links](../../server/projectShares), [project repository](../../server/projects/repository.ts), [user following](../../server/social) |
 | E | [Engagement](../../server/engagement) |
 | B | [Book UI](../../src/pages/Photobook.tsx), [canonical document](../../server/photobooks/document.ts), [PDF renderer](../../server/photobooks/pdfRenderer.ts) |
 | M | [Media](../../server/media), [Blob adapter](../../server/storage/vercelBlobObjectStorage.ts) |
@@ -50,9 +50,13 @@ flowchart LR
 ## Boundaries
 
 - UI → typed API → server-resolved identity/access → service/repository → data.
-- Following subscribes to exactly one project; it grants no access. Profile
-  connections retain their separate visibility role. Revocation/blocking applies
-  to project, comment and private media reads.
+- Project following subscribes to one project and grants no access. Accepted
+  user follows also feed accessible projects into the timeline and retain their
+  existing followers-only visibility role. The two paths deduplicate; voluntary
+  user-unfollow preserves independently selected projects while access remains
+  valid. Owner removal, blocking and revocation apply to all content/media reads.
+- Profile project lists use server-filtered public/followers projects; private
+  projects and unlisted-link projects never become profile discovery results.
 - Passwords use scrypt; sessions use hashed server tokens and HttpOnly cookies.
   Mutations retain origin checks, rate limits and retry-safe persistence.
 - Browser uploads require scoped server authorization. No public Blob URLs or

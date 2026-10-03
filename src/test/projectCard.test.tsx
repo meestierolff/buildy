@@ -43,4 +43,18 @@ describe("ProjectCard", () => {
     expect(screen.queryByText("Openbaar")).not.toBeInTheDocument();
     expect(screen.queryByText("Privé")).not.toBeInTheDocument();
   });
+
+  it("laat een niet-ingevulde voortgang uit de verhaalkaart weg", () => {
+    renderCard({ progressPercentage: 0 });
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(screen.queryByText("0%")).not.toBeInTheDocument();
+    expect(screen.getByText("8 Bouwmomenten")).toBeInTheDocument();
+  });
+
+  it("herkent een privé videoproxy aan het mediatype zonder bestandsextensie", () => {
+    const { container } = renderCard({ coverUrl: "/api/media/video-asset", coverMediaType: "video/mp4", visibility: "followers" });
+    expect(container.querySelector("video")).toHaveAttribute("src", "/api/media/video-asset");
+    expect(screen.getByText("Profielvolgers")).toBeInTheDocument();
+    expect(screen.queryByText("Mijn volgers")).not.toBeInTheDocument();
+  });
 });

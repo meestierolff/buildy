@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { PhotobookTextMeasurer } from "../../server/photobooks/document";
 import {
   buildPhotobookDocument,
+  photobookDocumentChecksum,
   verifyPhotobookDocumentChecksum,
 } from "../../server/photobooks/document";
 import { photobookDocumentSchema, type PhotobookDocument } from "../../shared/contracts/photobooks";
@@ -144,6 +145,28 @@ describe("canonical photobook document", () => {
     expect(document.pages.map((page) => page.number)).toEqual([1, 2, 3, 4, 5]);
     expect(photobookDocumentSchema.safeParse(document).success).toBe(true);
     expect(verifyPhotobookDocumentChecksum(document)).toBe(true);
+  });
+
+  it("keeps stored padded version-one documents and their checksums unchanged", () => {
+    const legacyDocument = build({ updates: [] });
+    const backCover = legacyDocument.pages.pop()!;
+    while (legacyDocument.pages.length < 23) {
+      const number = legacyDocument.pages.length + 1;
+      legacyDocument.pages.push({
+        id: `blank:${number}`, number, kind: "blank", chapterId: null,
+        updateId: null, background: "#ffffff", overlay: null, blocks: [],
+      });
+    }
+    legacyDocument.pages.push({ ...backCover, number: 24 });
+    legacyDocument.pageCount = 24;
+    const { checksumSha256: _checksum, ...body } = legacyDocument;
+    legacyDocument.checksumSha256 = photobookDocumentChecksum(body);
+
+    const parsed = photobookDocumentSchema.parse(legacyDocument);
+
+    expect(parsed).toEqual(legacyDocument);
+    expect(parsed.pages).toHaveLength(24);
+    expect(verifyPhotobookDocumentChecksum(parsed)).toBe(true);
   });
 
   it("detects a changed canonical page after checksumming", () => {

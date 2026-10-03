@@ -59,6 +59,6 @@ describe("username/password client helpers", () => {
     expect(authErrorMessage({ code: "INVALID_CREDENTIALS", status: 401 }, "sign-in"))
       .toBe("Je gebruikersnaam of wachtwoord klopt niet. Probeer het opnieuw.");
     expect(authErrorMessage({ code: "USERNAME_UNAVAILABLE", status: 409 }, "sign-up")).toMatch(/gebruikersnaam is niet beschikbaar/);
-    expect(authErrorMessage({ code: "WEAK_PASSWORD", status: 400 }, "sign-up")).toMatch(/minimaal 15 tekens/);
+    expect(authErrorMessage({ code: "WEAK_PASSWORD", status: 400 }, "sign-up")).toMatch(/minimaal 10 tekens/);
   });
 });

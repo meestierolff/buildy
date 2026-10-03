@@ -1,7 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from "@/lib/router";
+import { BrowserRouter, Route, Routes, useLocation } from "@/lib/router";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useProjectDashboard } from "@/hooks/useProjectApi";
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -25,6 +25,7 @@ const NewTrip = lazy(() => import("./pages/NewTrip"));
 const TripDetail = lazy(() => import("./pages/TripDetail"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Photobook = lazy(() => import("./pages/Photobook"));
+const Books = lazy(() => import("./pages/Books"));
 const Favorites = lazy(() => import("./pages/Favorites"));
 const Friends = lazy(() => import("./pages/Friends"));
 const Support = lazy(() => import("./pages/Support"));
@@ -54,20 +55,21 @@ const ApplicationFrame = () => {
   const dashboardQuery = useProjectDashboard(Boolean(user));
   const { pathname } = useLocation();
   const hidesMobileNavigation = pathname === "/auth";
-  const activeProjectId = dashboardQuery.data?.pages
-    .flatMap((page) => page.items)
-    .at(0)?.id;
-  const storyHref = activeProjectId
-    ? PRODUCT_ROUTES.project(activeProjectId)
-    : PRODUCT_ROUTES.newProject;
+  const ownProjects = dashboardQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const routeProjectId = /^\/project\/([^/]+)/.exec(pathname)?.[1];
+  const activeProjectId = ownProjects.find((project) => project.id === routeProjectId)?.id
+    ?? ownProjects[0]?.id;
+  const storyHref = PRODUCT_ROUTES.projects;
   const navigationItems = getMobileNavigationItems({
     storyHref,
-    updateHref: activeProjectId
+    updateHref: routeProjectId && activeProjectId === routeProjectId
       ? PRODUCT_ROUTES.projectUpdateComposer(activeProjectId)
-      : PRODUCT_ROUTES.newProject,
-    photobookHref: activeProjectId
+      : ownProjects.length === 1
+        ? PRODUCT_ROUTES.projectUpdateComposer(ownProjects[0].id)
+        : ownProjects.length > 1 ? PRODUCT_ROUTES.createUpdate : PRODUCT_ROUTES.newProject,
+    photobookHref: pathname.endsWith("/bouwboek") && activeProjectId === routeProjectId
       ? PRODUCT_ROUTES.projectPhotobook(activeProjectId)
-      : PRODUCT_ROUTES.newProject,
+      : PRODUCT_ROUTES.books,
     profileHref: PRODUCT_ROUTES.ownProfile,
   });
   const showFeedbackLauncher = Boolean(user) && !["/feedback", "/support", "/melden"].includes(pathname);
@@ -75,8 +77,8 @@ const ApplicationFrame = () => {
   return (
     <>
       <AppShell
-        header={<Header activeProjectId={activeProjectId} />}
-        footer={<Footer />}
+        header={<Header updateHref={navigationItems.find((item) => item.id === "update")?.href} />}
+        footer={user ? undefined : <Footer />}
         mobileNavigation={!user || hidesMobileNavigation ? undefined : (
           <MobileNav items={navigationItems} label="Mobiele navigatie" />
         )}
@@ -87,14 +89,15 @@ const ApplicationFrame = () => {
               <Route path="/" element={<Index />} />
               <Route path="/projecten" element={<Index />} />
               <Route path="/auth" element={<Auth />} />
-              <Route path="/account" element={<Navigate to={PRODUCT_ROUTES.ownProfile} replace />} />
+              <Route path="/account" element={<AccountSettings />} />
               <Route path="/project/nieuw" element={<NewTrip />} />
               <Route path="/update/nieuw" element={<NewUpdate />} />
               <Route path="/project/:id/bouwboek" element={<Photobook />} />
+              <Route path="/bouwboeken" element={<Books />} />
               <Route path="/project/:id" element={<TripDetail />} />
               <Route path="/volgend" element={<Favorites />} />
               <Route path="/connecties" element={<Friends />} />
-              <Route path="/profiel" element={<AccountSettings />} />
+              <Route path="/profiel" element={<Profile />} />
               <Route path="/profiel/:profileKey" element={<Profile />} />
               <Route path="/notificaties" element={<Notifications />} />
               <Route path="/delen" element={<ShareLinkRedeem />} />

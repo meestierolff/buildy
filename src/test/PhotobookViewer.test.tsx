@@ -103,4 +103,18 @@ describe("PhotobookViewer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Vorige pagina" }));
     expect(screen.getByText("Cover · 1 van 24")).toBeInTheDocument();
   });
+
+  it("houdt verticaal scrollen gescheiden van bladeren", () => {
+    render(<Harness />);
+    const viewport = screen.getByRole("region", { name: "Bouwboekweergave" })
+      .querySelector(".overflow-hidden.rounded-lg")!;
+
+    fireEvent.touchStart(viewport, { touches: [{ clientX: 300, clientY: 200 }] });
+    fireEvent.touchEnd(viewport, { changedTouches: [{ clientX: 220, clientY: 450 }] });
+    expect(screen.getByText("Cover · 1 van 24")).toBeInTheDocument();
+
+    fireEvent.touchStart(viewport, { touches: [{ clientX: 300, clientY: 200 }] });
+    fireEvent.touchEnd(viewport, { changedTouches: [{ clientX: 220, clientY: 205 }] });
+    expect(screen.getByText("Verhaal · 2 van 24")).toBeInTheDocument();
+  });
 });

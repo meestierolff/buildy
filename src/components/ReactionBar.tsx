@@ -33,7 +33,7 @@ const ReactionBar = ({ projectId, updateId, canReact = true }: ReactionBarProps)
       toast.error("Log in om te reageren");
       return;
     }
-    if (!projectId || mutation.isPending) return;
+    if (!canReact || !projectId || mutation.isPending) return;
 
     try {
       await mutation.mutateAsync({
@@ -60,7 +60,7 @@ const ReactionBar = ({ projectId, updateId, canReact = true }: ReactionBarProps)
         <span role="alert">Reacties laden mislukt.</span>
         <button
           type="button"
-          className="underline underline-offset-2"
+          className="min-h-11 px-2 underline underline-offset-2"
           onClick={() => reactions.refetch()}
         >
           Opnieuw
@@ -82,7 +82,7 @@ const ReactionBar = ({ projectId, updateId, canReact = true }: ReactionBarProps)
           disabled={mutation.isPending}
           aria-label={`${item.viewerReacted ? "Verwijder" : "Plaats"} reactie ${item.emoji}, ${item.count}`}
           aria-pressed={item.viewerReacted}
-          className={`text-xs px-2 py-0.5 rounded-full border transition-colors flex items-center gap-1 ${
+          className={`min-h-11 min-w-11 px-3 text-sm rounded-full border transition-colors flex items-center justify-center gap-1.5 ${
             item.viewerReacted
               ? "bg-accent/15 border-accent/40 text-accent"
               : "bg-muted/50 border-border hover:bg-muted"
@@ -106,9 +106,10 @@ const ReactionBar = ({ projectId, updateId, canReact = true }: ReactionBarProps)
           <button
             type="button"
             aria-label="Reactie kiezen"
-            className="text-xs h-6 w-6 rounded-full border border-dashed border-border text-muted-foreground hover:text-accent hover:border-accent flex items-center justify-center"
+            className="flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-full px-2 text-muted-foreground hover:bg-secondary hover:text-primary"
           >
-            <Smile className="h-3 w-3" aria-hidden="true" />
+            <Smile className="h-5 w-5" aria-hidden="true" />
+            {items.length === 0 ? <span className="text-xs font-medium">Reageren</span> : null}
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-2" align="start">
@@ -121,7 +122,7 @@ const ReactionBar = ({ projectId, updateId, canReact = true }: ReactionBarProps)
                 disabled={mutation.isPending}
                 aria-label={`Reageer met ${emoji}`}
                 aria-pressed={byEmoji.get(emoji)?.viewerReacted ?? false}
-                className="text-lg hover:scale-125 transition-transform p-1"
+                className="flex h-11 w-11 items-center justify-center rounded-full text-xl transition-colors hover:bg-accent/10"
               >
                 {emoji}
               </button>

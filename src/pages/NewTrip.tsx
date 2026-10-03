@@ -160,23 +160,23 @@ const NewTrip = () => {
 
   return (
     <div className="bg-background">
-      <main className="mx-auto max-w-3xl px-5 py-8 sm:px-6 md:px-8 md:py-16">
+      <main className="mx-auto max-w-xl px-4 py-5 sm:px-6 sm:py-10">
         <Link
           to={PRODUCT_ROUTES.landing}
-          className="mb-9 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4"
+          className="mb-5 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4"
         >
           <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" /> Terug
         </Link>
 
         <header className="max-w-2xl">
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Je verbouwverhaal begint hier</p>
-          <h1 className="mt-3 font-serif text-4xl leading-[1.02] sm:text-5xl">Hoe heet je verbouwing?</h1>
+          <h1 className="mt-2 font-sans text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">Hoe heet je verbouwing?</h1>
           <p className="mt-4 max-w-xl text-sm leading-6 text-muted-foreground sm:text-base">
-            Een naam is genoeg. Daarna open je meteen je eerste Bouwmoment en kun je foto&apos;s toevoegen.
+            Geef je project een naam. Daarna leg je met een foto je eerste Bouwmoment vast.
           </p>
         </header>
 
-        <form onSubmit={handleSubmit} className="mt-10 space-y-7 border-y border-border py-8" aria-busy={loading}>
+        <form onSubmit={handleSubmit} className="mt-6 space-y-6 rounded-2xl border border-border bg-card p-4 sm:p-6" aria-busy={loading}>
           <div className="space-y-2">
             <Label htmlFor="title" className="text-sm font-semibold">
               Hoe heet je verbouwing? <span className="text-accent" aria-hidden="true">*</span>
@@ -192,14 +192,14 @@ const NewTrip = () => {
               autoFocus
               disabled={formLocked}
               placeholder="Bijv. Ons jaren-30 huis"
-              className="h-12 bg-background"
+              className="h-12 rounded-xl bg-background text-base"
             />
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="type" className="text-sm font-semibold">Wat verbouw je? <span className="font-normal text-muted-foreground">(optioneel)</span></Label>
             <Select value={projectType} onValueChange={setProjectType} disabled={formLocked}>
-              <SelectTrigger id="type" className="h-12 bg-background">
+              <SelectTrigger id="type" className="h-12 rounded-xl bg-background text-base">
                 <SelectValue placeholder="Kies wat het beste past" />
               </SelectTrigger>
               <SelectContent>
@@ -208,9 +208,9 @@ const NewTrip = () => {
             </Select>
           </div>
 
-          <div className="flex items-start gap-3 border-l-2 border-accent bg-muted/30 px-4 py-3 text-sm">
+          <div className="flex items-start gap-3 rounded-xl bg-secondary/60 px-4 py-3 text-sm leading-6">
             <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden="true" />
-            <p><span className="font-semibold">Je begint privé.</span> Alleen jij ziet deze verbouwing totdat je zelf een deellink maakt.</p>
+            <p><span className="font-semibold">Je begint privé.</span> Alleen jij ziet deze verbouwing totdat je zelf kiest om haar te delen.</p>
           </div>
 
           {saveError ? <p role="status" aria-live="polite" className="text-sm text-destructive">{saveError}</p> : null}

@@ -378,6 +378,7 @@ registerRoute("POST", "/api/project-share-links/redeem", handleDefaultProjectSha
 registerRoute("GET", "/api/projects", handleDefaultProjectRequest);
 registerRoute("POST", "/api/projects", handleDefaultProjectRequest);
 registerRoute("GET", "/api/following", handleDefaultProjectRequest);
+registerPatternRoute("GET", "/api/social/profiles/:profileId/projects", handleDefaultProjectRequest);
 registerPatternRoute("GET", "/api/projects/:projectId/share-link", handleDefaultProjectShareRequest);
 registerPatternRoute("POST", "/api/projects/:projectId/share-link", handleDefaultProjectShareRequest);
 registerPatternRoute("DELETE", "/api/projects/:projectId/share-link", handleDefaultProjectShareRequest);

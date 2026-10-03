@@ -2,6 +2,7 @@ export const PRODUCT_ROUTES = {
   landing: "/",
   projects: "/projecten",
   following: "/volgend",
+  books: "/bouwboeken",
   createUpdate: "/update/nieuw",
   connections: "/connecties",
   notifications: "/notificaties",
@@ -22,6 +23,7 @@ export const PRODUCT_ROUTES = {
 
 export type ProductNavigationIcon =
   | "story"
+  | "following"
   | "book"
   | "add"
   | "profile";
@@ -38,9 +40,16 @@ export interface ProductNavigationItem {
 
 export const MOBILE_NAVIGATION_ITEMS: readonly ProductNavigationItem[] = [
   {
+    id: "following",
+    label: "Tijdlijn",
+    href: PRODUCT_ROUTES.following,
+    icon: "following",
+    requiresAuth: true,
+  },
+  {
     id: "story",
-    label: "Verhaal",
-    href: PRODUCT_ROUTES.newProject,
+    label: "Projecten",
+    href: PRODUCT_ROUTES.projects,
     icon: "story",
     exact: true,
     requiresAuth: true,
@@ -55,8 +64,8 @@ export const MOBILE_NAVIGATION_ITEMS: readonly ProductNavigationItem[] = [
   },
   {
     id: "photobook",
-    label: "Bouwboek",
-    href: PRODUCT_ROUTES.newProject,
+    label: "Boeken",
+    href: PRODUCT_ROUTES.books,
     icon: "book",
     exact: true,
     requiresAuth: true,
@@ -79,8 +88,8 @@ interface MobileNavigationOverrides {
 }
 
 export const getMobileNavigationItems = ({
-  storyHref = PRODUCT_ROUTES.newProject,
-  photobookHref = PRODUCT_ROUTES.newProject,
+  storyHref = PRODUCT_ROUTES.projects,
+  photobookHref = PRODUCT_ROUTES.books,
   profileHref = PRODUCT_ROUTES.ownProfile,
   updateHref = PRODUCT_ROUTES.newProject,
 }: MobileNavigationOverrides = {}): readonly ProductNavigationItem[] =>

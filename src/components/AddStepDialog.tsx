@@ -46,7 +46,7 @@ interface AddStepDialogProps {
   projectId: string;
   importLandingPhoto?: boolean;
   onClose: () => void;
-  onAdded: () => void;
+  onAdded: (updateId: string) => void;
 }
 
 type CompareRole = "before" | "after";
@@ -88,7 +88,10 @@ const AddStepDialog = ({
   const [phaseId, setPhaseId] = useState("");
   const [isMilestone, setIsMilestone] = useState(false);
   const [description, setDescription] = useState("");
-  const [updateDate, setUpdateDate] = useState(new Date().toISOString().split("T")[0]);
+  const [updateDate, setUpdateDate] = useState(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  });
   const [files, setFiles] = useState<PendingUpload[]>([]);
   const previewUrlsRef = useRef<string[]>([]);
   const landingHandoffUploadIdRef = useRef<string | null>(null);
@@ -490,6 +493,7 @@ const AddStepDialog = ({
     setSaveError(null);
     let updateRequestStarted = false;
     let saved = false;
+    let savedUpdateId = "";
 
     try {
       if (!pendingCommandRef.current) {
@@ -534,7 +538,8 @@ const AddStepDialog = ({
 
       setSaveStage("saving");
       updateRequestStarted = true;
-      await createUpdate.mutateAsync(pendingCommandRef.current);
+      const result = await createUpdate.mutateAsync(pendingCommandRef.current);
+      savedUpdateId = result.update.id;
 
       pendingCommandRef.current = null;
       setRetryLocked(false);
@@ -582,7 +587,7 @@ const AddStepDialog = ({
           console.error("Clear saved update recovery data failed", error);
         }
       }
-      onAdded();
+      onAdded(savedUpdateId);
       onClose();
       toast.success("Bouwmoment toegevoegd!");
     }
@@ -639,115 +644,127 @@ const AddStepDialog = ({
     <>
       <Dialog open onOpenChange={(open) => { if (!open) requestClose(); }}>
         <DialogContent
-          className="z-[1000] h-[100dvh] w-screen max-w-none overflow-y-auto overscroll-contain rounded-none p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] [&>button]:flex [&>button]:h-11 [&>button]:w-11 [&>button]:items-center [&>button]:justify-center sm:h-auto sm:max-h-[90dvh] sm:max-w-2xl sm:rounded-lg sm:p-6"
+          className="z-[1000] flex h-[100dvh] w-screen max-w-none flex-col gap-0 overflow-hidden rounded-none bg-card p-0 [&>button]:flex [&>button]:h-11 [&>button]:w-11 [&>button]:items-center [&>button]:justify-center sm:h-auto sm:max-h-[90dvh] sm:max-w-2xl sm:rounded-2xl"
           aria-busy={loading}
         >
-          <DialogHeader className="pr-8 text-left">
+          <DialogHeader className="shrink-0 border-b border-border px-4 py-4 pr-16 text-left sm:px-6 sm:pr-16">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Nieuw Bouwmoment</p>
-            <DialogTitle className="font-sans text-2xl">Wat is er veranderd?</DialogTitle>
-            <DialogDescription>Begin met beeld. De praktische details kun je daarna rustig aanvullen.</DialogDescription>
+            <DialogTitle className="font-sans text-xl font-semibold tracking-tight">Wat is er veranderd?</DialogTitle>
+            <DialogDescription>Een foto vandaag. Een herinnering voor later.</DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="mt-2 min-w-0 space-y-7">
-            {mediaFeaturesEnabled ? (
-            <section aria-labelledby="update-media-title">
-              <div className="flex items-end justify-between gap-4">
-                <div>
-                  <Label id="update-media-title" className="text-base font-semibold">Foto's</Label>
-                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">De eerste foto wordt het openingsbeeld. Sleep of gebruik de pijlen om te ordenen.</p>
-                  {importedLandingPhotoVisible ? (
-                    <p className="mt-2 text-xs leading-relaxed text-muted-foreground" role="status">
-                      Je startfoto is alleen vanaf dit apparaat overgenomen. Hij wordt pas privé geüpload wanneer jij dit Bouwmoment plaatst.
-                    </p>
-                  ) : null}
+          <form onSubmit={handleSubmit} className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div className="min-h-0 min-w-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
+              {mediaFeaturesEnabled ? (
+              <section aria-labelledby="update-media-title">
+                <div className="flex items-end justify-between gap-4">
+                  <div>
+                    <Label id="update-media-title" className="text-base font-semibold">Foto's</Label>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">De eerste foto opent je Bouwmoment. Met de pijlen kies je de volgorde.</p>
+                    {importedLandingPhotoVisible ? (
+                      <p className="mt-2 text-xs leading-relaxed text-muted-foreground" role="status">
+                        Je startfoto is alleen vanaf dit apparaat overgenomen. Hij wordt pas privé geüpload wanneer jij dit Bouwmoment plaatst.
+                      </p>
+                    ) : null}
+                  </div>
+                  {files.length > 0 && <span className="text-xs tabular-nums text-muted-foreground">{files.length}/50</span>}
                 </div>
-                {files.length > 0 && <span className="text-xs tabular-nums text-muted-foreground">{files.length}/50</span>}
-              </div>
-              <ProjectImagePicker
-                currentCount={files.length}
-                disabled={formLocked}
-                onFiles={addSelectedFiles}
-              />
+                <ProjectImagePicker
+                  currentCount={files.length}
+                  disabled={formLocked}
+                  onFiles={addSelectedFiles}
+                />
 
-              {files.length > 0 && (
-                <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {files.map((upload, index) => {
-                    const file = upload.file;
-                    return (
-                      <div
-                        key={upload.id}
-                        draggable={!formLocked}
-                        onDragStart={(dragEvent) => { dragEvent.dataTransfer.effectAllowed = "move"; dragEvent.dataTransfer.setData("text/plain", upload.id); setDragIdx(index); }}
-                        onDragOver={(dragEvent) => { dragEvent.preventDefault(); setDragOverIdx(index); }}
-                        onDragLeave={() => setDragOverIdx(null)}
-                        onDrop={(dragEvent) => { reorderUploads(dragEvent.dataTransfer.getData("text/plain"), upload.id); setDragIdx(null); setDragOverIdx(null); }}
-                        onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
-                        className={`border bg-background p-2 ${dragIdx === index ? "opacity-40" : ""} ${dragOverIdx === index && dragIdx !== index ? "ring-2 ring-accent" : ""}`}
-                      >
-                        <div className="relative aspect-[4/3] overflow-hidden bg-muted">
-                          <ResilientImage src={upload.previewUrl} alt={`Voorvertoning ${index + 1}`} draggable={false} className="h-full w-full object-cover" />
-                          <button type="button" onClick={() => removeFile(upload.id)} className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center bg-background/90 text-foreground hover:text-destructive" aria-label={`${file.name} verwijderen`} disabled={formLocked}>
-                            <X className="h-4 w-4" />
-                          </button>
-                        </div>
-                        <p className="mt-2 truncate text-xs text-muted-foreground">{file.name}</p>
-                        {upload.assetId ? (
-                          <p className="mt-1 text-xs font-medium text-emerald-700" role="status">Privé verwerkt</p>
-                        ) : activeUploadId === upload.id ? (
-                          <p className="mt-1 text-xs text-muted-foreground" role="status">
-                            {saveStage === "processing" ? "Veilig verwerken…" : "Privé uploaden…"}
-                          </p>
-                        ) : failedUploadId === upload.id ? (
-                          <div className="mt-2 border-l-2 border-destructive pl-2">
-                            <p className="text-xs leading-5 text-destructive" role="alert">Deze foto kon niet worden bewaard. Je tekst is niet verloren.</p>
-                            <button
-                              type="button"
-                              className="mt-1 min-h-11 text-left text-xs font-semibold text-accent underline underline-offset-4"
-                              onClick={() => void retryUpload(upload.id)}
-                              disabled={formLocked}
-                              aria-label={`${file.name} opnieuw uploaden`}
-                            >
-                              Deze foto opnieuw
+                {files.length > 0 && (
+                  <div className="mt-4 grid snap-x snap-proximity auto-cols-[10.5rem] grid-flow-col gap-3 overflow-x-auto pb-2" role="list" aria-label="Fotovolgorde">
+                    {files.map((upload, index) => {
+                      const file = upload.file;
+                      return (
+                        <div
+                          key={upload.id}
+                          draggable={!formLocked}
+                          onDragStart={(dragEvent) => { dragEvent.dataTransfer.effectAllowed = "move"; dragEvent.dataTransfer.setData("text/plain", upload.id); setDragIdx(index); }}
+                          onDragOver={(dragEvent) => { dragEvent.preventDefault(); setDragOverIdx(index); }}
+                          onDragLeave={() => setDragOverIdx(null)}
+                          onDrop={(dragEvent) => { reorderUploads(dragEvent.dataTransfer.getData("text/plain"), upload.id); setDragIdx(null); setDragOverIdx(null); }}
+                          onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
+                          role="listitem"
+                          className={`min-w-0 snap-start rounded-2xl border border-border bg-card p-2 ${dragIdx === index ? "opacity-40" : ""} ${dragOverIdx === index && dragIdx !== index ? "ring-2 ring-accent" : ""}`}
+                        >
+                          <div className="relative aspect-[4/3] overflow-hidden rounded-xl bg-muted">
+                            <ResilientImage src={upload.previewUrl} alt={`Voorvertoning ${index + 1}`} draggable={false} className="h-full w-full object-cover" />
+                            <button type="button" onClick={() => removeFile(upload.id)} className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center rounded-bl-xl bg-card/95 text-foreground hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring" aria-label={`${file.name} verwijderen`} disabled={formLocked}>
+                              <X className="h-4 w-4" />
                             </button>
                           </div>
-                        ) : null}
-                        <div className="mt-2 grid grid-cols-2 gap-1">
-                          <button type="button" onClick={() => moveUpload(upload.id, -1)} disabled={index === 0 || formLocked} className="flex min-h-11 items-center justify-center border text-muted-foreground disabled:opacity-30" aria-label={`${file.name} naar voren`}><ArrowLeft className="h-4 w-4" /></button>
-                          <button type="button" onClick={() => moveUpload(upload.id, 1)} disabled={index === files.length - 1 || formLocked} className="flex min-h-11 items-center justify-center border text-muted-foreground disabled:opacity-30" aria-label={`${file.name} naar achteren`}><ArrowRight className="h-4 w-4" /></button>
+                          <p className="mt-2 text-xs font-semibold text-foreground">{index === 0 ? "Openingsfoto" : `Foto ${index + 1}`}</p>
+                          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{file.name}</p>
+                          {upload.assetId ? (
+                            <p className="mt-1 text-xs font-medium text-emerald-700" role="status">Privé verwerkt</p>
+                          ) : activeUploadId === upload.id ? (
+                            <p className="mt-1 text-xs text-muted-foreground" role="status">
+                              {saveStage === "processing" ? "Veilig verwerken…" : "Privé uploaden…"}
+                            </p>
+                          ) : failedUploadId === upload.id ? (
+                            <div className="mt-2 border-l-2 border-destructive pl-2">
+                              <p className="text-xs leading-5 text-destructive" role="alert">Deze foto kon niet worden bewaard. Je tekst is niet verloren.</p>
+                              <button
+                                type="button"
+                                className="mt-1 min-h-11 text-left text-xs font-semibold text-accent underline underline-offset-4"
+                                onClick={() => void retryUpload(upload.id)}
+                                disabled={formLocked}
+                                aria-label={`${file.name} opnieuw uploaden`}
+                              >
+                                Deze foto opnieuw
+                              </button>
+                            </div>
+                          ) : null}
+                          <div className="mt-2 grid grid-cols-2 gap-1">
+                            <button type="button" onClick={() => moveUpload(upload.id, -1)} disabled={index === 0 || formLocked} className="flex min-h-11 items-center justify-center rounded-lg border border-border text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30" aria-label={`${file.name} naar voren`}><ArrowLeft className="h-4 w-4" aria-hidden="true" /></button>
+                            <button type="button" onClick={() => moveUpload(upload.id, 1)} disabled={index === files.length - 1 || formLocked} className="flex min-h-11 items-center justify-center rounded-lg border border-border text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30" aria-label={`${file.name} naar achteren`}><ArrowRight className="h-4 w-4" aria-hidden="true" /></button>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+              ) : null}
+
+              <section className="space-y-4 border-t border-border pt-6" aria-labelledby="update-story-title">
+                <h3 id="update-story-title" className="font-sans text-base font-semibold">Het Verhaal</h3>
+                <div className="space-y-2">
+                  <Label htmlFor="update-title">Korte titel of bijschrift <span className="font-normal text-muted-foreground">(optioneel)</span></Label>
+                  <Input id="update-title" value={title} onChange={(changeEvent) => setTitle(changeEvent.target.value)} maxLength={120} placeholder="Bijv. De oude keuken is eruit" className="h-12 rounded-xl bg-background text-base" disabled={formLocked} />
                 </div>
-              )}
-            </section>
-            ) : null}
+                <div className="space-y-2">
+                  <Label htmlFor="update-description">Vertel wat je wilt onthouden <span className="font-normal text-muted-foreground">(optioneel)</span></Label>
+                  <Textarea id="update-description" value={description} onChange={(changeEvent) => setDescription(changeEvent.target.value)} maxLength={10000} placeholder="Wat is er gedaan, welke keuze maakte je en wat kwam je tegen?" rows={3} className="min-h-28 resize-y rounded-xl bg-background text-base leading-6" disabled={formLocked} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="update-date">Datum <span className="text-accent">*</span></Label>
+                  <Input id="update-date" type="date" value={updateDate} onChange={(changeEvent) => setUpdateDate(changeEvent.target.value)} required className="h-12 rounded-xl bg-background text-base" disabled={formLocked} />
+                </div>
+                <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border border-border bg-secondary/30 px-3 py-3 has-[:checked]:border-accent/40 has-[:checked]:bg-accent/5">
+                  <input type="checkbox" aria-label="Dit is een mijlpaal" checked={isMilestone} onChange={(event) => setIsMilestone(event.target.checked)} disabled={formLocked} className="h-5 w-5 shrink-0 accent-[hsl(var(--accent))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
+                  <span><span className="block text-sm font-semibold">Dit is een mijlpaal</span><span className="block text-xs text-muted-foreground">Een bijzonder moment in je verbouwing</span></span>
+                </label>
+                <details className="rounded-xl border border-border px-3">
+                  <summary className="flex min-h-12 cursor-pointer items-center text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{phaseId ? `Fase: ${phaseOptions.find((phase) => phase.value === phaseId)?.label ?? "gekozen"}` : "Fase toevoegen (optioneel)"}</summary>
+                  <div className="space-y-2 pb-3 [&_input]:text-base [&_button]:min-h-11">
+                    <Label>Fase <span className="font-normal text-muted-foreground">(optioneel)</span></Label>
+                    <PhaseSelect value={phaseId} onChange={setPhaseId} options={phaseOptions} onAddCustom={addCustomPhase} disabled={formLocked || projectQuery.isLoading || projectQuery.isError} />
+                  </div>
+                </details>
+              </section>
 
-            <section className="space-y-4 border-t border-border pt-6" aria-labelledby="update-story-title">
-              <h3 id="update-story-title" className="font-sans text-base font-semibold">Het Verhaal</h3>
-              <div className="space-y-2">
-                <Label htmlFor="update-date">Datum <span className="text-accent">*</span></Label>
-                <Input id="update-date" type="date" value={updateDate} onChange={(changeEvent) => setUpdateDate(changeEvent.target.value)} required className="min-h-11" disabled={formLocked} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="update-title">Korte titel of bijschrift <span className="font-normal text-muted-foreground">(optioneel)</span></Label>
-                <Input id="update-title" value={title} onChange={(changeEvent) => setTitle(changeEvent.target.value)} maxLength={120} placeholder="Bijv. De oude keuken is eruit" className="min-h-11" disabled={formLocked} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="update-description">Vertel wat je wilt onthouden <span className="font-normal text-muted-foreground">(optioneel)</span></Label>
-                <Textarea id="update-description" value={description} onChange={(changeEvent) => setDescription(changeEvent.target.value)} maxLength={10000} placeholder="Wat is er gedaan, welke keuze maakte je en wat kwam je tegen?" rows={5} className="min-h-32 resize-y" disabled={formLocked} />
-              </div>
-              <div className="space-y-2">
-                <Label>Fase <span className="font-normal text-muted-foreground">(optioneel)</span></Label>
-                <PhaseSelect value={phaseId} onChange={setPhaseId} options={phaseOptions} onAddCustom={addCustomPhase} disabled={formLocked || projectQuery.isLoading || projectQuery.isError} />
-              </div>
-            </section>
+              {projectQuery.isError && <p role="alert" className="text-sm text-destructive">De verbouwing kon niet veilig worden geladen. Probeer het Bouwmoment opnieuw te plaatsen.</p>}
+              {saveStatus && <p role="status" aria-live="polite" className={`text-sm ${saveError ? "text-destructive" : "text-muted-foreground"}`}>{saveStatus}</p>}
+              {draftPersistenceError && <p role="alert" className="text-sm text-destructive">{draftPersistenceError}</p>}
 
-            {projectQuery.isError && <p role="alert" className="text-sm text-destructive">De verbouwing kon niet veilig worden geladen. Probeer het Bouwmoment opnieuw te plaatsen.</p>}
-            {saveStatus && <p role="status" aria-live="polite" className={`text-sm ${saveError ? "text-destructive" : "text-muted-foreground"}`}>{saveStatus}</p>}
-            {draftPersistenceError && <p role="alert" className="text-sm text-destructive">{draftPersistenceError}</p>}
-
-            <div className="sticky bottom-0 -mx-5 flex flex-col-reverse gap-3 border-t border-border bg-background px-5 py-4 min-[360px]:flex-row sm:-mx-6 sm:px-6">
+              <p className="text-xs leading-5 text-muted-foreground">Je concept wordt automatisch bewaard op dit apparaat.</p>
+            </div>
+            <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-card px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] min-[360px]:flex-row sm:px-6">
               <Button type="button" variant="ghost" onClick={requestClose} className="min-h-11 flex-1" disabled={loading}>Annuleren</Button>
               <Button
                 type="submit"
