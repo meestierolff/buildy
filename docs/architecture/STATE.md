@@ -4,7 +4,7 @@ Scope: [GRAPH](GRAPH.md). Behavior: [FLOWS](FLOWS.md).
 
 ## Tester feedback implementation — 2026-10-03
 
-Local implementation covers profile photo upload; project cover, visibility and
+Implementation covers profile photo upload; project cover, visibility and
 planned dates; automatic date-based progress; owner-only notes, costs and own/
 contractor hours per Bouwmoment; project budget; and deletion of custom phases
 without deleting moments. Project settings and sharing fit the mobile story.
@@ -22,19 +22,48 @@ exports retain personal source content and decrypt request details but omit
 PDF bytes. Accepted/printing requests block account/project deletion; unaccepted
 requests are cancelled before access revocation and existing cleanup erases them.
 
-Verification so far is local: 86 focused book UI, ordering, HTTP/access,
+Local verification: 86 focused book UI, ordering, HTTP/access,
 canonical-document, actual PDF-renderer and migration-discovery cases passed;
 typecheck and changed-file lint passed. Separate focused navigation, gestures,
 routing, budget/private-data and avatar/project-settings checks also passed.
 The application build passed. These check groups overlap and are not a combined
-coverage total. No hosted end-to-end result is asserted for this feedback release.
-Append-only migrations 0056–0059 add the required records and lifecycle boundaries;
-published SHA, production migration state and ordinary hosted flows remain to be
-confirmed before this section records release evidence.
+coverage total. Append-only migrations 0056–0059 were applied on an isolated Neon
+branch and production; all 59 migration hashes and the five restricted runtime
+role configurations were verified. The isolated branch exercised actual persisted
+budgets, private-field redaction, phase deletion/replay, previews, book requests,
+administrator PDF rendering and accepted-order project-deletion blocking.
+
+Published application SHA `f4c747853bb66f5c194d642017feb9699529d71e` is READY in
+deployment `dpl_87Nbyquo17BiAM2tyncuJfpWLnJy` at
+`https://buildy-gamma.vercel.app`. The live health response confirmed that SHA,
+production and ready database/authentication/account/media/photobook capabilities.
+Product profile is `feedback_beta`, checkout `off`; payments and automatic print
+fulfilment remain disabled.
+
+Hosted checks used one synthetic account and actual scoped private Blob uploads.
+They confirmed avatar binding/removal and preserved login/profile names; fixed
+covers surviving later moments/replacement; public-to-private media revocation;
+date progress; budget/notes/hours persistence and retry totals; custom-phase
+deletion preserving moments; and anonymous redaction. Customer PDF routes and
+admin access returned 403. A real book request and retries preserved the frozen
+document after later editor changes; its canonical document excluded private
+notes, costs and hours. Computer Use at 390×844 confirmed project-first navigation,
+no horizontal overflow, sharing beside the owner name, profile/settings/private
+fields, synchronized book controls and saved live-preview edits. Swipe direction
+handling is covered by focused tests, not a physical-device claim.
+
+The hosted administrator PDF/status flow remains unverified: automatic approval
+review rejected temporarily granting the synthetic account production admin.
+Specific approval is pending. No production administrator was configured when
+checked; the owner has been asked which existing username should receive that
+role. No customer print order was sent to a printer.
 
 The previous production application is retained for rollback: READY deployment
 `dpl_EMjd3h45oCZDxWiwawD3URmn34np`, SHA
 `f90f3a4e1c3f32d773df8101d254885bd268bd5c`.
+Neon restore point `br-solitary-tooth-b1ljsacw` was created before these migrations,
+without a compute endpoint. Applied migration files and historical records remain
+unchanged.
 Book requests do not take payment or automatically contact a printer. Buildy must
 confirm price, print specifications (including bleed/page requirements) and
 delivery with the customer before manually sending the PDF to a printer.
